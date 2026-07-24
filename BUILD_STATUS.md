@@ -5,7 +5,7 @@ Last updated: 2026-07-23 (America/Vancouver)
 ## Active phase and authorized scope
 
 - Active phase: Phase 1 — Sites foundation.
-- Authorized scope: Phase 1 packet only, including the six required independent-audit fixes and the production CSP hardening evaluation.
+- Authorized scope: Phase 1 packet only, including the six required independent-audit fixes, the production CSP hardening evaluation, and the final club-authorization/public-attribution read-only audit corrections.
 - Overall truth label: **Completed and verified** in the supported local Sites/Miniflare environment.
 - Owner-controlled hosted identity smoke test: **Awaiting owner smoke test**.
 - Phase 2 and all later product surfaces: **Not started**.
@@ -37,6 +37,7 @@ Last updated: 2026-07-23 (America/Vancouver)
 - **Completed and verified** — Public routes remain available while `/organizer`, organizer APIs, invitation routes, and private actions require Sites-owned Sign in with ChatGPT identity plus server-side D1 authorization.
 - **Completed and verified** — SIWC is treated as identity only. Client-provided email, role, organization, membership, club assignment, and identity headers are not trusted.
 - **Completed and verified** — Email normalization, active/non-suspended organization membership, Owner/Administrator/Organizer roles, and club assignment are enforced server-side.
+- **Completed and verified** — Whenever a central authorization request supplies a `clubId`, that club must exist, remain active, and belong to the authenticated membership’s organization for every role. Owner and Administrator retain organization-wide semantics only after that ownership check; Organizer additionally requires an active assignment.
 - **Completed and verified** — An authenticated but uninvited identity is denied in automated tests.
 - **Completed and verified** — `INITIAL_OWNER_EMAIL` exists only as an environment-variable name. A fresh migrated database can atomically establish the first working organization and Owner without manual data seeding, only when no Owner exists and the authenticated normalized email matches the runtime value.
 - **Completed and verified** — Two concurrent bootstrap attempts create exactly one Owner; rejected/failed attempts leave no organization, profile, membership, or bootstrap residue.
@@ -48,7 +49,7 @@ Last updated: 2026-07-23 (America/Vancouver)
 
 - **Completed and verified** — Public event responses use an explicit allowlisted SQL/DTO projection; they do not fetch full private records and hide fields in presentation.
 - **Completed and verified** — Drafts, holds, conflict data, override reasons, private notes, private venue/meeting details, organizer emails, invitations, audit history, account identifiers, raw identity, submissions, and other private fields are absent from public responses.
-- **Completed and verified** — Public organizer attribution requires both profile-level `public_attribution_consent`, default false, and per-event `is_publicly_listed`. All four consent combinations have leakage tests.
+- **Completed and verified** — Public organizer attribution requires both profile-level `public_attribution_consent`, default false, and per-event `is_publicly_listed`. The leakage suite explicitly exercises the complete 2 × 2 matrix: yes/yes includes the name; yes/no, no/yes, and no/no exclude it.
 - **Completed and verified** — Centralized server validation and safe errors cover malformed inputs without returning private content.
 - **Completed and verified** — Structured logs exclude secrets, raw identity, invitation tokens, private content, and submitted values.
 
@@ -69,6 +70,8 @@ Last updated: 2026-07-23 (America/Vancouver)
 - **Completed and verified** — Audit blocker 4 fixed: `hold_expires_at` is persisted. An active hold blocks, an expired hold does not, and equality at the database-time boundary is expired without a scheduler.
 - **Completed and verified** — Audit blocker 5 fixed: public organizer names require both profile-level opt-in and per-event selection.
 - **Completed and verified** — Audit blocker 6 fixed: direct buffered overlaps block across the whole organization, including different clubs, different venues, and different organizers. A regression test proves exactly one competing write succeeds in that case.
+- **Completed and verified** — Final read-only audit finding fixed: the central `authorizeMembership()` primitive rejects nonexistent and cross-organization supplied clubs for Owner, Administrator, and Organizer. Valid same-organization clubs retain Owner/Administrator organization-wide access, while Organizer still requires its assignment.
+- **Completed and verified** — Final documentation/test gap fixed: all four public-attribution consent/listing combinations are now explicit regression cases rather than an untested ledger claim.
 - **Completed and verified** — Venue, primary/co-organizer scope, buffers, reserving statuses, and the complete normalized interval remain available for deterministic private conflict reasoning.
 - **Completed and verified** — No schedule-reserving UI or API is exposed in Phase 1.
 
@@ -92,7 +95,7 @@ Last updated: 2026-07-23 (America/Vancouver)
 - Local migration application: `npm.cmd run db:apply:local` — passed and idempotent; `2` migrations, `33` total SQLite tables including migration metadata, and `2` conflict-guard triggers.
 - Type checking: `npm.cmd run typecheck` — passed with strict TypeScript.
 - Linting: `npm.cmd run lint` — passed without blanket suppression.
-- Full unit/integration suite: `npm.cmd test` — passed, `39/39` tests.
+- Full unit/integration suite after the final read-only audit fixes: `npm.cmd test` — passed, `41/41` tests.
 - Production build: `npm.cmd run build` — passed; built routes `/`, `/api/organizer/session`, and `/organizer`.
 - Built Worker/Miniflare integration suite: `npm.cmd run test:rendered` — passed, `4/4` tests after the final production build.
 - Browser preview: supported `npm.cmd run dev` flow — healthy at `http://localhost:3000/`; desktop and 390 × 844 checks passed, signed-out organizer redirect/noindex passed, and no hydration/runtime error remained after a clean preview restart.

@@ -273,6 +273,76 @@ test("returns only published confirmed public records and no private fields", as
   }
 });
 
+test("organizer attribution requires both profile consent and per-event listing", async (t) => {
+  const database = createPublicDatabase();
+  t.after(() => database.close());
+  database.exec(`
+    INSERT INTO profiles (
+      id, normalized_email, display_name, public_attribution_consent, status
+    ) VALUES
+      ('matrix_yes_yes', 'yes-yes@example.com', 'Consent yes, listing yes', 1,
+       'active'),
+      ('matrix_yes_no', 'yes-no@example.com', 'Consent yes, listing no', 1,
+       'active'),
+      ('matrix_no_yes', 'no-yes@example.com', 'Consent no, listing yes', 0,
+       'active'),
+      ('matrix_no_no', 'no-no@example.com', 'Consent no, listing no', 0,
+       'active');
+
+    INSERT INTO event_organizers (
+      id, organization_id, event_id, profile_id, role, is_publicly_listed
+    ) VALUES
+      ('matrix_eo_yes_yes', 'org_vcc', 'event_public', 'matrix_yes_yes',
+       'co_organizer', 1),
+      ('matrix_eo_yes_no', 'org_vcc', 'event_public', 'matrix_yes_no',
+       'co_organizer', 0),
+      ('matrix_eo_no_yes', 'org_vcc', 'event_public', 'matrix_no_yes',
+       'co_organizer', 1),
+      ('matrix_eo_no_no', 'org_vcc', 'event_public', 'matrix_no_no',
+       'co_organizer', 0);
+  `);
+
+  const events = await listUpcomingPublicEvents(database, {
+    organizationId: "org_vcc",
+    fromUtcMs: 1,
+    todayDate: "2026-07-01",
+  });
+  const timed = events.find((event) => event.slug === "ideas-after-dark");
+  const publicNames = new Set(
+    timed.organizers.map((organizer) => organizer.displayName),
+  );
+  const matrix = [
+    {
+      consent: true,
+      listed: true,
+      name: "Consent yes, listing yes",
+    },
+    {
+      consent: true,
+      listed: false,
+      name: "Consent yes, listing no",
+    },
+    {
+      consent: false,
+      listed: true,
+      name: "Consent no, listing yes",
+    },
+    {
+      consent: false,
+      listed: false,
+      name: "Consent no, listing no",
+    },
+  ];
+
+  for (const combination of matrix) {
+    assert.equal(
+      publicNames.has(combination.name),
+      combination.consent && combination.listed,
+      `consent=${combination.consent}, listed=${combination.listed}`,
+    );
+  }
+});
+
 test("the DTO mapper ignores malicious extra private properties", () => {
   const dto = toPublicEventDto({
     slug: "safe-event",

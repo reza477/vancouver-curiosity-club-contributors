@@ -210,21 +210,65 @@ test("revalidates active membership, role, and Organizer club assignment", async
   );
 });
 
-test("allows organization-wide roles to pass a club-scoped check", async (t) => {
+test("allows organization-wide roles to pass a validated club-scoped check", async (t) => {
   const database = createDatabase();
   t.after(() => database.close());
-  seedMember(database, {
-    email: "admin@example.com",
-    membershipId: "membership_admin",
-    profileId: "profile_admin",
-    role: "administrator",
-  });
-  const identity = trustedIdentityFromSites({ email: "admin@example.com" });
+  for (const role of ["owner", "administrator"]) {
+    seedMember(database, {
+      email: `${role}@example.com`,
+      membershipId: `membership_${role}`,
+      profileId: `profile_${role}`,
+      role,
+    });
+    const identity = trustedIdentityFromSites({
+      email: `${role}@example.com`,
+    });
 
-  const membership = await authorizeMembership(database, identity, {
-    clubId: "club_any",
-  });
-  assert.equal(membership.role, "administrator");
+    const membership = await authorizeMembership(database, identity, {
+      clubId: "club_assigned",
+    });
+    assert.equal(membership.role, role);
+  }
+});
+
+test("rejects nonexistent and cross-organization clubs for every role", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  database.exec(`
+    INSERT INTO organizations (
+      id, name, slug, timezone, created_at, updated_at
+    ) VALUES (
+      'org_external', 'External organization', 'external-organization',
+      'America/Vancouver', 1, 1
+    );
+    INSERT INTO clubs (id, organization_id)
+    VALUES ('club_external', 'org_external');
+  `);
+
+  for (const role of ["owner", "administrator", "organizer"]) {
+    seedMember(database, {
+      email: `${role}@example.com`,
+      membershipId: `membership_${role}`,
+      profileId: `profile_${role}`,
+      role,
+    });
+    const identity = trustedIdentityFromSites({
+      email: `${role}@example.com`,
+    });
+
+    for (const clubId of ["club_missing", "club_external"]) {
+      await assert.rejects(
+        authorizeMembership(database, identity, {
+          allowedRoles: [role],
+          organizationId: "org_vcc",
+          clubId,
+        }),
+        (error) =>
+          error instanceof OrganizerAccessDeniedError &&
+          error.reason === "club_assignment_required",
+      );
+    }
+  }
 });
 
 test("bootstraps exactly one matching Owner and closes the path atomically", async (t) => {

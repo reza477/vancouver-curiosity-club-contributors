@@ -139,8 +139,25 @@ export async function authorizeMembership(
     throw new OrganizerAccessDeniedError("role_not_allowed");
   }
 
-  if (requirement.clubId && membership.role === "organizer") {
+  if (requirement.clubId !== undefined) {
     const clubId = parseIdentifier(requirement.clubId, "clubId");
+    const organizationClub = await database
+      .prepare(
+        `SELECT club.id
+         FROM clubs AS club
+         WHERE club.id = ?
+           AND club.organization_id = ?
+           AND club.deleted_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(clubId, membership.organizationId)
+      .first<Record<string, unknown>>();
+    if (!organizationClub) {
+      throw new OrganizerAccessDeniedError("club_assignment_required");
+    }
+
+    if (membership.role !== "organizer") return membership;
+
     const clubAssignment = await database
       .prepare(
         `SELECT club_membership.id
