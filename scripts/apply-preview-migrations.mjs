@@ -6,11 +6,16 @@ import { Miniflare } from "miniflare";
 
 const projectRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const migrationsDirectory = resolve(projectRoot, "drizzle");
+// This matches the Cloudflare Vite plugin's verified local D1 persistence
+// directory for the Sites starter. It is project-local and ignored by Git.
 const persistenceDirectory = resolve(
   projectRoot,
   ".wrangler",
-  "phase-1-migration-proof",
+  "state",
+  "v3",
+  "d1",
 );
+const previewDatabaseId = "00000000-0000-4000-8000-000000000000";
 const migrationFiles = (await readdir(migrationsDirectory))
   .filter((name) => name.endsWith(".sql"))
   .sort();
@@ -21,7 +26,7 @@ if (migrationFiles.length === 0) {
 }
 
 const miniflare = new Miniflare({
-  d1Databases: { DB: "vancouver-curiosity-club-phase-1" },
+  d1Databases: { DB: previewDatabaseId },
   d1Persist: persistenceDirectory,
   modules: true,
   script: "",
@@ -31,7 +36,7 @@ try {
   const database = await miniflare.getD1Database("DB");
   await database
     .prepare(
-      `CREATE TABLE IF NOT EXISTS _phase1_migrations (
+      `CREATE TABLE IF NOT EXISTS _preview_migrations (
         name TEXT PRIMARY KEY NOT NULL,
         sha256 TEXT NOT NULL,
         applied_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
@@ -44,7 +49,7 @@ try {
     const sha256 = createHash("sha256").update(sql).digest("hex");
     const existing = await database
       .prepare(
-        "SELECT sha256 FROM _phase1_migrations WHERE name = ? LIMIT 1",
+        "SELECT sha256 FROM _preview_migrations WHERE name = ? LIMIT 1",
       )
       .bind(name)
       .first();
@@ -52,10 +57,10 @@ try {
     if (existing) {
       if (existing.sha256 !== sha256) {
         throw new Error(
-          `Applied migration ${name} no longer matches its recorded hash.`,
+          `Applied preview migration ${name} no longer matches its recorded hash.`,
         );
       }
-      console.log(`already applied: ${name}`);
+      console.log(`already applied to preview: ${name}`);
       continue;
     }
 
@@ -67,16 +72,20 @@ try {
     statements.push(
       database
         .prepare(
-          "INSERT INTO _phase1_migrations (name, sha256) VALUES (?, ?)",
+          "INSERT INTO _preview_migrations (name, sha256) VALUES (?, ?)",
         )
         .bind(name, sha256),
     );
 
     const results = await database.batch(statements);
     if (results.some((result) => !result.success)) {
-      throw new Error(`D1 rejected one or more statements in ${name}.`);
+      throw new Error(
+        `Preview D1 rejected one or more statements in ${name}.`,
+      );
     }
-    console.log(`applied: ${name} (${statements.length - 1} statements)`);
+    console.log(
+      `applied to preview: ${name} (${statements.length - 1} statements)`,
+    );
   }
 
   const tableCount = await database
@@ -98,7 +107,7 @@ try {
     .prepare("PRAGMA foreign_key_check")
     .all();
   if ((foreignKeyCheck.results ?? []).length > 0) {
-    throw new Error("Generated migrations left foreign-key violations.");
+    throw new Error("Preview migrations left foreign-key violations.");
   }
 
   console.log(
@@ -107,6 +116,7 @@ try {
       tables: Number(tableCount),
       conflictGuardTriggers: Number(triggerCount),
       foreignKeyViolations: 0,
+      target: "Sites local preview D1",
     }),
   );
 } finally {

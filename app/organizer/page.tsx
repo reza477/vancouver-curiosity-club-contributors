@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   chatGPTSignOutPath,
   requireChatGPTUser,
@@ -84,13 +85,31 @@ export default async function OrganizerPage() {
         <a href={chatGPTSignOutPath("/")}>Sign out</a>
       </header>
 
-      <section aria-labelledby="foundation-heading">
-        <h2 id="foundation-heading">Foundation ready</h2>
-        <p>
-          This private Phase 1 surface confirms server-side identity,
-          membership, and role authorization. Scheduling tools are not enabled
-          in this phase.
-        </p>
+      <section
+        className="organizer-tools"
+        aria-labelledby="organizer-tools-heading"
+      >
+        <header>
+          <p className="organizer-shell__eyebrow">Available workspace</p>
+          <h2 id="organizer-tools-heading">Calendar feeds</h2>
+          <p>
+            The connection workspace is intentionally narrow. It does not
+            expose schedule-reserving event tools.
+          </p>
+        </header>
+        <article className="organizer-tool-card">
+          <p className="organizer-shell__eyebrow">Meetup · Official feed</p>
+          <h3>Meetup calendar feeds</h3>
+          <p>
+            Inspect the coarse source status. Owners and Administrators can
+            configure and manually refresh it; Organizer access remains
+            read-only.
+          </p>
+          <Link href="/organizer/meetup">
+            Open connection workspace
+            <span aria-hidden="true"> →</span>
+          </Link>
+        </article>
       </section>
     </main>
   );

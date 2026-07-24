@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { Log, LogLevel, Miniflare } from "miniflare";
@@ -28,6 +28,7 @@ const runtime = new Miniflare({
   },
   log: new Log(LogLevel.WARN),
 });
+await applyGeneratedMigrations();
 
 test.after(async () => {
   await runtime.dispose();
@@ -63,7 +64,8 @@ test("the built worker renders Field Notes with absolute social metadata", async
   const html = await response.text();
   assert.match(html, /<title>Vancouver Curiosity Club<\/title>/i);
   assert.match(html, /A social calendar with a brain\./);
-  assert.match(html, /fictional examples/i);
+  assert.match(html, /never placeholder events/i);
+  assert.match(html, /Open the public calendar/i);
   assert.match(html, /name="robots" content="noindex, nofollow"/i);
   assert.match(html, /property="og:image" content="https:\/\/preview\.example\/og\.png"/i);
   assert.match(html, /name="twitter:image:alt"/i);
@@ -109,6 +111,40 @@ test("the built worker renders Field Notes with absolute social metadata", async
     secondResponse.headers.get("content-security-policy-report-only"),
     null,
   );
+});
+
+test("built calendar and brand surfaces render an honest empty connection", async () => {
+  const calendarResponse = await fetchPath("/calendar");
+  assert.equal(calendarResponse.status, 200);
+  assert.match(
+    calendarResponse.headers.get("content-type") ?? "",
+    /^text\/html\b/i,
+  );
+  const html = await calendarResponse.text();
+  assert.match(html, /No official calendar feed is connected yet\./i);
+  assert.match(html, /No source is connected\./i);
+  assert.match(html, /one connected official feed when viewed/i);
+  assert.doesNotMatch(html, /meetup\.com\/[^<" ]+\/events\/ical/iu);
+  assert.doesNotMatch(html, /RSVP on Meetup/i);
+
+  const iconResponse = await fetchPath("/icon.png");
+  assert.equal(iconResponse.status, 200);
+  assert.match(iconResponse.headers.get("content-type") ?? "", /image\/png/i);
+  const iconBytes = new Uint8Array(await iconResponse.arrayBuffer());
+  assert.deepEqual(
+    [...iconBytes.subarray(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10],
+  );
+
+  const manifestResponse = await fetchPath("/site.webmanifest");
+  assert.equal(manifestResponse.status, 200);
+  assert.match(
+    manifestResponse.headers.get("content-type") ?? "",
+    /manifest\+json|application\/json/iu,
+  );
+  const manifest = await manifestResponse.json();
+  assert.equal(manifest.name, "Vancouver Curiosity Club");
+  assert.equal(manifest.icons.length, 3);
 });
 
 test("signed-out organizer traffic is redirected to Sites-owned SIWC and noindexed", async () => {
@@ -170,4 +206,20 @@ async function collectJavaScriptModules(directory) {
     }
   }
   return files.sort();
+}
+
+async function applyGeneratedMigrations() {
+  const database = await runtime.getD1Database("DB");
+  const migrationDirectory = resolve("drizzle");
+  const migrationFiles = (await readdir(migrationDirectory))
+    .filter((name) => /^\d+.*\.sql$/u.test(name))
+    .sort();
+  for (const file of migrationFiles) {
+    const sql = await readFile(join(migrationDirectory, file), "utf8");
+    for (const statement of sql.split("--> statement-breakpoint")) {
+      if (statement.trim().length > 0) {
+        await database.prepare(statement).run();
+      }
+    }
+  }
 }

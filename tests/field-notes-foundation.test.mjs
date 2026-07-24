@@ -14,11 +14,12 @@ test("Field Notes replaces the starter with an honest Phase 1 foundation", async
 
   assert.match(page, /Vancouver Curiosity Club/);
   assert.match(page, /A social calendar with a brain\./);
-  assert.match(page, /fictional examples/i);
+  assert.match(page, /never placeholder events/i);
   assert.match(
     page,
-    /No\s+event is scheduled and no registration is open\./,
+    /Public events appear only when a verified source provides them\./,
   );
+  assert.match(page, /Open the public calendar/);
   assert.match(page, /Skip to main content/);
   assert.match(page, /<main id="main-content">/);
   assert.match(page, /aria-label="Primary navigation"/);

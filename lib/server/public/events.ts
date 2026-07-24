@@ -9,6 +9,7 @@ import {
   parseCalendarDate,
 } from "../../time";
 import { SafeApplicationError } from "../../validation/server-observability";
+import { parseOfficialMeetupEventUrl } from "../meetup/url";
 import type {
   D1DatabaseLike,
   D1ResultLike,
@@ -21,7 +22,9 @@ export type PublicEventDto = Readonly<{
     slug: string;
   }> | null;
   description: string | null;
+  isCancelled: boolean;
   organizers: readonly Readonly<{ displayName: string }>[];
+  rsvpUrl: string | null;
   schedule:
     | Readonly<{
         endDateExclusive: string;
@@ -59,6 +62,8 @@ export const PUBLIC_EVENT_SELECT_SQL = `
          event.title AS title,
          event.summary AS summary,
          event.description AS description,
+         event.status AS event_status,
+         NULL AS rsvp_url,
          event.time_kind AS time_kind,
          event.starts_at_utc AS starts_at_utc,
          event.ends_at_utc AS ends_at_utc,
@@ -157,6 +162,125 @@ export async function listUpcomingPublicEvents(
 }
 
 /**
+ * Meetup Upcoming projection. Explicit cancellations remain durable in D1
+ * with provenance but leave this list, matching the public calendar contract.
+ */
+export const PUBLIC_MEETUP_EVENT_SELECT_SQL = `
+  SELECT snapshot.event_slug AS slug,
+         snapshot.title AS title,
+         event.summary AS summary,
+         event.description AS description,
+         snapshot.status AS event_status,
+         snapshot.event_url AS rsvp_url,
+         snapshot.time_kind AS time_kind,
+         snapshot.starts_at_utc AS starts_at_utc,
+         snapshot.ends_at_utc AS ends_at_utc,
+         snapshot.timezone AS timezone,
+         snapshot.all_day_start_date AS all_day_start_date,
+         snapshot.all_day_end_date_exclusive AS all_day_end_date_exclusive,
+         category.slug AS category_slug,
+         category.name AS category_name,
+         category.color_token AS category_color_token,
+         CASE WHEN venue.is_public = 1
+              THEN venue.public_location_name
+              ELSE NULL
+         END AS venue_public_name,
+         CASE WHEN venue.is_public = 1
+              THEN venue.public_address
+              ELSE NULL
+         END AS venue_public_address,
+         COALESCE((
+           SELECT json_group_array(profile.display_name)
+           FROM event_organizers AS public_organizer
+           JOIN profiles AS profile
+             ON profile.id = public_organizer.profile_id
+           WHERE public_organizer.organization_id = event.organization_id
+             AND public_organizer.event_id = event.id
+             AND public_organizer.is_publicly_listed = 1
+             AND public_organizer.deleted_at IS NULL
+             AND profile.status = 'active'
+             AND profile.deleted_at IS NULL
+             AND profile.public_attribution_consent = 1
+             AND profile.display_name IS NOT NULL
+             AND length(trim(profile.display_name)) > 0
+             AND instr(profile.display_name, '@') = 0
+             AND lower(trim(profile.display_name)) <>
+                 lower(profile.normalized_email)
+         ), '[]') AS organizer_names_json
+  FROM sync_sources AS source
+  JOIN meetup_event_snapshots AS snapshot
+    ON snapshot.organization_id = source.organization_id
+   AND snapshot.sync_source_id = source.id
+   AND snapshot.generation_id = source.active_generation_id
+  JOIN events AS event
+    ON event.id = snapshot.event_id
+   AND event.organization_id = snapshot.organization_id
+  LEFT JOIN categories AS category
+    ON category.id = event.category_id
+   AND category.organization_id = event.organization_id
+   AND category.deleted_at IS NULL
+  LEFT JOIN venues AS venue
+    ON venue.id = event.venue_id
+   AND venue.organization_id = event.organization_id
+   AND venue.deleted_at IS NULL
+  WHERE source.organization_id = ?
+    AND source.source_type = 'meetup_ics'
+    AND source.enabled = 1
+    AND source.active_generation_id IS NOT NULL
+    AND source.last_success_at IS NOT NULL
+    AND source.deleted_at IS NULL
+    AND event.visibility = 'public'
+    AND snapshot.status = 'confirmed'
+    AND event.published_at IS NOT NULL
+    AND event.deleted_at IS NULL
+    AND (
+      (snapshot.time_kind = 'timed'
+        AND snapshot.ends_at_utc > ?)
+      OR
+      (snapshot.time_kind = 'all_day'
+        AND snapshot.all_day_end_date_exclusive > ?)
+    )
+  ORDER BY CASE snapshot.time_kind
+             WHEN 'timed' THEN snapshot.starts_at_utc
+             ELSE 0
+           END ASC,
+           snapshot.all_day_start_date ASC,
+           snapshot.title COLLATE NOCASE ASC
+  LIMIT ?
+`;
+
+export async function listUpcomingPublicMeetupEvents(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: ListPublicEventsInput,
+): Promise<readonly PublicEventDto[]> {
+  const organizationId = parseIdentifier(
+    input.organizationId,
+    "organizationId",
+  );
+  const fromUtcMs = parseFiniteInteger(input.fromUtcMs, {
+    path: "fromUtcMs",
+    minimum: 0,
+  });
+  const todayDate = parseCalendarDate(input.todayDate, "todayDate");
+  const limit =
+    input.limit === undefined
+      ? 50
+      : parseFiniteInteger(input.limit, {
+          path: "limit",
+          minimum: 1,
+          maximum: 100,
+        });
+  const result = await database
+    .prepare(PUBLIC_MEETUP_EVENT_SELECT_SQL)
+    .bind(organizationId, fromUtcMs, todayDate, limit)
+    .all<Record<string, unknown>>();
+  assertSuccessfulResult(result);
+  return Object.freeze(
+    (result.results ?? []).map((row) => toPublicEventDto(row)),
+  );
+}
+
+/**
  * Maps only allowlisted fields. Extra/private source properties are ignored,
  * making accidental object-spread leakage impossible.
  */
@@ -176,6 +300,14 @@ export function toPublicEventDto(
     path: "event.description",
     maxLength: 20_000,
   });
+  if (row.event_status !== "confirmed" && row.event_status !== "cancelled") {
+    return invalidProjection();
+  }
+  const isCancelled = row.event_status === "cancelled";
+  const rsvpUrl =
+    row.rsvp_url === null || row.rsvp_url === undefined
+      ? null
+      : parseOfficialMeetupEventUrl(row.rsvp_url, "event.rsvpUrl");
 
   const schedule =
     row.time_kind === "timed"
@@ -220,6 +352,8 @@ export function toPublicEventDto(
     title,
     summary,
     description,
+    isCancelled,
+    rsvpUrl,
     schedule,
     category,
     venue,

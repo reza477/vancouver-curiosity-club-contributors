@@ -15,6 +15,34 @@
       "when": 1784872788189,
       "tag": "0001_outgoing_madelyne_pryor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784877107440,
+      "tag": "0002_warm_yellowjacket",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784877810783,
+      "tag": "0003_amusing_pyro",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784877965546,
+      "tag": "0004_milky_fallen_one",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784880135044,
+      "tag": "0005_dashing_ronan",
+      "breakpoints": true
     }
   ]
 }

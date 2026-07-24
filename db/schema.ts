@@ -1167,8 +1167,12 @@ export const externalSourceLinks = sqliteTable(
     entityType: text("entity_type").notNull(),
     entityId: text("entity_id").notNull(),
     sourceType: text("source_type").notNull(),
+    syncSourceId: text("sync_source_id"),
     externalId: text("external_id").notNull(),
     externalUrl: text("external_url"),
+    sourceFingerprint: text("source_fingerprint"),
+    sourceSequence: integer("source_sequence"),
+    sourceLastModifiedAt: integer("source_last_modified_at"),
     lastImportedAt: integer("last_imported_at"),
     createdAt: integer("created_at").notNull().default(nowMs),
     updatedAt: integer("updated_at").notNull().default(nowMs),
@@ -1178,6 +1182,7 @@ export const externalSourceLinks = sqliteTable(
     uniqueIndex("external_source_links_source_unique").on(
       table.organizationId,
       table.sourceType,
+      table.syncSourceId,
       table.externalId,
     ),
     index("external_source_links_entity_idx").on(
@@ -1185,6 +1190,276 @@ export const externalSourceLinks = sqliteTable(
       table.entityType,
       table.entityId,
       table.deletedAt,
+    ),
+    index("external_source_links_sync_source_idx").on(
+      table.organizationId,
+      table.syncSourceId,
+      table.deletedAt,
+    ),
+    check(
+      "external_source_links_meetup_source_check",
+      sql`${table.sourceType} <> 'meetup_ics' OR ${table.syncSourceId} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const syncSources = sqliteTable(
+  "sync_sources",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "restrict" }),
+    sourceType: text("source_type", { enum: ["meetup_ics"] }).notNull(),
+    sourceUrl: text("source_url").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    refreshIntervalMinutes: integer("refresh_interval_minutes")
+      .notNull()
+      .default(15),
+    nextRefreshAt: integer("next_refresh_at"),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: integer("lease_expires_at"),
+    lastAttemptAt: integer("last_attempt_at"),
+    lastSuccessAt: integer("last_success_at"),
+    lastErrorAt: integer("last_error_at"),
+    lastErrorCode: text("last_error_code"),
+    etag: text("etag"),
+    httpLastModified: text("http_last_modified"),
+    activeGenerationId: text("active_generation_id"),
+    pendingGenerationId: text("pending_generation_id"),
+    pendingSnapshotHash: text("pending_snapshot_hash"),
+    pendingCursor: integer("pending_cursor"),
+    createdByProfileId: text("created_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    deletedAt: integer("deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("sync_sources_org_club_type_unique").on(
+      table.organizationId,
+      table.clubId,
+      table.sourceType,
+    ),
+    uniqueIndex("sync_sources_org_type_url_unique").on(
+      table.organizationId,
+      table.sourceType,
+      table.sourceUrl,
+    ),
+    index("sync_sources_due_idx").on(
+      table.enabled,
+      table.nextRefreshAt,
+      table.leaseExpiresAt,
+    ),
+    index("sync_sources_org_club_idx").on(
+      table.organizationId,
+      table.clubId,
+      table.deletedAt,
+    ),
+    check(
+      "sync_sources_refresh_interval_check",
+      sql`${table.refreshIntervalMinutes} >= 15`,
+    ),
+    check(
+      "sync_sources_lease_shape_check",
+      sql`(
+        ${table.leaseToken} IS NULL
+        AND ${table.leaseExpiresAt} IS NULL
+      ) OR (
+        ${table.leaseToken} IS NOT NULL
+        AND ${table.leaseExpiresAt} IS NOT NULL
+      )`,
+    ),
+    check(
+      "sync_sources_pending_shape_check",
+      sql`(
+        ${table.pendingGenerationId} IS NULL
+        AND
+        ${table.pendingSnapshotHash} IS NULL
+        AND ${table.pendingCursor} IS NULL
+      ) OR (
+        ${table.pendingGenerationId} IS NOT NULL
+        AND length(${table.pendingGenerationId}) > 0
+        AND
+        ${table.pendingSnapshotHash} IS NOT NULL
+        AND length(${table.pendingSnapshotHash}) = 64
+        AND ${table.pendingCursor} IS NOT NULL
+        AND ${table.pendingCursor} >= 0
+      )`,
+    ),
+  ],
+);
+
+export const meetupSyncGenerations = sqliteTable(
+  "meetup_sync_generations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    syncSourceId: text("sync_source_id")
+      .notNull()
+      .references(() => syncSources.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    previousGenerationId: text("previous_generation_id"),
+    snapshotHash: text("snapshot_hash").notNull(),
+    expectedItemCount: integer("expected_item_count").notNull(),
+    processedItemCount: integer("processed_item_count").notNull().default(0),
+    rejectedItemCount: integer("rejected_item_count").notNull().default(0),
+    state: text("state", {
+      enum: ["staging", "published", "abandoned", "failed"],
+    })
+      .notNull()
+      .default("staging"),
+    removedCount: integer("removed_count").notNull().default(0),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    publishedAt: integer("published_at"),
+    failedAt: integer("failed_at"),
+  },
+  (table) => [
+    uniqueIndex("meetup_sync_generations_source_hash_id_unique").on(
+      table.syncSourceId,
+      table.snapshotHash,
+      table.id,
+    ),
+    index("meetup_sync_generations_source_state_idx").on(
+      table.syncSourceId,
+      table.state,
+      table.createdAt,
+    ),
+    check(
+      "meetup_sync_generations_snapshot_hash_check",
+      sql`length(${table.snapshotHash}) = 64`,
+    ),
+    check(
+      "meetup_sync_generations_expected_count_check",
+      sql`${table.expectedItemCount} >= 0`,
+    ),
+    check(
+      "meetup_sync_generations_processed_count_check",
+      sql`${table.processedItemCount} >= 0 AND ${table.processedItemCount} <= ${table.expectedItemCount}`,
+    ),
+    check(
+      "meetup_sync_generations_rejected_count_check",
+      sql`${table.rejectedItemCount} >= 0 AND ${table.rejectedItemCount} <= ${table.processedItemCount}`,
+    ),
+    check(
+      "meetup_sync_generations_removed_count_check",
+      sql`${table.removedCount} >= 0`,
+    ),
+    check(
+      "meetup_sync_generations_state_shape_check",
+      sql`(
+        ${table.state} = 'published'
+        AND ${table.publishedAt} IS NOT NULL
+        AND ${table.failedAt} IS NULL
+      ) OR (
+        ${table.state} = 'failed'
+        AND ${table.publishedAt} IS NULL
+        AND ${table.failedAt} IS NOT NULL
+      ) OR (
+        ${table.state} IN ('staging', 'abandoned')
+        AND ${table.publishedAt} IS NULL
+        AND ${table.failedAt} IS NULL
+      )`,
+    ),
+  ],
+);
+
+export const meetupEventSnapshots = sqliteTable(
+  "meetup_event_snapshots",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    syncSourceId: text("sync_source_id")
+      .notNull()
+      .references(() => syncSources.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    generationId: text("generation_id")
+      .notNull()
+      .references(() => meetupSyncGenerations.id, { onDelete: "cascade" }),
+    externalId: text("external_id").notNull(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "restrict" }),
+    ordinal: integer("ordinal").notNull(),
+    eventSlug: text("event_slug").notNull(),
+    title: text("title").notNull(),
+    eventUrl: text("event_url").notNull(),
+    status: text("status", {
+      enum: ["confirmed", "tentative", "cancelled"],
+    }).notNull(),
+    timeKind: text("time_kind", { enum: ["timed", "all_day"] }).notNull(),
+    startsAtUtc: integer("starts_at_utc"),
+    endsAtUtc: integer("ends_at_utc"),
+    timezone: text("timezone").notNull(),
+    allDayStartDate: text("all_day_start_date"),
+    allDayEndDateExclusive: text("all_day_end_date_exclusive"),
+    sourceFingerprint: text("source_fingerprint").notNull(),
+    sourceSequence: integer("source_sequence"),
+    sourceLastModifiedAt: integer("source_last_modified_at"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("meetup_event_snapshots_generation_external_unique").on(
+      table.syncSourceId,
+      table.generationId,
+      table.externalId,
+    ),
+    index("meetup_event_snapshots_public_timed_idx").on(
+      table.organizationId,
+      table.syncSourceId,
+      table.generationId,
+      table.status,
+      table.endsAtUtc,
+    ),
+    index("meetup_event_snapshots_public_all_day_idx").on(
+      table.organizationId,
+      table.syncSourceId,
+      table.generationId,
+      table.status,
+      table.allDayEndDateExclusive,
+    ),
+    index("meetup_event_snapshots_event_idx").on(
+      table.organizationId,
+      table.eventId,
+    ),
+    check(
+      "meetup_event_snapshots_ordinal_check",
+      sql`${table.ordinal} >= 0`,
+    ),
+    check(
+      "meetup_event_snapshots_time_shape_check",
+      sql`(
+        ${table.timeKind} = 'timed'
+        AND ${table.startsAtUtc} IS NOT NULL
+        AND ${table.endsAtUtc} IS NOT NULL
+        AND ${table.endsAtUtc} > ${table.startsAtUtc}
+        AND ${table.allDayStartDate} IS NULL
+        AND ${table.allDayEndDateExclusive} IS NULL
+      ) OR (
+        ${table.timeKind} = 'all_day'
+        AND ${table.startsAtUtc} IS NULL
+        AND ${table.endsAtUtc} IS NULL
+        AND ${table.allDayStartDate} IS NOT NULL
+        AND ${table.allDayEndDateExclusive} IS NOT NULL
+        AND ${table.allDayEndDateExclusive} > ${table.allDayStartDate}
+      )`,
     ),
   ],
 );

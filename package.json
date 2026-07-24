@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "db:apply:local": "node scripts/apply-local-migrations.mjs"
+    "db:apply:local": "node scripts/apply-local-migrations.mjs",
+    "db:apply:preview": "node scripts/apply-preview-migrations.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

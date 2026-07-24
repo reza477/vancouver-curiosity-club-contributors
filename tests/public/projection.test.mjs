@@ -361,6 +361,8 @@ test("the DTO mapper ignores malicious extra private properties", () => {
     venue_public_name: null,
     venue_public_address: null,
     organizer_names_json: "[]",
+    event_status: "confirmed",
+    rsvp_url: null,
     private_notes: "LEAK_ME",
     invitations: [{ token_hash: "LEAK_ME" }],
     audit_logs: [{ actor_email: "LEAK_ME@example.com" }],

@@ -2,54 +2,134 @@
 
 > A social calendar with a brain.
 
-This is the isolated ChatGPT Sites project for Vancouver Curiosity Club and its future organizer portal. The umbrella working name is Vancouver Curiosity and Education Society. No legal-status or charity claim is approved for publication.
+This is the isolated ChatGPT Sites project for Vancouver Curiosity Club and
+its organizer portal. The umbrella working name is Vancouver Curiosity and
+Education Society. No legal-status or charity claim is approved for
+publication.
 
-## Current scope
+## Current state
 
-Only Phase 1 is authorized. Phase 2 and all later product surfaces are not started.
+The audited Phase 1 foundation is complete. A narrow, separately authorized
+follow-up adds:
 
-The selected design foundation is **Field Notes**: an editorial, warm, Vancouver-rooted system with clear development-content labels. Phase 1 establishes the public visual foundation, Sites-owned identity boundary, server-side authorization, D1 schema and atomic scheduling proof, public/private projection boundary, timezone utilities, and quality tooling. It does not expose schedule-reserving UI.
+- an original futuristic-and-timeless brand mark across the wordmark, favicon,
+  app icons, manifest, and social card;
+- a public `/calendar` backed only by official Meetup group iCalendar feeds;
+- an Owner/Administrator connection and manual-refresh workspace at
+  `/organizer/meetup`;
+- truthful not-connected, pending, partial, current, stale, disabled, and error
+  states.
 
-- `BUILD_STATUS.md` is the authoritative implementation and verification ledger.
-- `OWNER_INPUTS.md` records information that only Reza may supply or approve.
-- `MASTER_BUILD_SPEC.md` is the unchanged canonical multi-phase reference.
-- `docs/architecture/` records foundation decisions.
+This follow-up does not start Phase 2 or expose schedule-reserving event tools.
+No Site version is publicly deployed.
+
+## Meetup connection
+
+The integration is one-way: Meetup is the source for imported title, schedule,
+explicit status/cancellation, and the official event RSVP URL. It never writes
+to Meetup and does not scrape pages, use passwords, or claim email delivery.
+
+To connect production data:
+
+1. Put `INITIAL_OWNER_EMAIL` in Sites runtime settings and sign in as the
+   Owner.
+2. Copy the official group calendar export/subscription URL supplied by Meetup.
+   The accepted canonical form is
+   `https://www.meetup.com/<group-slug>/events/ical/`.
+3. Open `/organizer/meetup`, save the feed, and repeat for each official Meetup
+   group. Distinct feeds receive distinct club scopes within the organization.
+4. Choose **Refresh now**. A request handles one feed and at most three calendar
+   rows. If it reports **partial**, refresh again; later public calendar views
+   can also continue the same snapshot.
+
+No `INITIAL_OWNER_EMAIL` runtime value or official feed URL has been supplied
+in this workspace, so production imported data is intentionally empty and the
+calendar truthfully shows **Not connected**.
+
+### Synchronization contract
+
+- Completed feeds wait at least 15 minutes before refresh-on-view checks them
+  again. Each public view checks at most one feed.
+- Partial snapshots can resume immediately in another bounded request.
+- Imported rows are staged in an isolated pending generation. Staged rows and
+  progress counters may change while that generation is pending; once a
+  generation is published, the supported runtime does not mutate its snapshot
+  rows. The public calendar continues to read the last fully published
+  generation during a partial or failed refresh, so an update, addition, or
+  cancellation cannot leak before finalization.
+- Sites does not guarantee a scheduler here, so no background cadence is
+  claimed.
+- Only a cursor-complete, successfully finalized feed snapshot can reconcile
+  absence. A previously mapped future event missing from that complete
+  source-scoped snapshot is cancelled, unpublished, and soft-retired; partial
+  or failed snapshots never remove it. A later reappearance is imported again.
+- Explicit Meetup cancellation remains distinct import provenance and is
+  excluded from upcoming public listings.
+- UID plus recurrence identity is source-scoped, so the same UID in two club
+  feeds cannot collide.
+- Source sequence and last-modified fields are monotonic; stale replays cannot
+  resurrect a newer cancellation.
+- Raw feed descriptions and locations are not persisted or published because
+  they may contain private meeting details. Public location and organizer
+  attribution remain separately approved data.
+- Non-cancelled all-day feed rows are rejected in this follow-up. They remain
+  unsupported until the conflict engine can normalize reserving all-day
+  intervals without converting calendar dates to midnight UTC.
+
+The adapter follows Meetup's supported calendar export and does not use the
+Meetup GraphQL API. Meetup currently requires an active Meetup Pro subscription
+and approval for a new OAuth consumer, neither of which is available or needed
+for this read-only feed path.
 
 ## Platform
 
 - ChatGPT Sites-managed hosting
-- Strict TypeScript and the official vinext Cloudflare Worker-compatible structure
+- Strict TypeScript and the official vinext Cloudflare Worker structure
 - Sites-managed D1 through logical binding `DB`
 - Sites-managed R2 through logical binding `MEDIA`
 - Platform-owned Sign in with ChatGPT
 - Server-side D1 membership and role authorization
-- Zod-compatible centralized validation, Vitest-equivalent Node tests, and Miniflare D1 integration tests
+- Central validation, safe errors, explicit public projections, and
+  D1/SQLite-compatible tests
 
-No alternative host, external database, external authentication provider, email service, custom domain, paid account, or billing detail is required.
+No alternative host, external database, external authentication provider,
+email service, custom domain, paid account, or billing detail is required.
 
 ## Local development
 
-Requires Node.js `>=22.13.0` and the starter’s locked npm package manager.
+Requires Node.js `>=22.13.0` and the starter's locked npm package manager.
 
 ```powershell
 npm.cmd ci
 npm.cmd run db:apply:local
+npm.cmd run db:apply:preview
 npm.cmd run dev
 ```
 
-The preview is served at `http://localhost:3000/` by default.
+`db:apply:local` exercises the generated migration chain in an isolated
+D1-compatible proof database. `db:apply:preview` applies the same chain
+idempotently to the Sites local preview D1. The preview is served at
+`http://localhost:3000/`.
 
 ## Verification
 
 ```powershell
 npm.cmd run db:generate
 npm.cmd run db:apply:local
+npm.cmd run db:apply:preview
 npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd test
 npm.cmd run build
 npm.cmd run test:rendered
-npm.cmd audit --omit=dev
+npm.cmd audit --omit=dev --audit-level=low
+npm.cmd audit --audit-level=low
 ```
 
-`test:rendered` executes the built Cloudflare Worker inside Miniflare. Missing owner runtime values are never committed; see `.env.example`.
+`test:rendered` executes the built Cloudflare Worker inside Miniflare, including
+the freshly migrated calendar, icon, manifest, CSP, and private-route checks.
+Missing owner values are never committed; see `OWNER_INPUTS.md`.
+
+`BUILD_STATUS.md` is the authoritative ledger, `MASTER_BUILD_SPEC.md` is the
+unchanged canonical multi-phase reference, and `docs/architecture/` contains
+the accepted architecture decisions.

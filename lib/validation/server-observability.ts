@@ -143,7 +143,10 @@ export function privateJsonHeaders(): Headers {
 
 function safeLogToken(value: string, fallback: string): string {
   const bounded = value.slice(0, 96);
-  return /^[A-Za-z0-9_./:-]+$/u.test(bounded) ? bounded : fallback;
+  // Operational tokens are identifiers, never URLs or paths. In particular,
+  // excluding `:` and `/` prevents a feed URL or credential-bearing URL from
+  // being smuggled into the event/code/operation fields.
+  return /^[A-Za-z0-9_.-]+$/u.test(bounded) ? bounded : fallback;
 }
 
 function safeRoute(value: string): string {

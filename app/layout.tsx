@@ -44,8 +44,15 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description,
     applicationName: title,
+    manifest: "/site.webmanifest",
     icons: {
-      icon: [{ url: "/icon.png", sizes: "64x64", type: "image/png" }],
+      icon: [
+        { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+        { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+        { url: "/favicon-48.png", sizes: "48x48", type: "image/png" },
+        { url: "/icon.png", sizes: "64x64", type: "image/png" },
+        { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      ],
       apple: [
         {
           url: "/apple-touch-icon.png",
@@ -76,6 +83,7 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [{ alt: socialImageAlt, url: socialImage }],
       title,
     },
+    themeColor: "#061a3a",
     robots: {
       index: false,
       follow: false,

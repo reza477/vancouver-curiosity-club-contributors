@@ -1,10 +1,28 @@
 # Vancouver Curiosity Club — Owner Inputs
 
-No value below may be guessed, inferred, or replaced with sample production data.
+No value below may be guessed, inferred, or replaced with sample production
+data.
 
 ## Identity and bootstrap
 
-- `INITIAL_OWNER_EMAIL`: **Missing** — exact normalized email for Reza's ChatGPT account, to be stored only in Sites runtime settings.
+- `INITIAL_OWNER_EMAIL`: **Missing** — exact normalized email for Reza's
+  ChatGPT account, stored only in Sites runtime settings.
+
+## Meetup connection
+
+- Official Meetup group calendar export/feed URL for each participating group:
+  **Missing**
+- Intended club/group mapping for each official feed, if Reza wants names more
+  specific than the safe automatic separate-club assignment: **Missing**
+- Exact public Meetup group URL: **Missing**
+- Exact public Meetup discussion URL: **Missing**
+- Real event RSVP URLs for a production smoke test: **Missing**
+
+Until `INITIAL_OWNER_EMAIL` is configured in Sites runtime settings and the
+official feed URLs are supplied through the authenticated organizer workspace,
+production imported event data remains empty and the public calendar must show
+**Not connected**. Feed URLs are private configuration: they must not be copied
+into public content, client state, logs, or this file.
 
 ## British Columbia legal identity
 
@@ -15,18 +33,13 @@ No value below may be guessed, inferred, or replaced with sample production data
 - Approved legal footer: **Missing**
 - Charity status and approved wording: **Missing**
 
-Until these are supplied and approved, the site must not publish a legal-status, society-registration, tax, or charity claim.
-
-## Community links
-
-- Exact Meetup group URL: **Missing**
-- Exact Meetup discussion URL: **Missing**
-- Real event RSVP URLs for later production smoke tests: **Missing**
+Until these are supplied and approved, the site must not publish a legal-status,
+society-registration, tax, or charity claim.
 
 ## Copy approval
 
 - Approved public copy: **Missing**
-- Working tagline currently supplied for development: `A social calendar with a brain.`
+- Working tagline currently supplied: `A social calendar with a brain.`
 
 ## Photography and consent
 
@@ -44,4 +57,5 @@ No AI-generated attendee faces or unapproved photographs may be substituted.
 - Profile-level public-attribution consent: **Missing**
 - Per-event permission to display each organizer: **Missing**
 
-The public projection defaults organizer attribution to private and requires both consent gates before displaying a name.
+The public projection defaults organizer attribution to private and requires
+both consent gates before displaying a name.

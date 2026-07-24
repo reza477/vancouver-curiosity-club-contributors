@@ -1,24 +1,6 @@
 import Link from "next/link";
 
 export default function Home() {
-  const sampleEvents = [
-    {
-      title: "The Hidden Life of Urban Crows",
-      lane: "Sample talk",
-      colour: "teal",
-    },
-    {
-      title: "Why We Remember Music",
-      lane: "Sample salon",
-      colour: "amber",
-    },
-    {
-      title: "Night Walk: Moss, Light & Rain",
-      lane: "Sample field note",
-      colour: "cobalt",
-    },
-  ] as const;
-
   return (
     <>
       <a className="skip-link" href="#main-content">
@@ -31,15 +13,13 @@ export default function Home() {
           href="/"
           aria-label="Vancouver Curiosity Club home"
         >
-          <span className="wordmark-mark" aria-hidden="true">
-            VCC
-          </span>
+          <span className="wordmark-mark" aria-hidden="true" />
           <span>Vancouver Curiosity Club</span>
         </Link>
 
         <nav className="primary-nav" aria-label="Primary navigation">
           <a href="#about">About</a>
-          <a href="#sample-calendar">Sample calendar</a>
+          <Link href="/calendar">Calendar</Link>
           <Link className="portal-link" href="/organizer">
             Organizer portal
             <span aria-hidden="true"> ↗</span>
@@ -84,44 +64,49 @@ export default function Home() {
 
         <section
           className="calendar-preview"
-          id="sample-calendar"
+          id="calendar"
           aria-labelledby="calendar-title"
         >
           <div className="calendar-heading">
-            <p className="section-kicker">Development preview</p>
-            <h2 id="calendar-title">Sample calendar</h2>
+            <p className="section-kicker">Public calendar</p>
+            <h2 id="calendar-title">What&apos;s actually happening.</h2>
             <p>
-              These are fictional examples for testing the visual system. No
-              event is scheduled and no registration is open.
+              The calendar reports its real connection and refresh state. It
+              shows verified source details only—never placeholder events.
             </p>
           </div>
 
-          <ul className="event-list" aria-label="Development sample events">
-            {sampleEvents.map((event, index) => (
-              <li key={event.title}>
-                <article className="event-row">
-                  <p className="event-number" aria-label={`Sample ${index + 1}`}>
-                    {String(index + 1).padStart(2, "0")}
-                  </p>
-                  <div className="event-title">
-                    <p>Sample event</p>
-                    <h3>{event.title}</h3>
-                  </div>
-                  <div className="event-detail">
-                    <span>Date to be announced</span>
-                    <span>Venue to be announced</span>
-                  </div>
-                  <p className="event-lane">
-                    <span
-                      className={`lane-dot lane-dot-${event.colour}`}
-                      aria-hidden="true"
-                    />
-                    {event.lane}
-                  </p>
-                </article>
-              </li>
-            ))}
-          </ul>
+          <article className="calendar-callout">
+            <p className="calendar-state-label">
+              <span aria-hidden="true" />
+              Source-aware listings
+            </p>
+            <h3>Meet the calendar where it is.</h3>
+            <p>
+              See whether the official source is connected, when it last
+              refreshed, and which source-backed listings remain available
+              when a refresh does not complete. Status is aggregate and never
+              exposes a saved feed address.
+            </p>
+            <Link className="calendar-cta" href="/calendar">
+              Open the public calendar
+              <span aria-hidden="true"> →</span>
+            </Link>
+            <dl className="calendar-facts">
+              <div>
+                <dt>Source</dt>
+                <dd>Official feeds only</dd>
+              </div>
+              <div>
+                <dt>Refresh</dt>
+                <dd>One bounded feed check per view</dd>
+              </div>
+              <div>
+                <dt>Background sync</dt>
+                <dd>Not scheduled</dd>
+              </div>
+            </dl>
+          </article>
         </section>
 
         <section
@@ -150,10 +135,10 @@ export default function Home() {
               format, and access notes—from the story that makes an event worth
               leaving home for.
             </p>
-            <a href="#sample-calendar">
-              See the sample system
-              <span aria-hidden="true"> ↑</span>
-            </a>
+            <Link href="/calendar">
+              Read the calendar
+              <span aria-hidden="true"> →</span>
+            </Link>
           </article>
         </section>
 
@@ -168,14 +153,14 @@ export default function Home() {
           </div>
           <div className="principles-copy">
             <p>
-              This Phase 1 page establishes the club’s visual language. Public
-              events, organizer profiles, photographs, community links, and
-              legal details will appear only after they are supplied and
-              verified.
+              This foundation establishes the club&apos;s visual language.
+              Public events appear only when a verified source provides them.
+              Organizer profiles, photographs, community links, and legal
+              details remain owner-controlled.
             </p>
             <p className="status-note">
-              No claims, dates, registrations, or people on this page should be
-              read as production content.
+              Open the public calendar for the current connection state and
+              source-backed listings.
             </p>
           </div>
         </section>
@@ -188,7 +173,7 @@ export default function Home() {
         </div>
         <div className="footer-meta">
           <p>Vancouver, British Columbia</p>
-          <p>Phase 1 foundation preview</p>
+          <p>Independent learning, in company</p>
         </div>
       </footer>
     </>

@@ -28,6 +28,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .sites-dev.*.log
+.codex-preview.*.log
+.codex-audit-*.json
 
 # env files (can opt-in for committing if needed)
 .env*

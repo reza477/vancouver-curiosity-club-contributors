@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `sync_sources_org_type_url_unique` ON `sync_sources` (`organization_id`,`source_type`,`source_url`);
