@@ -99,8 +99,8 @@ Last updated: 2026-07-23 (America/Vancouver)
 - Production build: `npm.cmd run build` — passed; built routes `/`, `/api/organizer/session`, and `/organizer`.
 - Built Worker/Miniflare integration suite: `npm.cmd run test:rendered` — passed, `4/4` tests after the final production build.
 - Browser preview: supported `npm.cmd run dev` flow — healthy at `http://localhost:3000/`; desktop and 390 × 844 checks passed, signed-out organizer redirect/noindex passed, and no hydration/runtime error remained after a clean preview restart.
-- Sites source push: commit `1d6a525c5fe332780ef9407deba24927a0ac5271` — passed to the fresh project’s configured `main` source branch.
-- Sites version save and provenance read-back — passed; validated saved version **1** records source commit `1d6a525c5fe332780ef9407deba24927a0ac5271`. Saving did not deploy it.
+- Sites source push after the final read-only audit fixes: commit `e0a141ccdefc94ff90b43074eccd72862d5e4186` — passed to the fresh project’s configured `main` source branch.
+- Sites version save and provenance read-back — passed; validated saved version **2** records source commit `e0a141ccdefc94ff90b43074eccd72862d5e4186`. Version 1 remains intact, and saving version 2 did not deploy either version.
 - Production dependency audit: `npm.cmd audit --omit=dev --audit-level=low` — ran and returned findings, not a clean pass: `3 high` findings in the production dependency tree (`next`, transitive `postcss`, and `sharp`).
 - Full dependency audit: `npm.cmd audit --audit-level=low` — ran and returned `17` findings: `1 low`, `4 moderate`, and `12 high`.
 - Audit disposition: no finding was hidden or force-resolved. The pinned Sites starter dependency graph has no verified safe in-range resolution for all findings; a forced framework/runtime upgrade would be an unverified platform change. The saved artifact contains the built Worker, not `node_modules`. Re-evaluate against the supported Sites starter/runtime during hardening.
@@ -152,7 +152,7 @@ See `OWNER_INPUTS.md`. No missing value has been guessed:
 - Project ID: `appgprj_6a62eaf79c4881919bb8e47998af851a`.
 - Logical D1 binding: `DB`.
 - Logical R2 binding: `MEDIA`.
-- Validated saved version: **Version 1**, sourced from commit `1d6a525c5fe332780ef9407deba24927a0ac5271`; provenance was read back successfully.
+- Validated saved versions: **Version 2** is the current Phase 1 audit-corrected version, sourced from commit `e0a141ccdefc94ff90b43074eccd72862d5e4186`; provenance was read back successfully. Version 1 remains saved and unmodified.
 - Production deployment: none.
 - Public access: not enabled.
 - Credentials or runtime values committed: none.
