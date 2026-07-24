@@ -1,0 +1,166 @@
+/** Cloudflare Worker entry point for the vinext-starter template. */
+import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
+import handler from "vinext/server/app-router-entry";
+
+interface Env {
+  ASSETS: Fetcher;
+  DB: D1Database;
+  MEDIA: R2Bucket;
+  IMAGES: {
+    input(stream: ReadableStream): {
+      transform(options: Record<string, unknown>): {
+        output(options: { format: string; quality: number }): Promise<{ response(): Response }>;
+      };
+    };
+  };
+}
+
+interface ExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+  passThroughOnException(): void;
+}
+
+const PRIVATE_OR_IDENTITY_PATHS = [
+  "/organizer",
+  "/api/organizer",
+  "/accept-invitation",
+  "/invitations",
+  "/preview",
+  "/signin-with-chatgpt",
+  "/signout-with-chatgpt",
+  "/callback",
+] as const;
+
+function isPrivateOrIdentityPath(pathname: string): boolean {
+  return PRIVATE_OR_IDENTITY_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
+
+function isLocalRequest(requestUrl: URL): boolean {
+  return (
+    requestUrl.hostname === "localhost" ||
+    requestUrl.hostname === "127.0.0.1" ||
+    requestUrl.hostname === "::1"
+  );
+}
+
+function contentSecurityPolicy(requestUrl: URL, nonce: string | null): string {
+  const isLocal = isLocalRequest(requestUrl);
+  const scriptSources = ["'self'"];
+  const connectSources = ["'self'"];
+
+  if (isLocal) {
+    scriptSources.push("'unsafe-inline'", "'unsafe-eval'");
+    connectSources.push("ws:", "wss:");
+  } else if (nonce) {
+    scriptSources.push(`'nonce-${nonce}'`, "'strict-dynamic'");
+  }
+
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    `connect-src ${connectSources.join(" ")}`,
+    "font-src 'self' data:",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    "object-src 'none'",
+    `script-src ${scriptSources.join(" ")}`,
+    "script-src-attr 'none'",
+    "style-src 'self' 'unsafe-inline'",
+    "worker-src 'self' blob:",
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
+
+function requestWithSecurityContext(
+  request: Request,
+  contentSecurityPolicyValue: string,
+): Request {
+  const headers = new Headers(request.headers);
+  // vinext reads this request header and applies the nonce to every framework
+  // bootstrap/module script it renders. The same policy is returned below.
+  headers.set("Content-Security-Policy", contentSecurityPolicyValue);
+  headers.delete("Content-Security-Policy-Report-Only");
+  return new Request(request, { headers });
+}
+
+function createCspNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
+}
+
+function secureResponse(
+  request: Request,
+  response: Response,
+  contentSecurityPolicyValue: string,
+): Response {
+  const requestUrl = new URL(request.url);
+  const headers = new Headers(response.headers);
+
+  headers.set("Content-Security-Policy", contentSecurityPolicyValue);
+  headers.delete("Content-Security-Policy-Report-Only");
+  headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+
+  if (requestUrl.protocol === "https:") {
+    headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    );
+  }
+
+  if (isPrivateOrIdentityPath(requestUrl.pathname)) {
+    headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  }
+
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+// Image security config. SVG sources with .svg extension auto-skip the
+// optimization endpoint on the client side (served directly, no proxy).
+// To route SVGs through the optimizer (with security headers), set
+// dangerouslyAllowSVG: true in next.config.js and uncomment below:
+// const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
+
+const worker = {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    const nonce = isLocalRequest(url) ? null : createCspNonce();
+    const policy = contentSecurityPolicy(url, nonce);
+
+    if (url.pathname === "/_vinext/image") {
+      const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
+      const response = await handleImageOptimization(request, {
+        fetchAsset: (path) =>
+          env.ASSETS.fetch(new Request(new URL(path, request.url))),
+        transformImage: async (body, { width, format, quality }) => {
+          const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
+          return result.response();
+        },
+      }, allowedWidths);
+      return secureResponse(request, response, policy);
+    }
+
+    const securedRequest = requestWithSecurityContext(request, policy);
+    const response = await handler.fetch(securedRequest, env, ctx);
+    return secureResponse(request, response, policy);
+  },
+};
+
+export default worker;
