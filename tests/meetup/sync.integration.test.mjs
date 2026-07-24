@@ -8,6 +8,7 @@ import {
   listPublicMeetupCalendar,
   refreshMeetupCalendarSource,
 } from "../../lib/server/meetup/index.ts";
+import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { trustedIdentityFromSites } from "../../lib/server/auth/index.ts";
 import {
   safeErrorResponse,
@@ -814,15 +815,41 @@ test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => 
   );
   const pending = await innerDatabase
     .prepare(
-      `SELECT pending_cursor, pending_snapshot_hash, last_success_at
+      `SELECT active_generation_id, pending_generation_id, pending_cursor,
+              pending_snapshot_hash, last_success_at
        FROM sync_sources
        WHERE club_id = 'club_a'`,
     )
     .first();
+  assert.equal(pending.active_generation_id, null);
+  assert.equal(typeof pending.pending_generation_id, "string");
   assert.equal(pending.pending_cursor, 3);
   assert.equal(typeof pending.pending_snapshot_hash, "string");
   assert.equal(pending.pending_snapshot_hash.length, 64);
   assert.equal(pending.last_success_at, null);
+  assert.deepEqual(
+    {
+      ...(await innerDatabase
+        .prepare(
+          `SELECT state, expected_item_count, processed_item_count,
+                  rejected_item_count, removed_count, published_at,
+                  previous_generation_id
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(pending.pending_generation_id)
+        .first()),
+    },
+    {
+      state: "staging",
+      expected_item_count: 4,
+      processed_item_count: 3,
+      rejected_item_count: 0,
+      removed_count: 0,
+      published_at: null,
+      previous_generation_id: null,
+    },
+  );
 
   const duringPartial = await listPublicMeetupCalendar(innerDatabase, {
     organizationId: ORGANIZATION_ID,
@@ -855,14 +882,40 @@ test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => 
   );
   const finished = await innerDatabase
     .prepare(
-      `SELECT pending_cursor, pending_snapshot_hash, last_success_at
+      `SELECT active_generation_id, pending_generation_id, pending_cursor,
+              pending_snapshot_hash, last_success_at
        FROM sync_sources
        WHERE club_id = 'club_a'`,
     )
     .first();
+  assert.equal(finished.active_generation_id, pending.pending_generation_id);
+  assert.equal(finished.pending_generation_id, null);
   assert.equal(finished.pending_cursor, null);
   assert.equal(finished.pending_snapshot_hash, null);
   assert.equal(finished.last_success_at, 3_000);
+  assert.deepEqual(
+    {
+      ...(await innerDatabase
+        .prepare(
+          `SELECT state, expected_item_count, processed_item_count,
+                  rejected_item_count, removed_count, published_at,
+                  previous_generation_id
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(finished.active_generation_id)
+        .first()),
+    },
+    {
+      state: "published",
+      expected_item_count: 4,
+      processed_item_count: 4,
+      rejected_item_count: 0,
+      removed_count: 0,
+      published_at: 3_000,
+      previous_generation_id: null,
+    },
+  );
 
   const publicCalendar = await listPublicMeetupCalendar(innerDatabase, {
     organizationId: ORGANIZATION_ID,
@@ -940,6 +993,22 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   assert.equal(published.outcome, "completed");
 
   database.exec(`
+    INSERT INTO events (
+      id, organization_id, club_id, title, slug, status, visibility,
+      time_kind, starts_at_utc, ends_at_utc, timezone,
+      organizer_scope_json, schedule_version, schedule_review_state,
+      published_at, created_by_profile_id, updated_by_profile_id,
+      created_at, updated_at
+    ) VALUES (
+      'manual_projection_sentinel', '${ORGANIZATION_ID}', 'club_a',
+      'Manual Projection Sentinel', 'manual-projection-sentinel',
+      'confirmed', 'public', 'timed',
+      ${Date.parse("2028-05-10T03:00:00Z")},
+      ${Date.parse("2028-05-10T04:00:00Z")}, 'America/Vancouver',
+      '[]', 1, 'unreviewed', 2050, 'profile_owner', 'profile_owner',
+      2050, 2050
+    );
+
     UPDATE events
     SET summary = 'OWNER SUMMARY SENTINEL',
         description = 'OWNER DESCRIPTION SENTINEL',
@@ -952,6 +1021,39 @@ test("keeps the last completed generation public when a later chunk fails", asyn
         schedule_version = schedule_version + 1
     WHERE title = 'Published Until Finalized';
   `);
+
+  const sourceAfterPublished = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(typeof sourceAfterPublished.active_generation_id, "string");
+  assert.equal(sourceAfterPublished.pending_generation_id, null);
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT state, previous_generation_id, expected_item_count,
+                  processed_item_count, rejected_item_count, removed_count,
+                  published_at
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(sourceAfterPublished.active_generation_id)
+        .first()),
+    },
+    {
+      state: "published",
+      previous_generation_id: null,
+      expected_item_count: 2,
+      processed_item_count: 2,
+      rejected_item_count: 0,
+      removed_count: 0,
+      published_at: 2_000,
+    },
+  );
 
   const publicBefore = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
@@ -969,6 +1071,17 @@ test("keeps the last completed generation public when a later chunk fails", asyn
     "OWNER DESCRIPTION SENTINEL",
   );
   const serializedPublishedEvents = JSON.stringify(publicBefore.events);
+  const generalBefore = await listUpcomingPublicEvents(database, {
+    organizationId: ORGANIZATION_ID,
+    fromUtcMs: 0,
+    todayDate: "2026-01-01",
+  });
+  assert.deepEqual(
+    generalBefore.map((event) => event.title),
+    ["Manual Projection Sentinel"],
+    "the general/manual projection must exclude every Meetup-source-linked event",
+  );
+  const serializedGeneralEvents = JSON.stringify(generalBefore);
 
   const changedFourRowFeed = calendar(
     meetupEvent({
@@ -1023,6 +1136,46 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   assert.equal(partial.counts.created, 1);
   assert.equal(partial.counts.updated, 2);
 
+  const sourceDuringPartial = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(
+    sourceDuringPartial.active_generation_id,
+    sourceAfterPublished.active_generation_id,
+  );
+  assert.equal(typeof sourceDuringPartial.pending_generation_id, "string");
+  assert.notEqual(
+    sourceDuringPartial.pending_generation_id,
+    sourceDuringPartial.active_generation_id,
+  );
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT state, previous_generation_id, expected_item_count,
+                  processed_item_count, rejected_item_count, removed_count,
+                  published_at
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(sourceDuringPartial.pending_generation_id)
+        .first()),
+    },
+    {
+      state: "staging",
+      previous_generation_id: sourceAfterPublished.active_generation_id,
+      expected_item_count: 4,
+      processed_item_count: 3,
+      rejected_item_count: 0,
+      removed_count: 0,
+      published_at: null,
+    },
+  );
+
   const publicDuringPartial = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
@@ -1033,6 +1186,20 @@ test("keeps the last completed generation public when a later chunk fails", asyn
     JSON.stringify(publicDuringPartial.events),
     serializedPublishedEvents,
     "a partial generation must not change the last completed public snapshot",
+  );
+  const generalDuringPartial = await listUpcomingPublicEvents(database, {
+    organizationId: ORGANIZATION_ID,
+    fromUtcMs: 0,
+    todayDate: "2026-01-01",
+  });
+  assert.equal(
+    JSON.stringify(generalDuringPartial),
+    serializedGeneralEvents,
+    "the general/manual projection must not expose source-backed staged rows",
+  );
+  assert.equal(
+    JSON.stringify(generalDuringPartial).includes("UNCOMMITTED"),
+    false,
   );
   const baseRowsDuringPartial = await database
     .prepare(
@@ -1074,6 +1241,47 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   );
   assert.equal(failed.outcome, "failed");
 
+  const sourceAfterFailure = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id, last_error_code
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(
+    sourceAfterFailure.active_generation_id,
+    sourceAfterPublished.active_generation_id,
+  );
+  assert.equal(
+    sourceAfterFailure.pending_generation_id,
+    sourceDuringPartial.pending_generation_id,
+  );
+  assert.equal(typeof sourceAfterFailure.last_error_code, "string");
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT state, previous_generation_id, expected_item_count,
+                  processed_item_count, rejected_item_count, removed_count,
+                  published_at
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(sourceAfterFailure.pending_generation_id)
+        .first()),
+    },
+    {
+      state: "staging",
+      previous_generation_id: sourceAfterPublished.active_generation_id,
+      expected_item_count: 4,
+      processed_item_count: 3,
+      rejected_item_count: 0,
+      removed_count: 0,
+      published_at: null,
+    },
+    "a failed continuation must not publish or advance the pending generation",
+  );
+
   const publicAfterFailure = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
@@ -1084,6 +1292,16 @@ test("keeps the last completed generation public when a later chunk fails", asyn
     JSON.stringify(publicAfterFailure.events),
     serializedPublishedEvents,
     "a failed generation must leave the prior public snapshot byte-for-byte intact",
+  );
+  const generalAfterFailure = await listUpcomingPublicEvents(database, {
+    organizationId: ORGANIZATION_ID,
+    fromUtcMs: 0,
+    todayDate: "2026-01-01",
+  });
+  assert.equal(
+    JSON.stringify(generalAfterFailure),
+    serializedGeneralEvents,
+    "a failed generation must not leak through the general/manual projection",
   );
   const baseRowsAfterFailure = await database
     .prepare(
@@ -1195,14 +1413,21 @@ test("reconciles disappeared future events only after source-scoped finalization
     start: "20280602T030000Z",
     end: "20280602T040000Z",
   });
+  const secondMissingEvent = meetupEvent({
+    uid: "reconcile-missing-2@meetup.com",
+    eventId: "8206",
+    title: "Second Missing Future Event",
+    start: "20280606T030000Z",
+    end: "20280606T040000Z",
+  });
   const initialA = await refresh(
     database,
     "club_a",
-    sequenceFetcher([calendar(keepEvent, missingEvent)]),
+    sequenceFetcher([calendar(keepEvent, missingEvent, secondMissingEvent)]),
     2_000,
   );
   assert.equal(initialA.outcome, "completed");
-  assert.equal(initialA.counts.created, 2);
+  assert.equal(initialA.counts.created, 3);
 
   const sourceBEvent = meetupEvent({
     uid: "other-source@meetup.com",
@@ -1247,6 +1472,15 @@ test("reconciles disappeared future events only after source-scoped finalization
     )
     .first();
   assert.ok(missingBefore);
+  const secondMissingBefore = await database
+    .prepare(
+      `SELECT id, status, visibility, published_at, deleted_at
+       FROM events
+       WHERE title = 'Second Missing Future Event'
+         AND deleted_at IS NULL`,
+    )
+    .first();
+  assert.ok(secondMissingBefore);
 
   const protectedColumns = `
     id, organization_id, club_id, title, slug, status, visibility,
@@ -1302,6 +1536,15 @@ test("reconciles disappeared future events only after source-scoped finalization
     completedSnapshotWithoutMissing,
     completedSnapshotWithoutMissing,
   ]);
+  const sourceBeforeDisappearance = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(typeof sourceBeforeDisappearance.active_generation_id, "string");
+  assert.equal(sourceBeforeDisappearance.pending_generation_id, null);
 
   const disappearancePartial = await refresh(
     database,
@@ -1311,6 +1554,42 @@ test("reconciles disappeared future events only after source-scoped finalization
   );
   assert.equal(disappearancePartial.outcome, "partial");
   assert.equal(disappearancePartial.counts.removed, 0);
+  const sourceDuringDisappearance = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(
+    sourceDuringDisappearance.active_generation_id,
+    sourceBeforeDisappearance.active_generation_id,
+  );
+  assert.equal(typeof sourceDuringDisappearance.pending_generation_id, "string");
+  assert.notEqual(
+    sourceDuringDisappearance.pending_generation_id,
+    sourceDuringDisappearance.active_generation_id,
+  );
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT state, previous_generation_id, expected_item_count,
+                  processed_item_count, removed_count
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(sourceDuringDisappearance.pending_generation_id)
+        .first()),
+    },
+    {
+      state: "staging",
+      previous_generation_id: sourceBeforeDisappearance.active_generation_id,
+      expected_item_count: 4,
+      processed_item_count: 3,
+      removed_count: 0,
+    },
+  );
   assert.deepEqual(
     {
       ...(await database
@@ -1329,6 +1608,25 @@ test("reconciles disappeared future events only after source-scoped finalization
       deleted_at: null,
     },
     "an incomplete cursor must not reconcile a missing UID",
+  );
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT status, visibility, published_at, deleted_at
+           FROM events
+           WHERE id = ?`,
+        )
+        .bind(secondMissingBefore.id)
+        .first()),
+    },
+    {
+      status: "confirmed",
+      visibility: "public",
+      published_at: 2_000,
+      deleted_at: null,
+    },
+    "an incomplete cursor must not reconcile any missing UID",
   );
   const publicDuringPartial = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
@@ -1350,7 +1648,47 @@ test("reconciles disappeared future events only after source-scoped finalization
     4_000,
   );
   assert.equal(disappearanceCompleted.outcome, "completed");
-  assert.equal(disappearanceCompleted.counts.removed, 1);
+  assert.equal(disappearanceCompleted.counts.removed, 2);
+
+  const sourceAfterDisappearance = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(typeof sourceAfterDisappearance.active_generation_id, "string");
+  assert.equal(
+    sourceAfterDisappearance.active_generation_id,
+    sourceDuringDisappearance.pending_generation_id,
+  );
+  assert.notEqual(
+    sourceAfterDisappearance.active_generation_id,
+    sourceBeforeDisappearance.active_generation_id,
+  );
+  assert.equal(sourceAfterDisappearance.pending_generation_id, null);
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT state, expected_item_count, processed_item_count,
+                  rejected_item_count, removed_count, published_at
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(sourceAfterDisappearance.active_generation_id)
+        .first()),
+    },
+    {
+      state: "published",
+      expected_item_count: 4,
+      processed_item_count: 4,
+      rejected_item_count: 0,
+      removed_count: 2,
+      published_at: 4_000,
+    },
+    "the published generation must durably record the exact reconciliation count",
+  );
 
   const retiredMissing = await database
     .prepare(
@@ -1373,6 +1711,27 @@ test("reconciles disappeared future events only after source-scoped finalization
     },
   );
   assert.equal(typeof retiredMissing.deleted_at, "number");
+  const retiredSecondMissing = await database
+    .prepare(
+      `SELECT status, visibility, published_at, deleted_at
+       FROM events
+       WHERE id = ?`,
+    )
+    .bind(secondMissingBefore.id)
+    .first();
+  assert.deepEqual(
+    {
+      status: retiredSecondMissing.status,
+      visibility: retiredSecondMissing.visibility,
+      published_at: retiredSecondMissing.published_at,
+    },
+    {
+      status: "cancelled",
+      visibility: "private",
+      published_at: null,
+    },
+  );
+  assert.equal(typeof retiredSecondMissing.deleted_at, "number");
 
   const publicAfterDisappearance = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
@@ -1384,6 +1743,10 @@ test("reconciles disappeared future events only after source-scoped finalization
     (event) => event.title,
   );
   assert.equal(titlesAfterDisappearance.includes("Missing Future Event"), false);
+  assert.equal(
+    titlesAfterDisappearance.includes("Second Missing Future Event"),
+    false,
+  );
   assert.equal(titlesAfterDisappearance.includes("Keep Future Event"), true);
   assert.equal(titlesAfterDisappearance.includes("Other Source Event"), true);
   assert.deepEqual(
@@ -1491,4 +1854,193 @@ test("reconciles disappeared future events only after source-scoped finalization
   assert.equal(activeReappearance.visibility, "public");
   assert.equal(typeof activeReappearance.published_at, "number");
   assert.equal(activeReappearance.deleted_at, null);
+});
+
+test("keeps a shared canonical event while another active source still reserves it as tentative", async (t) => {
+  const database = createDatabase({ clubs: ["club_a", "club_b"] });
+  t.after(() => database.close());
+  await configure(database, "club_a", FEED_A, 1_000);
+  await configure(database, "club_b", FEED_B, 1_001);
+
+  const sharedEvent = meetupEvent({
+    uid: "shared-source-a@meetup.com",
+    eventId: "8301",
+    title: "Shared Canonical Event",
+    start: "20280701T030000Z",
+    end: "20280701T040000Z",
+  });
+  const keepEvent = meetupEvent({
+    uid: "shared-keep-a@meetup.com",
+    eventId: "8302",
+    title: "Source A Keep Event",
+    start: "20280702T030000Z",
+    end: "20280702T040000Z",
+  });
+  assert.equal(
+    (
+      await refresh(
+        database,
+        "club_a",
+        sequenceFetcher([calendar(sharedEvent, keepEvent)]),
+        2_000,
+      )
+    ).outcome,
+    "completed",
+  );
+
+  const tentativeReservation = meetupEvent({
+    uid: "shared-source-b@meetup.com",
+    eventId: "9301",
+    groupSlug: "vancouver-ideas-club",
+    status: "TENTATIVE",
+    title: "Tentative Source B Reservation",
+    start: "20280703T030000Z",
+    end: "20280703T040000Z",
+  });
+  assert.equal(
+    (
+      await refresh(
+        database,
+        "club_b",
+        sequenceFetcher([calendar(tentativeReservation)]),
+        2_100,
+      )
+    ).outcome,
+    "completed",
+  );
+
+  const sharedCanonical = await database
+    .prepare(
+      `SELECT id, slug
+       FROM events
+       WHERE title = 'Shared Canonical Event'
+         AND deleted_at IS NULL`,
+    )
+    .first();
+  const sourceB = await database
+    .prepare(
+      `SELECT id, active_generation_id
+       FROM sync_sources
+       WHERE club_id = 'club_b'`,
+    )
+    .first();
+  assert.ok(sharedCanonical);
+  assert.equal(typeof sourceB.active_generation_id, "string");
+
+  await database
+    .prepare(
+      `UPDATE meetup_event_snapshots
+       SET event_id = ?,
+           event_slug = ?
+       WHERE sync_source_id = ?
+         AND generation_id = ?
+         AND status = 'tentative'`,
+    )
+    .bind(
+      sharedCanonical.id,
+      sharedCanonical.slug,
+      sourceB.id,
+      sourceB.active_generation_id,
+    )
+    .run();
+  await database
+    .prepare(
+      `UPDATE external_source_links
+       SET entity_id = ?
+       WHERE sync_source_id = ?
+         AND source_type = 'meetup_ics'
+         AND entity_type = 'event'
+         AND deleted_at IS NULL`,
+    )
+    .bind(sharedCanonical.id, sourceB.id)
+    .run();
+
+  const activeTentativeSnapshot = await database
+    .prepare(
+      `SELECT snapshot.status, snapshot.event_id
+       FROM meetup_event_snapshots AS snapshot
+       JOIN sync_sources AS source
+         ON source.id = snapshot.sync_source_id
+        AND source.active_generation_id = snapshot.generation_id
+       WHERE snapshot.sync_source_id = ?`,
+    )
+    .bind(sourceB.id)
+    .first();
+  assert.deepEqual(
+    { ...activeTentativeSnapshot },
+    {
+      status: "tentative",
+      event_id: sharedCanonical.id,
+    },
+  );
+
+  const completedWithoutShared = await refresh(
+    database,
+    "club_a",
+    sequenceFetcher([calendar(keepEvent)]),
+    3_000,
+  );
+  assert.equal(completedWithoutShared.outcome, "completed");
+  assert.equal(
+    completedWithoutShared.counts.removed,
+    0,
+    "another active tentative snapshot must protect the shared canonical event",
+  );
+  const sourceAAfterCompletion = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(typeof sourceAAfterCompletion.active_generation_id, "string");
+  assert.equal(sourceAAfterCompletion.pending_generation_id, null);
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT state, removed_count
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(sourceAAfterCompletion.active_generation_id)
+        .first()),
+    },
+    {
+      state: "published",
+      removed_count: 0,
+    },
+    "the completed generation must persist that no shared event was removed",
+  );
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT status, visibility, published_at, deleted_at
+           FROM events
+           WHERE id = ?`,
+        )
+        .bind(sharedCanonical.id)
+        .first()),
+    },
+    {
+      status: "confirmed",
+      visibility: "public",
+      published_at: 2_000,
+      deleted_at: null,
+    },
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM event_revisions
+         WHERE event_id = ?
+           AND reason =
+               'Meetup event absent from completed source snapshot'`,
+      )
+      .bind(sharedCanonical.id)
+      .first("count"),
+    0,
+  );
 });

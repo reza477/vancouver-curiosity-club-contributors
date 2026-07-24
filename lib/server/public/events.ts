@@ -54,8 +54,10 @@ export type ListPublicEventsInput = Readonly<{
 }>;
 
 /**
- * An explicit column allowlist. Never replace this with `event.*`, a private
- * domain record, or post-query CSS hiding.
+ * Manual/public event projection. Any canonical row with Meetup source-link
+ * history is excluded here and may publish only through the source's completed
+ * active-generation projection below. Never replace this allowlist with
+ * `event.*`, a private domain record, or post-query CSS hiding.
  */
 export const PUBLIC_EVENT_SELECT_SQL = `
   SELECT event.slug AS slug,
@@ -113,6 +115,14 @@ export const PUBLIC_EVENT_SELECT_SQL = `
     AND event.status = 'confirmed'
     AND event.published_at IS NOT NULL
     AND event.deleted_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM external_source_links AS meetup_source_link
+      WHERE meetup_source_link.organization_id = event.organization_id
+        AND meetup_source_link.entity_type = 'event'
+        AND meetup_source_link.entity_id = event.id
+        AND meetup_source_link.source_type = 'meetup_ics'
+    )
     AND (
       (event.time_kind = 'timed'
         AND event.ends_at_utc > ?)

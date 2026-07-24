@@ -57,6 +57,10 @@ calendar truthfully shows **Not connected**.
   rows. The public calendar continues to read the last fully published
   generation during a partial or failed refresh, so an update, addition, or
   cancellation cannot leak before finalization.
+- The general/manual event projection excludes every canonical event with
+  Meetup source-link history, including a retired link. Source-backed facts can
+  publish only through the completed active-generation Meetup projection; a
+  manually managed event remains eligible for the general projection.
 - Sites does not guarantee a scheduler here, so no background cadence is
   claimed.
 - Only a cursor-complete, successfully finalized feed snapshot can reconcile
@@ -65,6 +69,8 @@ calendar truthfully shows **Not connected**.
   or failed snapshots never remove it. A later reappearance is imported again.
 - Explicit Meetup cancellation remains distinct import provenance and is
   excluded from upcoming public listings.
+- Disappearance reconciliation does not retire a shared canonical event while
+  another source's active snapshot still reserves it as confirmed or tentative.
 - UID plus recurrence identity is source-scoped, so the same UID in two club
   feeds cannot collide.
 - Source sequence and last-modified fields are monotonic; stale replays cannot
@@ -94,6 +100,10 @@ for this read-only feed path.
 
 No alternative host, external database, external authentication provider,
 email service, custom domain, paid account, or billing detail is required.
+
+The high-resolution brand source is preserved under `design-assets/`; only
+optimized favicon, app-icon, and social-card consumers are emitted from
+`public/`.
 
 ## Local development
 

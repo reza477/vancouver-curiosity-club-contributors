@@ -30,12 +30,20 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
   uniqueness and organization/source-URL uniqueness.
 - Scope external identities to the sync source so identical UIDs in different
   group feeds cannot collide.
+- Exclude every canonical event with Meetup source-link history from the
+  general/manual public query, even when that link is soft-deleted. A
+  source-backed canonical row may publish only through a completed snapshot
+  whose generation matches its source's active pointer. Any future conversion
+  to a manually managed listing must create a deliberately approved manual
+  canonical record instead of exposing imported mutable fields.
 - Treat absence as no information until the adapter reaches the end of the
   exact fetched snapshot. On successful cursor-complete finalization only,
   reconcile previously mapped future events missing from that source by
   cancelling, unpublishing, and soft-retiring them. Never reconcile a partial
   or failed snapshot, another source, or a manually managed event. Preserve
-  explicit Meetup cancellation as distinct import provenance.
+  explicit Meetup cancellation as distinct import provenance. Do not retire a
+  shared canonical event while another source's active snapshot still reserves
+  it as `confirmed` or `tentative`.
 - Reject stale sequence/last-modified replays, including attempted resurrection
   after a newer cancellation.
 - Fetch with no-store semantics, a 12-second timeout, bounded UTF-8 streaming,
@@ -85,6 +93,9 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
 
 - A partial cursor, parse/fetch failure, rejected continuation, or unsolicited
   `304` cannot advance publication or trigger disappearance reconciliation.
+- Both public query families fail closed during partial/error work: the Meetup
+  query stays on the prior active snapshot and the general/manual query
+  excludes Meetup-linked canonical rows entirely.
 - A completed snapshot can remove an upcoming listing that Meetup no longer
   exports. Its source link remains durable so a later reappearance can be
   imported again without touching manual events or another club/source.

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { Log, LogLevel, Miniflare } from "miniflare";
@@ -145,6 +145,13 @@ test("built calendar and brand surfaces render an honest empty connection", asyn
   const manifest = await manifestResponse.json();
   assert.equal(manifest.name, "Vancouver Curiosity Club");
   assert.equal(manifest.icons.length, 3);
+});
+
+test("the built client excludes unoptimized brand source artwork", async () => {
+  await assert.rejects(
+    stat(resolve("dist/client/brand-icon-master.png")),
+    (error) => error?.code === "ENOENT",
+  );
 });
 
 test("signed-out organizer traffic is redirected to Sites-owned SIWC and noindexed", async () => {

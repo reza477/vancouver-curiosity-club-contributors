@@ -66,3 +66,26 @@ test("metadata and the web manifest declare only real local brand assets", async
   assert.equal("screenshots" in manifest, false);
   assert.equal("shortcuts" in manifest, false);
 });
+
+test("preserves the master artwork outside the public build surface", async () => {
+  const masterUrl = new URL(
+    "design-assets/brand-icon-master.png",
+    projectRoot,
+  );
+  const [bytes, details] = await Promise.all([
+    readFile(masterUrl),
+    stat(masterUrl),
+  ]);
+
+  assert.ok(details.size > 100_000, "the editable source artwork is preserved");
+  assert.deepEqual(
+    [...bytes.subarray(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10],
+    "the preserved source must remain a PNG",
+  );
+  await assert.rejects(
+    stat(new URL("public/brand-icon-master.png", projectRoot)),
+    (error) => error?.code === "ENOENT",
+    "the unoptimized source must not ship from public/",
+  );
+});

@@ -2316,7 +2316,7 @@ async function finalizeCompletedRefresh(
              WHERE other_snapshot.organization_id = event.organization_id
                AND other_snapshot.event_id = event.id
                AND other_snapshot.sync_source_id <> ?
-               AND other_snapshot.status = 'confirmed'
+               AND other_snapshot.status IN ('confirmed', 'tentative')
            )
            AND EXISTS (
              SELECT 1
@@ -2394,7 +2394,7 @@ async function finalizeCompletedRefresh(
              WHERE other_snapshot.organization_id = events.organization_id
                AND other_snapshot.event_id = events.id
                AND other_snapshot.sync_source_id <> ?
-               AND other_snapshot.status = 'confirmed'
+               AND other_snapshot.status IN ('confirmed', 'tentative')
            )
            AND EXISTS (
              SELECT 1

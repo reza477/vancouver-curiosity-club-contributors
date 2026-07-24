@@ -85,6 +85,15 @@ const PUBLIC_SCHEMA = `
     created_at INTEGER,
     deleted_at INTEGER
   );
+  CREATE TABLE external_source_links (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL,
+    sync_source_id TEXT,
+    source_type TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    deleted_at INTEGER
+  );
 `;
 
 function createPublicDatabase() {
@@ -154,6 +163,12 @@ function createPublicDatabase() {
         'event_all_day', 'org_vcc', NULL, NULL, 'Reading Weekend',
         'reading-weekend', NULL, NULL, 'confirmed', 'public', 'all_day',
         NULL, NULL, 'America/Vancouver', NULL, NULL, NULL, 'unreviewed', 100
+      ),
+      (
+        'event_meetup', 'org_vcc', NULL, NULL, 'Staged Meetup Sentinel',
+        'staged-meetup-sentinel', NULL, NULL, 'confirmed', 'public', 'timed',
+        1784869200000, 1784876400000, 'America/Vancouver', NULL, NULL, NULL,
+        'unreviewed', 100
       );
 
     UPDATE events
@@ -171,6 +186,14 @@ function createPublicDatabase() {
        'co_organizer', 0),
       ('eo_no_consent', 'org_vcc', 'event_public', 'profile_no_consent',
        'co_organizer', 1);
+
+    INSERT INTO external_source_links (
+      id, organization_id, sync_source_id, source_type, entity_type, entity_id,
+      deleted_at
+    ) VALUES (
+      'source_link_meetup', 'org_vcc', 'source_meetup', 'meetup_ics', 'event',
+      'event_meetup', 777
+    );
   `);
   return database;
 }
@@ -181,6 +204,15 @@ test("uses an explicit public SQL allowlist and publication filters", () => {
   assert.match(PUBLIC_EVENT_SELECT_SQL, /event\.visibility = 'public'/u);
   assert.match(PUBLIC_EVENT_SELECT_SQL, /event\.published_at IS NOT NULL/u);
   assert.match(PUBLIC_EVENT_SELECT_SQL, /event\.deleted_at IS NULL/u);
+  assert.match(
+    PUBLIC_EVENT_SELECT_SQL,
+    /meetup_source_link\.source_type = 'meetup_ics'/u,
+  );
+  assert.doesNotMatch(
+    PUBLIC_EVENT_SELECT_SQL,
+    /meetup_source_link\.deleted_at/u,
+    "soft-deleting a source link must not make imported canonical fields manual",
+  );
   assert.match(
     PUBLIC_EVENT_SELECT_SQL,
     /profile\.public_attribution_consent = 1/u,

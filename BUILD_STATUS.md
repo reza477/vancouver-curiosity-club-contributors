@@ -10,8 +10,10 @@ Last updated: 2026-07-24 (America/Vancouver)
   icon and adding an official, one-way Meetup calendar synchronization path.
 - Current follow-up implementation: **Completed and verified** in the supported
   local Sites/Miniflare environment.
-- New unpublished Sites version 3: **Saved and provenance-verified** from source
-  commit `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f`; no deployment occurred.
+- Unpublished Sites version 3: **Superseded** by the post-save publication
+  audit. It remains unpublished and must not be deployed.
+- Corrected replacement version: pending the exact verified source commit,
+  source push, archive inspection, and unpublished Sites save.
 - Live production Meetup connection: **Blocked** by both missing
   `INITIAL_OWNER_EMAIL` in Sites runtime settings and missing owner-supplied
   official group feed URL(s); production imported data is intentionally empty.
@@ -47,6 +49,9 @@ Last updated: 2026-07-24 (America/Vancouver)
   checks.
 - **Completed and verified** — In the live browser the mark remains visible and
   legible at approximately 30 px in the 390×844 header and 40 px on desktop.
+- **Completed and verified** — The 934,997-byte master artwork is preserved in
+  `design-assets/` rather than `public/`. Only optimized consumer assets ship;
+  the rebuilt `dist/client` is 1,459,683 bytes and the master asset returns 404.
 
 ### Official Meetup calendar synchronization
 
@@ -87,14 +92,26 @@ Last updated: 2026-07-24 (America/Vancouver)
   coverage proves an enriched public event and a hidden/unpublished event remain
   byte-for-byte stable through a later partial generation and failed
   continuation.
+- **Completed and verified** — The general/manual public projection excludes
+  every canonical event with Meetup source-link history, including a
+  soft-deleted link. Source-backed rows can publish only through the completed
+  active-generation Meetup projection. A dual-projection regression proves a
+  changed/new partial generation and failed continuation expose neither staged
+  titles nor rows, while an unrelated manual public event remains available.
 - **Completed and verified** — Only a cursor-complete successful finalization
   advances the active generation pointer. An unsolicited `304`, failed later
-  chunk, stale lease, or incomplete cursor cannot publish staged rows.
+  chunk, stale lease, or incomplete cursor cannot publish staged rows. Tests
+  assert active/pending pointers plus staging/published state before, during,
+  and after finalization.
 - **Completed and verified** — Cursor-complete source-scoped reconciliation
   cancels, unpublishes, and soft-retires previously mapped future events absent
   from the completed snapshot. It never runs on a partial/error generation,
   another source, or a manually managed event; exact `removed` counts are
   returned and audited, and a later reappearance is importable again.
+- **Completed and verified** — Reconciliation preserves a shared canonical
+  event while another source's active snapshot remains `confirmed` or
+  `tentative`. Regression coverage also removes two absent events in one
+  finalization and proves both returned and persisted `removed_count` equal 2.
 - **Completed and verified** — Explicit Meetup cancellations remain durable
   and excluded from the upcoming public projection. Stale source revisions
   cannot undo a newer cancellation.
@@ -138,6 +155,10 @@ Last updated: 2026-07-24 (America/Vancouver)
   matches an enabled source's active pointer. Mutable pending-generation rows
   and source configuration values are not selected. It never fetches a private
   record and never hides fields in CSS.
+- **Completed and verified** — The separate general/manual SQL allowlist cannot
+  expose canonical Meetup rows from a first, partial, failed, disabled, retired,
+  or later generation; it excludes any Meetup source-link history independently
+  of source state.
 - **Completed and verified** — The public page exposes honest not-connected,
   pending, partial, current, stale, disabled, and error states. Production is
   currently empty/not-connected rather than populated with invented events.
@@ -197,17 +218,22 @@ violations.
 - `npm.cmd run typecheck` — **Completed and verified**; strict TypeScript passed.
 - `npm.cmd run lint` — **Completed and verified**; passed without blanket
   suppression.
-- `npm.cmd test` — **Completed and verified**; 73/73 unit and integration tests
+- `npm.cmd test` — **Completed and verified**; 75/75 unit and integration tests
   passed.
 - `npm.cmd run build` — **Completed and verified**; routes `/`, `/calendar`,
   `/organizer`, `/organizer/meetup`, organizer APIs, and session API built.
-- `npm.cmd run test:rendered` — **Completed and verified**; 5/5 built-Worker
+- `npm.cmd run test:rendered` — **Completed and verified**; 6/6 built-Worker
   tests passed, including freshly migrated empty calendar, icon, manifest,
-  nonce CSP, SIWC redirect/noindex, and private API behavior.
+  unoptimized-source exclusion, nonce CSP, SIWC redirect/noindex, and private
+  API behavior.
 - Browser desktop and 390×844 verification — **Completed and verified**; zero
   horizontal overflow, zero fake event cards, zero exposed feed URLs, correct
   not-connected state, visible icon, correct SIWC redirect, no hydration error,
   and a fresh verification tab with no warning/error console entries.
+- Source/build secret and feed scan — **Completed and verified**; no runtime
+  owner value, private feed URL/token, Sites credential, or bypass token appears
+  in `dist/client` or `dist/server`. The only query-token match in source is an
+  intentional invalid-URL test fixture.
 - `npm.cmd audit --omit=dev --json` — **Not a clean pass**; 3 high
   findings in the pinned production tree (`next`, transitive `postcss`, and
   transitive `sharp`).
@@ -217,13 +243,14 @@ violations.
   pinned supported Sites starter has no verified safe in-range resolution for
   the complete tree; forcing framework/runtime upgrades would be an unverified
   platform change. The saved archive contains built output, not `node_modules`.
-- Git/Sites source handoff — **Completed and verified**; exact tested source
+- Historical version 3 source handoff — exact tested source
   commit `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f` was pushed to the configured
-  Sites source branch before version save.
-- Sites archive/version readback — **Completed and verified**; unpublished
-  version 3 points to that exact commit. The saved archive reports SHA-256
+  Sites source branch before that version save.
+- Historical version 3 provenance — unpublished version 3 points to that
+  commit. Its saved archive reports SHA-256
   `6526bf36c67667b97b3f4974e2e4174df45ed6fd1a1a74866eff7e40af9d9df4`,
-  4,884,480 bytes, and 67 files.
+  4,884,480 bytes, and 67 files. The version is superseded and was never
+  deployed.
 
 ## Implemented but not externally verified
 
@@ -293,11 +320,12 @@ See `OWNER_INPUTS.md`. No value was invented:
 - Logical D1 binding: `DB`
 - Logical R2 binding: `MEDIA`
 - Existing unpublished versions: versions 1 and 2 remain intact.
-- New follow-up source commit:
+- Superseded unpublished version 3 source commit:
   `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f`
-- New unpublished version: version 3
-- Version provenance readback: commit and archive hash match the saved version;
-  latest saved version is 3.
+- Superseded unpublished version: version 3; never deployed.
+- Corrected source commit/version: pending final commit, push, archive
+  inspection, and unpublished save.
+- Latest saved version before the corrected save: version 3.
 - Current Sites preview URL: none.
 - Current Sites live URL: none.
 - Production deployment: none.
