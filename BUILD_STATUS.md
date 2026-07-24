@@ -10,8 +10,8 @@ Last updated: 2026-07-24 (America/Vancouver)
   icon and adding an official, one-way Meetup calendar synchronization path.
 - Current follow-up implementation: **Completed and verified** in the supported
   local Sites/Miniflare environment.
-- New unpublished Sites version: pending the final verified source commit and
-  source push; no save or deployment has occurred during this follow-up yet.
+- New unpublished Sites version 3: **Saved and provenance-verified** from source
+  commit `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f`; no deployment occurred.
 - Live production Meetup connection: **Blocked** by both missing
   `INITIAL_OWNER_EMAIL` in Sites runtime settings and missing owner-supplied
   official group feed URL(s); production imported data is intentionally empty.
@@ -217,6 +217,13 @@ violations.
   pinned supported Sites starter has no verified safe in-range resolution for
   the complete tree; forcing framework/runtime upgrades would be an unverified
   platform change. The saved archive contains built output, not `node_modules`.
+- Git/Sites source handoff — **Completed and verified**; exact tested source
+  commit `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f` was pushed to the configured
+  Sites source branch before version save.
+- Sites archive/version readback — **Completed and verified**; unpublished
+  version 3 points to that exact commit. The saved archive reports SHA-256
+  `6526bf36c67667b97b3f4974e2e4174df45ed6fd1a1a74866eff7e40af9d9df4`,
+  4,884,480 bytes, and 67 files.
 
 ## Implemented but not externally verified
 
@@ -260,8 +267,8 @@ violations.
   the exact official group calendar feed URL(s). Neither was guessed or
   committed. The adapter, persistence, synchronization flow, public projection,
   and organizer controls are complete and locally tested.
-- No blocker remains for safe implementation, local verification, source push,
-  or saving a new unpublished Sites version.
+- No blocker remains for the completed implementation, local verification,
+  source push, or unpublished version save.
 
 ## Missing owner inputs
 
@@ -286,7 +293,13 @@ See `OWNER_INPUTS.md`. No value was invented:
 - Logical D1 binding: `DB`
 - Logical R2 binding: `MEDIA`
 - Existing unpublished versions: versions 1 and 2 remain intact.
-- New follow-up source commit/version: pending final verification and save.
+- New follow-up source commit:
+  `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f`
+- New unpublished version: version 3
+- Version provenance readback: commit and archive hash match the saved version;
+  latest saved version is 3.
+- Current Sites preview URL: none.
+- Current Sites live URL: none.
 - Production deployment: none.
 - Public access: not enabled.
 - Credentials or runtime values committed: none.
