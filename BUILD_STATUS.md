@@ -12,8 +12,9 @@ Last updated: 2026-07-24 (America/Vancouver)
   local Sites/Miniflare environment.
 - Unpublished Sites version 3: **Superseded** by the post-save publication
   audit. It remains unpublished and must not be deployed.
-- Corrected replacement version: pending the exact verified source commit,
-  source push, archive inspection, and unpublished Sites save.
+- Corrected unpublished Sites version 4: **Saved and provenance-verified** from
+  exact source commit `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`;
+  no preview or production deployment occurred.
 - Live production Meetup connection: **Blocked** by both missing
   `INITIAL_OWNER_EMAIL` in Sites runtime settings and missing owner-supplied
   official group feed URL(s); production imported data is intentionally empty.
@@ -251,6 +252,21 @@ violations.
   `6526bf36c67667b97b3f4974e2e4174df45ed6fd1a1a74866eff7e40af9d9df4`,
   4,884,480 bytes, and 67 files. The version is superseded and was never
   deployed.
+- Corrected version 4 source handoff — exact tested source commit
+  `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28` was pushed to the configured
+  Sites source branch before the version save.
+- Exact pre-save archive audit — the archive contained exactly the 66 files in
+  the verified `dist` tree, including the Sites entrypoint, hosting metadata,
+  and migrations. It contained no `node_modules`, `.git`, `.env`,
+  `design-assets`, master icon, private feed material, or credential pattern.
+  The uploaded gzip was 1,616,557 bytes with local SHA-256
+  `df48a76f93c9e23eb833721894b94fdab917c07cb6d9a0e1f96bf10df62601b3`.
+- Sites version 4 provenance readback — unpublished version 4 points to exact
+  commit `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`. Sites reports archive
+  content SHA-256
+  `36e4be0461cb7374c5e721c427eee1b9925c385f36e904a4d26e2f5fe7258d44`,
+  3,942,400 bytes, and 66 files. Project readback reports version 4 as latest
+  with both preview and live URLs unset.
 
 ## Implemented but not externally verified
 
@@ -295,7 +311,7 @@ violations.
   committed. The adapter, persistence, synchronization flow, public projection,
   and organizer controls are complete and locally tested.
 - No blocker remains for the completed implementation, local verification,
-  source push, or unpublished version save.
+  exact source push, archive inspection, or unpublished version 4 save.
 
 ## Missing owner inputs
 
@@ -323,9 +339,11 @@ See `OWNER_INPUTS.md`. No value was invented:
 - Superseded unpublished version 3 source commit:
   `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f`
 - Superseded unpublished version: version 3; never deployed.
-- Corrected source commit/version: pending final commit, push, archive
-  inspection, and unpublished save.
-- Latest saved version before the corrected save: version 3.
+- Corrected source commit:
+  `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`
+- Corrected unpublished version: version 4; provenance verified and not
+  deployed.
+- Latest saved version: version 4.
 - Current Sites preview URL: none.
 - Current Sites live URL: none.
 - Production deployment: none.
