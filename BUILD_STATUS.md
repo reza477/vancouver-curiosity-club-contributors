@@ -17,6 +17,10 @@ Last updated: 2026-07-24 (America/Vancouver)
 - Corrected unpublished Sites version 4: **Saved and provenance-verified** from
   exact source commit `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`;
   no preview or production deployment occurred.
+- Owner-input continuation Sites version 5: **Saved unpublished and
+  provenance-verified** from exact source commit
+  `cb51a5969370e4bed39ce83adac8532f2900d3d7`; no preview or production
+  deployment occurred.
 - `INITIAL_OWNER_EMAIL`: **Configured** as a secret in Sites runtime revision 1
   from the existing project access metadata without printing or committing the
   value. It remains inactive until a future deployment.
@@ -314,8 +318,28 @@ violations.
   commit `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`. Sites reports archive
   content SHA-256
   `36e4be0461cb7374c5e721c427eee1b9925c385f36e904a4d26e2f5fe7258d44`,
-  3,942,400 bytes, and 66 files. Project readback reports version 4 as latest
+  3,942,400 bytes, and 66 files. At that save, project readback reported
+  version 4 as latest with both preview and live URLs unset.
+- Owner-input continuation source handoff — exact tested source commit
+  `cb51a5969370e4bed39ce83adac8532f2900d3d7` was pushed to the configured
+  Sites `main` source branch before the version save; remote readback matched
+  that SHA.
+- Owner-input continuation archive audit — the package contained exactly 66
+  files: the verified `dist` tree, Sites hosting metadata, and six generated
+  migrations. It contained zero concrete official iCal literals, owner-email
+  matches, client-sensitive source keys, credential patterns, local D1 files,
+  environment files, design-source assets, or forbidden repository/runtime
+  directories. The uploaded gzip was 1,618,123 bytes with local SHA-256
+  `16cc0dfbf24cdc911ac8a8ad589f8aa81c45e41192461e5e63a0fdff7b2d5bc8`.
+- Sites version 5 provenance readback — unpublished version 5 points to exact
+  commit `cb51a5969370e4bed39ce83adac8532f2900d3d7`. Sites reports archive
+  content SHA-256
+  `7d028d03e00e3cda70983217ef45160be2bfcb6a9658eeec8df009695d61aead`,
+  3,952,640 bytes, and 66 files. Project readback reports version 5 as latest
   with both preview and live URLs unset.
+- Runtime settings readback — revision 1 contains only
+  `INITIAL_OWNER_EMAIL` as a redacted secret. No deployment was created, so
+  the secret is configured but not active.
 
 ## Implemented but not externally verified
 
@@ -357,7 +381,7 @@ violations.
   a deployment, which this packet explicitly forbids. No deployment was made
   merely to activate the secret.
 - No blocker remains for the completed implementation, local verification,
-  exact source push, archive inspection, or the next unpublished version save.
+  exact source push, archive inspection, or unpublished version 5 save.
 
 ## Missing owner inputs
 
@@ -380,15 +404,20 @@ See `OWNER_INPUTS.md`. No value was invented:
 - Sites project ID: `appgprj_6a62eaf79c4881919bb8e47998af851a`
 - Logical D1 binding: `DB`
 - Logical R2 binding: `MEDIA`
-- Existing unpublished versions: versions 1 and 2 remain intact.
+- Existing unpublished versions: versions 1 through 5 remain intact.
 - Superseded unpublished version 3 source commit:
   `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f`
 - Superseded unpublished version: version 3; never deployed.
-- Corrected source commit:
+- Version 4 corrected source commit:
   `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`
-- Corrected unpublished version: version 4; provenance verified and not
+- Version 4: provenance verified and not
   deployed.
-- Latest saved version: version 4.
+- Current verified source commit:
+  `cb51a5969370e4bed39ce83adac8532f2900d3d7`
+- Current unpublished version: version 5; provenance verified and not deployed.
+- Latest saved version: version 5.
+- Runtime environment revision: 1; `INITIAL_OWNER_EMAIL` is present only as a
+  redacted secret and is inactive until deployment.
 - Current Sites preview URL: none.
 - Current Sites live URL: none.
 - Production deployment: none.
