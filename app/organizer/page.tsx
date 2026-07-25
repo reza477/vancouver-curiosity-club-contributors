@@ -11,6 +11,7 @@ import {
   trustedIdentityFromSites,
 } from "@/lib/server/auth";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
+import { ensurePublicCatalog } from "@/lib/server/public/catalog";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,12 @@ export default async function OrganizerPage() {
     const membership = await authorizeOrganizerAccess(database, identity, {
       initialOwnerEmail,
     });
+    if (
+      membership.role === "owner" ||
+      membership.role === "administrator"
+    ) {
+      await ensurePublicCatalog(database, identity);
+    }
     access = { kind: "granted", role: membership.role };
   } catch (error) {
     if (error instanceof OrganizerAccessDeniedError) {

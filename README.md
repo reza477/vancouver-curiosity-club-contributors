@@ -2,125 +2,105 @@
 
 > A social calendar with a brain.
 
-This is the isolated ChatGPT Sites project for Vancouver Curiosity Club and
-its organizer portal. The umbrella working name is Vancouver Curiosity and
-Education Society. No legal-status or charity claim is approved for
-publication.
+This is the isolated ChatGPT Sites project for Vancouver Curiosity Club. It
+uses the existing Field Notes identity and Sites-managed D1/R2, Sign in with
+ChatGPT, and vinext Worker runtime. No legal-status, Society-registration, or
+charity claim is approved for public use.
 
-## Current state
+## Phase 2 public website
 
-The audited Phase 1 foundation is complete. A narrow, separately authorized
-follow-up adds:
+The public website is now implemented at:
 
-- an original futuristic-and-timeless brand mark across the wordmark, favicon,
-  app icons, manifest, and social card;
-- a public `/calendar` backed only by official Meetup group iCalendar feeds;
-- an Owner/Administrator connection and manual-refresh workspace at
-  `/organizer/meetup`;
-- truthful not-connected, pending, partial, current, stale, disabled, and error
-  states.
+- `/`
+- `/events` and `/events/[slug]`
+- `/clubs` and `/clubs/[slug]`
+- `/community`
+- `/about`
+- `/get-involved`
+- `/host-an-event`
+- `/contact`
+- `/conduct`
+- `/accessibility`
+- `/privacy`
+- a custom public 404, public-only sitemap, and restrictive robots rules
 
-This follow-up does not start Phase 2 or expose schedule-reserving event tools.
-No Site version is publicly deployed.
+`/events` is the canonical event hub. `/calendar` is a permanent,
+non-indexable redirect to it.
 
-## Meetup connection
+All public catalog copy, lanes, clubs, community links, and event facts are
+D1-backed. The authorized idempotent catalog seed creates four lanes, three
+published clubs with their confirmed clean Meetup group URLs, and two
+inaccessible draft clubs. Public GET requests never create production data.
 
-The integration is one-way: Meetup is the source for imported title, schedule,
-explicit status/cancellation, and the official event RSVP URL. It never writes
-to Meetup and does not scrape pages, use passwords, or claim email delivery.
+The review database deliberately contains no fake production events. Home and
+Events therefore render a truthful empty state until a real manual event is
+published or a completed Meetup generation becomes active.
 
-To connect production data:
+## Unified event publication
 
-1. Put `INITIAL_OWNER_EMAIL` in Sites runtime settings and sign in as the
-   Owner.
-2. Copy the official group calendar export/subscription URL supplied by Meetup.
-   The accepted canonical form is
-   `https://www.meetup.com/<group-slug>/events/ical/`.
-3. Open `/organizer/meetup`, select the matching approved program, save the
-   feed, and repeat for each official Meetup group. The server verifies that
-   the selected organization-owned club matches the feed's normalized group
-   slug; connection order never chooses a destination.
-4. Choose **Refresh now**. A request handles one feed and at most three calendar
-   rows. If it reports **partial**, refresh again; later public calendar views
-   can also continue the same snapshot.
+One server-only, parameterized read service supplies Home, Events, event
+detail, club detail, related events, filter options, and sitemap slugs.
 
-`INITIAL_OWNER_EMAIL` is stored only as a secret Sites runtime setting and
-becomes active only with a future owner-authorized deployment. Official feed
-addresses remain operator-entered D1 configuration and are never committed.
-No hosted feed connection or deployment is claimed, so production imported
-data remains intentionally empty.
+- Manually managed events must be public, published, undeleted, attached to a
+  published club, and in a supported public status.
+- Any canonical event with Meetup source-link history is excluded from the
+  manual branch.
+- Meetup facts come only from the immutable snapshot selected by the source's
+  completed active generation. Pending or failed titles, times, additions, and
+  cancellations cannot appear on any public surface.
+- Public DTOs are explicit allowlists. Private notes, private meeting or venue
+  details, identities, source configuration, generation IDs, and audit data are
+  never selected for public responses.
+- Keyword, date range, club, lane, category, format, state, page, and page-size
+  inputs are centrally validated and bounded before prepared D1 queries run.
+- Previously published cancelled event pages remain available with an explicit
+  cancellation notice while default Upcoming results exclude them.
 
-### Synchronization contract
+See
+`docs/architecture/0004-unified-phase-2-public-projection.md` for the full
+decision.
 
-- Completed feeds wait at least 15 minutes before refresh-on-view checks them
-  again. Each public view checks at most one feed.
-- Partial snapshots can resume immediately in another bounded request.
-- The resumable generation hash covers normalized, validated import facts
-  rather than raw calendar decoration. Meetup may change ignored export bytes
-  between requests; those changes cannot restart a cursor, while any title,
-  schedule, status, identity, RSVP, sequence, or last-modified change still
-  creates a new generation identity.
-- Imported rows are staged in an isolated pending generation. Staged rows and
-  progress counters may change while that generation is pending; once a
-  generation is published, the supported runtime does not mutate its snapshot
-  rows. The public calendar continues to read the last fully published
-  generation during a partial or failed refresh, so an update, addition, or
-  cancellation cannot leak before finalization.
-- The general/manual event projection excludes every canonical event with
-  Meetup source-link history, including a retired link. Source-backed facts can
-  publish only through the completed active-generation Meetup projection; a
-  manually managed event remains eligible for the general projection.
-- Sites does not guarantee a scheduler here, so no background cadence is
-  claimed.
-- Only a cursor-complete, successfully finalized feed snapshot can reconcile
-  absence. A previously mapped future event missing from that complete
-  source-scoped snapshot is cancelled, unpublished, and soft-retired; partial
-  or failed snapshots never remove it. A later reappearance is imported again.
-- Explicit Meetup cancellation remains distinct import provenance and is
-  excluded from upcoming public listings.
-- Disappearance reconciliation does not retire a shared canonical event while
-  another source's active snapshot still reserves it as confirmed or tentative.
-- UID plus recurrence identity is source-scoped, so the same UID in two club
-  feeds cannot collide.
-- The exact program catalog is resolved idempotently inside the authenticated
-  organization. A connect request must carry one of those club IDs, and the
-  server rejects a cross-organization, unsupported, or group-mismatched club
-  before creating a source.
-- Source sequence and last-modified fields are monotonic; stale replays cannot
-  resurrect a newer cancellation.
-- Raw feed descriptions and locations are not persisted or published because
-  they may contain private meeting details. Public location and organizer
-  attribution remain separately approved data.
-- Non-cancelled all-day feed rows are rejected in this follow-up. They remain
-  unsupported until the conflict engine can normalize reserving all-day
-  intervals without converting calendar dates to midnight UTC.
+## Meetup synchronization
 
-The adapter follows Meetup's supported calendar export and does not use the
-Meetup GraphQL API. Meetup currently requires an active Meetup Pro subscription
-and approval for a new OAuth consumer, neither of which is available or needed
-for this read-only feed path.
+Meetup remains a one-way source for imported title, schedule, explicit
+status/cancellation, and official RSVP destination. The integration uses the
+official group iCalendar export, never scraping, passwords, GraphQL
+credentials, or write-back.
+
+To connect hosted production data after a separately authorized deployment:
+
+1. Sign in as the configured initial Owner.
+2. Open `/organizer/meetup`.
+3. Select the exact organization-owned club and enter its official Meetup
+   calendar subscription URL.
+4. Choose **Refresh now** until the bounded generation completes.
+
+Feed addresses remain private operator-entered D1 configuration. They are not
+committed, rendered, logged, placed in metadata, or derived from public group
+links. Sites does not guarantee a scheduler, so the application labels its
+manual and bounded refresh-on-view behavior honestly.
 
 ## Platform
 
 - ChatGPT Sites-managed hosting
-- Strict TypeScript and the official vinext Cloudflare Worker structure
+- Strict TypeScript and the vinext Cloudflare Worker structure
 - Sites-managed D1 through logical binding `DB`
 - Sites-managed R2 through logical binding `MEDIA`
 - Platform-owned Sign in with ChatGPT
-- Server-side D1 membership and role authorization
-- Central validation, safe errors, explicit public projections, and
-  D1/SQLite-compatible tests
+- Server-side membership and role authorization
+- Zod validation, safe errors, structured content-free logs, Vitest-equivalent
+  Node integration tests, CSP/security headers, and accessible responsive
+  styles
 
-No alternative host, external database, external authentication provider,
-email service, custom domain, paid account, or billing detail is required.
+No alternate host, database, authentication provider, email service, custom
+domain, or external repository is used.
 
-The high-resolution brand source is preserved under `design-assets/`; only
-optimized favicon, app-icon, and social-card consumers are emitted from
-`public/`.
+The high-resolution brand source remains under `design-assets/`; only optimized
+consumer icons and the social card ship from `public/`.
 
 ## Local development
 
-Requires Node.js `>=22.13.0` and the starter's locked npm package manager.
+Requires Node.js `>=22.13.0` and the locked npm package manager.
 
 ```powershell
 npm.cmd ci
@@ -129,10 +109,8 @@ npm.cmd run db:apply:preview
 npm.cmd run dev
 ```
 
-`db:apply:local` exercises the generated migration chain in an isolated
-D1-compatible proof database. `db:apply:preview` applies the same chain
-idempotently to the Sites local preview D1. The preview is served at
-`http://localhost:3000/`.
+The local preview is served at `http://localhost:3000/`. The local and preview
+D1 stores are generated artifacts and must never be committed.
 
 ## Verification
 
@@ -144,15 +122,18 @@ npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd test
 npm.cmd run build
+npm.cmd run lint
 npm.cmd run test:rendered
-npm.cmd audit --omit=dev --audit-level=low
-npm.cmd audit --audit-level=low
+npm.cmd audit --omit=dev --json
+npm.cmd audit --json
+git diff --check
 ```
 
-`test:rendered` executes the built Cloudflare Worker inside Miniflare, including
-the freshly migrated calendar, icon, manifest, CSP, and private-route checks.
-Missing owner values are never committed; see `OWNER_INPUTS.md`.
+`npm.cmd run test:rendered` executes the built Cloudflare Worker in Miniflare
+against a fresh generated migration chain. It verifies public HTML, metadata,
+structured data, CSP, redirects, empty and cancelled states, 404 behavior,
+private-route protection, and private-field exclusion.
 
-`BUILD_STATUS.md` is the authoritative ledger, `MASTER_BUILD_SPEC.md` is the
-unchanged canonical multi-phase reference, and `docs/architecture/` contains
-the accepted architecture decisions.
+`BUILD_STATUS.md` is the authoritative evidence ledger,
+`OWNER_INPUTS.md` records missing factual approvals without inventing them, and
+`MASTER_BUILD_SPEC.md` remains the unchanged multi-phase reference.

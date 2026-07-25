@@ -9,6 +9,10 @@ import {
   parseIdentifier,
   validationIssue,
 } from "../../validation";
+import {
+  PUBLIC_CATALOG_CLUBS,
+} from "../public/catalog-definitions";
+import { ensurePublicCatalog } from "../public/catalog";
 import { MeetupSyncError } from "./errors";
 
 type MeetupProgramDefinition = Readonly<{
@@ -17,23 +21,19 @@ type MeetupProgramDefinition = Readonly<{
   name: string;
 }>;
 
-const MEETUP_PROGRAMS: readonly MeetupProgramDefinition[] = Object.freeze([
-  Object.freeze({
-    clubSlug: "vancouver-curiosity-club",
-    meetupGroupSlug: "vancouver-meetup-group",
-    name: "Vancouver Curiosity Club",
-  }),
-  Object.freeze({
-    clubSlug: "vancouver-literature-and-film",
-    meetupGroupSlug: "vancouver-literature-and-film",
-    name: "Vancouver Literature and Film",
-  }),
-  Object.freeze({
-    clubSlug: "vancouver-fantasy-scifi-group",
-    meetupGroupSlug: "vancouver-fantasy-scifi-meetup-group",
-    name: "Vancouver Fantasy & Sci-Fi Group",
-  }),
-]);
+const MEETUP_PROGRAMS: readonly MeetupProgramDefinition[] = Object.freeze(
+  PUBLIC_CATALOG_CLUBS.flatMap((club) =>
+    club.meetupGroupSlug
+      ? [
+          Object.freeze({
+            clubSlug: club.slug,
+            meetupGroupSlug: club.meetupGroupSlug,
+            name: club.name,
+          }),
+        ]
+      : [],
+  ),
+);
 
 export type MeetupProgramClub = Readonly<{
   id: string;
@@ -58,30 +58,7 @@ export async function ensureMeetupProgramClubs(
     minimum: 0,
   });
 
-  await database.batch(
-    MEETUP_PROGRAMS.map((program) =>
-      database
-        .prepare(
-          `INSERT INTO clubs (
-             id, organization_id, name, slug, description,
-             created_by_profile_id, created_at, updated_at, deleted_at
-           ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, NULL)
-           ON CONFLICT(organization_id, slug) DO UPDATE SET
-             name = excluded.name,
-             updated_at = excluded.updated_at,
-             deleted_at = NULL`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          actor.organizationId,
-          program.name,
-          program.clubSlug,
-          actor.profileId,
-          now,
-          now,
-        ),
-    ),
-  );
+  await ensurePublicCatalog(database, identity, now);
 
   const result = await database
     .prepare(

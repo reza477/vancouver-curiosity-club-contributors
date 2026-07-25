@@ -4,29 +4,42 @@ import test from "node:test";
 
 const projectRoot = new URL("../", import.meta.url);
 
-test("Field Notes replaces the starter with an honest Phase 1 foundation", async () => {
-  const [page, layout, css, packageJson] = await Promise.all([
+test("Field Notes carries the honest D1-backed Phase 2 public foundation", async () => {
+  const [page, layout, header, catalog, css, packageJson] = await Promise.all([
     readFile(new URL("app/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/layout.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_components/SiteHeader.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("lib/server/public/catalog-definitions.ts", projectRoot),
+      "utf8",
+    ),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
     readFile(new URL("package.json", projectRoot), "utf8"),
   ]);
 
-  assert.match(page, /Vancouver Curiosity Club/);
-  assert.match(page, /A social calendar with a brain\./);
-  assert.match(page, /never placeholder events/i);
-  assert.match(
-    page,
-    /Public events appear only when a verified source provides them\./,
-  );
-  assert.match(page, /Open the public calendar/);
-  assert.match(page, /Skip to main content/);
-  assert.match(page, /<main id="main-content">/);
-  assert.match(page, /aria-label="Primary navigation"/);
-  assert.match(page, /Organizer portal/);
+  assert.match(page, /loadPublicCatalog/);
+  assert.match(page, /getPublicPageContent/);
+  assert.match(page, /queryPublicEvents/);
+  assert.match(page, /Nothing fabricated/);
+  assert.match(page, /Explore Upcoming Events/);
+  assert.match(catalog, /A social calendar with a brain\./);
+  assert.match(catalog, /Vancouver Curiosity Club/);
+  assert.match(layout, /Skip to main content/);
+  assert.match(layout, /<SiteHeader\s*\/>/);
+  assert.match(layout, /<SiteFooter/);
+  assert.match(header, /aria-label="Primary navigation"/);
+  assert.match(header, /Organizer Login/);
   assert.match(layout, /generateMetadata/);
+  assert.match(layout, /const isUnknownPath = !isKnownApplicationPath/);
+  assert.match(layout, /robots:\s*isUnknownPath/);
   assert.match(layout, /index:\s*false/);
   assert.match(layout, /follow:\s*false/);
+  assert.match(layout, /noarchive:\s*true/);
+  assert.match(layout, /index:\s*true/);
+  assert.match(layout, /follow:\s*true/);
   assert.match(layout, /\/og\.png/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
   assert.match(css, /:focus-visible/);
@@ -75,5 +88,6 @@ test("the worker applies a security and noindex header foundation", async () => 
   assert.match(worker, /Strict-Transport-Security/);
   assert.match(worker, /X-Robots-Tag/);
   assert.match(worker, /"\/organizer"/);
-  assert.match(worker, /"\/api\/organizer"/);
+  assert.match(worker, /"\/api"/);
+  assert.match(worker, /pathname\.startsWith\(`\$\{path\}\/`\)/);
 });

@@ -13,6 +13,7 @@ export type {
 export {
   listDefaultPublicMeetupCalendar,
   listPublicMeetupCalendar,
+  readPublicMeetupSyncState,
 } from "./public";
 export type {
   ListDefaultPublicMeetupCalendarInput,

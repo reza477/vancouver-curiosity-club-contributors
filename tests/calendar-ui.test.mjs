@@ -9,43 +9,74 @@ import {
 
 const projectRoot = new URL("../", import.meta.url);
 
-test("homepage hands event discovery off to the real public calendar", async () => {
-  const page = await readFile(new URL("app/page.tsx", projectRoot), "utf8");
-
-  assert.match(page, /href="\/calendar"/);
-  assert.match(page, /Open the public calendar/);
-  assert.match(page, /verified source details only/);
-  assert.match(page, /Background sync[\s\S]*Not scheduled/);
-  assert.match(page, /Independent learning, in company/);
-  assert.doesNotMatch(page, /Phase 1 foundation preview/);
-  assert.doesNotMatch(page, /sampleEvents|event-list|fictional examples/i);
-});
-
-test("public calendar renders every honest connection state and safe event facts", async () => {
-  const [page, view] = await Promise.all([
-    readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/calendar/CalendarView.tsx", projectRoot), "utf8"),
+test("homepage uses the unified public event service and canonical Events hub", async () => {
+  const [page, catalog] = await Promise.all([
+    readFile(new URL("app/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("lib/server/public/catalog-definitions.ts", projectRoot),
+      "utf8",
+    ),
   ]);
 
-  for (const label of [
-    "Not connected",
-    "Never synced",
-    "Import in progress",
-    "Fresh",
-    "Stale",
-    "Source error",
+  assert.match(page, /queryPublicEvents/);
+  assert.match(page, /pageSize:\s*6/);
+  assert.match(page, /href="\/events"/);
+  assert.match(page, /Explore Upcoming Events/);
+  assert.match(page, /No upcoming event is published here yet\./);
+  assert.match(page, /Nothing fabricated/);
+  assert.match(catalog, /A social calendar with a brain\./);
+  assert.doesNotMatch(page, /href="\/calendar"/);
+  assert.doesNotMatch(page, /sampleEvents|fictional examples/i);
+});
+
+test("Events renders honest source states through the safe unified projection", async () => {
+  const [page, calendar, filters, projection] = await Promise.all([
+    readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_components/EventFilters.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("lib/server/public/events.ts", projectRoot),
+      "utf8",
+    ),
+  ]);
+
+  for (const status of [
+    "not_connected",
+    "pending",
+    "partial",
+    "current",
+    "stale",
+    "disabled",
+    "error",
   ]) {
-    assert.match(view, new RegExp(label));
+    assert.match(page, new RegExp(`${status}:`));
   }
-  assert.match(view, /last-known listings/i);
-  assert.match(view, /source-backed rows committed by successful row transactions/i);
-  assert.match(view, /not claimed as one exact prior snapshot/i);
-  assert.doesNotMatch(view, /hasLastKnownData/);
-  assert.match(view, /one connected official feed when viewed/i);
-  assert.match(view, /waits at least 15 minutes/i);
-  assert.match(view, /unfinished snapshot resumes in a[\s\S]*bounded chunk/i);
-  assert.match(view, /No scheduled or background sync\s+runs/);
-  assert.doesNotMatch(view, /dateStyle|timeStyle/);
+  assert.match(page, /refreshMeetupCalendarSourceIfDue/);
+  assert.match(page, /The last completed snapshot remains visible/);
+  assert.match(page, /not on a guaranteed schedule/);
+  assert.match(page, /queryPublicEvents/);
+  assert.match(page, /readPublicMeetupSyncState/);
+  assert.match(filters, /method="get"/);
+  assert.match(filters, /Clear Filters/);
+  assert.match(calendar, /permanentRedirect\("\/events"\)/);
+  assert.match(calendar, /index:\s*false/);
+  assert.match(projection, /UNIFIED_PUBLIC_EVENT_CTE_SQL/);
+  assert.match(projection, /generation\.state = 'published'/);
+  assert.match(
+    projection,
+    /generation\.processed_item_count = generation\.expected_item_count/,
+  );
+  assert.match(
+    projection,
+    /snapshot\.title AS title[\s\S]*snapshot\.status AS event_status/,
+  );
+  assert.doesNotMatch(
+    projection,
+    /SELECT[\s\S]{0,240}source\.source_url AS/u,
+  );
   assert.doesNotThrow(() =>
     new Intl.DateTimeFormat("en-CA", {
       day: "numeric",
@@ -57,21 +88,6 @@ test("public calendar renders every honest connection state and safe event facts
       year: "numeric",
     }).format(new Date("2026-07-24T01:00:00.000Z")),
   );
-  assert.match(view, /event\.rsvpUrl\s*\?/);
-  assert.match(view, /\.filter\(\s*\(event\) => !event\.isCancelled/);
-  assert.match(view, /"RSVP on Meetup"/);
-  assert.match(view, /rel="noreferrer noopener"/);
-  assert.match(view, /DISPLAY_TIME_ZONE = "America\/Vancouver"/);
-  assert.match(view, /timeZoneName:\s*"short"/);
-  assert.doesNotMatch(view, /timeZone:\s*event\.schedule\.timeZone/);
-  assert.match(
-    view,
-    /calendarDateKey\(starts, DISPLAY_TIME_ZONE\)[\s\S]*calendarDateKey\(ends, DISPLAY_TIME_ZONE\)/,
-  );
-  assert.match(view, /event\.schedule\.endDateExclusive/);
-  assert.match(view, /Location details not published/);
-  assert.match(page, /listDefaultPublicMeetupCalendar/);
-  assert.doesNotMatch(page, /organizationId\s*:/);
 });
 
 test("organizer connection UI is noindex, server-authorized, and read-only for Organizer", async () => {
@@ -189,7 +205,8 @@ test("manual Meetup APIs derive authority server-side and restrict both mutation
   );
   assert.doesNotMatch(model, /state\.(feedUrl|lastErrorCode|organizationId)/u);
   assert.match(worker, /"\/organizer"/);
-  assert.match(worker, /"\/api\/organizer"/);
+  assert.match(worker, /"\/api"/);
+  assert.match(worker, /pathname\.startsWith\(`\$\{path\}\/`\)/);
 });
 
 test("same-origin mutation guard rejects missing, malformed, and cross-site origins", () => {
@@ -277,18 +294,16 @@ test("bounded body reader enforces streamed bytes without trusting Content-Lengt
 });
 
 test("wordmark uses the local brand icon and remains visible on narrow screens", async () => {
-  const [page, calendar, css] = await Promise.all([
-    readFile(new URL("app/page.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/calendar/CalendarView.tsx", projectRoot), "utf8"),
+  const [header, css] = await Promise.all([
+    readFile(
+      new URL("app/_components/SiteHeader.tsx", projectRoot),
+      "utf8",
+    ),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
   assert.match(
-    page,
-    /<span className="wordmark-mark" aria-hidden="true" \/>/,
-  );
-  assert.match(
-    calendar,
+    header,
     /<span className="wordmark-mark" aria-hidden="true" \/>/,
   );
   assert.match(css, /\.wordmark-mark\s*\{[\s\S]*url\("\/icon\.png"\)/);
@@ -298,25 +313,41 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
   );
 });
 
-test("narrow navigation preserves Calendar and demotes organizer access", async () => {
-  const css = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+test("narrow navigation preserves every primary destination and organizer login", async () => {
+  const [header, css] = await Promise.all([
+    readFile(
+      new URL("app/_components/SiteHeader.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+  ]);
 
   const narrowRules =
     css.match(
       /@media \(max-width: 52rem\)\s*\{([\s\S]*?)\n\}\n\n@media \(max-width: 38rem\)/,
     )?.[1] ?? "";
 
+  for (const destination of [
+    "/events",
+    "/clubs",
+    "/community",
+    "/about",
+    "/get-involved",
+    "/organizer",
+  ]) {
+    assert.match(
+      header,
+      new RegExp(`href:\\s*"${destination}"|href="${destination}"`),
+    );
+  }
+  assert.match(header, /<details className="site-navigation">/);
+  assert.match(header, /<summary>/);
+  assert.match(narrowRules, /\.site-navigation > \.primary-nav\s*\{/);
   assert.match(
     narrowRules,
-    /\.primary-nav > \.portal-link\s*\{[\s\S]*?display:\s*none/,
+    /\.site-navigation > \.primary-nav \.portal-link\s*\{[\s\S]*?grid-column:\s*1 \/ -1/,
   );
-  assert.doesNotMatch(
-    narrowRules,
-    /\.primary-nav > a:not\(\.portal-link\)\s*\{[\s\S]*?display:\s*none/,
-  );
+  assert.doesNotMatch(narrowRules, /\.portal-link\s*\{[\s\S]*?display:\s*none/);
 });
 
 test("small metadata labels keep a readable 0.75rem floor", async () => {

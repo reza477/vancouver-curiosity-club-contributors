@@ -4,6 +4,35 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { Log, LogLevel, Miniflare } from "miniflare";
 
+const FIXTURE_NOW = Date.UTC(2026, 6, 24, 19, 0, 0);
+const ORGANIZATION_ID = "phase2-org";
+const PROFILE_ID = "phase2-owner";
+const PRIVATE_SENTINELS = [
+  "PRIVATE_LEGAL_SENTINEL",
+  "PRIVATE_OWNER_EMAIL_SENTINEL",
+  "PRIVATE_ORGANIZER_SENTINEL",
+  "PRIVATE_SETTING_SENTINEL",
+  "PRIVATE_DRAFT_PAGE_SENTINEL",
+  "PRIVATE_DRAFT_CLUB_SENTINEL",
+  "PRIVATE_COMMUNITY_SENTINEL",
+  "PRIVATE_EVENT_DETAIL_SENTINEL",
+  "PRIVATE_VENUE_DETAIL_SENTINEL",
+];
+const PUBLIC_PATHS = [
+  "/",
+  "/events",
+  "/clubs",
+  "/clubs/vancouver-curiosity-club",
+  "/community",
+  "/about",
+  "/get-involved",
+  "/host-an-event",
+  "/contact",
+  "/conduct",
+  "/accessibility",
+  "/privacy",
+];
+
 const serverRoot = resolve("dist/server");
 const moduleFiles = await collectJavaScriptModules(serverRoot);
 const entrypoint = resolve(serverRoot, "index.js");
@@ -28,7 +57,8 @@ const runtime = new Miniflare({
   },
   log: new Log(LogLevel.WARN),
 });
-await applyGeneratedMigrations();
+await applyGeneratedMigrations(runtime);
+await seedPublicCatalog(runtime);
 
 test.after(async () => {
   await runtime.dispose();
@@ -36,41 +66,55 @@ test.after(async () => {
 
 async function fetchPath(path, init) {
   const headers = new Headers(init?.headers);
-  headers.set("x-forwarded-host", "preview.example");
-  headers.set("x-forwarded-proto", "https");
   return runtime.dispatchFetch(new URL(path, "https://preview.example"), {
     ...init,
     headers,
   });
 }
 
-test("the built worker renders Field Notes with absolute social metadata", async () => {
+test("the built public root is indexable and carries the production security contract", async () => {
   const response = await fetchPath("/");
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const policy = response.headers.get("content-security-policy") ?? "";
-  assert.match(policy, /frame-ancestors 'none'/);
-  assert.match(policy, /script-src [^;]*'strict-dynamic'/);
-  assert.match(policy, /script-src-attr 'none'/);
-  assert.doesNotMatch(policy, /script-src [^;]*'unsafe-inline'/);
-  assert.doesNotMatch(policy, /script-src [^;]*'unsafe-eval'/);
+  assert.match(policy, /frame-ancestors 'none'/u);
+  assert.match(policy, /script-src [^;]*'strict-dynamic'/u);
+  assert.match(policy, /script-src-attr 'none'/u);
+  assert.doesNotMatch(policy, /script-src [^;]*'unsafe-inline'/u);
+  assert.doesNotMatch(policy, /script-src [^;]*'unsafe-eval'/u);
   const nonceMatch = /'nonce-([A-Za-z0-9_-]{22})'/u.exec(policy);
   assert.ok(nonceMatch, "production CSP must contain a per-request nonce");
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("x-frame-options"), "DENY");
-  assert.match(response.headers.get("strict-transport-security") ?? "", /max-age=31536000/);
+  assert.match(
+    response.headers.get("strict-transport-security") ?? "",
+    /max-age=31536000/u,
+  );
+  assert.equal(response.headers.get("x-robots-tag"), null);
 
   const html = await response.text();
-  assert.match(html, /<title>Vancouver Curiosity Club<\/title>/i);
-  assert.match(html, /A social calendar with a brain\./);
-  assert.match(html, /never placeholder events/i);
-  assert.match(html, /Open the public calendar/i);
-  assert.match(html, /name="robots" content="noindex, nofollow"/i);
-  assert.match(html, /property="og:image" content="https:\/\/preview\.example\/og\.png"/i);
-  assert.match(html, /name="twitter:image:alt"/i);
-  assert.doesNotMatch(html, /SkeletonPreview|Your site is taking shape|react-loading-skeleton/);
+  assert.match(html, /<title>Vancouver Curiosity Club<\/title>/iu);
+  assert.match(html, /A social calendar with a brain\./u);
+  assert.match(html, /Explore Upcoming Events/u);
+  assert.match(html, /name="robots" content="index, follow"/iu);
+  assert.match(
+    html,
+    /rel="canonical" href="https:\/\/preview\.example\/"/iu,
+  );
+  assert.match(
+    html,
+    /property="og:image" content="https:\/\/preview\.example\/og\.png"/iu,
+  );
+  assert.match(html, /name="twitter:image:alt"/iu);
+  assertSharedChrome(html);
+  assertNoPrivateSentinels(html);
+  assert.doesNotMatch(
+    html,
+    /SkeletonPreview|Your site is taking shape|react-loading-skeleton/u,
+  );
   assert.doesNotMatch(html, /[A-Z]:[\\/][^"'<>]*\.vinext/iu);
+
   const scriptTags = [...html.matchAll(/<script\b[^>]*>/giu)].map(
     (match) => match[0],
   );
@@ -83,6 +127,29 @@ test("the built worker renders Field Notes with absolute social metadata", async
     );
   }
   assert.match(html, /self\.__VINEXT_RSC_DONE__=true/u);
+
+  const structuredData = jsonLdDocuments(html);
+  assert.equal(structuredData.length, 1);
+  assert.deepEqual(
+    {
+      context: structuredData[0]["@context"],
+      type: structuredData[0]["@type"],
+      name: structuredData[0].name,
+      url: structuredData[0].url,
+    },
+    {
+      context: "https://schema.org",
+      type: "Organization",
+      name: "Vancouver Curiosity Club",
+      url: "https://preview.example/",
+    },
+  );
+  assert.deepEqual(structuredData[0].sameAs, [
+    "https://www.meetup.com/vancouver-meetup-group/",
+    "https://www.meetup.com/vancouver-literature-and-film/",
+    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/",
+  ]);
+  assertNoPrivateSentinels(JSON.stringify(structuredData));
 
   const modulePath = /<link\b[^>]*rel="modulepreload"[^>]*href="([^"]+)"/iu.exec(
     html,
@@ -99,6 +166,8 @@ test("the built worker renders Field Notes with absolute social metadata", async
     headers: {
       "content-security-policy": "script-src 'nonce-attacker'",
       "content-security-policy-report-only": "script-src 'none'",
+      "x-vcc-request-origin": "https://attacker.example",
+      "x-vcc-request-pathname": "/attacker-controlled-path",
     },
   });
   const secondPolicy =
@@ -111,25 +180,226 @@ test("the built worker renders Field Notes with absolute social metadata", async
     secondResponse.headers.get("content-security-policy-report-only"),
     null,
   );
+  const secondHtml = await secondResponse.text();
+  assert.doesNotMatch(secondHtml, /https:\/\/attacker\.example/u);
+  assert.match(secondHtml, /https:\/\/preview\.example\/og\.png/u);
 });
 
-test("built calendar and brand surfaces render an honest empty connection", async () => {
-  const calendarResponse = await fetchPath("/calendar");
-  assert.equal(calendarResponse.status, 200);
-  assert.match(
-    calendarResponse.headers.get("content-type") ?? "",
-    /^text\/html\b/i,
-  );
-  const html = await calendarResponse.text();
-  assert.match(html, /No official calendar feed is connected yet\./i);
-  assert.match(html, /No source is connected\./i);
-  assert.match(html, /one connected official feed when viewed/i);
-  assert.doesNotMatch(html, /meetup\.com\/[^<" ]+\/events\/ical/iu);
-  assert.doesNotMatch(html, /RSVP on Meetup/i);
+test("all required public pages render shared chrome without private sentinels", async () => {
+  for (const path of PUBLIC_PATHS) {
+    const response = await fetchPath(path);
+    assert.equal(response.status, 200, `${path} status`);
+    assert.match(
+      response.headers.get("content-type") ?? "",
+      /^text\/html\b/i,
+      `${path} content type`,
+    );
+    assert.equal(response.headers.get("x-robots-tag"), null, `${path} robots`);
+    const html = await response.text();
+    assertSharedChrome(html);
+    assertNoPrivateSentinels(html);
+    assert.doesNotMatch(html, /events\/ical|source_url|normalized_email/iu);
+  }
+});
 
+test("Events is canonical, empty honestly, and filter URLs are non-indexable", async () => {
+  const response = await fetchPath("/events");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-robots-tag"), null);
+  const html = await response.text();
+  assert.match(html, /name="robots" content="index, follow"/iu);
+  assert.match(
+    html,
+    /rel="canonical" href="https:\/\/preview\.example\/events"/iu,
+  );
+  assert.match(html, /0(?:<!-- -->|\s)*results/u);
+  assert.match(
+    html,
+    /When a real event is published, it will appear here\./u,
+  );
+  assert.match(html, /<form[^>]*action="\/events"[^>]*method="get"/iu);
+  assert.match(html, /Clear Filters/u);
+  assert.doesNotMatch(html, /href="\/events\/[^"?]+"/iu);
+  assert.doesNotMatch(html, /RSVP on Meetup/u);
+  assert.equal(jsonLdDocuments(html).length, 0);
+  assertNoPrivateSentinels(html);
+
+  const filtered = await fetchPath("/events?q=unlikely-match&lane=think");
+  assert.equal(filtered.status, 200);
+  assert.equal(
+    filtered.headers.get("x-robots-tag"),
+    "noindex, follow, noarchive",
+  );
+  const filteredHtml = await filtered.text();
+  assert.match(
+    filteredHtml,
+    /name="robots" content="noindex, follow"/iu,
+  );
+  assert.match(
+    filteredHtml,
+    /No published event matches this combination\./u,
+  );
+  assert.doesNotMatch(filteredHtml, /href="\/events\/[^"?]+"/iu);
+
+  const malformed = await fetchPath(`/events?q=${"x".repeat(101)}`);
+  assert.equal(malformed.status, 200);
+  assert.equal(
+    malformed.headers.get("x-robots-tag"),
+    "noindex, follow, noarchive",
+  );
+  assert.match(
+    await malformed.text(),
+    /One or more filters could not be validated\./u,
+  );
+});
+
+test("a cancelled event detail renders only published facts and accurate structured data", async () => {
+  const response = await fetchPath("/events/rendered-cancelled-reading");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-robots-tag"), null);
+  const html = await response.text();
+
+  assert.match(
+    html,
+    /<title>Rendered cancelled reading · Vancouver Curiosity Club<\/title>/iu,
+  );
+  assert.match(html, /This previously published event is no longer going ahead/u);
+  assert.match(html, /Location details have not been published\./u);
+  assert.doesNotMatch(html, /Online details are available/u);
+  assert.doesNotMatch(html, /RSVP on Meetup/u);
+
+  const documents = jsonLdDocuments(html);
+  const eventDocument = documents.find((item) => item["@type"] === "Event");
+  const breadcrumbs = documents.find(
+    (item) => item["@type"] === "BreadcrumbList",
+  );
+  assert.ok(eventDocument);
+  assert.ok(breadcrumbs);
+  assert.equal(
+    eventDocument.eventStatus,
+    "https://schema.org/EventCancelled",
+  );
+  assert.deepEqual(eventDocument.organizer, {
+    "@type": "Organization",
+    name: "Vancouver Literature and Film",
+    url: "https://preview.example/clubs/vancouver-literature-and-film",
+  });
+  assert.equal("location" in eventDocument, false);
+  assert.equal(
+    breadcrumbs.itemListElement.at(-1)?.item,
+    "https://preview.example/events/rendered-cancelled-reading",
+  );
+  assertNoPrivateSentinels(html);
+});
+
+test("Calendar is a permanent non-indexable compatibility redirect", async () => {
+  const response = await fetchPath("/calendar", { redirect: "manual" });
+  assert.equal(response.status, 308);
+  assert.equal(
+    new URL(response.headers.get("location"), "https://preview.example").href,
+    "https://preview.example/events",
+  );
+  assert.equal(
+    response.headers.get("x-robots-tag"),
+    "noindex, nofollow, noarchive",
+  );
+});
+
+test("robots and sitemap contain only public canonical routes", async () => {
+  const robotsResponse = await fetchPath("/robots.txt");
+  assert.equal(robotsResponse.status, 200);
+  assert.match(
+    robotsResponse.headers.get("content-type") ?? "",
+    /^text\/plain\b/iu,
+  );
+  const robots = await robotsResponse.text();
+  for (const line of [
+    "Allow: /",
+    "Disallow: /*?*",
+    "Disallow: /api/",
+    "Disallow: /organizer",
+    "Disallow: /preview",
+    "Disallow: /signin-with-chatgpt",
+    "Sitemap: https://preview.example/sitemap.xml",
+  ]) {
+    assert.match(robots, new RegExp(escapeRegex(line), "u"));
+  }
+  assertNoPrivateSentinels(robots);
+
+  const sitemapResponse = await fetchPath("/sitemap.xml");
+  assert.equal(sitemapResponse.status, 200);
+  assert.match(
+    sitemapResponse.headers.get("content-type") ?? "",
+    /application\/xml|text\/xml/iu,
+  );
+  const sitemap = await sitemapResponse.text();
+  for (const path of [
+    "/",
+    "/events",
+    "/clubs",
+    "/community",
+    "/about",
+    "/get-involved",
+    "/host-an-event",
+    "/contact",
+    "/conduct",
+    "/accessibility",
+    "/privacy",
+    "/clubs/vancouver-curiosity-club",
+    "/clubs/vancouver-literature-and-film",
+    "/clubs/vancouver-fantasy-scifi-group",
+  ]) {
+    assert.match(
+      sitemap,
+      new RegExp(
+        escapeRegex(
+          new URL(path, "https://preview.example").toString(),
+        ),
+        "u",
+      ),
+      `sitemap missing ${path}`,
+    );
+  }
+  assert.doesNotMatch(
+    sitemap,
+    /<loc>[^<]*(?:\/calendar|\/organizer|\/api\/|\?|off-radar-eats|draft-private)[^<]*<\/loc>/u,
+  );
+  assertNoPrivateSentinels(sitemap);
+});
+
+test("unknown, guessed, and draft routes use the custom noindex 404", async () => {
+  for (const path of [
+    "/nothing-at-this-address",
+    "/events/guessed-private-event",
+    "/clubs/off-radar-eats",
+    "/clubs/contemplative-meditation-journaling-circle",
+  ]) {
+    const response = await fetchPath(path);
+    assert.equal(response.status, 404, `${path} status`);
+    assert.equal(
+      response.headers.get("x-robots-tag"),
+      "noindex, nofollow, noarchive",
+      `${path} robots`,
+    );
+    const html = await response.text();
+    assert.match(html, /This trail ends here\./u);
+    if (path === "/nothing-at-this-address") {
+      assert.match(
+        html,
+        /<title>Page not found · Vancouver Curiosity Club<\/title>/u,
+      );
+      assert.match(html, /name="robots" content="noindex, nofollow/u);
+    }
+    assert.match(html, /Explore events/u);
+    assertSharedChrome(html);
+    assertNoPrivateSentinels(html);
+  }
+});
+
+test("brand assets render and unoptimized source artwork stays out of the client", async () => {
   const iconResponse = await fetchPath("/icon.png");
   assert.equal(iconResponse.status, 200);
-  assert.match(iconResponse.headers.get("content-type") ?? "", /image\/png/i);
+  assert.match(iconResponse.headers.get("content-type") ?? "", /image\/png/iu);
   const iconBytes = new Uint8Array(await iconResponse.arrayBuffer());
   assert.deepEqual(
     [...iconBytes.subarray(0, 8)],
@@ -145,9 +415,7 @@ test("built calendar and brand surfaces render an honest empty connection", asyn
   const manifest = await manifestResponse.json();
   assert.equal(manifest.name, "Vancouver Curiosity Club");
   assert.equal(manifest.icons.length, 3);
-});
 
-test("the built client excludes unoptimized brand source artwork", async () => {
   await assert.rejects(
     stat(resolve("dist/client/brand-icon-master.png")),
     (error) => error?.code === "ENOENT",
@@ -160,7 +428,9 @@ test("signed-out organizer traffic is redirected to Sites-owned SIWC and noindex
   });
 
   assert.ok(
-    response.status === 302 || response.status === 303 || response.status === 307,
+    response.status === 302 ||
+      response.status === 303 ||
+      response.status === 307,
     `unexpected redirect status ${response.status}`,
   );
   const location = new URL(response.headers.get("location"));
@@ -179,7 +449,7 @@ test("signed-out private API responses are safe, private, and noindexed", async 
   });
 
   assert.equal(response.status, 401);
-  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/u);
   assert.equal(
     response.headers.get("x-robots-tag"),
     "noindex, nofollow, noarchive",
@@ -196,10 +466,44 @@ test("local development keeps only the HMR-required relaxed script policy", asyn
   const response = await runtime.dispatchFetch("http://localhost/");
   const policy = response.headers.get("content-security-policy") ?? "";
 
-  assert.match(policy, /script-src [^;]*'unsafe-inline'/);
-  assert.match(policy, /script-src [^;]*'unsafe-eval'/);
+  assert.match(policy, /script-src [^;]*'unsafe-inline'/u);
+  assert.match(policy, /script-src [^;]*'unsafe-eval'/u);
   assert.doesNotMatch(policy, /'nonce-/u);
 });
+
+function assertSharedChrome(html) {
+  assert.match(html, /Vancouver Curiosity Club/u);
+  assert.match(html, /aria-label="Primary navigation"/u);
+  assert.match(html, /href="\/events"/u);
+  assert.match(html, /href="\/clubs"/u);
+  assert.match(html, /href="\/community"/u);
+  assert.match(html, /href="\/about"/u);
+  assert.match(html, /href="\/get-involved"/u);
+  assert.match(html, /Organizer Login/u);
+  assert.match(html, /aria-label="Footer navigation"/u);
+  assert.match(html, /Code of Conduct/u);
+  assert.match(html, /Accessibility/u);
+  assert.match(html, /Privacy/u);
+}
+
+function assertNoPrivateSentinels(value) {
+  for (const sentinel of PRIVATE_SENTINELS) {
+    assert.doesNotMatch(value, new RegExp(sentinel, "u"), sentinel);
+  }
+  assert.doesNotMatch(value, /events\/ical|source_url|sourceUrl/iu);
+}
+
+function jsonLdDocuments(html) {
+  return [
+    ...html.matchAll(
+      /<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/giu,
+    ),
+  ].map((match) => JSON.parse(match[1]));
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
 
 async function collectJavaScriptModules(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -215,8 +519,8 @@ async function collectJavaScriptModules(directory) {
   return files.sort();
 }
 
-async function applyGeneratedMigrations() {
-  const database = await runtime.getD1Database("DB");
+async function applyGeneratedMigrations(targetRuntime) {
+  const database = await targetRuntime.getD1Database("DB");
   const migrationDirectory = resolve("drizzle");
   const migrationFiles = (await readdir(migrationDirectory))
     .filter((name) => /^\d+.*\.sql$/u.test(name))
@@ -229,4 +533,505 @@ async function applyGeneratedMigrations() {
       }
     }
   }
+}
+
+async function seedPublicCatalog(targetRuntime) {
+  const database = await targetRuntime.getD1Database("DB");
+  await run(
+    database,
+    `INSERT INTO profiles (
+       id, siwc_subject, normalized_email, display_name,
+       public_attribution_consent, status, created_at, updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, 0, 'active', ?, ?, NULL)`,
+    PROFILE_ID,
+    "phase2-owner-subject",
+    "private_owner_email_sentinel@example.invalid",
+    "PRIVATE_ORGANIZER_SENTINEL",
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO organizations (
+       id, name, slug, timezone, owner_bootstrap_closed_at,
+       owner_bootstrap_claimed_by_profile_id, created_by_profile_id,
+       created_at, updated_at, deleted_at
+     ) VALUES (?, ?, ?, 'America/Vancouver', ?, ?, ?, ?, ?, NULL)`,
+    ORGANIZATION_ID,
+    "PRIVATE_LEGAL_SENTINEL",
+    "vancouver-curiosity-and-education-society",
+    FIXTURE_NOW,
+    PROFILE_ID,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+
+  const lanes = [
+    [
+      "lane-think",
+      "Think",
+      "think",
+      "Talks, reading, film, ideas, and conversations worth continuing.",
+      10,
+    ],
+    [
+      "lane-reset",
+      "Reset & Make",
+      "reset-and-make",
+      "Reflective and creative gatherings that make room to pause or make something.",
+      20,
+    ],
+    [
+      "lane-explore",
+      "Explore",
+      "explore",
+      "Curiosity taken into the city through walks, visits, and shared discovery.",
+      30,
+    ],
+    [
+      "lane-eat",
+      "Eat & Play",
+      "eat-and-play",
+      "Food, games, and playful reasons to spend time together.",
+      40,
+    ],
+  ];
+  for (const [id, name, slug, description, sortOrder] of lanes) {
+    await run(
+      database,
+      `INSERT INTO event_lanes (
+         id, organization_id, name, slug, description, sort_order,
+         created_by_profile_id, created_at, updated_at, deleted_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      id,
+      ORGANIZATION_ID,
+      name,
+      slug,
+      description,
+      sortOrder,
+      PROFILE_ID,
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+    );
+  }
+
+  const clubs = [
+    {
+      id: "club-curiosity",
+      laneId: "lane-think",
+      name: "Vancouver Curiosity Club",
+      slug: "vancouver-curiosity-club",
+      description:
+        "A Vancouver gathering place for talks, discussions, and shared learning across subjects.",
+      featured: 1,
+      status: "published",
+      url: "https://www.meetup.com/vancouver-meetup-group/",
+    },
+    {
+      id: "club-literature",
+      laneId: "lane-think",
+      name: "Vancouver Literature and Film",
+      slug: "vancouver-literature-and-film",
+      description:
+        "A program for reading, watching, and discussing literature and film together.",
+      featured: 1,
+      status: "published",
+      url: "https://www.meetup.com/vancouver-literature-and-film/",
+    },
+    {
+      id: "club-scifi",
+      laneId: "lane-think",
+      name: "Vancouver Fantasy & Sci-Fi Group",
+      slug: "vancouver-fantasy-scifi-group",
+      description:
+        "A program for conversations and events around fantasy and science fiction.",
+      featured: 1,
+      status: "published",
+      url: "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/",
+    },
+    {
+      id: "club-eats-draft",
+      laneId: "lane-eat",
+      name: "Off-Radar Eats",
+      slug: "off-radar-eats",
+      description: "PRIVATE_DRAFT_CLUB_SENTINEL",
+      featured: 0,
+      status: "draft",
+      url: null,
+    },
+    {
+      id: "club-reset-draft",
+      laneId: "lane-reset",
+      name: "Contemplative Meditation + Journaling Circle",
+      slug: "contemplative-meditation-journaling-circle",
+      description: "PRIVATE_DRAFT_CLUB_SENTINEL",
+      featured: 0,
+      status: "draft",
+      url: null,
+    },
+  ];
+  for (const club of clubs) {
+    await run(
+      database,
+      `INSERT INTO clubs (
+         id, organization_id, name, slug, description, created_by_profile_id,
+         created_at, updated_at, deleted_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      club.id,
+      ORGANIZATION_ID,
+      club.name,
+      club.slug,
+      club.description,
+      PROFILE_ID,
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+    );
+    await run(
+      database,
+      `INSERT INTO club_public_profiles (
+         club_id, organization_id, primary_event_lane_id, publication_status,
+         is_featured, description, public_group_url, published_at, created_at,
+         updated_at, deleted_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      club.id,
+      ORGANIZATION_ID,
+      club.laneId,
+      club.status,
+      club.featured,
+      club.description,
+      club.url,
+      club.status === "published" ? FIXTURE_NOW : null,
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+    );
+  }
+
+  const pages = [
+    [
+      "home",
+      "Vancouver Curiosity Club",
+      "A social calendar with a brain.",
+      "Thoughtful events for people who like learning in company.",
+    ],
+    [
+      "events",
+      "Events",
+      "Events",
+      "Browse the genuinely published gatherings on the calendar.",
+    ],
+    [
+      "clubs",
+      "Clubs",
+      "Clubs",
+      "Different doors into one curious Vancouver community.",
+    ],
+    [
+      "community",
+      "Community",
+      "Community",
+      "Find the club on its confirmed Meetup group pages.",
+    ],
+    [
+      "about",
+      "About",
+      "A community organized around curiosity",
+      "Vancouver Curiosity Club brings people together to learn, discuss, explore, make, and play.",
+    ],
+    [
+      "get-involved",
+      "Get Involved",
+      "Bring something to the club",
+      "Attend, share an idea, volunteer, host, or begin a conversation.",
+    ],
+    [
+      "host-an-event",
+      "Host an Event",
+      "Interested in hosting?",
+      "Event-hosting tools are not open yet.",
+    ],
+    [
+      "contact",
+      "Contact",
+      "Find us on Meetup",
+      "No public contact form or confirmed public email is available yet.",
+    ],
+    [
+      "conduct",
+      "Code of Conduct",
+      "Make curiosity generous",
+      "Treat people with respect and challenge ideas without demeaning people.",
+    ],
+    [
+      "accessibility",
+      "Accessibility",
+      "Website accessibility",
+      "This website is designed for keyboard use, readable zoom, clear focus, reduced motion, and responsive layouts.",
+    ],
+    [
+      "privacy",
+      "Privacy",
+      "Privacy, in plain language",
+      "Public pages can be browsed without an attendee account.",
+    ],
+  ];
+  for (const [slug, title, heading, text] of pages) {
+    const pageId = `page-${slug}`;
+    await insertPage(database, {
+      id: pageId,
+      slug,
+      title,
+      status: "published",
+      visibility: "public",
+      publishedAt: FIXTURE_NOW,
+    });
+    await insertSection(database, {
+      id: `section-${slug}-intro`,
+      pageId,
+      key: slug === "home" ? "hero" : "intro",
+      type: slug === "home" ? "hero" : "intro",
+      content: {
+        eyebrow: "Vancouver, British Columbia",
+        heading,
+        text,
+      },
+      sortOrder: 10,
+    });
+  }
+  for (const [key, content, sortOrder] of [
+    [
+      "attending",
+      {
+        heading: "Come curious",
+        paragraphs: [
+          "Expect a clear reason to gather and no requirement to arrive as an expert.",
+          "When a detail is undecided, the listing says so.",
+        ],
+      },
+      20,
+    ],
+    [
+      "invitation",
+      {
+        heading: "Help make the calendar",
+        text: "Bring an idea, volunteer, host, or explore a community partnership.",
+      },
+      30,
+    ],
+    [
+      "community",
+      {
+        heading: "Confirmed group destinations",
+        text: "Choose the public Meetup group that interests you.",
+      },
+      40,
+    ],
+  ]) {
+    await insertSection(database, {
+      id: `section-home-${key}`,
+      pageId: "page-home",
+      key,
+      type: key === "invitation" ? "callout" : "prose",
+      content,
+      sortOrder,
+    });
+  }
+
+  await insertPage(database, {
+    id: "page-draft-private",
+    slug: "draft-private",
+    title: "PRIVATE_DRAFT_PAGE_SENTINEL",
+    status: "draft",
+    visibility: "private",
+    publishedAt: null,
+  });
+
+  await run(
+    database,
+    `INSERT INTO site_settings (
+       id, organization_id, key, value_json, is_public, updated_by_profile_id,
+       created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    "setting-public-identity",
+    ORGANIZATION_ID,
+    "public_identity",
+    JSON.stringify({
+      brandName: "Vancouver Curiosity Club",
+      locationLabel: "Vancouver, British Columbia",
+      mission: "Thoughtful events for people who like learning in company.",
+      tagline: "A social calendar with a brain.",
+    }),
+    1,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO site_settings (
+       id, organization_id, key, value_json, is_public, updated_by_profile_id,
+       created_at, updated_at
+     ) VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+    "setting-private-sentinel",
+    ORGANIZATION_ID,
+    "private_test_value",
+    JSON.stringify({ value: "PRIVATE_SETTING_SENTINEL" }),
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+
+  const publicLinks = clubs.filter(
+    (club) => club.status === "published" && club.url,
+  );
+  for (const [index, club] of publicLinks.entries()) {
+    await run(
+      database,
+      `INSERT INTO community_links (
+         id, organization_id, label, url, link_type, is_published, sort_order,
+         created_by_profile_id, created_at, updated_at, deleted_at
+       ) VALUES (?, ?, ?, ?, 'meetup_group', 1, ?, ?, ?, ?, NULL)`,
+      `community-${club.id}`,
+      ORGANIZATION_ID,
+      `${club.name} on Meetup`,
+      club.url,
+      (index + 1) * 10,
+      PROFILE_ID,
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+    );
+  }
+  await run(
+    database,
+    `INSERT INTO community_links (
+       id, organization_id, label, url, link_type, is_published, sort_order,
+       created_by_profile_id, created_at, updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, 'private', 0, 999, ?, ?, ?, NULL)`,
+    "community-private-sentinel",
+    ORGANIZATION_ID,
+    "PRIVATE_COMMUNITY_SENTINEL",
+    "https://private.invalid/",
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+
+  await run(
+    database,
+    `INSERT INTO venues (
+       id, organization_id, name, slug, timezone, public_location_name,
+       public_address, private_address, private_directions, is_public,
+       created_by_profile_id, updated_by_profile_id, created_at, updated_at,
+       deleted_at
+     ) VALUES (?, ?, ?, ?, 'America/Vancouver', ?, ?, ?, ?, 0, ?, ?, ?, ?,
+       NULL)`,
+    "venue-rendered-private",
+    ORGANIZATION_ID,
+    "PRIVATE_VENUE_DETAIL_SENTINEL",
+    "rendered-private-venue",
+    "PRIVATE_VENUE_DETAIL_SENTINEL",
+    "PRIVATE_VENUE_DETAIL_SENTINEL",
+    "PRIVATE_VENUE_DETAIL_SENTINEL",
+    "PRIVATE_VENUE_DETAIL_SENTINEL",
+    PROFILE_ID,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO events (
+       id, organization_id, club_id, event_lane_id, category_id, venue_id,
+       primary_organizer_profile_id, title, slug, summary, description,
+       status, visibility, time_kind, starts_at_utc, ends_at_utc, timezone,
+       all_day_start_date, all_day_end_date_exclusive,
+       buffer_before_minutes, buffer_after_minutes, organizer_scope_json,
+       schedule_version, schedule_review_state, hold_expires_at, private_notes,
+       private_meeting_details, published_at, created_by_profile_id,
+       updated_by_profile_id, created_at, updated_at, deleted_at
+     ) VALUES (
+       ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, NULL, 'cancelled', 'public',
+       'timed', ?, ?, 'America/Vancouver', NULL, NULL, 0, 0, '[]', 1,
+       'unreviewed', NULL, ?, ?, ?, ?, ?, ?, ?, NULL
+     )`,
+    "event-rendered-cancelled",
+    ORGANIZATION_ID,
+    "club-literature",
+    "lane-think",
+    "venue-rendered-private",
+    "Rendered cancelled reading",
+    "rendered-cancelled-reading",
+    "A previously published synthetic event used only for rendered tests.",
+    Date.UTC(2026, 7, 4, 2, 0, 0),
+    Date.UTC(2026, 7, 4, 4, 0, 0),
+    "PRIVATE_EVENT_DETAIL_SENTINEL",
+    "PRIVATE_EVENT_DETAIL_SENTINEL",
+    FIXTURE_NOW,
+    PROFILE_ID,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO event_public_details (
+       event_id, organization_id, attendance_mode, created_at, updated_at
+     ) VALUES (?, ?, 'in_person', ?, ?)`,
+    "event-rendered-cancelled",
+    ORGANIZATION_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+}
+
+async function insertPage(
+  database,
+  { id, publishedAt, slug, status, title, visibility },
+) {
+  await run(
+    database,
+    `INSERT INTO pages (
+       id, organization_id, title, slug, status, visibility, current_revision,
+       published_at, created_by_profile_id, updated_by_profile_id, created_at,
+       updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL)`,
+    id,
+    ORGANIZATION_ID,
+    title,
+    slug,
+    status,
+    visibility,
+    publishedAt,
+    PROFILE_ID,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+}
+
+async function insertSection(
+  database,
+  { content, id, key, pageId, sortOrder, type },
+) {
+  await run(
+    database,
+    `INSERT INTO page_sections (
+       id, organization_id, page_id, section_key, section_type, content_json,
+       sort_order, created_at, updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    id,
+    ORGANIZATION_ID,
+    pageId,
+    key,
+    type,
+    JSON.stringify(content),
+    sortOrder,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+}
+
+async function run(database, sql, ...bindings) {
+  const result = await database.prepare(sql).bind(...bindings).run();
+  assert.notEqual(result.success, false, result.error ?? sql);
 }

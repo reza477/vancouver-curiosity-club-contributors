@@ -486,16 +486,25 @@ test("resolves the exact safe Meetup program catalog from an empty organization"
     .bind(ORGANIZATION_ID)
     .all();
   const idsByName = new Map(first.map((club) => [club.name, club.id]));
+  const storedRows = stored.results.map((row) => ({ ...row }));
+  assert.equal(storedRows.length, 5);
   assert.deepEqual(
-    stored.results.map((row) => ({ ...row })),
-    CATALOG_CLUBS
-      .map((club) => ({
-        id: idsByName.get(club.name),
-        name: club.name,
-        slug: club.slug,
-      }))
-      .sort((left, right) => left.slug.localeCompare(right.slug)),
+    storedRows.map(({ name, slug }) => ({ name, slug })),
+    [
+      {
+        name: "Contemplative Meditation + Journaling Circle",
+        slug: "contemplative-meditation-journaling-circle",
+      },
+      { name: "Off-Radar Eats", slug: "off-radar-eats" },
+      ...CATALOG_CLUBS.map(({ name, slug }) => ({ name, slug })),
+    ].sort((left, right) => left.slug.localeCompare(right.slug)),
   );
+  for (const club of CATALOG_CLUBS) {
+    assert.equal(
+      storedRows.find((row) => row.slug === club.slug)?.id,
+      idsByName.get(club.name),
+    );
+  }
   const serializedOptions = JSON.stringify(first);
   for (const feedUrl of [FEED_A, FEED_B, FEED_C]) {
     assert.equal(serializedOptions.includes(feedUrl), false);

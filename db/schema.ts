@@ -245,6 +245,57 @@ export const eventLanes = sqliteTable(
   ],
 );
 
+export const clubPublicProfiles = sqliteTable(
+  "club_public_profiles",
+  {
+    clubId: text("club_id")
+      .primaryKey()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    primaryEventLaneId: text("primary_event_lane_id")
+      .notNull()
+      .references(() => eventLanes.id, { onDelete: "restrict" }),
+    publicationStatus: text("publication_status", {
+      enum: ["draft", "published", "archived"],
+    })
+      .notNull()
+      .default("draft"),
+    isFeatured: integer("is_featured", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    description: text("description"),
+    publicGroupUrl: text("public_group_url"),
+    publishedAt: integer("published_at"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    deletedAt: integer("deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("club_public_profiles_org_club_unique").on(
+      table.organizationId,
+      table.clubId,
+    ),
+    index("club_public_profiles_public_featured_idx").on(
+      table.organizationId,
+      table.publicationStatus,
+      table.isFeatured,
+      table.deletedAt,
+    ),
+    index("club_public_profiles_lane_idx").on(
+      table.organizationId,
+      table.primaryEventLaneId,
+      table.publicationStatus,
+      table.deletedAt,
+    ),
+    check(
+      "club_public_profiles_published_at_check",
+      sql`${table.publicationStatus} <> 'published' OR ${table.publishedAt} IS NOT NULL`,
+    ),
+  ],
+);
+
 export const categories = sqliteTable(
   "categories",
   {
@@ -497,6 +548,41 @@ export const events = sqliteTable(
         AND ${table.allDayEndDateExclusive} IS NOT NULL
         AND ${table.allDayEndDateExclusive} > ${table.allDayStartDate}
       )`,
+    ),
+  ],
+);
+
+export const eventPublicDetails = sqliteTable(
+  "event_public_details",
+  {
+    eventId: text("event_id")
+      .primaryKey()
+      .references(() => events.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    attendanceMode: text("attendance_mode", {
+      enum: [
+        "in_person",
+        "online",
+        "hybrid",
+        "location_undecided",
+      ],
+    })
+      .notNull()
+      .default("location_undecided"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    index("event_public_details_org_mode_idx").on(
+      table.organizationId,
+      table.attendanceMode,
+      table.eventId,
+    ),
+    check(
+      "event_public_details_attendance_mode_check",
+      sql`${table.attendanceMode} IN ('in_person', 'online', 'hybrid', 'location_undecided')`,
     ),
   ],
 );

@@ -46,7 +46,7 @@ export async function listPublicMeetupCalendar(
     path: "nowUtcMs",
     minimum: 0,
   });
-  const sync = await readPublicSyncState(database, organizationId, now);
+  const sync = await readPublicMeetupSyncState(database, organizationId, now);
   if (sync.status === "not_connected") {
     return Object.freeze({
       sync,
@@ -118,11 +118,19 @@ async function readSingleConfiguredOrganization(
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-async function readPublicSyncState(
+export async function readPublicMeetupSyncState(
   database: Pick<D1DatabaseLike, "prepare">,
-  organizationId: string,
-  now: number,
+  organizationIdInput: unknown,
+  nowUtcMs: unknown = Date.now(),
 ): Promise<PublicMeetupCalendarDto["sync"]> {
+  const organizationId = parseIdentifier(
+    organizationIdInput,
+    "organizationId",
+  );
+  const now = parseFiniteInteger(nowUtcMs, {
+    path: "nowUtcMs",
+    minimum: 0,
+  });
   const result = await database
     .prepare(
       `SELECT enabled, last_success_at, last_error_at,

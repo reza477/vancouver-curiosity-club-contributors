@@ -23,12 +23,14 @@ data.
     https://www.meetup.com/vancouver-literature-and-film/
   - **Vancouver Fantasy & Sci-Fi Group** —
     https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/
-- Public per-program URL fields/pages: **Confirmed input for Phase 2; not
-  implemented in this packet.**
+- Public per-program URL fields/pages: **Implemented and verified in Phase 2**
+  using only the three confirmed clean public group URLs above. Private
+  calendar-feed configuration remains separate.
 - Exact public Meetup discussion URL: **Missing**
-- Owner-selected real event RSVP URLs for a later hosted production smoke test:
-  **Missing**. The isolated live-feed smoke test verified real official RSVP
-  URLs without committing them as fixtures.
+- Owner-selected real event RSVP URLs for a hosted production smoke test:
+  **Missing**. The earlier isolated feed smoke test verified official RSVP
+  destinations without committing them as fixtures; the Phase 2 review
+  database intentionally contains no real event.
 
 Until a future owner-authorized deployment activates the runtime revision and
 the feeds are entered through the authenticated organizer workspace into
@@ -50,8 +52,18 @@ society-registration, tax, or charity claim.
 
 ## Copy approval
 
-- Approved public copy: **Missing**
+- Approved public copy: **Missing**. Phase 2 contains restrained, D1-backed
+  starter copy that remains subject to owner approval and later authorized CMS
+  editing.
 - Working tagline currently supplied: `A social calendar with a brain.`
+
+## Public contact and permanent origin
+
+- Confirmed public contact email address: **Missing**. Phase 2 uses only the
+  confirmed Meetup group destinations and renders no fake form.
+- Stable production Sites origin: **Missing until a future owner-authorized
+  deployment**. Downloadable QR codes remain blocked.
+- Custom domain: **Not requested and not required**
 
 ## Photography and consent
 
@@ -68,6 +80,8 @@ No AI-generated attendee faces or unapproved photographs may be substituted.
 - Approved public organizer biographies: **Missing**
 - Profile-level public-attribution consent: **Missing**
 - Per-event permission to display each organizer: **Missing**
+- Approved venue names, addresses, and venue-specific accessibility facts:
+  **Missing per event**
 
 The public projection defaults organizer attribution to private and requires
 both consent gates before displaying a name.

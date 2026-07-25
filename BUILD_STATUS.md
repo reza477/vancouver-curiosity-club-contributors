@@ -1,453 +1,307 @@
 # Vancouver Curiosity Club — Build Status
 
-Last updated: 2026-07-24 (America/Vancouver)
+Last updated: 2026-07-25 (America/Vancouver)
 
 ## Active phase and authorized scope
 
-- Phase 1 Sites foundation and its independent audit gate:
-  **Completed and verified**.
-- Current authorized work: the narrow V5 release-evidence correction that keeps
-  the exact documented lint command reproducible while ignored packaging and
-  archive-audit artifacts remain under `work/`.
-- Current V5 release-evidence correction: **Completed and verified**. ESLint
-  globally ignores only the generated `work/**` root; no lint rule, severity,
-  tracked-source path, application behavior, or test was weakened.
-- Prior owner-input continuation: **Completed and verified** in the supported
-  local Sites/Miniflare environment.
-- Unpublished Sites version 3: **Superseded** by the post-save publication
-  audit. It remains unpublished and must not be deployed.
-- Corrected unpublished Sites version 4: **Saved and provenance-verified** from
-  exact source commit `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`;
-  no preview or production deployment occurred.
-- Owner-input continuation Sites version 5: **Saved unpublished and
-  provenance-verified** from exact source commit
-  `cb51a5969370e4bed39ce83adac8532f2900d3d7`; no preview or production
-  deployment occurred.
-- `INITIAL_OWNER_EMAIL`: **Configured** as a secret in Sites runtime revision 1
-  from the existing project access metadata without printing or committing the
-  value. It remains inactive until a future deployment.
-- Hosted Meetup connection: **Not run** because this packet forbids deployment.
-  The supplied feeds were exercised only in an isolated local D1; hosted
-  production imported data remains intentionally empty.
-- Hosted identity and owner persistence: **Awaiting owner smoke test**.
-- Phase 2 and all later master-spec product surfaces: **Not started**.
+- **Phase 2 — Public website only: Completed and verified locally.**
+- The complete public route, D1 catalog, unified public event projection,
+  Field Notes responsive system, SEO, privacy, security, and test work
+  authorized by the Phase 2 packet is implemented.
+- Phase 1 authorization, public-projection, conflict-guard, Meetup
+  generation-isolation, consent, timezone, and project-isolation guarantees
+  remain covered by the full regression suite.
+- No Phase 3 surface was started.
+- No preview or production deployment was created.
+- Unpublished Sites version save: **Pending final Git/package handoff**. This
+  ledger will receive a provenance-only update after Sites readback.
+- Exact next phase: **Phase 3 — Not started**.
 
 ## Completed and verified
 
-### Project isolation and Sites state
+### Isolated Sites project and platform state
 
-- The project remains isolated in the fresh directory and uses the single Sites
-  project created during Phase 1. No prior project, asset, source, data, ID,
-  design, or configuration was reused.
-- `.openai/hosting.json` contains only the returned opaque project ID and logical
-  `DB`/`MEDIA` bindings. Runtime values and feed configuration are not stored
-  there.
-- `MASTER_BUILD_SPEC.md` remains unchanged from the canonical reference. Its
-  SHA-256 is
-  `46036D0DBD6DBD81E05AE4EB40412F1C7BB211592D76840AC7B62332324E51A1`.
-- No public deployment exists and public access is not enabled.
+- The existing isolated project remains at
+  `C:\Users\user\Documents\Website`; no prior project source, data, asset, ID,
+  or configuration was copied.
+- `.openai/hosting.json` still contains only the original opaque project ID and
+  logical `DB`/`MEDIA` bindings.
+- The existing Sites project is active. Pre-save readback reported latest
+  version 5, no preview URL, no live URL, and no deployment.
+- Sites runtime revision 1 contains only `INITIAL_OWNER_EMAIL` as a redacted
+  secret. Its value was not printed into source or documentation.
+- No GitHub, Supabase, PostgreSQL, Firebase, Vercel, Netlify, Resend, SMTP,
+  custom domain, alternate identity provider, or alternate host was created.
 
-### Futuristic-and-timeless brand icon
+### Complete Phase 2 public website
 
-- **Completed and verified** — A genuinely new original abstract mark replaces
-  the disliked icon. It uses an aperture/interlocking-orbit form around a coral
-  focal point, remains distinct at favicon size, and avoids skyline, maple-leaf,
-  attendee-face, and generic AI-sparkle clichés.
-- **Completed and verified** — The mark is integrated into the public wordmark,
-  16/32/48/64 favicons, 180 Apple touch icon, 192/512 app icons, 512 maskable
-  icon, web manifest, and 1200×630 social card.
-- **Completed and verified** — PNG signatures, exact declared dimensions,
-  metadata references, and manifest declarations are automated regression
-  checks.
-- **Completed and verified** — In the live browser the mark remains visible and
-  legible at approximately 30 px in the 390×844 header and 40 px on desktop.
-- **Completed and verified** — The 934,997-byte master artwork is preserved in
-  `design-assets/` rather than `public/`. Only optimized consumer assets ship;
-  the rebuilt `dist/client` is 1,459,683 bytes and the master asset returns 404.
+- Implemented `/`, `/events`, `/events/[slug]`, `/clubs`,
+  `/clubs/[slug]`, `/community`, `/about`, `/get-involved`,
+  `/host-an-event`, `/contact`, `/conduct`, `/accessibility`, `/privacy`,
+  custom 404, `robots.txt`, and public-only XML sitemap.
+- `/events` is canonical. `/calendar` is a permanent 308, non-indexable
+  redirect and cannot create duplicate indexed content.
+- One responsive header/footer supplies the required navigation, confirmed
+  external links, current year, location, and restrained D1-backed mission
+  copy. Unconfirmed legal, charity, Society, sponsor, statistic, history,
+  organizer, and testimonial claims are absent.
+- The selected Field Notes identity remains warm, editorial, responsive, and
+  photography-free. Original category artwork and the original optimized mark
+  ship without implying real attendees.
+- Home reads its next events from the unified service and renders a truthful
+  empty state when none exist. It includes all four exact lanes, the three
+  confirmed featured clubs, honest attendance copy, community links, and
+  organizer login.
+- Events supplies Upcoming/Past, keyword, date range, club, lane, category,
+  attendance-mode filters, result count, clear filters, bounded pagination,
+  validated shareable query strings, and truthful empty/error/staleness
+  states.
+- Public event detail displays only facts that exist, clearly marks cancelled
+  pages, uses Vancouver-local schedule wording, hides absent RSVP controls,
+  distinguishes unpublished location details from genuinely undecided
+  locations, and attributes Event structured data to the event's confirmed
+  public club.
+- Both draft program slugs and every draft, idea, hold, private, unpublished,
+  deleted, or guessed event slug return 404.
 
-### Official Meetup calendar synchronization
+### D1 catalog and migration
 
-- **Completed and verified** — Current primary Meetup documentation was checked
-  before selecting the adapter. Meetup officially supports calendar export;
-  new API OAuth consumers currently require an active Meetup Pro subscription
-  and approval. The implementation therefore uses the official group
-  iCalendar feed, not scraping, passwords, guessed URLs, GraphQL credentials,
-  or write-back.
-- **Completed and verified** — The integration is one-way. Meetup is
-  authoritative for imported title, schedule, explicit status/cancellation,
-  monotonic sequence/last-modified provenance, and official event RSVP URL.
-- **Completed and verified** — Multiple official feeds are supported for this
-  multi-club organization. The schema allows one active Meetup feed per club
-  and multiple distinct feeds per organization, while preventing the same
-  canonical feed from being attached twice.
-- **Completed and verified** — The protected Owner/Administrator form requires
-  an explicit accessible program selector. The API and domain service validate
-  the selected club ID against the actor's organization and verify that the
-  normalized feed group slug matches the exact program record before writing.
-  No connection-order, unbound-club, or hash-derived fallback remains.
-- **Completed and verified** — All six connection orders preserve these exact
-  mappings:
+- Added one additive generated migration,
+  `drizzle/0006_amusing_roughhouse.sql`, for:
 
-  - Vancouver Curiosity Club — https://www.meetup.com/vancouver-meetup-group/
-  - Vancouver Literature and Film —
-    https://www.meetup.com/vancouver-literature-and-film/
-  - Vancouver Fantasy & Sci-Fi Group —
-    https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/
+  - `club_public_profiles`
+  - `event_public_details`
+  - four bounded public-query indexes
 
-  These clean public group pages are confirmed Phase 2 inputs only. No public
-  per-program URL field or page was implemented in this packet.
-- **Completed and verified** — Mismatched, nonexistent, and
-  cross-organization club selections are rejected before creating a sync
-  source or configuration audit record. Regression tests also prove the exact
-  safe `{id, name}` selector payload contains no feed/source/organization data.
-- **Completed and verified** — A real smoke import fetched all three supplied
-  official calendars through the production domain/fetch path into an isolated
-  in-memory migrated D1. The feeds completed in 4, 4, and 1 bounded requests.
-  The time-sensitive snapshot contained 23 source rows: 13 accepted active
-  snapshots and 10 safely stored `conflict_rejected` rows under the existing
-  organization-wide reservation policy. All 13 accepted rows were available
-  through the public Meetup projection.
-- **Completed and verified** — The live smoke checked each club identity plus
-  real title, time, status, and official RSVP link; raw descriptions and
-  locations were neither persisted nor published. Source isolation held, and
-  a deliberately incomplete later generation left the prior public result
-  byte-for-byte unchanged. No fetched body or local D1 file was retained.
-- **Completed and verified** — Meetup changed ignored raw iCalendar bytes
-  between requests while parsed import facts stayed identical. Generation
-  identity now hashes the normalized validated facts that affect import,
-  ordering, reconciliation, or publication. A regression proves ignored
-  calendar decoration and discarded descriptions/locations cannot restart a
-  cursor, while meaningful event changes still alter the generation identity.
-- **Completed and verified** — Identical Meetup UIDs from different club feeds
-  remain source-scoped and cannot collide.
-- **Completed and verified** — Same-source configuration is idempotent. Source
-  replacement gets a new source identity; old links cannot masquerade as the
-  current source.
-- **Completed and verified** — The fetcher enforces exact official HTTPS URLs,
-  no query/hash/credentials, same-group redirect validation, no-store requests,
-  conditional ETag/Last-Modified checks, a 12-second timeout, strict calendar
-  content type, bounded streamed UTF-8, and maximum redirect/body limits.
-- **Completed and verified** — The bounded parser safely handles `VTIMEZONE`,
-  TZID-aware timed schedules, DST conversion, UID plus recurrence identity,
-  explicit event/calendar cancellation, and safe rejection of unexpanded
-  recurrence.
-- **Completed and verified** — Isolated publication generations prevent chunk
-  leakage. A pending generation stages title, status, schedule, and RSVP facts
-  while the prior fully published generation remains byte-for-byte public
-  through partial and error states. Pending rows and counters may change until
-  finalization; published snapshots are immutable through the supported runtime
-  path.
-- **Completed and verified** — Pending source updates do not clear owner-managed
-  summaries/descriptions or change visibility/publication state. Regression
-  coverage proves an enriched public event and a hidden/unpublished event remain
-  byte-for-byte stable through a later partial generation and failed
-  continuation.
-- **Completed and verified** — The general/manual public projection excludes
-  every canonical event with Meetup source-link history, including a
-  soft-deleted link. Source-backed rows can publish only through the completed
-  active-generation Meetup projection. A dual-projection regression proves a
-  changed/new partial generation and failed continuation expose neither staged
-  titles nor rows, while an unrelated manual public event remains available.
-- **Completed and verified** — Only a cursor-complete successful finalization
-  advances the active generation pointer. An unsolicited `304`, failed later
-  chunk, stale lease, or incomplete cursor cannot publish staged rows. Tests
-  assert active/pending pointers plus staging/published state before, during,
-  and after finalization.
-- **Completed and verified** — Cursor-complete source-scoped reconciliation
-  cancels, unpublishes, and soft-retires previously mapped future events absent
-  from the completed snapshot. It never runs on a partial/error generation,
-  another source, or a manually managed event; exact `removed` counts are
-  returned and audited, and a later reappearance is importable again.
-- **Completed and verified** — Reconciliation preserves a shared canonical
-  event while another source's active snapshot remains `confirmed` or
-  `tentative`. Regression coverage also removes two absent events in one
-  finalization and proves both returned and persisted `removed_count` equal 2.
-- **Completed and verified** — Explicit Meetup cancellations remain durable
-  and excluded from the upcoming public projection. Stale source revisions
-  cannot undo a newer cancellation.
-- **Completed and verified** — Raw source description and location values are
-  neither persisted nor published. They can contain private meeting details.
-  Imported organizer names are not invented; existing public attribution still
-  requires both consent gates.
-- **Completed and verified** — Every accepted or mapped event row uses the
-  Phase 1 database conflict trigger, immutable event revision, source link,
-  sanitized import facts, and content-free audit record in atomic D1 batches.
-  Parser, duplicate, all-day, and conflict rejections instead store sanitized
-  rejected-row and audit evidence without inventing an event revision or source
-  link.
-- **Completed and verified** — Both successful and worst-case conflict-rejection
-  paths process at most three calendar rows and remain at or below D1's
-  documented 50-query Free Worker invocation ceiling.
-- **Completed and verified** — Imports are resumable by snapshot hash and cursor.
-  A request handles one source; partial snapshots continue in later manual or
-  view requests without claiming or exposing a complete refresh.
-- **Completed and verified** — Completed feeds wait at least 15 minutes before
-  refresh-on-view. No background scheduler or guaranteed cadence is claimed.
-- **Completed and verified** — Audit terminal records distinguish manual from
-  refresh-on-view triggers.
+- Migration 0006 contains six D1 statements and no destructive data rewrite.
+- The shared authoritative catalog defines exactly:
 
-### Organizer and public boundaries
+  - Think
+  - Reset & Make
+  - Explore
+  - Eat & Play
+  - Vancouver Curiosity Club — published/featured
+  - Vancouver Literature and Film — published/featured
+  - Vancouver Fantasy & Sci-Fi Group — published/featured
+  - Off-Radar Eats — draft/inaccessible
+  - Contemplative Meditation + Journaling Circle — draft/inaccessible
 
-- **Completed and verified** — `/organizer/meetup` requires Sites-owned Sign in
-  with ChatGPT plus active server-side membership. Owner and Administrator may
-  connect/refresh; Organizer has a coarse read-only state.
-- **Completed and verified** — Mutation routes derive identity and role
-  server-side, require exact same-origin requests, cap streamed request bodies,
-  return private/no-store responses, and remain noindex.
-- **Completed and verified** — Feed URLs, URL tokens, source IDs, organization
-  IDs, raw upstream errors, and internal error codes are stripped from client
-  and public DTOs.
-- **Completed and verified** — Structured-log token validation drops URL/token
-  shaped values. Leakage tests prove feed URLs and sentinel tokens are absent
-  from public state, client state, safe errors, and structured logs.
-- **Completed and verified** — `/calendar` uses an explicit public SQL allowlist
-  and only publishes confirmed rows from the completed generation that exactly
-  matches an enabled source's active pointer. Mutable pending-generation rows
-  and source configuration values are not selected. It never fetches a private
-  record and never hides fields in CSS.
-- **Completed and verified** — The separate general/manual SQL allowlist cannot
-  expose canonical Meetup rows from a first, partial, failed, disabled, retired,
-  or later generation; it excludes any Meetup source-link history independently
-  of source state.
-- **Completed and verified** — The public page exposes honest not-connected,
-  pending, partial, current, stale, disabled, and error states. Production is
-  currently empty/not-connected rather than populated with invented events.
+- Catalog creation is idempotent, organization-scoped, and available only
+  after server-side Owner/Administrator authorization. It preserves later D1
+  editorial changes and never runs from a public GET.
+- The populated-version-5 upgrade regression preserves membership, private
+  feed configuration, active/pending generation pointers, snapshots, removal
+  counters, event/private fields, foreign keys, and both conflict triggers.
 
-### Foundation guarantees preserved
+### Unified public event projection
 
-- SIWC remains identity only; active D1 membership, role, suspension state, and
-  validated club scope remain authoritative.
-- First-owner bootstrap, invitation hashing/atomic acceptance, cross-organization
-  club rejection, public attribution consent, timezone utilities, and the D1
-  atomic conflict invariant remain covered by the full regression suite.
-- Production CSP uses request nonces and has no generic production
-  `script-src 'unsafe-inline'` or `'unsafe-eval'`. Private/identity paths remain
-  noindex.
-- No alternate host, external database, custom OAuth, email provider, paid
-  account, custom domain, credential, or production mock state was introduced.
+- Home, Events, detail, club detail, related events, categories, and sitemap
+  use one parameterized server-only service.
+- Manual publication requires supported status, public visibility,
+  `published_at`, no deletion, and a published club. Every canonical event
+  with Meetup source-link history is excluded from this branch.
+- Meetup publication reads only the immutable completed snapshot selected by
+  `active_generation_id`. Pending and failed titles, times, additions,
+  cancellations, club changes, and RSVP destinations cannot leak through any
+  public surface.
+- DTOs allowlist public fields. No feed address/token, source ID, generation
+  ID, account identifier, organizer email, private note, private meeting
+  detail, private venue detail, invitation, audit row, or submission enters a
+  public DTO.
+- Venue publication requires both the event and venue public gates. Cards and
+  detail pages say that location details are not published rather than
+  pretending a private venue is undecided.
+- Filters, dates, slugs, state, page, and page size are validated and bounded.
+  Query-plan tests prove the manual and active-snapshot projection indexes are
+  used.
 
-## Generated migrations
+### SEO, security, privacy, and accessibility
 
-The D1/SQLite schema now contains 34 product tables. Six generated migrations
-apply from an empty D1-compatible database:
+- Public pages have unique titles/descriptions, request-origin-derived
+  canonical/Open Graph URLs, the original social image, semantic breadcrumbs,
+  and fact-bounded Organization/Event/Breadcrumb JSON-LD.
+- The Worker overwrites untrusted origin/path context, applies a per-request
+  production nonce with strict-dynamic CSP, rejects inline script attributes,
+  and applies HSTS, frame, content-type, referrer, permissions, opener, and
+  resource policies. Local unsafe-inline/unsafe-eval is restricted to Vite HMR.
+- Unknown, error, organizer, identity, API, preview, `/calendar`, and filtered
+  query routes are noindex through metadata and/or response headers.
+- Privacy copy accurately describes public browsing, future organizer SIWC
+  identity sharing, Sites/D1/R2, and the absence of a public submission form.
+  It marks legal review as still required.
+- Skip link, landmarks, semantic headings, visible focus, mobile body text at
+  16 px, 44 px interactive targets, safe-area padding, reduced-motion
+  overrides, and horizontal-overflow guards are implemented.
 
-- `0000_remarkable_mordo.sql` —
-  `55DC59F954F0BD5988BF694421A3012E14D2DCE7B1201EFA20028B8774F25367`
-- `0001_outgoing_madelyne_pryor.sql` —
-  `6A0DE4962CB1C32AE55E10C454699563D4A835A05DCFB3305EE216D45B698BAF`
-- `0002_warm_yellowjacket.sql` —
-  `6924C403E9893F470FC6CB7A7251A1A809132B69FE0C3CAC49DA653C6E3F5A36`
-- `0003_amusing_pyro.sql` —
-  `95985D5BDD3E0228D60020542C4C4C2AF5DB820A40AC86873639C7D8B9EBC89F`
-- `0004_milky_fallen_one.sql` —
-  `6F13CFD528505ACC9CB73A24F7A1F37416371D32B99DEF81B3FC7C3C534654D9`
-- `0005_dashing_ronan.sql` —
-  `A0E975B2BEBE9B641ACFF1E8B26D02EF70DC65324EB982BF27082E1E05339422`
+## Exact verification evidence
 
-The generated `0003` and `0005` table-rebuild copies were corrected to
-initialize new cursor/generation fields as `NULL` instead of selecting
-nonexistent old columns. A generated-migration regression upgrades a populated
-legacy partial source, preserves its configuration, and safely clears the
-unpublishable legacy cursor. Both migration runners report zero foreign-key
-violations.
+All commands below were run from
+`C:\Users\user\Documents\Website` on 2026-07-25.
 
-## Exact verification commands and results
+- `npm.cmd ci` — **exit 0**; 503 packages installed from `package-lock.json`.
+- `npm.cmd run db:generate` — **exit 0**; 36 schema tables recognized; no
+  schema drift and no additional migration generated.
+- `npm.cmd run db:apply:local` — **exit 0**; 7 migrations, 38 SQLite tables
+  including migration bookkeeping, 2 conflict triggers, 0 foreign-key
+  violations.
+- `npm.cmd run db:apply:preview` — **exit 0**; the same 7 migrations, 38
+  tables, 2 triggers, and 0 foreign-key violations in the Sites local preview
+  D1.
+- `npm.cmd run typecheck` — **exit 0** under strict TypeScript.
+- `npm.cmd run lint` — **exit 0** before build.
+- `npm.cmd test` — **exit 0; 93/93 passed**, 0 failed, 0 skipped.
+- `npm.cmd run build` — **exit 0**; vinext production build completed and
+  emitted every authorized public route plus the preserved private Phase 1
+  routes/APIs.
+- Exact documented `npm.cmd run lint` after build and retained ignored
+  `work/**` artifacts — **exit 0**.
+- `npm.cmd run test:rendered` — **exit 0; 11/11 passed**, 0 failed, 0 skipped.
+  This applies the generated chain to a fresh Miniflare/D1 database and checks
+  built HTML, CSP, canonical metadata, public pages, empty Events, a synthetic
+  cancelled detail, accurate Event/Breadcrumb JSON-LD, robots/sitemap,
+  `/calendar`, custom 404, optimized assets, SIWC redirect, and private API
+  behavior.
+- `git diff --check` — **exit 0**.
+- Exact public Meetup group destinations — **3/3 returned HTTP 200** without a
+  redirect to a different URL during the final link check.
+- Client-output scan — **0 hits** for feed-path, source URL, normalized email,
+  private-note, private-meeting, runtime owner variable, Gmail-address,
+  private-sentinel, or Windows-user-path patterns.
+- Built-server concrete-value scan — **0 hits** for any of the three official
+  feed paths, Gmail addresses, or Sites bypass-token labels. Generic
+  server-only iCalendar parsing and private schema column names are expected
+  and remain non-public.
 
-- `npm.cmd ci` — **Completed and verified**; after stopping the active
-  workspace preview that held a native CSS binary open, 503 locked packages
-  installed cleanly from `package-lock.json`.
-- `npm.cmd run db:generate` — **Completed and verified**; Drizzle read all 34
-  product tables and reported no schema changes after the existing generated
-  `0005` publication-generation migration.
-- `npm.cmd run db:apply:local` — **Completed and verified** and idempotent; 6
-  migrations, 36 total local tables including migration metadata, 2
-  conflict-guard triggers, and 0 foreign-key violations.
-- `npm.cmd run db:apply:preview` — **Completed and verified** and idempotent;
-  the same 6 migrations, 36 total preview tables, 2 triggers, and 0
-  foreign-key violations in the Sites local preview D1.
-- Post-restart `npm.cmd run lint` reproduction before correction —
-  **Not a clean pass**; exit 1 with 10 errors and 3,410 warnings because ESLint
-  traversed generated `work/**/dist` packaging and archive-audit copies.
-- ESLint reproducibility correction — **Completed and verified**;
-  `globalIgnores()` now includes only `work/**` for this defect. The tracked
-  application remains covered and no lint rule or severity changed.
-- `npm.cmd run lint` after correction — **Completed and verified**; exit 0 with
-  the existing `work/` staging artifacts still present.
-- `npm.cmd run typecheck` after correction — **Completed and verified**; strict
-  TypeScript passed.
-- Focused Meetup/auth command (`node --import tsx --test` over
-  `tests/auth/*.test.mjs` and `tests/meetup/*.test.mjs`) — **Completed and
-  verified**; 40/40 tests passed.
-- `npm.cmd test` after correction — **Completed and verified**; 78/78 unit and
-  integration tests passed.
-- `npm.cmd run build` — **Completed and verified**; routes `/`, `/calendar`,
-  `/organizer`, `/organizer/meetup`, organizer APIs, and session API built.
-- `npm.cmd run test:rendered` — **Completed and verified**; 6/6 built-Worker
-  tests passed, including freshly migrated empty calendar, icon, manifest,
-  unoptimized-source exclusion, nonce CSP, SIWC redirect/noindex, and private
-  API behavior.
-- Browser desktop and 390×844 verification — **Completed and verified**; zero
-  horizontal overflow, zero fake event cards, zero exposed feed URLs, correct
-  not-connected state, visible icon, correct SIWC redirect, no hydration error,
-  and a fresh verification tab with no warning/error console entries.
-- Source/build secret and feed scan — **Completed and verified**; no runtime
-  owner value, concrete official iCal URL, private token, Sites credential, or
-  bypass token appears in tracked/intended source, `dist/client`, or
-  `dist/server`. Older concrete iCal test literals were replaced with
-  runtime-composed examples; the final source/build scans report zero matches.
-- `git diff --check` after correction — **Completed and verified**; exit 0 with
-  no whitespace errors.
-- `npm.cmd audit --omit=dev --json` — **Not a clean pass**; 3 high
-  findings in the pinned production tree (`next`, transitive `postcss`, and
-  transitive `sharp`).
-- `npm.cmd audit --json` — **Not a clean pass**; 18 findings: 1 low,
-  4 moderate, and 13 high.
-- Dependency-audit disposition — no finding was hidden or force-fixed. The
-  pinned supported Sites starter has no verified safe in-range resolution for
-  the complete tree; forcing framework/runtime upgrades would be an unverified
-  platform change. The saved archive contains built output, not `node_modules`.
-- Historical version 3 source handoff — exact tested source
-  commit `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f` was pushed to the configured
-  Sites source branch before that version save.
-- Historical version 3 provenance — unpublished version 3 points to that
-  commit. Its saved archive reports SHA-256
-  `6526bf36c67667b97b3f4974e2e4174df45ed6fd1a1a74866eff7e40af9d9df4`,
-  4,884,480 bytes, and 67 files. The version is superseded and was never
-  deployed.
-- Corrected version 4 source handoff — exact tested source commit
-  `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28` was pushed to the configured
-  Sites source branch before the version save.
-- Exact pre-save archive audit — the archive contained exactly the 66 files in
-  the verified `dist` tree, including the Sites entrypoint, hosting metadata,
-  and migrations. It contained no `node_modules`, `.git`, `.env`,
-  `design-assets`, master icon, private feed material, or credential pattern.
-  The uploaded gzip was 1,616,557 bytes with local SHA-256
-  `df48a76f93c9e23eb833721894b94fdab917c07cb6d9a0e1f96bf10df62601b3`.
-- Sites version 4 provenance readback — unpublished version 4 points to exact
-  commit `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`. Sites reports archive
-  content SHA-256
-  `36e4be0461cb7374c5e721c427eee1b9925c385f36e904a4d26e2f5fe7258d44`,
-  3,942,400 bytes, and 66 files. At that save, project readback reported
-  version 4 as latest with both preview and live URLs unset.
-- Owner-input continuation source handoff — exact tested source commit
-  `cb51a5969370e4bed39ce83adac8532f2900d3d7` was pushed to the configured
-  Sites `main` source branch before the version save; remote readback matched
-  that SHA.
-- Owner-input continuation archive audit — the package contained exactly 66
-  files: the verified `dist` tree, Sites hosting metadata, and six generated
-  migrations. It contained zero concrete official iCal literals, owner-email
-  matches, client-sensitive source keys, credential patterns, local D1 files,
-  environment files, design-source assets, or forbidden repository/runtime
-  directories. The uploaded gzip was 1,618,123 bytes with local SHA-256
-  `16cc0dfbf24cdc911ac8a8ad589f8aa81c45e41192461e5e63a0fdff7b2d5bc8`.
-- Sites version 5 provenance readback — unpublished version 5 points to exact
-  commit `cb51a5969370e4bed39ce83adac8532f2900d3d7`. Sites reports archive
-  content SHA-256
-  `7d028d03e00e3cda70983217ef45160be2bfcb6a9658eeec8df009695d61aead`,
-  3,952,640 bytes, and 66 files. Project readback reports version 5 as latest
-  with both preview and live URLs unset.
-- Runtime settings readback — revision 1 contains only
-  `INITIAL_OWNER_EMAIL` as a redacted secret. No deployment was created, so
-  the secret is configured but not active.
+### Dependency audit
+
+- `npm.cmd audit --omit=dev --json` — **exit 1** with 3 high, 0 critical
+  production findings (`next`, transitive `postcss`, transitive `sharp`).
+- `npm.cmd audit --json` — **exit 1** with 18 total findings: 1 low,
+  4 moderate, 13 high, 0 critical.
+- No forced or unverified dependency upgrade was applied to the pinned Sites
+  starter runtime. Patch candidates exist, but compatibility must be
+  revalidated before any future public deployment.
+
+## Browser QA
+
+Completed against the local Sites/vinext preview with the approved catalog and
+zero fake events:
+
+- 320 × 800: no horizontal overflow; mobile menu and truthful Home state fit.
+- 390 × 844: 16 px/24 px body copy, original mark legible at about 30 px,
+  mobile menu opens, combined Events filters produce a shareable URL, and
+  Clear Filters returns to the canonical state.
+- 768 × 1024: public club page shows the exact confirmed group URL, no draft
+  club, truthful event states, and no overflow.
+- 1280 × 900: Community, Privacy, and custom 404 checked; exact external
+  destinations, no discussion CTA/form, correct 404 title/noindex, and no
+  overflow.
+- 1440 × 900: complete desktop navigation visible, mobile menu hidden, no
+  overflow, no fake event links, and no interactive target below 44 px.
+- DevTools 200% reflow simulation (1280 physical width represented by a
+  640-CSS-pixel viewport): responsive menu engaged, no overflow, and no target
+  below 44 px.
+- Reduced-motion emulation matched and reduced animation/transition duration
+  to effectively zero.
+- Visible focus was verified with the 3 px coral outline. Semantic keyboard
+  controls are present; the in-app CUA Tab event itself was unreliable and is
+  not claimed as a complete manual keyboard traversal.
+- Browser console contained Vite development messages only: **0 error and
+  0 warning entries; no hydration error**.
 
 ## Implemented but not externally verified
 
-- **Implemented but not externally verified** — Sites-managed remote D1/R2 and
-  hosted SIWC persistence. Local production-compatible D1/Worker paths pass,
-  but no public deployment exists.
-- **Implemented but not externally verified** — Owner connection/refresh
-  controls with Reza's hosted identity. The secret runtime value is configured
-  but cannot become active until a future owner-authorized deployment.
+- The exact production archive and unpublished Sites version are not yet
+  saved at this pre-provenance ledger checkpoint.
+- Hosted D1 catalog creation, hosted feed refresh, hosted sitemap/event data,
+  and SIWC owner persistence are implemented but cannot be externally verified
+  without a deployment.
+- Remote D1/R2 state is unchanged. D1 migration behavior is verified in the
+  supported local/preview-compatible environments; MEDIA is bound but unused
+  in Phase 2.
 
 ## Not implemented
 
-- **Not implemented** — Phase 2 or any later master-spec product surface.
-- **Not implemented** — Meetup write-back, OAuth/GraphQL credentials, scraping,
-  password access, or a guaranteed scheduler.
-- **Not implemented** — Non-cancelled all-day Meetup reservation import. It is
-  rejected safely until the conflict engine can normalize all-day reserving
-  intervals without midnight-UTC substitution.
-- **Not implemented** — Publication of unapproved legal details, charity
-  status, photographs, organizer biographies, or private meeting content.
-- **Not implemented** — Public deployment.
+- Phase 3 invitations/team management, event editor, organizer settings, CMS
+  editing/revision restore, R2 media upload UI, conflict review/override UI,
+  public-to-private publishing workflows, and submission inbox.
+- Public forms, email, payments, donations, internal RSVP, attendee accounts,
+  comments, chat, forums, QR downloads, calendar export, and notifications.
+- No dead controls for those deferred features are shown.
 
 ## Not run
 
-- **Not run** — Hosted Sites-managed D1 import. Exact reason: this packet
-  forbids deployment, so the runtime secret is not active and the private feeds
-  were not entered into hosted D1. The equivalent real-feed import completed
-  successfully against isolated production-compatible local D1.
-- **Not run** — Hosted SIWC owner persistence test. Exact reason:
-  `INITIAL_OWNER_EMAIL` is configured as a secret but no hosted version is
-  deployed.
-- **Not run** — Second-real-identity denial smoke test. Exact reason: no second
-  authenticated ChatGPT test identity was supplied; the equivalent automated
-  denial test passes.
+- Real interactive event browser smoke: **Not run** because the review D1
+  contains no real published event and fake production events are forbidden.
+  Service tests and the built synthetic cancelled-detail test cover the flow.
+- Hosted SIWC/Owner persistence and uninvited second-identity smoke:
+  **Not run** because no deployment is authorized.
+- Hosted Meetup import and hosted D1 migration: **Not run** because no
+  deployment is authorized; production imported data remains empty.
+- R2 upload/read: **Not run** because media upload is out of Phase 2 scope.
+- Lighthouse/Core Web Vitals measurement: **Not run**; no stable hosted URL
+  exists.
+- Automated axe audit: **Not run** because axe is not part of the pinned
+  starter. Built semantic regressions and measured browser checks were run
+  instead.
 
 ## Blocked
 
-- **Blocked** — Runtime activation and hosted owner/feed smoke testing require
-  a deployment, which this packet explicitly forbids. No deployment was made
-  merely to activate the secret.
-- No blocker remains for the completed implementation, local verification,
-  exact source push, archive inspection, or unpublished version 5 save.
+- Public deployment is blocked by this packet's explicit no-deploy gate.
+- Stable-origin QR downloads are blocked until an actual production Sites URL
+  exists.
+- A clean dependency audit is blocked on a separately validated Sites-runtime
+  patch update; no unsafe forced upgrade was made.
 
 ## Missing owner inputs
 
-See `OWNER_INPUTS.md`. No value was invented:
+- Exact public Meetup discussion URL.
+- Real event RSVP URLs for a later hosted smoke test.
+- Exact BC legal name, legal form/status wording, registration number,
+  effective date, approved legal footer, and charity wording/status.
+- Final approved public copy.
+- Real photographs with rights, credits, and participant-consent state.
+- Approved organizer names/biographies and both attribution-consent gates.
+- Confirmed public contact email, if one should be published.
+- Per-event venue and accessibility facts.
+- Stable production origin.
 
-- exact public Meetup discussion URL
-- owner-selected real RSVP URLs for a later hosted smoke test
-- approved BC legal identity/status/footer/charity wording
-- approved public copy
-- real photographs with rights, credit, and participant consent
-- approved organizer names/biographies plus both attribution consents
+## Sites version and deployment state
 
-## Authorized cuts
+- Existing versions 1–5 remain preserved and unpublished.
+- Version 3 remains superseded and must not be deployed.
+- Version 5 remains the latest saved version at this checkpoint, sourced from
+  `cb51a5969370e4bed39ce83adac8532f2900d3d7`.
+- New Phase 2 unpublished version: **Pending exact commit, package, save, and
+  readback**.
+- Preview deployment: **None**.
+- Production deployment: **None**.
+- Public URL: **None claimed**.
 
-- None. The all-day behavior above is an explicit conservative safety limit,
-  not a silent platform substitution.
+## Awaiting owner smoke test
 
-## Sites project, version, and deployment state
+Status: **Awaiting owner smoke test**. No owner action is marked passed by the
+builder.
 
-- Sites project ID: `appgprj_6a62eaf79c4881919bb8e47998af851a`
-- Logical D1 binding: `DB`
-- Logical R2 binding: `MEDIA`
-- Existing unpublished versions: versions 1 through 5 remain intact.
-- Superseded unpublished version 3 source commit:
-  `cf083cdbfa6e746d7edf3f2ff2ea81c43230fd5f`
-- Superseded unpublished version: version 3; never deployed.
-- Version 4 corrected source commit:
-  `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`
-- Version 4: provenance verified and not
-  deployed.
-- Current verified source commit:
-  `cb51a5969370e4bed39ce83adac8532f2900d3d7`
-- Current unpublished version: version 5; provenance verified and not deployed.
-- Latest saved version: version 5.
-- Runtime environment revision: 1; `INITIAL_OWNER_EMAIL` is present only as a
-  redacted secret and is inactive until deployment.
-- Current Sites preview URL: none.
-- Current Sites live URL: none.
-- Production deployment: none.
-- Public access: not enabled.
-- Credentials or runtime values committed: none.
+Five-minute phone card, after a future owner-authorized preview or deployment
+is available:
 
-## Owner smoke test
+1. Open Home at phone width; confirm the mark, menu, tagline, four lanes, three
+   featured clubs, and truthful event state are readable without sideways
+   scrolling.
+2. Open Events; combine two filters, confirm the URL changes, then use Clear
+   Filters.
+3. Open one genuinely published event when available; confirm Vancouver-local
+   time, truthful location wording, and that `RSVP on Meetup` appears only with
+   a real destination.
+4. Open each public club plus Community, Conduct, Accessibility, and Privacy;
+   confirm only the three approved Meetup group links appear and no legal,
+   discussion, contact-form, or organizer claim has been invented.
+5. Open Organizer Login signed out; confirm Sign in with ChatGPT is required.
+   After owner runtime activation, refresh as Reza and confirm access persists;
+   if a second identity is available, confirm an authenticated uninvited user
+   is denied.
 
-**Awaiting owner smoke test**
+## Next phase
 
-1. Open the preview or owner-only hosted version.
-2. Confirm signed-out `/organizer` requires Sign in with ChatGPT and is noindex.
-3. After a future deployment activates the configured
-   `INITIAL_OWNER_EMAIL` runtime secret, sign in as Reza.
-4. Open `/organizer/meetup`, save each exact official group feed, and request
-   refresh until no result is partial.
-5. Refresh `/calendar`; confirm source status, Vancouver times, real titles, and
-   each real **RSVP on Meetup** link.
-6. Confirm an authenticated but uninvited test identity cannot enter, when a
-   second test identity is available.
-
-## Exact next phase
-
-- Phase 2 — **Not started**.
+**Phase 3 — Not started. Stop for owner review.**

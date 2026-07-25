@@ -22,14 +22,20 @@ interface ExecutionContext {
 
 const PRIVATE_OR_IDENTITY_PATHS = [
   "/organizer",
-  "/api/organizer",
+  "/api",
+  "/auth",
   "/accept-invitation",
+  "/drafts",
   "/invitations",
   "/preview",
   "/signin-with-chatgpt",
   "/signout-with-chatgpt",
   "/callback",
 ] as const;
+
+const TRUSTED_REQUEST_ORIGIN_HEADER = "x-vcc-request-origin";
+const TRUSTED_REQUEST_PATHNAME_HEADER = "x-vcc-request-pathname";
+const TRUSTED_CSP_NONCE_HEADER = "x-vcc-csp-nonce";
 
 function isPrivateOrIdentityPath(pathname: string): boolean {
   return PRIVATE_OR_IDENTITY_PATHS.some(
@@ -78,12 +84,24 @@ function contentSecurityPolicy(requestUrl: URL, nonce: string | null): string {
 function requestWithSecurityContext(
   request: Request,
   contentSecurityPolicyValue: string,
+  nonce: string | null,
+  requestOrigin: string,
+  requestPathname: string,
 ): Request {
   const headers = new Headers(request.headers);
   // vinext reads this request header and applies the nonce to every framework
   // bootstrap/module script it renders. The same policy is returned below.
   headers.set("Content-Security-Policy", contentSecurityPolicyValue);
   headers.delete("Content-Security-Policy-Report-Only");
+  // These values are derived inside the Worker and overwrite anything sent by
+  // a client. Server components use them for canonical URLs and JSON-LD.
+  headers.set(TRUSTED_REQUEST_ORIGIN_HEADER, requestOrigin);
+  headers.set(TRUSTED_REQUEST_PATHNAME_HEADER, requestPathname);
+  if (nonce) {
+    headers.set(TRUSTED_CSP_NONCE_HEADER, nonce);
+  } else {
+    headers.delete(TRUSTED_CSP_NONCE_HEADER);
+  }
   return new Request(request, { headers });
 }
 
@@ -121,8 +139,14 @@ function secureResponse(
     );
   }
 
-  if (isPrivateOrIdentityPath(requestUrl.pathname)) {
+  if (
+    isPrivateOrIdentityPath(requestUrl.pathname) ||
+    requestUrl.pathname === "/calendar" ||
+    response.status >= 400
+  ) {
     headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  } else if (requestUrl.search.length > 0) {
+    headers.set("X-Robots-Tag", "noindex, follow, noarchive");
   }
 
   return new Response(response.body, {
@@ -157,7 +181,13 @@ const worker = {
       return secureResponse(request, response, policy);
     }
 
-    const securedRequest = requestWithSecurityContext(request, policy);
+    const securedRequest = requestWithSecurityContext(
+      request,
+      policy,
+      nonce,
+      url.origin,
+      url.pathname,
+    );
     const response = await handler.fetch(securedRequest, env, ctx);
     return secureResponse(request, response, policy);
   },
