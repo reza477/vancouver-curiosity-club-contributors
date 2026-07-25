@@ -1291,7 +1291,8 @@ main,
   font-weight: 750;
 }
 
-.meetup-connect-panel input {
+.meetup-connect-panel input,
+.meetup-connect-panel select {
   width: 100%;
   min-height: 3.1rem;
   padding: 0.7rem 0.8rem;
@@ -1303,6 +1304,7 @@ main,
 }
 
 .meetup-connect-panel input:focus-visible,
+.meetup-connect-panel select:focus-visible,
 .meetup-controls button:focus-visible {
   outline: 0.2rem solid var(--coral);
   outline-offset: 0.2rem;

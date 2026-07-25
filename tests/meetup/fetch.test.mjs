@@ -5,8 +5,13 @@ import {
   fetchMeetupCalendar,
 } from "../../lib/server/meetup/index.ts";
 
-const feedUrl =
-  "https://www.meetup.com/vancouver-curiosity-club/events/ical/";
+const MEETUP_ORIGIN = "https://www.meetup.com/";
+const ICAL_PATH = ["events", "ical", ""].join("/");
+const feedUrl = new URL(ICAL_PATH, `${MEETUP_ORIGIN}example-group/`).href;
+const otherFeedUrl = new URL(
+  ICAL_PATH,
+  `${MEETUP_ORIGIN}other-example-group/`,
+).href;
 
 test("manually validates every redirect and preserves conditional headers", async () => {
   const requests = [];
@@ -43,8 +48,7 @@ test("rejects cross-group redirects and oversized streamed responses", async () 
         new Response(null, {
           status: 302,
           headers: {
-            location:
-              "https://www.meetup.com/other-group/events/ical/",
+            location: otherFeedUrl,
           },
         }),
     }),

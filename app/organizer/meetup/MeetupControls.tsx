@@ -14,12 +14,15 @@ type RefreshCounts = Readonly<{
 
 export function MeetupControls({
   canConfigure,
+  clubOptions,
   initialState,
 }: Readonly<{
   canConfigure: boolean;
+  clubOptions: readonly Readonly<{ id: string; name: string }>[];
   initialState: MeetupUiState;
 }>) {
   const [state, setState] = useState(initialState);
+  const [clubId, setClubId] = useState("");
   const [feedUrl, setFeedUrl] = useState("");
   const [busyAction, setBusyAction] = useState<"connect" | "refresh" | null>(
     null,
@@ -39,7 +42,7 @@ export function MeetupControls({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ feedUrl }),
+        body: JSON.stringify({ clubId, feedUrl }),
       });
       const body = await readJson(response);
       if (!response.ok || !isConnectResponse(body)) {
@@ -161,6 +164,28 @@ export function MeetupControls({
               </p>
             </div>
             <form onSubmit={connect}>
+              <label htmlFor="meetup-program-club">
+                Program
+              </label>
+              <select
+                id="meetup-program-club"
+                name="clubId"
+                value={clubId}
+                onChange={(event) => setClubId(event.target.value)}
+                aria-describedby="meetup-program-help"
+                required
+              >
+                <option value="">Choose a program</option>
+                {clubOptions.map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.name}
+                  </option>
+                ))}
+              </select>
+              <p id="meetup-program-help">
+                The selected program must match the official Meetup group in
+                the calendar feed.
+              </p>
               <label htmlFor="meetup-feed-url">
                 Official Meetup calendar feed URL
               </label>
@@ -183,7 +208,11 @@ export function MeetupControls({
               </p>
               <button
                 type="submit"
-                disabled={busyAction !== null || feedUrl.length === 0}
+                disabled={
+                  busyAction !== null ||
+                  clubId.length === 0 ||
+                  feedUrl.length === 0
+                }
               >
                 {busyAction === "connect" ? "Saving…" : "Save source"}
               </button>

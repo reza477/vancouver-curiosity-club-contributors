@@ -28,6 +28,12 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
 - Store one active `meetup_ics` source per club while allowing multiple clubs
   and distinct feeds in the same organization. Enforce both organization/club
   uniqueness and organization/source-URL uniqueness.
+- Resolve the three owner-approved program clubs idempotently using their exact
+  public names and stable organization-scoped records. The protected connection
+  form submits an explicit club ID. Server authorization proves that club
+  belongs to the actor's organization and the parsed, lowercase Meetup group
+  slug must match the selected catalog program. Never infer a destination from
+  connection order, a feed hash, or an unbound-club query.
 - Scope external identities to the sync source so identical UIDs in different
   group feeds cannot collide.
 - Exclude every canonical event with Meetup source-link history from the
@@ -59,6 +65,11 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
   through the supported runtime path. This keeps both the successful and
   conflict-rejection paths at or below D1's documented 50-query Free Worker
   invocation ceiling.
+- Derive the resumable snapshot hash from the normalized work items that can
+  affect identity, ordering, provenance, reconciliation, or publication—not
+  raw iCalendar bytes. Meetup can vary ignored calendar decoration,
+  descriptions, or locations between requests; those private/unused changes
+  must not strand a pending cursor.
 - Use conditional ETag/Last-Modified fetches after complete snapshots. Refetch
   the body while a partial snapshot is pending so the cursor can resume only
   against the same hash.
@@ -81,6 +92,8 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
   server-side membership.
 - Owner and Administrator may configure or refresh. Organizer may view only
   the coarse aggregate connection state.
+- The Owner/Administrator connection form receives only safe club ID/name
+  options and never receives a saved feed address or expected feed URL.
 - Connection and refresh APIs enforce exact same-origin mutation requests and
   private/no-store responses.
 - Public and client DTOs never contain a feed URL, token, source ID,

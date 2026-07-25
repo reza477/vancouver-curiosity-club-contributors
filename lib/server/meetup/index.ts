@@ -5,6 +5,12 @@ export {
   refreshMeetupCalendarSourceIfDue,
 } from "./sync";
 export {
+  ensureMeetupProgramClubs,
+} from "./clubs";
+export type {
+  MeetupProgramClub,
+} from "./clubs";
+export {
   listDefaultPublicMeetupCalendar,
   listPublicMeetupCalendar,
 } from "./public";

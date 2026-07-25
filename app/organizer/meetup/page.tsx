@@ -11,7 +11,10 @@ import {
   trustedIdentityFromSites,
 } from "@/lib/server/auth";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
-import { getMeetupConnectionState } from "@/lib/server/meetup";
+import {
+  ensureMeetupProgramClubs,
+  getMeetupConnectionState,
+} from "@/lib/server/meetup";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 import { MeetupControls } from "./MeetupControls";
 import { toMeetupUiState } from "./model";
@@ -35,6 +38,7 @@ export default async function OrganizerMeetupPage() {
   let loaded:
     | Readonly<{
         canConfigure: boolean;
+        clubs: readonly Readonly<{ id: string; name: string }>[];
         role: "administrator" | "organizer" | "owner";
         state: Awaited<ReturnType<typeof getMeetupConnectionState>>;
       }>
@@ -52,8 +56,12 @@ export default async function OrganizerMeetupPage() {
     const canConfigure =
       membership.role === "owner" ||
       membership.role === "administrator";
+    const clubs = canConfigure
+      ? await ensureMeetupProgramClubs(database, identity)
+      : Object.freeze([]);
     loaded = {
       canConfigure,
+      clubs,
       role: membership.role,
       state,
     };
@@ -116,6 +124,7 @@ export default async function OrganizerMeetupPage() {
 
       <MeetupControls
         canConfigure={loaded.canConfigure}
+        clubOptions={loaded.clubs}
         initialState={toMeetupUiState(loaded.state)}
       />
     </main>

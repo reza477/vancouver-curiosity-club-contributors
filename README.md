@@ -36,21 +36,30 @@ To connect production data:
 2. Copy the official group calendar export/subscription URL supplied by Meetup.
    The accepted canonical form is
    `https://www.meetup.com/<group-slug>/events/ical/`.
-3. Open `/organizer/meetup`, save the feed, and repeat for each official Meetup
-   group. Distinct feeds receive distinct club scopes within the organization.
+3. Open `/organizer/meetup`, select the matching approved program, save the
+   feed, and repeat for each official Meetup group. The server verifies that
+   the selected organization-owned club matches the feed's normalized group
+   slug; connection order never chooses a destination.
 4. Choose **Refresh now**. A request handles one feed and at most three calendar
    rows. If it reports **partial**, refresh again; later public calendar views
    can also continue the same snapshot.
 
-No `INITIAL_OWNER_EMAIL` runtime value or official feed URL has been supplied
-in this workspace, so production imported data is intentionally empty and the
-calendar truthfully shows **Not connected**.
+`INITIAL_OWNER_EMAIL` is stored only as a secret Sites runtime setting and
+becomes active only with a future owner-authorized deployment. Official feed
+addresses remain operator-entered D1 configuration and are never committed.
+No hosted feed connection or deployment is claimed, so production imported
+data remains intentionally empty.
 
 ### Synchronization contract
 
 - Completed feeds wait at least 15 minutes before refresh-on-view checks them
   again. Each public view checks at most one feed.
 - Partial snapshots can resume immediately in another bounded request.
+- The resumable generation hash covers normalized, validated import facts
+  rather than raw calendar decoration. Meetup may change ignored export bytes
+  between requests; those changes cannot restart a cursor, while any title,
+  schedule, status, identity, RSVP, sequence, or last-modified change still
+  creates a new generation identity.
 - Imported rows are staged in an isolated pending generation. Staged rows and
   progress counters may change while that generation is pending; once a
   generation is published, the supported runtime does not mutate its snapshot
@@ -73,6 +82,10 @@ calendar truthfully shows **Not connected**.
   another source's active snapshot still reserves it as confirmed or tentative.
 - UID plus recurrence identity is source-scoped, so the same UID in two club
   feeds cannot collide.
+- The exact program catalog is resolved idempotently inside the authenticated
+  organization. A connect request must carry one of those club IDs, and the
+  server rejects a cross-organization, unsupported, or group-mismatched club
+  before creating a source.
 - Source sequence and last-modified fields are monotonic; stale replays cannot
   resurrect a newer cancellation.
 - Raw feed descriptions and locations are not persisted or published because

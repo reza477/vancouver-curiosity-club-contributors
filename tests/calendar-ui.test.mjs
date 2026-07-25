@@ -97,6 +97,13 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
     page,
     /membership\.role === "owner"[\s\S]*membership\.role === "administrator"/,
   );
+  assert.match(page, /ensureMeetupProgramClubs\(database, identity\)/);
+  assert.match(page, /clubOptions=\{loaded\.clubs\}/);
+  assert.match(
+    page,
+    /clubs:\s*readonly Readonly<\{\s*id:\s*string;\s*name:\s*string\s*\}>\[\]/,
+  );
+  assert.doesNotMatch(page, /sourceUrl|source_url|feedUrl/);
   assert.match(controls, /canConfigure\s*\?\s*\(/);
   assert.match(controls, /Organizer access is read-only/);
   assert.match(controls, /only an Owner or Administrator can refresh/);
@@ -105,6 +112,26 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
     /Saved source[\s\S]*addresses are never shown back/,
   );
   assert.match(controls, /does not claim that a[\s\S]*refresh or import succeeded/);
+  assert.match(
+    controls,
+    /<label htmlFor="meetup-program-club">[\s\S]*Program[\s\S]*<\/label>/,
+  );
+  assert.match(
+    controls,
+    /<select[\s\S]*id="meetup-program-club"[\s\S]*name="clubId"[\s\S]*aria-describedby="meetup-program-help"[\s\S]*required/,
+  );
+  assert.match(
+    controls,
+    /clubOptions\.map\(\(club\) => \([\s\S]*value=\{club\.id\}[\s\S]*\{club\.name\}/,
+  );
+  assert.match(
+    controls,
+    /body:\s*JSON\.stringify\(\{\s*clubId,\s*feedUrl\s*\}\)/,
+  );
+  assert.match(
+    controls,
+    /clubId\.length === 0[\s\S]*feedUrl\.length === 0/,
+  );
   assert.doesNotMatch(model, /feedUrl|lastErrorCode|organizationId/);
   assert.match(model, /Explicitly strips organization identifiers/);
 });
@@ -142,6 +169,20 @@ test("manual Meetup APIs derive authority server-side and restrict both mutation
     assert.doesNotMatch(route, /organizationId|actorId|membershipRole/);
   }
 
+  assert.match(
+    connect,
+    /assertOnlyKeys\(payload,\s*\["clubId", "feedUrl"\]\)/,
+  );
+  assert.match(
+    connect,
+    /parseIdentifier\(payload\.clubId,\s*"clubId"\)/,
+  );
+  assert.match(connect, /ensureMeetupProgramClubs\(database, identity\)/);
+  assert.match(
+    connect,
+    /configureMeetupCalendarSource\(database, identity,\s*\{\s*clubId,\s*feedUrl,\s*\}\)/,
+  );
+  assert.doesNotMatch(connect, /sourceUrl|source_url/);
   assert.doesNotMatch(
     model,
     /^\s*(feedUrl|lastErrorCode|organizationId)\s*:/mu,
@@ -185,9 +226,13 @@ test("same-origin mutation guard rejects missing, malformed, and cross-site orig
 });
 
 test("bounded body reader enforces streamed bytes without trusting Content-Length", async () => {
+  const exampleFeedUrl = new URL(
+    ["events", "ical", ""].join("/"),
+    "https://www.meetup.com/example/",
+  ).href;
   const valid = new Request("https://club.example/api/organizer/meetup", {
     method: "POST",
-    body: '{"feedUrl":"https://www.meetup.com/example/events/ical/"}',
+    body: JSON.stringify({ feedUrl: exampleFeedUrl }),
   });
   const validBody = await readBoundedUtf8Body(valid, 256);
   assert.equal(parseJsonBody(validBody).feedUrl.includes("meetup.com"), true);

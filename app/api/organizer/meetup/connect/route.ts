@@ -1,7 +1,11 @@
-import { configureMeetupCalendarSource } from "@/lib/server/meetup";
+import {
+  configureMeetupCalendarSource,
+  ensureMeetupProgramClubs,
+} from "@/lib/server/meetup";
 import {
   assertOnlyKeys,
   parseBoundedString,
+  parseIdentifier,
   parseObject,
 } from "@/lib/validation";
 import {
@@ -28,13 +32,16 @@ export async function POST(request: Request): Promise<Response> {
     const payload = parseObject(
       parseJsonBody(await readBoundedUtf8Body(request, 4096)),
     );
-    assertOnlyKeys(payload, ["feedUrl"]);
+    assertOnlyKeys(payload, ["clubId", "feedUrl"]);
+    const clubId = parseIdentifier(payload.clubId, "clubId");
     const feedUrl = parseBoundedString(payload.feedUrl, {
       path: "feedUrl",
       minLength: 1,
       maxLength: 2048,
     });
+    await ensureMeetupProgramClubs(database, identity);
     const state = await configureMeetupCalendarSource(database, identity, {
+      clubId,
       feedUrl,
     });
 

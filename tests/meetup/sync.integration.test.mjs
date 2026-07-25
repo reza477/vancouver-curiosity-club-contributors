@@ -4,12 +4,17 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   configureMeetupCalendarSource,
+  ensureMeetupProgramClubs,
   getMeetupConnectionState,
   listPublicMeetupCalendar,
   refreshMeetupCalendarSource,
 } from "../../lib/server/meetup/index.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
-import { trustedIdentityFromSites } from "../../lib/server/auth/index.ts";
+import {
+  OrganizerAccessDeniedError,
+  trustedIdentityFromSites,
+} from "../../lib/server/auth/index.ts";
+import { InputValidationError } from "../../lib/validation/index.ts";
 import {
   safeErrorResponse,
   writeSafeLog,
@@ -23,10 +28,51 @@ const OWNER_IDENTITY = trustedIdentityFromSites({
   displayName: "Reza",
 });
 const ORGANIZATION_ID = "org_vcc";
-const FEED_A =
-  "https://www.meetup.com/vancouver-curiosity-club/events/ical/";
-const FEED_B =
-  "https://www.meetup.com/vancouver-ideas-club/events/ical/";
+const MEETUP_ORIGIN = "https://www.meetup.com/";
+const CATALOG_CLUBS = Object.freeze([
+  Object.freeze({
+    feedGroupSlug: "vancouver-meetup-group",
+    id: "club_a",
+    name: "Vancouver Curiosity Club",
+    slug: "vancouver-curiosity-club",
+  }),
+  Object.freeze({
+    feedGroupSlug: "vancouver-literature-and-film",
+    id: "club_b",
+    name: "Vancouver Literature and Film",
+    slug: "vancouver-literature-and-film",
+  }),
+  Object.freeze({
+    feedGroupSlug: "vancouver-fantasy-scifi-meetup-group",
+    id: "club_c",
+    name: "Vancouver Fantasy & Sci-Fi Group",
+    slug: "vancouver-fantasy-scifi-group",
+  }),
+]);
+const CLUB_BY_ID = new Map(CATALOG_CLUBS.map((club) => [club.id, club]));
+const GROUP_A = CATALOG_CLUBS[0].feedGroupSlug;
+const GROUP_B = CATALOG_CLUBS[1].feedGroupSlug;
+const GROUP_C = CATALOG_CLUBS[2].feedGroupSlug;
+const FEED_A = meetupFeedUrl(GROUP_A);
+const FEED_B = meetupFeedUrl(GROUP_B);
+const FEED_C = meetupFeedUrl(GROUP_C);
+const CATALOG_CONNECTIONS = Object.freeze([
+  Object.freeze({ ...CATALOG_CLUBS[0], feedUrl: FEED_A }),
+  Object.freeze({ ...CATALOG_CLUBS[1], feedUrl: FEED_B }),
+  Object.freeze({ ...CATALOG_CLUBS[2], feedUrl: FEED_C }),
+]);
+const CONNECTION_ORDERS = Object.freeze([
+  Object.freeze([0, 1, 2]),
+  Object.freeze([0, 2, 1]),
+  Object.freeze([1, 0, 2]),
+  Object.freeze([1, 2, 0]),
+  Object.freeze([2, 0, 1]),
+  Object.freeze([2, 1, 0]),
+]);
+
+function meetupFeedUrl(groupSlug) {
+  return new URL(`${groupSlug}/events/ical/`, MEETUP_ORIGIN).href;
+}
 
 function loadGeneratedMigrations() {
   const migrationDirectory = join(process.cwd(), "drizzle");
@@ -43,7 +89,9 @@ function loadGeneratedMigration(name) {
   return readFileSync(join(process.cwd(), "drizzle", name), "utf8");
 }
 
-function createDatabase({ clubs = ["club_a"] } = {}) {
+function createDatabase({
+  clubs = CATALOG_CLUBS.map((club) => club.id),
+} = {}) {
   const database = new SqliteD1TestDatabase(loadGeneratedMigrations());
   database.exec(`
     INSERT INTO profiles (
@@ -71,15 +119,19 @@ function createDatabase({ clubs = ["club_a"] } = {}) {
     );
     ${clubs
       .map(
-        (clubId, index) => `
+        (clubId) => {
+          const club = CLUB_BY_ID.get(clubId);
+          assert.ok(club, `unknown catalog club fixture: ${clubId}`);
+          return `
           INSERT INTO clubs (
             id, organization_id, name, slug, created_by_profile_id,
             created_at, updated_at
           ) VALUES (
-            '${clubId}', '${ORGANIZATION_ID}', 'Club ${index + 1}',
-            'club-${index + 1}', 'profile_owner', 1, 1
+            '${club.id}', '${ORGANIZATION_ID}', '${club.name.replaceAll("'", "''")}',
+            '${club.slug}', 'profile_owner', 1, 1
           );
-        `,
+        `;
+        },
       )
       .join("\n")}
   `);
@@ -90,7 +142,7 @@ function meetupEvent({
   description = "PRIVATE_DESCRIPTION_SENTINEL",
   end = "20280311T050000Z",
   eventId = "1001",
-  groupSlug = "vancouver-curiosity-club",
+  groupSlug = GROUP_A,
   lastModified = "20260724T020000Z",
   location = "PRIVATE_LOCATION_SENTINEL",
   sequence = 1,
@@ -206,7 +258,7 @@ test("isolates the same external UID across two official club feeds", async (t) 
         calendar(
           meetupEvent({
             eventId: "1001",
-            groupSlug: "vancouver-curiosity-club",
+            groupSlug: GROUP_A,
             start: "20280311T030000Z",
             end: "20280311T050000Z",
             title: "Club A Event",
@@ -218,7 +270,7 @@ test("isolates the same external UID across two official club feeds", async (t) 
         calendar(
           meetupEvent({
             eventId: "2001",
-            groupSlug: "vancouver-ideas-club",
+            groupSlug: GROUP_B,
             start: "20280312T030000Z",
             end: "20280312T050000Z",
             title: "Club B Event",
@@ -298,7 +350,8 @@ test("generated generation migration preserves a source and safely clears legacy
       id, organization_id, name, slug, created_by_profile_id,
       created_at, updated_at
     ) VALUES (
-      'club_a', '${ORGANIZATION_ID}', 'Club 1', 'club-1',
+      'club_a', '${ORGANIZATION_ID}', 'Vancouver Curiosity Club',
+      'vancouver-curiosity-club',
       'profile_owner', 1, 1
     );
     INSERT INTO sync_sources (
@@ -347,7 +400,7 @@ test("generated generation migration preserves a source and safely clears legacy
   );
 });
 
-test("same-source configuration is idempotent and replacement leaves one active source", async (t) => {
+test("same-source configuration is idempotent", async (t) => {
   const database = createDatabase();
   t.after(() => database.close());
 
@@ -376,18 +429,6 @@ test("same-source configuration is idempotent and replacement leaves one active 
   assert.deepEqual(repeated, first);
   assert.deepEqual(repeatedState, firstState);
   assert.equal(JSON.stringify(repeatedState).includes(FEED_A), false);
-
-  await configure(database, "club_a", FEED_B, 3_000);
-  const replacement = await database
-    .prepare(
-      `SELECT id, source_url
-       FROM sync_sources
-       WHERE club_id = 'club_a'
-         AND deleted_at IS NULL`,
-    )
-    .first();
-  assert.notEqual(replacement.id, first.id);
-  assert.equal(replacement.source_url, FEED_B);
   assert.equal(
     await database
       .prepare(
@@ -399,55 +440,250 @@ test("same-source configuration is idempotent and replacement leaves one active 
       .first("count"),
     1,
   );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM audit_logs
+         WHERE action = 'meetup.connection_configured'`,
+      )
+      .first("count"),
+    1,
+  );
 });
 
-test("auto-assigns distinct official feeds across multiple club-scoped sources", async (t) => {
-  const database = createDatabase({ clubs: ["club_a"] });
+test("resolves the exact safe Meetup program catalog from an empty organization", async (t) => {
+  const database = createDatabase({ clubs: [] });
   t.after(() => database.close());
 
-  await configureMeetupCalendarSource(
+  const first = await ensureMeetupProgramClubs(
     database,
     OWNER_IDENTITY,
-    { feedUrl: FEED_A },
     1_000,
   );
-  const state = await configureMeetupCalendarSource(
+  const repeated = await ensureMeetupProgramClubs(
     database,
     OWNER_IDENTITY,
-    { feedUrl: FEED_B },
     2_000,
   );
+  assert.deepEqual(repeated, first);
+  assert.deepEqual(
+    first.map((club) => club.name),
+    CATALOG_CLUBS.map((club) => club.name),
+  );
+  for (const club of first) {
+    assert.deepEqual(Object.keys(club).sort(), ["id", "name"]);
+  }
 
-  const sources = await database
+  const stored = await database
     .prepare(
-      `SELECT club_id, source_url
-       FROM sync_sources
+      `SELECT id, name, slug
+       FROM clubs
        WHERE organization_id = ?
-         AND source_type = 'meetup_ics'
          AND deleted_at IS NULL
-       ORDER BY source_url`,
+       ORDER BY slug`,
     )
     .bind(ORGANIZATION_ID)
     .all();
-  assert.equal(sources.results.length, 2);
-  assert.equal(
-    new Set(sources.results.map((row) => row.club_id)).size,
-    2,
-  );
+  const idsByName = new Map(first.map((club) => [club.name, club.id]));
   assert.deepEqual(
-    sources.results.map((row) => row.source_url).sort(),
-    [FEED_A, FEED_B].sort(),
+    stored.results.map((row) => ({ ...row })),
+    CATALOG_CLUBS
+      .map((club) => ({
+        id: idsByName.get(club.name),
+        name: club.name,
+        slug: club.slug,
+      }))
+      .sort((left, right) => left.slug.localeCompare(right.slug)),
   );
-  assert.equal(JSON.stringify(state).includes(FEED_A), false);
-  assert.equal(JSON.stringify(state).includes(FEED_B), false);
+  const serializedOptions = JSON.stringify(first);
+  for (const feedUrl of [FEED_A, FEED_B, FEED_C]) {
+    assert.equal(serializedOptions.includes(feedUrl), false);
+  }
+  assert.equal(/feed|source|organization/iu.test(serializedOptions), false);
+});
+
+test("preserves the exact source-to-program mapping in all six connection orders", async () => {
+  for (const order of CONNECTION_ORDERS) {
+    const database = createDatabase();
+    try {
+      let state = null;
+      for (const [position, connectionIndex] of order.entries()) {
+        const connection = CATALOG_CONNECTIONS[connectionIndex];
+        state = await configure(
+          database,
+          connection.id,
+          connection.feedUrl,
+          1_000 + position,
+        );
+      }
+
+      const sources = await database
+        .prepare(
+          `SELECT source.club_id, club.name, club.slug, source.source_url
+           FROM sync_sources AS source
+           JOIN clubs AS club
+             ON club.id = source.club_id
+            AND club.organization_id = source.organization_id
+           WHERE source.organization_id = ?
+             AND source.source_type = 'meetup_ics'
+             AND source.deleted_at IS NULL
+             AND club.deleted_at IS NULL
+           ORDER BY source.club_id`,
+        )
+        .bind(ORGANIZATION_ID)
+        .all();
+      assert.deepEqual(
+        sources.results.map((row) => ({ ...row })),
+        CATALOG_CONNECTIONS.map((connection) => ({
+          club_id: connection.id,
+          name: connection.name,
+          slug: connection.slug,
+          source_url: connection.feedUrl,
+        })),
+        `connection order ${order.join(",")} changed the approved mapping`,
+      );
+      assert.equal(
+        await database
+          .prepare(
+            `SELECT count(*) AS count
+             FROM audit_logs
+             WHERE action = 'meetup.connection_configured'`,
+          )
+          .first("count"),
+        3,
+      );
+      const serializedState = JSON.stringify(state);
+      for (const feedUrl of [FEED_A, FEED_B, FEED_C]) {
+        assert.equal(serializedState.includes(feedUrl), false);
+      }
+      assert.equal(serializedState.includes("sourceUrl"), false);
+      assert.equal(serializedState.includes("source_url"), false);
+    } finally {
+      database.close();
+    }
+  }
+});
+
+test("rejects mismatched, nonexistent, and cross-organization club selections without residue", async () => {
+  const cases = [
+    {
+      clubId: "club_a",
+      feedUrl: FEED_B,
+      name: "mismatched program",
+      setup() {},
+      validate(error) {
+        return (
+          error instanceof InputValidationError &&
+          error.issues.some(
+            (issue) =>
+              issue.path === "clubId" &&
+              issue.code === "meetup_program_mismatch",
+          )
+        );
+      },
+    },
+    {
+      clubId: "club_missing",
+      feedUrl: FEED_A,
+      name: "nonexistent club",
+      setup() {},
+      validate(error) {
+        return (
+          error instanceof OrganizerAccessDeniedError &&
+          error.reason === "club_assignment_required"
+        );
+      },
+    },
+    {
+      clubId: "club_external",
+      feedUrl: FEED_A,
+      name: "cross-organization club",
+      setup(database) {
+        database.exec(`
+          INSERT INTO organizations (
+            id, name, slug, timezone, created_at, updated_at
+          ) VALUES (
+            'org_external', 'External organization',
+            'external-organization', 'America/Vancouver', 1, 1
+          );
+          INSERT INTO clubs (
+            id, organization_id, name, slug, created_by_profile_id,
+            created_at, updated_at
+          ) VALUES (
+            'club_external', 'org_external', 'External club',
+            'external-club', 'profile_owner', 1, 1
+          );
+        `);
+      },
+      validate(error) {
+        return (
+          error instanceof OrganizerAccessDeniedError &&
+          error.reason === "club_assignment_required"
+        );
+      },
+    },
+  ];
+
+  for (const rejectedCase of cases) {
+    const database = createDatabase();
+    try {
+      rejectedCase.setup(database);
+      const clubsBefore = await database
+        .prepare(`SELECT count(*) AS count FROM clubs`)
+        .first("count");
+
+      await assert.rejects(
+        configure(
+          database,
+          rejectedCase.clubId,
+          rejectedCase.feedUrl,
+          2_000,
+        ),
+        rejectedCase.validate,
+        rejectedCase.name,
+      );
+      assert.equal(
+        await database
+          .prepare(`SELECT count(*) AS count FROM sync_sources`)
+          .first("count"),
+        0,
+        `${rejectedCase.name} left a source row`,
+      );
+      assert.equal(
+        await database
+          .prepare(
+            `SELECT count(*) AS count
+             FROM audit_logs
+             WHERE action = 'meetup.connection_configured'`,
+          )
+          .first("count"),
+        0,
+        `${rejectedCase.name} left a configuration audit`,
+      );
+      assert.equal(
+        await database
+          .prepare(`SELECT count(*) AS count FROM clubs`)
+          .first("count"),
+        clubsBefore,
+        `${rejectedCase.name} changed club records`,
+      );
+    } finally {
+      database.close();
+    }
+  }
 });
 
 test("feed URLs and tokens stay out of client DTOs and safe logs", async (t) => {
   const database = createDatabase();
   t.after(() => database.close());
-  const privateFeed =
-    "https://www.meetup.com/vancouver-curiosity-club/events/ical/";
+  const privateFeed = FEED_A;
   const privateToken = "MEETUP_PRIVATE_TOKEN_SENTINEL";
+  const safeClubOptions = await ensureMeetupProgramClubs(
+    database,
+    OWNER_IDENTITY,
+    999,
+  );
   const connection = await configure(
     database,
     "club_a",
@@ -465,7 +701,12 @@ test("feed URLs and tokens stay out of client DTOs and safe logs", async (t) => 
     todayDate: "2026-01-01",
     nowUtcMs: 1_001,
   });
-  for (const dto of [connection, state, publicCalendar]) {
+  for (const dto of [
+    connection,
+    state,
+    publicCalendar,
+    safeClubOptions,
+  ]) {
     const serialized = JSON.stringify(dto);
     assert.equal(serialized.includes(privateFeed), false);
     assert.equal(serialized.includes("sourceUrl"), false);
@@ -925,6 +1166,219 @@ test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => 
   });
   assert.equal(publicCalendar.sync.status, "current");
   assert.equal(publicCalendar.events.length, 4);
+});
+
+test("resumes one canonical generation when ignored raw calendar bytes change", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await configure(database, "club_a", FEED_A, 1_000);
+
+  const firstDecoration = "RAW_CALENDAR_DECORATION_FIRST_8f7a";
+  const secondDecoration = "RAW_CALENDAR_DECORATION_SECOND_2c91";
+  const firstDescription = "RAW_DESCRIPTION_FIRST_9d31";
+  const secondDescription = "RAW_DESCRIPTION_SECOND_6b42";
+  const firstLocation = "RAW_LOCATION_FIRST_4a85";
+  const secondLocation = "RAW_LOCATION_SECOND_1e73";
+  const eventFacts = [
+    {
+      end: "20280411T040000Z",
+      eventId: "4101",
+      start: "20280411T030000Z",
+      title: "Canonical Chunk One",
+      uid: "canonical-chunk-1@meetup.com",
+    },
+    {
+      end: "20280412T040000Z",
+      eventId: "4102",
+      start: "20280412T030000Z",
+      title: "Canonical Chunk Two",
+      uid: "canonical-chunk-2@meetup.com",
+    },
+    {
+      end: "20280413T040000Z",
+      eventId: "4103",
+      start: "20280413T030000Z",
+      title: "Canonical Chunk Three",
+      uid: "canonical-chunk-3@meetup.com",
+    },
+    {
+      end: "20280414T040000Z",
+      eventId: "4104",
+      start: "20280414T030000Z",
+      title: "Canonical Chunk Four",
+      uid: "canonical-chunk-4@meetup.com",
+    },
+  ];
+  const rawCalendar = (decoration, description, location) =>
+    calendar(
+      ...eventFacts.map((facts) =>
+        meetupEvent({
+          ...facts,
+          description,
+          location,
+        }),
+      ),
+    ).replace(
+      "METHOD:PUBLISH",
+      `METHOD:PUBLISH
+X-WR-CALNAME:${decoration}
+X-CALENDAR-COLOR:#123456`,
+    );
+  const firstBody = rawCalendar(
+    firstDecoration,
+    firstDescription,
+    firstLocation,
+  );
+  const secondBody = rawCalendar(
+    secondDecoration,
+    secondDescription,
+    secondLocation,
+  );
+  assert.notEqual(firstBody, secondBody);
+
+  const fetcher = sequenceFetcher([firstBody, secondBody]);
+  const partial = await refresh(
+    database,
+    "club_a",
+    fetcher,
+    2_000,
+  );
+  assert.equal(partial.outcome, "partial");
+  assert.equal(partial.counts.created, 3);
+  const pending = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id,
+              pending_snapshot_hash, pending_cursor
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(pending.active_generation_id, null);
+  assert.equal(typeof pending.pending_generation_id, "string");
+  assert.equal(typeof pending.pending_snapshot_hash, "string");
+  assert.equal(pending.pending_cursor, 3);
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM meetup_sync_generations`,
+      )
+      .first("count"),
+    1,
+  );
+
+  const completed = await refresh(
+    database,
+    "club_a",
+    fetcher,
+    3_000,
+  );
+  assert.equal(completed.outcome, "completed");
+  assert.equal(completed.counts.created, 1);
+  const finished = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id,
+              pending_snapshot_hash, pending_cursor
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(finished.active_generation_id, pending.pending_generation_id);
+  assert.equal(finished.pending_generation_id, null);
+  assert.equal(finished.pending_snapshot_hash, null);
+  assert.equal(finished.pending_cursor, null);
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM meetup_sync_generations`,
+      )
+      .first("count"),
+    1,
+    "raw-only changes must not abandon and restart the generation",
+  );
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT state, expected_item_count, processed_item_count,
+                  rejected_item_count, removed_count
+           FROM meetup_sync_generations
+           WHERE id = ?`,
+        )
+        .bind(finished.active_generation_id)
+        .first()),
+    },
+    {
+      state: "published",
+      expected_item_count: 4,
+      processed_item_count: 4,
+      rejected_item_count: 0,
+      removed_count: 0,
+    },
+  );
+
+  const publicCalendar = await listPublicMeetupCalendar(database, {
+    organizationId: ORGANIZATION_ID,
+    fromUtcMs: 0,
+    todayDate: "2026-01-01",
+    nowUtcMs: 3_001,
+  });
+  assert.deepEqual(
+    publicCalendar.events.map((event) => ({
+      description: event.description,
+      rsvpUrl: event.rsvpUrl,
+      title: event.title,
+      venue: event.venue,
+    })),
+    eventFacts.map((facts) => ({
+      description: null,
+      rsvpUrl: `https://www.meetup.com/${GROUP_A}/events/${facts.eventId}/`,
+      title: facts.title,
+      venue: null,
+    })),
+  );
+
+  const durableFacts = {
+    audits: (
+      await database
+        .prepare(`SELECT metadata_json FROM audit_logs`)
+        .all()
+    ).results,
+    events: (
+      await database
+        .prepare(
+          `SELECT summary, description, private_notes,
+                  private_meeting_details
+           FROM events`,
+        )
+        .all()
+    ).results,
+    imports: (
+      await database
+        .prepare(
+          `SELECT source_payload_json, normalized_payload_json
+           FROM import_rows`,
+        )
+        .all()
+    ).results,
+    publicCalendar,
+  };
+  const serializedDurableFacts = JSON.stringify(durableFacts);
+  for (const ignoredRawValue of [
+    firstDecoration,
+    secondDecoration,
+    firstDescription,
+    secondDescription,
+    firstLocation,
+    secondLocation,
+  ]) {
+    assert.equal(
+      serializedDurableFacts.includes(ignoredRawValue),
+      false,
+      `${ignoredRawValue} leaked into durable or public data`,
+    );
+  }
 });
 
 test("disabled sources pause publication as well as refresh", async (t) => {
@@ -1432,7 +1886,7 @@ test("reconciles disappeared future events only after source-scoped finalization
   const sourceBEvent = meetupEvent({
     uid: "other-source@meetup.com",
     eventId: "9201",
-    groupSlug: "vancouver-ideas-club",
+    groupSlug: GROUP_B,
     title: "Other Source Event",
     start: "20280610T030000Z",
     end: "20280610T040000Z",
@@ -1891,7 +2345,7 @@ test("keeps a shared canonical event while another active source still reserves 
   const tentativeReservation = meetupEvent({
     uid: "shared-source-b@meetup.com",
     eventId: "9301",
-    groupSlug: "vancouver-ideas-club",
+    groupSlug: GROUP_B,
     status: "TENTATIVE",
     title: "Tentative Source B Reservation",
     start: "20280703T030000Z",

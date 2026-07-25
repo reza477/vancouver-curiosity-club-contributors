@@ -7,6 +7,7 @@ import type {
 import {
   parseFiniteInteger,
   parseIdentifier,
+  validationIssue,
 } from "../../validation";
 import {
   calendarDateInTimeZone,
@@ -23,6 +24,7 @@ import type {
   MeetupRefreshResult,
 } from "./types";
 import { parseMeetupGroupCalendarFeedUrl } from "./url";
+import { assertMeetupProgramClubMapping } from "./clubs";
 
 const SOURCE_TYPE = "meetup_ics";
 const REFRESH_INTERVAL_MS = 15 * 60_000;
@@ -32,8 +34,6 @@ const LEASE_DURATION_MS = 2 * 60_000;
 // Worker invocation ceiling, including a conflict rollback plus rejection
 // record for every component in this slice.
 export const MAX_MEETUP_ROWS_PER_REFRESH = 3;
-const DEFAULT_CLUB_NAME = "Vancouver Curiosity Club";
-const DEFAULT_CLUB_SLUG = "vancouver-curiosity-club";
 
 type SourceRecord = Readonly<{
   clubId: string;
@@ -108,22 +108,24 @@ const EMPTY_COUNTS: MeetupRefreshCounts = Object.freeze({
 export async function configureMeetupCalendarSource(
   database: D1DatabaseLike,
   identity: TrustedServerIdentity,
-  input: Readonly<{ clubId?: unknown; feedUrl: unknown }>,
+  input: Readonly<{ clubId: unknown; feedUrl: unknown }>,
   nowUtcMs = Date.now(),
 ): Promise<MeetupConnectionState> {
-  const requestedClubId =
-    input.clubId === undefined
-      ? null
-      : parseIdentifier(input.clubId, "clubId");
+  const requestedClubId = parseIdentifier(input.clubId, "clubId");
   const actor = await authorizeMembership(database, identity, {
     allowedRoles: ["owner", "administrator"],
-    clubId: requestedClubId ?? undefined,
+    clubId: requestedClubId,
   });
-  const sourceUrl = parseMeetupGroupCalendarFeedUrl(input.feedUrl).url;
+  const parsedSource = parseMeetupGroupCalendarFeedUrl(input.feedUrl);
+  const clubId = await assertMeetupProgramClubMapping(database, actor, {
+    clubId: requestedClubId,
+    meetupGroupSlug: parsedSource.groupSlug,
+  });
+  const sourceUrl = parsedSource.url;
   const now = parseNow(nowUtcMs);
   const exactSource = await database
     .prepare(
-      `SELECT id
+      `SELECT id, club_id
        FROM sync_sources
        WHERE organization_id = ?
          AND source_type = ?
@@ -133,56 +135,20 @@ export async function configureMeetupCalendarSource(
     )
     .bind(actor.organizationId, SOURCE_TYPE, sourceUrl)
     .first<Record<string, unknown>>();
-  if (exactSource && requestedClubId === null) {
+  if (exactSource) {
+    if (readOptionalString(exactSource, "club_id") !== clubId) {
+      throw validationIssue(
+        "feedUrl",
+        "meetup_feed_already_connected",
+        "This official Meetup feed is already assigned to another program.",
+      );
+    }
     return connectionStateForOrganization(
       database,
       actor.organizationId,
       now,
     );
   }
-
-  const candidateClub = await database
-    .prepare(
-      `SELECT club.id,
-              linked_source.id AS linked_source_id
-       FROM clubs AS club
-       LEFT JOIN sync_sources AS linked_source
-         ON linked_source.organization_id = club.organization_id
-        AND linked_source.club_id = club.id
-        AND linked_source.source_type = ?
-        AND linked_source.deleted_at IS NULL
-       WHERE club.organization_id = ?
-         AND (? IS NULL OR club.id = ?)
-         AND club.deleted_at IS NULL
-       ORDER BY CASE
-                  WHEN linked_source.id IS NULL THEN 0
-                  ELSE 1
-                END,
-                club.created_at ASC,
-                club.id ASC
-       LIMIT 1`,
-    )
-    .bind(
-      SOURCE_TYPE,
-      actor.organizationId,
-      requestedClubId,
-      requestedClubId,
-    )
-    .first<Record<string, unknown>>();
-  const candidateAlreadyBound =
-    readOptionalString(candidateClub, "linked_source_id") !== null;
-  const existingClub =
-    requestedClubId !== null || !candidateAlreadyBound
-      ? candidateClub
-      : null;
-  const clubId = readOptionalString(existingClub, "id") ?? crypto.randomUUID();
-  const hasAnyClub = candidateClub !== null;
-  const generatedClubSlug = hasAnyClub
-    ? `meetup-feed-${(await sha256Hex(sourceUrl)).slice(0, 12)}`
-    : DEFAULT_CLUB_SLUG;
-  const generatedClubName = hasAnyClub
-    ? "Meetup calendar feed (owner review required)"
-    : DEFAULT_CLUB_NAME;
   const existingSource = await database
     .prepare(
       `SELECT id, source_url
@@ -205,35 +171,16 @@ export async function configureMeetupCalendarSource(
       now,
     );
   }
+  if (existingSource) {
+    throw validationIssue(
+      "clubId",
+      "meetup_program_already_connected",
+      "The selected program already has an official Meetup feed.",
+    );
+  }
   const sourceId = crypto.randomUUID();
 
   await database.batch([
-    database
-      .prepare(
-        `INSERT INTO clubs (
-           id, organization_id, name, slug, description,
-           created_by_profile_id, created_at, updated_at, deleted_at
-         )
-         SELECT ?, ?, ?, ?, NULL, ?, ?, ?, NULL
-         WHERE NOT EXISTS (
-           SELECT 1
-           FROM clubs
-           WHERE id = ?
-             AND organization_id = ?
-             AND deleted_at IS NULL
-         )`,
-      )
-      .bind(
-        clubId,
-        actor.organizationId,
-        generatedClubName,
-        generatedClubSlug,
-        actor.profileId,
-        now,
-        now,
-        clubId,
-        actor.organizationId,
-      ),
     database
       .prepare(
         `INSERT INTO sync_sources (
@@ -245,32 +192,10 @@ export async function configureMeetupCalendarSource(
             pending_snapshot_hash, pending_cursor,
             created_by_profile_id, updated_by_profile_id,
             created_at, updated_at, deleted_at
-          ) VALUES (
-            ?, ?, ?, ?, ?, 1, 15, ?, NULL, NULL, NULL, NULL, NULL, NULL,
-            NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, NULL
-          )
-         ON CONFLICT(organization_id, club_id, source_type) DO UPDATE SET
-           id = excluded.id,
-           club_id = excluded.club_id,
-           source_url = excluded.source_url,
-           enabled = 1,
-           refresh_interval_minutes = 15,
-           next_refresh_at = excluded.next_refresh_at,
-           lease_token = NULL,
-           lease_expires_at = NULL,
-           last_attempt_at = NULL,
-           last_success_at = NULL,
-           last_error_at = NULL,
-            last_error_code = NULL,
-            etag = NULL,
-            http_last_modified = NULL,
-            active_generation_id = NULL,
-            pending_generation_id = NULL,
-            pending_snapshot_hash = NULL,
-           pending_cursor = NULL,
-           updated_by_profile_id = excluded.updated_by_profile_id,
-           updated_at = excluded.updated_at,
-           deleted_at = NULL`,
+           ) VALUES (
+             ?, ?, ?, ?, ?, 1, 15, ?, NULL, NULL, NULL, NULL, NULL, NULL,
+             NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, NULL
+           )`,
       )
       .bind(
         sourceId,
@@ -296,11 +221,10 @@ export async function configureMeetupCalendarSource(
         actor.organizationId,
         actor.profileId,
         "meetup.connection_configured",
-        sourceId,
-        JSON.stringify({
-          clubCreated: existingClub === null,
-          sourceType: SOURCE_TYPE,
-        }),
+         sourceId,
+         JSON.stringify({
+           sourceType: SOURCE_TYPE,
+         }),
         now,
       ),
   ]);
@@ -612,8 +536,8 @@ async function refreshOrganizationSource(
     );
   }
 
-  const snapshotHash = await sha256Hex(fetched.calendarText);
   const workItems = buildCalendarWorkItems(calendar);
+  const snapshotHash = await calendarSnapshotHash(calendar.method, workItems);
   let generation: PendingGeneration;
   try {
     generation = await ensurePendingGeneration(database, {
@@ -2990,6 +2914,43 @@ function buildCalendarWorkItems(
           ? right.event.componentIndex
           : right.componentIndex;
       return leftIndex - rightIndex;
+    }),
+  );
+}
+
+/**
+ * Meetup may change transport/calendar metadata between otherwise identical
+ * exports. Generation identity therefore covers only validated facts that can
+ * affect import, ordering, reconciliation, or publication. Ignored raw
+ * descriptions, locations, and calendar decoration cannot strand a cursor.
+ */
+async function calendarSnapshotHash(
+  method: ReturnType<typeof parseMeetupIcs>["method"],
+  workItems: readonly CalendarWorkItem[],
+): Promise<string> {
+  return sha256Hex(
+    JSON.stringify({
+      method,
+      items: workItems.map((item) =>
+        item.kind === "rejected"
+          ? {
+              componentIndex: item.componentIndex,
+              errorCode: item.errorCode,
+              kind: item.kind,
+            }
+          : {
+              componentIndex: item.event.componentIndex,
+              duplicate: item.duplicate,
+              eventUrl: item.event.eventUrl,
+              kind: item.kind,
+              lastModifiedUtcMs: item.event.lastModifiedUtcMs,
+              schedule: item.event.schedule,
+              sequence: item.event.sequence,
+              sourceKey: item.event.sourceKey,
+              status: item.event.status,
+              title: item.event.title,
+            },
+      ),
     }),
   );
 }

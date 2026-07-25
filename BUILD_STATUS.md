@@ -6,18 +6,23 @@ Last updated: 2026-07-24 (America/Vancouver)
 
 - Phase 1 Sites foundation and its independent audit gate:
   **Completed and verified**.
-- Current authorized work: a narrow post-Phase-1 follow-up replacing the brand
-  icon and adding an official, one-way Meetup calendar synchronization path.
-- Current follow-up implementation: **Completed and verified** in the supported
+- Current authorized work: the narrow owner-input continuation that maps three
+  supplied official Meetup groups to three exact program records, configures
+  the existing Sites owner identity as the bootstrap secret, and proves the
+  live feeds through an isolated production-compatible local D1.
+- Current owner-input continuation: **Completed and verified** in the supported
   local Sites/Miniflare environment.
 - Unpublished Sites version 3: **Superseded** by the post-save publication
   audit. It remains unpublished and must not be deployed.
 - Corrected unpublished Sites version 4: **Saved and provenance-verified** from
   exact source commit `c3cd5811833c3a61f8f2b4ce5d8f0c7fa8fcbe28`;
   no preview or production deployment occurred.
-- Live production Meetup connection: **Blocked** by both missing
-  `INITIAL_OWNER_EMAIL` in Sites runtime settings and missing owner-supplied
-  official group feed URL(s); production imported data is intentionally empty.
+- `INITIAL_OWNER_EMAIL`: **Configured** as a secret in Sites runtime revision 1
+  from the existing project access metadata without printing or committing the
+  value. It remains inactive until a future deployment.
+- Hosted Meetup connection: **Not run** because this packet forbids deployment.
+  The supplied feeds were exercised only in an isolated local D1; hosted
+  production imported data remains intentionally empty.
 - Hosted identity and owner persistence: **Awaiting owner smoke test**.
 - Phase 2 and all later master-spec product surfaces: **Not started**.
 
@@ -69,6 +74,44 @@ Last updated: 2026-07-24 (America/Vancouver)
   multi-club organization. The schema allows one active Meetup feed per club
   and multiple distinct feeds per organization, while preventing the same
   canonical feed from being attached twice.
+- **Completed and verified** — The protected Owner/Administrator form requires
+  an explicit accessible program selector. The API and domain service validate
+  the selected club ID against the actor's organization and verify that the
+  normalized feed group slug matches the exact program record before writing.
+  No connection-order, unbound-club, or hash-derived fallback remains.
+- **Completed and verified** — All six connection orders preserve these exact
+  mappings:
+
+  - Vancouver Curiosity Club — https://www.meetup.com/vancouver-meetup-group/
+  - Vancouver Literature and Film —
+    https://www.meetup.com/vancouver-literature-and-film/
+  - Vancouver Fantasy & Sci-Fi Group —
+    https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/
+
+  These clean public group pages are confirmed Phase 2 inputs only. No public
+  per-program URL field or page was implemented in this packet.
+- **Completed and verified** — Mismatched, nonexistent, and
+  cross-organization club selections are rejected before creating a sync
+  source or configuration audit record. Regression tests also prove the exact
+  safe `{id, name}` selector payload contains no feed/source/organization data.
+- **Completed and verified** — A real smoke import fetched all three supplied
+  official calendars through the production domain/fetch path into an isolated
+  in-memory migrated D1. The feeds completed in 4, 4, and 1 bounded requests.
+  The time-sensitive snapshot contained 23 source rows: 13 accepted active
+  snapshots and 10 safely stored `conflict_rejected` rows under the existing
+  organization-wide reservation policy. All 13 accepted rows were available
+  through the public Meetup projection.
+- **Completed and verified** — The live smoke checked each club identity plus
+  real title, time, status, and official RSVP link; raw descriptions and
+  locations were neither persisted nor published. Source isolation held, and
+  a deliberately incomplete later generation left the prior public result
+  byte-for-byte unchanged. No fetched body or local D1 file was retained.
+- **Completed and verified** — Meetup changed ignored raw iCalendar bytes
+  between requests while parsed import facts stayed identical. Generation
+  identity now hashes the normalized validated facts that affect import,
+  ordering, reconciliation, or publication. A regression proves ignored
+  calendar decoration and discarded descriptions/locations cannot restart a
+  cursor, while meaningful event changes still alter the generation identity.
 - **Completed and verified** — Identical Meetup UIDs from different club feeds
   remain source-scoped and cannot collide.
 - **Completed and verified** — Same-source configuration is idempotent. Source
@@ -219,7 +262,10 @@ violations.
 - `npm.cmd run typecheck` — **Completed and verified**; strict TypeScript passed.
 - `npm.cmd run lint` — **Completed and verified**; passed without blanket
   suppression.
-- `npm.cmd test` — **Completed and verified**; 75/75 unit and integration tests
+- Focused Meetup/auth command (`node --import tsx --test` over
+  `tests/auth/*.test.mjs` and `tests/meetup/*.test.mjs`) — **Completed and
+  verified**; 40/40 tests passed.
+- `npm.cmd test` — **Completed and verified**; 78/78 unit and integration tests
   passed.
 - `npm.cmd run build` — **Completed and verified**; routes `/`, `/calendar`,
   `/organizer`, `/organizer/meetup`, organizer APIs, and session API built.
@@ -232,9 +278,12 @@ violations.
   not-connected state, visible icon, correct SIWC redirect, no hydration error,
   and a fresh verification tab with no warning/error console entries.
 - Source/build secret and feed scan — **Completed and verified**; no runtime
-  owner value, private feed URL/token, Sites credential, or bypass token appears
-  in `dist/client` or `dist/server`. The only query-token match in source is an
-  intentional invalid-URL test fixture.
+  owner value, concrete official iCal URL, private token, Sites credential, or
+  bypass token appears in tracked/intended source, `dist/client`, or
+  `dist/server`. Older concrete iCal test literals were replaced with
+  runtime-composed examples; the final source/build scans report zero matches.
+- `git diff --check` — **Completed and verified**; clean apart from Git's
+  informational LF-to-CRLF working-copy warnings.
 - `npm.cmd audit --omit=dev --json` — **Not a clean pass**; 3 high
   findings in the pinned production tree (`next`, transitive `postcss`, and
   transitive `sharp`).
@@ -270,15 +319,12 @@ violations.
 
 ## Implemented but not externally verified
 
-- **Implemented but not externally verified** — A real official feed fetch
-  against Reza's Meetup group. Exact official feed URLs were not supplied, so
-  no production URL was guessed and no production event was imported.
 - **Implemented but not externally verified** — Sites-managed remote D1/R2 and
   hosted SIWC persistence. Local production-compatible D1/Worker paths pass,
   but no public deployment exists.
 - **Implemented but not externally verified** — Owner connection/refresh
-  controls with Reza's hosted identity. `INITIAL_OWNER_EMAIL` is missing from
-  runtime settings.
+  controls with Reza's hosted identity. The secret runtime value is configured
+  but cannot become active until a future owner-authorized deployment.
 
 ## Not implemented
 
@@ -294,32 +340,31 @@ violations.
 
 ## Not run
 
-- **Not run** — Live Meetup production smoke test. Exact reason: no official
-  owner feed URL or real event RSVP fixture was supplied.
+- **Not run** — Hosted Sites-managed D1 import. Exact reason: this packet
+  forbids deployment, so the runtime secret is not active and the private feeds
+  were not entered into hosted D1. The equivalent real-feed import completed
+  successfully against isolated production-compatible local D1.
 - **Not run** — Hosted SIWC owner persistence test. Exact reason:
-  `INITIAL_OWNER_EMAIL` is not present in Sites runtime settings and no hosted
-  version is deployed.
+  `INITIAL_OWNER_EMAIL` is configured as a secret but no hosted version is
+  deployed.
 - **Not run** — Second-real-identity denial smoke test. Exact reason: no second
   authenticated ChatGPT test identity was supplied; the equivalent automated
   denial test passes.
 
 ## Blocked
 
-- **Blocked** — Importing Reza's actual Meetup events through the protected
-  organizer flow requires `INITIAL_OWNER_EMAIL` in Sites runtime settings and
-  the exact official group calendar feed URL(s). Neither was guessed or
-  committed. The adapter, persistence, synchronization flow, public projection,
-  and organizer controls are complete and locally tested.
+- **Blocked** — Runtime activation and hosted owner/feed smoke testing require
+  a deployment, which this packet explicitly forbids. No deployment was made
+  merely to activate the secret.
 - No blocker remains for the completed implementation, local verification,
-  exact source push, archive inspection, or unpublished version 4 save.
+  exact source push, archive inspection, or the next unpublished version save.
 
 ## Missing owner inputs
 
 See `OWNER_INPUTS.md`. No value was invented:
 
-- `INITIAL_OWNER_EMAIL`
-- official Meetup group calendar export/feed URL(s) and desired club mapping
-- exact public Meetup group/discussion URLs and real RSVP smoke-test URLs
+- exact public Meetup discussion URL
+- owner-selected real RSVP URLs for a later hosted smoke test
 - approved BC legal identity/status/footer/charity wording
 - approved public copy
 - real photographs with rights, credit, and participant consent
@@ -356,7 +401,8 @@ See `OWNER_INPUTS.md`. No value was invented:
 
 1. Open the preview or owner-only hosted version.
 2. Confirm signed-out `/organizer` requires Sign in with ChatGPT and is noindex.
-3. After `INITIAL_OWNER_EMAIL` is supplied in runtime settings, sign in as Reza.
+3. After a future deployment activates the configured
+   `INITIAL_OWNER_EMAIL` runtime secret, sign in as Reza.
 4. Open `/organizer/meetup`, save each exact official group feed, and request
    refresh until no result is partial.
 5. Refresh `/calendar`; confirm source status, Vancouver times, real titles, and

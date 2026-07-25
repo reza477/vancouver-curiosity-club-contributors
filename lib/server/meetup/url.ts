@@ -37,9 +37,10 @@ export function parseMeetupGroupCalendarFeedUrl(
       "Expected an official Meetup group calendar export URL.",
     );
   }
+  const groupSlug = match[1].toLowerCase();
   return Object.freeze({
-    groupSlug: match[1],
-    url: `https://www.meetup.com/${match[1]}/events/ical/`,
+    groupSlug,
+    url: `https://www.meetup.com/${groupSlug}/events/ical/`,
   });
 }
 

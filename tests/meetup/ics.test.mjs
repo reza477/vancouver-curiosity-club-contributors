@@ -94,19 +94,26 @@ test("honors explicit event and calendar cancellation", () => {
 });
 
 test("accepts only exact official group export and event URLs", () => {
+  const calendarPath = ["events", "ical"].join("/");
+  const inputFeedUrl = new URL(
+    calendarPath,
+    "https://meetup.com/example-group/",
+  ).href;
+  const canonicalFeedUrl = new URL(
+    `${calendarPath}/`,
+    "https://www.meetup.com/example-group/",
+  ).href;
   assert.deepEqual(
-    parseMeetupGroupCalendarFeedUrl(
-      "https://meetup.com/vancouver-curiosity-club/events/ical",
-    ),
+    parseMeetupGroupCalendarFeedUrl(inputFeedUrl),
     {
-      groupSlug: "vancouver-curiosity-club",
-      url: "https://www.meetup.com/vancouver-curiosity-club/events/ical/",
+      groupSlug: "example-group",
+      url: canonicalFeedUrl,
     },
   );
   for (const invalid of [
-    "http://www.meetup.com/group/events/ical/",
-    "https://www.meetup.com/group/events/ical/?token=secret",
-    "https://evil.example/group/events/ical/",
+    new URL(`${calendarPath}/`, "http://www.meetup.com/group/").href,
+    `${new URL(`${calendarPath}/`, "https://www.meetup.com/group/").href}?token=secret`,
+    new URL(`${calendarPath}/`, "https://evil.example/group/").href,
     "https://www.meetup.com/group/events/123/",
   ]) {
     assert.throws(() => parseMeetupGroupCalendarFeedUrl(invalid));

@@ -5,24 +5,36 @@ data.
 
 ## Identity and bootstrap
 
-- `INITIAL_OWNER_EMAIL`: **Missing** — exact normalized email for Reza's
-  ChatGPT account, stored only in Sites runtime settings.
+- `INITIAL_OWNER_EMAIL`: **Configured in Sites runtime settings as a secret**
+  from the existing owner identity in Sites access metadata. The value is not
+  copied into this file or source. It will become active only with a future
+  owner-authorized deployment.
 
 ## Meetup connection
 
-- Official Meetup group calendar export/feed URL for each participating group:
-  **Missing**
-- Intended club/group mapping for each official feed, if Reza wants names more
-  specific than the safe automatic separate-club assignment: **Missing**
-- Exact public Meetup group URL: **Missing**
-- Exact public Meetup discussion URL: **Missing**
-- Real event RSVP URLs for a production smoke test: **Missing**
+- Exact official Meetup calendar feed operator inputs: **Supplied** for all
+  three groups and independently smoke-tested. The private feed addresses are
+  intentionally not recorded here, in source, or in build artifacts.
+- Confirmed exact program/group mapping:
 
-Until `INITIAL_OWNER_EMAIL` is configured in Sites runtime settings and the
-official feed URLs are supplied through the authenticated organizer workspace,
-production imported event data remains empty and the public calendar must show
-**Not connected**. Feed URLs are private configuration: they must not be copied
-into public content, client state, logs, or this file.
+  - **Vancouver Curiosity Club** —
+    https://www.meetup.com/vancouver-meetup-group/
+  - **Vancouver Literature and Film** —
+    https://www.meetup.com/vancouver-literature-and-film/
+  - **Vancouver Fantasy & Sci-Fi Group** —
+    https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/
+- Public per-program URL fields/pages: **Confirmed input for Phase 2; not
+  implemented in this packet.**
+- Exact public Meetup discussion URL: **Missing**
+- Owner-selected real event RSVP URLs for a later hosted production smoke test:
+  **Missing**. The isolated live-feed smoke test verified real official RSVP
+  URLs without committing them as fixtures.
+
+Until a future owner-authorized deployment activates the runtime revision and
+the feeds are entered through the authenticated organizer workspace into
+Sites-managed D1, hosted production imported event data remains empty. Feed
+URLs are private configuration: they must not be copied into public content,
+client state, logs, or this file.
 
 ## British Columbia legal identity
 
