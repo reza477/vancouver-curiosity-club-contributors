@@ -11,10 +11,15 @@ Last updated: 2026-07-25 (America/Vancouver)
 - Phase 1 authorization, public-projection, conflict-guard, Meetup
   generation-isolation, consent, timezone, and project-isolation guarantees
   remain covered by the full regression suite.
+- The final Phase 2 gate corrections now return real noindex 503 responses for
+  Home/Events public-service failures and enforce cross-organization public
+  catalog integrity in additive migration 0007.
 - No Phase 3 surface was started.
 - No preview or production deployment was created.
 - Unpublished Sites version 6: **Saved and provenance-verified** from exact
   source commit `23ce5db16eb313e2f404cb7d0e9d90729a0509ce`.
+- The corrected source has not yet been saved as a new Sites version; version
+  6 remains preserved and unpublished until the release gate completes.
 - Exact next phase: **Phase 3 — Not started**.
 
 ## Completed and verified
@@ -56,6 +61,10 @@ Last updated: 2026-07-25 (America/Vancouver)
   attendance-mode filters, result count, clear filters, bounded pagination,
   validated shareable query strings, and truthful empty/error/staleness
   states.
+- Required browser QA found that the Clear Filters URL changed correctly but
+  uncontrolled fields retained stale DOM values during same-route navigation.
+  A deterministic server-value form key now remounts the form; the 390 px
+  filtered-to-cleared path was rerun and all fields visibly reset.
 - Public event detail displays only facts that exist, clearly marks cancelled
   pages, uses Vancouver-local schedule wording, hides absent RSVP controls,
   distinguishes unpublished location details from genuinely undecided
@@ -74,6 +83,16 @@ Last updated: 2026-07-25 (America/Vancouver)
   - four bounded public-query indexes
 
 - Migration 0006 contains six D1 statements and no destructive data rewrite.
+- Added official custom migration
+  `drizzle/0007_public_organization_integrity.sql` without changing 0006.
+  Its nine-statement D1 batch installs seven `BEFORE INSERT/UPDATE` guards and
+  performs two zero-row validation updates. It rejects mismatches among a
+  public club profile, its club, primary lane, and organization; rejects
+  mismatches between a public event detail, its event, and organization; and
+  prevents parent organization updates from breaking either invariant.
+- Valid populated-v6 rows are byte-for-byte preserved. A malformed legacy row
+  aborts the entire migration batch, leaving none of the seven triggers
+  partially installed.
 - The shared authoritative catalog defines exactly:
 
   - Think
@@ -92,6 +111,10 @@ Last updated: 2026-07-25 (America/Vancouver)
 - The populated-version-5 upgrade regression preserves membership, private
   feed configuration, active/pending generation pointers, snapshots, removal
   counters, event/private fields, foreign keys, and both conflict triggers.
+- Fresh and populated-version-6 integrity regressions prove valid writes,
+  same-organization key changes, cross-organization insert/update rejection,
+  parent-side rejection, zero failed-write residue, seven installed integrity
+  triggers, unchanged conflict-trigger SQL, and zero foreign-key violations.
 
 ### Unified public event projection
 
@@ -126,6 +149,17 @@ Last updated: 2026-07-25 (America/Vancouver)
   resource policies. Local unsafe-inline/unsafe-eval is restricted to Vite HMR.
 - Unknown, error, organizer, identity, API, preview, `/calendar`, and filtered
   query routes are noindex through metadata and/or response headers.
+- A genuine Home or Events D1/public-service exception now uses the pinned
+  App Router's pre-stream HTTP fallback and returns 503. The Worker adds exact
+  `X-Robots-Tag: noindex, nofollow, noarchive` and `Cache-Control: no-store`;
+  the accessible surface exposes no guessed facts or database details. Healthy
+  Home/canonical Events remain indexable and healthy filtered Events remains
+  noindex.
+- Final read-only audit found that the fallback's noindex meta initially
+  coexisted with a root `index, follow` meta. The root now omits a generic
+  healthy robots directive; healthy pages remain indexable by default or
+  route metadata, while built failure tests prove every emitted robots meta
+  excludes the `index` token.
 - Privacy copy accurately describes public browsing, future organizer SIWC
   identity sharing, Sites/D1/R2, and the absence of a public submission form.
   It marks legal review as still required.
@@ -141,26 +175,29 @@ All commands below were run from
 - `npm.cmd ci` — **exit 0**; 503 packages installed from `package-lock.json`.
 - `npm.cmd run db:generate` — **exit 0**; 36 schema tables recognized; no
   schema drift and no additional migration generated.
-- `npm.cmd run db:apply:local` — **exit 0**; 7 migrations, 38 SQLite tables
-  including migration bookkeeping, 2 conflict triggers, 0 foreign-key
-  violations.
-- `npm.cmd run db:apply:preview` — **exit 0**; the same 7 migrations, 38
+- `npm.cmd run db:apply:local` — **exit 0**; 8 migrations, 38 SQLite tables
+  including migration bookkeeping, 0007 applied as 9 statements, 2 conflict
+  triggers, and 0 foreign-key violations.
+- `npm.cmd run db:apply:preview` — **exit 0**; the same 8 migrations, 38
   tables, 2 triggers, and 0 foreign-key violations in the Sites local preview
   D1.
 - `npm.cmd run typecheck` — **exit 0** under strict TypeScript.
 - `npm.cmd run lint` — **exit 0** before build.
-- `npm.cmd test` — **exit 0; 93/93 passed**, 0 failed, 0 skipped.
+- `npm.cmd test` — **exit 0; 96/96 passed**, 0 failed, 0 skipped.
+  An immediately preceding run correctly failed 2 stale source-contract
+  assertions that required the removed root `index: true`; both were replaced
+  with the truthful no-inherited-index contract before this final passing run.
 - `npm.cmd run build` — **exit 0**; vinext production build completed and
   emitted every authorized public route plus the preserved private Phase 1
   routes/APIs.
 - Exact documented `npm.cmd run lint` after build and retained ignored
   `work/**` artifacts — **exit 0**.
-- `npm.cmd run test:rendered` — **exit 0; 11/11 passed**, 0 failed, 0 skipped.
+- `npm.cmd run test:rendered` — **exit 0; 12/12 passed**, 0 failed, 0 skipped.
   This applies the generated chain to a fresh Miniflare/D1 database and checks
   built HTML, CSP, canonical metadata, public pages, empty Events, a synthetic
   cancelled detail, accurate Event/Breadcrumb JSON-LD, robots/sitemap,
-  `/calendar`, custom 404, optimized assets, SIWC redirect, and private API
-  behavior.
+  `/calendar`, custom 404, optimized assets, SIWC redirect, private API
+  behavior, and forced Home/Events D1 failures as truthful noindex 503s.
 - `git diff --check` — **exit 0**.
 - Exact public Meetup group destinations — **3/3 returned HTTP 200** without a
   redirect to a different URL during the final link check.
@@ -171,20 +208,23 @@ All commands below were run from
   feed paths, Gmail addresses, or Sites bypass-token labels. Generic
   server-only iCalendar parsing and private schema column names are expected
   and remain non-public.
-- Exact verified source commit
+- Prior version-6 exact verified source commit
   `23ce5db16eb313e2f404cb7d0e9d90729a0509ce` was pushed to the existing
   Sites-managed `main` source branch; remote branch readback matched exactly.
-- The official Sites packaging helper produced a gzip archive with local
+- The prior version-6 official Sites package had local
   SHA-256
   `8d6f67d76e465d77480e7e942d959b5fce63d8275a004c484a1eb8e5c0929337`,
   1,658,238 bytes, and 70 regular files.
-- Archive inspection found all required Worker/hosting/migration files,
+- The prior version-6 archive inspection found all required
+  Worker/hosting/migration files,
   0 forbidden paths, 0 missing required paths, 0 mismatches across the 54
   original `dist` files, and 0 concrete private-value hits.
 - Sites version 6 readback matched the source commit and reported content
   SHA-256
   `136f94f571f9f7deac92fa42109a7f40e7630583006be5dda9378065cdcf474d`,
   4,290,560 stored bytes, and 70 files.
+- Corrected source commit, package measurements, and unpublished Sites version:
+  **Pending the final source freeze and save gate**.
 
 ### Dependency audit
 
@@ -201,6 +241,17 @@ All commands below were run from
 Completed against the local Sites/vinext preview with the approved catalog and
 zero fake events:
 
+- Final correction recheck: 320 × 800 Home and 390 × 844 Events failure
+  surfaces were visually inspected against a separate empty built Miniflare
+  D1. Both used 16 px body copy, had zero horizontal overflow, exposed
+  route-specific truthful alert copy and retry links, and the built response
+  regression confirmed 503/noindex/no-store.
+- Final correction recheck: 390 × 844 healthy Events combined keyword/lane
+  filters into a shareable noindex URL. Clear Filters then reset the URL and
+  every visible uncontrolled field without reload; zero horizontal overflow.
+- Final correction recheck: 1280 × 800 healthy Home showed the full desktop
+  navigation, hid the mobile menu, retained 16 px body copy, and had zero
+  horizontal overflow. Browser console: 0 errors and 0 warnings.
 - 320 × 800: no horizontal overflow; mobile menu and truthful Home state fit.
 - 390 × 844: 16 px/24 px body copy, original mark legible at about 30 px,
   mobile menu opens, combined Events filters produce a shareable URL, and
@@ -286,6 +337,8 @@ zero fake events:
   `cb51a5969370e4bed39ce83adac8532f2900d3d7`.
 - New Phase 2 version 6 is **saved unpublished and provenance-verified** from
   `23ce5db16eb313e2f404cb7d0e9d90729a0509ce`.
+- Corrected unpublished version: **Pending final source freeze, packaging, and
+  Sites save**.
 - Preview deployment: **None**.
 - Production deployment: **None**.
 - Public URL: **None claimed**.

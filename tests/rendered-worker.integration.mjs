@@ -36,27 +36,7 @@ const PUBLIC_PATHS = [
 const serverRoot = resolve("dist/server");
 const moduleFiles = await collectJavaScriptModules(serverRoot);
 const entrypoint = resolve(serverRoot, "index.js");
-const runtime = new Miniflare({
-  modules: [
-    { path: entrypoint, type: "ESModule" },
-    ...moduleFiles
-      .filter((path) => path !== entrypoint)
-      .map((path) => ({ path, type: "ESModule" })),
-  ],
-  modulesRoot: serverRoot,
-  compatibilityDate: "2026-05-15",
-  compatibilityFlags: ["nodejs_compat"],
-  d1Databases: ["DB"],
-  r2Buckets: ["MEDIA"],
-  assets: {
-    binding: "ASSETS",
-    directory: resolve("dist/client"),
-    routerConfig: {
-      has_user_worker: true,
-    },
-  },
-  log: new Log(LogLevel.WARN),
-});
+const runtime = createBuiltRuntime();
 await applyGeneratedMigrations(runtime);
 await seedPublicCatalog(runtime);
 
@@ -97,7 +77,12 @@ test("the built public root is indexable and carries the production security con
   assert.match(html, /<title>Vancouver Curiosity Club<\/title>/iu);
   assert.match(html, /A social calendar with a brain\./u);
   assert.match(html, /Explore Upcoming Events/u);
-  assert.match(html, /name="robots" content="index, follow"/iu);
+  assert.ok(
+    robotsMetaContents(html).every(
+      (content) => !robotsTokens(content).includes("noindex"),
+    ),
+    "healthy Home must not emit a noindex robots directive",
+  );
   assert.match(
     html,
     /rel="canonical" href="https:\/\/preview\.example\/"/iu,
@@ -251,6 +236,67 @@ test("Events is canonical, empty honestly, and filter URLs are non-indexable", a
     await malformed.text(),
     /One or more filters could not be validated\./u,
   );
+});
+
+test("Home and Events public-service failures return truthful noindex 503 responses", async () => {
+  const unavailableRuntime = createBuiltRuntime();
+  try {
+    for (const [path, expectedHeading] of [
+      ["/", "The public catalog could not be read."],
+      ["/events", "The published event calendar could not be read."],
+    ]) {
+      const response = await unavailableRuntime.dispatchFetch(
+        new URL(path, "https://preview.example"),
+      );
+      assert.equal(response.status, 503, `${path} status`);
+      assert.equal(
+        response.headers.get("x-robots-tag"),
+        "noindex, nofollow, noarchive",
+        `${path} robots`,
+      );
+      assert.match(
+        response.headers.get("content-type") ?? "",
+        /^text\/html\b/iu,
+        `${path} content type`,
+      );
+      assert.match(
+        response.headers.get("cache-control") ?? "",
+        /(?:^|,\s*)no-store(?:,|$)/u,
+        `${path} cache control`,
+      );
+
+      const html = await response.text();
+      assert.match(html, new RegExp(escapeRegex(expectedHeading), "u"));
+      assert.match(
+        html,
+        /No event, person, legal detail, or community fact is being guessed\./u,
+      );
+      assert.match(html, /Try this page again/u);
+      assert.match(
+        html,
+        /<meta(?=[^>]*\bname="robots")(?=[^>]*\bcontent="noindex")[^>]*>/iu,
+      );
+      const robots = robotsMetaContents(html);
+      assert.ok(
+        robots.some((content) => robotsTokens(content).includes("noindex")),
+        `${path} must emit an HTML noindex directive`,
+      );
+      assert.ok(
+        robots.every(
+          (content) => !robotsTokens(content).includes("index"),
+        ),
+        `${path} must not emit a contradictory HTML index directive`,
+      );
+      assertNoPrivateSentinels(html);
+      assert.doesNotMatch(
+        html,
+        /no such table|D1_ERROR|SQLITE|NEXT_HTTP_ERROR|digest|stack trace/iu,
+      );
+      assert.doesNotMatch(html, /href="\/events\/[^"?]+"/iu);
+    }
+  } finally {
+    await unavailableRuntime.dispose();
+  }
 });
 
 test("a cancelled event detail renders only published facts and accurate structured data", async () => {
@@ -517,6 +563,45 @@ async function collectJavaScriptModules(directory) {
     }
   }
   return files.sort();
+}
+
+function robotsMetaContents(html) {
+  return [...html.matchAll(/<meta\b[^>]*>/giu)].flatMap(([tag]) => {
+    if (!/\bname=(["'])robots\1/iu.test(tag)) return [];
+    const content = /\bcontent=(["'])(.*?)\1/iu.exec(tag);
+    return content ? [content[2]] : [];
+  });
+}
+
+function robotsTokens(content) {
+  return content
+    .toLowerCase()
+    .split(",")
+    .map((token) => token.trim());
+}
+
+function createBuiltRuntime() {
+  return new Miniflare({
+    modules: [
+      { path: entrypoint, type: "ESModule" },
+      ...moduleFiles
+        .filter((path) => path !== entrypoint)
+        .map((path) => ({ path, type: "ESModule" })),
+    ],
+    modulesRoot: serverRoot,
+    compatibilityDate: "2026-05-15",
+    compatibilityFlags: ["nodejs_compat"],
+    d1Databases: ["DB"],
+    r2Buckets: ["MEDIA"],
+    assets: {
+      binding: "ASSETS",
+      directory: resolve("dist/client"),
+      routerConfig: {
+        has_user_worker: true,
+      },
+    },
+    log: new Log(LogLevel.WARN),
+  });
 }
 
 async function applyGeneratedMigrations(targetRuntime) {

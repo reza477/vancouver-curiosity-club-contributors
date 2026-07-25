@@ -47,7 +47,7 @@ export function EventFilters({
         </Link>
       </div>
 
-      <form action="/events" method="get">
+      <form action="/events" key={filterFormKey(values)} method="get">
         <input type="hidden" name="state" value={values.state} />
         <div className="filter-heading">
           <div>
@@ -150,4 +150,17 @@ function stateHref(
     if (value) params.set(key, value);
   }
   return `/events?${params.toString()}`;
+}
+
+function filterFormKey(values: EventFilterValues): string {
+  return JSON.stringify([
+    values.state,
+    values.q,
+    values.from,
+    values.to,
+    values.club,
+    values.lane,
+    values.category,
+    values.format,
+  ]);
 }

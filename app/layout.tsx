@@ -121,10 +121,7 @@ export async function generateMetadata(): Promise<Metadata> {
           follow: false,
           noarchive: true,
         }
-      : {
-          index: true,
-          follow: true,
-        },
+      : undefined,
   };
 }
 

@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTrustedRequestPathname } from "@/lib/server/public/origin";
+import {
+  publicServiceSurfaceForPathname,
+  type PublicServiceSurface,
+} from "@/lib/server/public/service-failure";
 
 export const metadata: Metadata = {
   title: "Page not found",
@@ -10,7 +15,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function NotFound() {
+export default async function NotFound() {
+  const surface = publicServiceSurfaceForPathname(
+    await getTrustedRequestPathname(),
+  );
+  if (surface) return <PublicServiceFailure surface={surface} />;
+
   return (
     <main className="error-shell public-not-found">
       <section className="error-panel" aria-labelledby="not-found-title">
@@ -24,6 +34,40 @@ export default function NotFound() {
           <Link href="/events">Explore events</Link>
           <Link href="/clubs">Browse clubs</Link>
           <Link href="/">Return home</Link>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function PublicServiceFailure({
+  surface,
+}: Readonly<{ surface: PublicServiceSurface }>) {
+  const isEvents = surface === "events";
+  return (
+    <main className="error-shell public-service-failure">
+      <section
+        className="error-panel"
+        aria-labelledby="service-failure-title"
+        role="alert"
+      >
+        <p className="section-kicker">
+          {isEvents ? "Calendar unavailable" : "Public site unavailable"}
+        </p>
+        <h1 id="service-failure-title">
+          {isEvents
+            ? "The published event calendar could not be read."
+            : "The public catalog could not be read."}
+        </h1>
+        <p>
+          No event, person, legal detail, or community fact is being guessed.
+          Please try again in a moment.
+        </p>
+        <div className="error-actions">
+          <Link href={isEvents ? "/events" : "/"}>
+            Try this page again
+          </Link>
+          {isEvents ? <Link href="/">Return home</Link> : null}
         </div>
       </section>
     </main>

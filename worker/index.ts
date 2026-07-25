@@ -148,6 +148,9 @@ function secureResponse(
   } else if (requestUrl.search.length > 0) {
     headers.set("X-Robots-Tag", "noindex, follow, noarchive");
   }
+  if (response.status >= 500) {
+    headers.set("Cache-Control", "no-store");
+  }
 
   return new Response(response.body, {
     headers,

@@ -28,6 +28,7 @@ import {
   type PublicEventPageDto,
 } from "@/lib/server/public/events";
 import { buildPublicPageMetadata } from "@/lib/server/public/metadata";
+import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
 import { InputValidationError } from "@/lib/validation";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 import type { PublicMeetupSyncStatus } from "@/lib/server/meetup";
@@ -71,7 +72,6 @@ export default async function EventsPage({
     status: PublicMeetupSyncStatus;
   }> = { status: "not_connected", lastSuccessAt: null };
   let invalidFilters = false;
-  let serviceUnavailable = false;
 
   try {
     const { database } = getRuntimeAuthConfiguration();
@@ -123,13 +123,13 @@ export default async function EventsPage({
       }
     }
   } catch {
-    serviceUnavailable = true;
     writeSafeLog("error", "public_events_unavailable", {
       code: "service_unavailable",
       operation: "list_public_events",
       route: "/events",
       status: 503,
     });
+    publicServiceUnavailable();
   }
 
   const intro = pageContent?.sections[0]?.content;
@@ -159,38 +159,28 @@ export default async function EventsPage({
         </section>
       ) : null}
 
-      {serviceUnavailable ? (
-        <section className="public-error-state" role="status">
-          <p className="section-kicker">Calendar unavailable</p>
-          <h2>The published event service could not be read.</h2>
-          <p>No event or source state is being guessed. Please try again.</p>
-        </section>
-      ) : (
+      <EventFilters
+        categories={categories}
+        clubs={clubs}
+        lanes={lanes}
+        resultCount={eventPage.totalCount}
+        values={values}
+      />
+      {!invalidFilters ? (
         <>
-          <EventFilters
-            categories={categories}
-            clubs={clubs}
-            lanes={lanes}
-            resultCount={eventPage.totalCount}
-            values={values}
+          <EventCollection
+            events={eventPage.events}
+            emptyMessage={
+              hasActiveFilters(values)
+                ? "No published event matches this combination. Clear the filters to widen the search."
+                : values.state === "past"
+                  ? "No past events are currently available in the public catalog."
+                  : "When a real event is published, it will appear here."
+            }
           />
-          {!invalidFilters ? (
-            <>
-              <EventCollection
-                events={eventPage.events}
-                emptyMessage={
-                  hasActiveFilters(values)
-                    ? "No published event matches this combination. Clear the filters to widen the search."
-                    : values.state === "past"
-                      ? "No past events are currently available in the public catalog."
-                      : "When a real event is published, it will appear here."
-                }
-              />
-              <Pagination page={eventPage} values={values} />
-            </>
-          ) : null}
+          <Pagination page={eventPage} values={values} />
         </>
-      )}
+      ) : null}
     </main>
   );
 }

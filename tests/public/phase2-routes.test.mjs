@@ -69,8 +69,9 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.match(layout, /index:\s*false/u);
   assert.match(layout, /follow:\s*false/u);
   assert.match(layout, /noarchive:\s*true/u);
-  assert.match(layout, /index:\s*true/u);
-  assert.match(layout, /follow:\s*true/u);
+  assert.match(layout, /:\s*undefined/u);
+  assert.doesNotMatch(layout, /index:\s*true/u);
+  assert.doesNotMatch(layout, /follow:\s*true/u);
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });
 
@@ -89,6 +90,7 @@ test("Events is canonical and filtered views are non-indexable", async () => {
   assert.match(events, /Object\.keys\(params\)\.length === 0/u);
   assert.match(events, /pathname:\s*"\/events"/u);
   assert.match(filters, /method="get"/u);
+  assert.match(filters, /key=\{filterFormKey\(values\)\}/u);
   assert.match(filters, /href=\{`\/events\?state=\$\{values\.state\}`\}/u);
   assert.match(filters, /Clear Filters/u);
   for (const name of [

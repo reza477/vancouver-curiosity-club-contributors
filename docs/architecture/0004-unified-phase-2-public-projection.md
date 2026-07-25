@@ -31,9 +31,9 @@ in a later authorized CMS rather than embedded in route components.
 - Treat the seed marker as a one-time foundation: later D1 editorial changes
   are preserved rather than overwritten.
 - Require organization-matching joins in every read and validate organization
-  ownership in every current write. Future CMS write surfaces must preserve
-  this invariant and should add composite database constraints if the parent
-  schema gains compatible organization-plus-ID keys.
+  ownership in every current write. Additive D1 `BEFORE INSERT/UPDATE` guards
+  also require each public profile/detail to agree with its related club,
+  lane, or event organization, including parent-side organization changes.
 
 ### Unified events
 
@@ -101,8 +101,9 @@ in a later authorized CMS rather than embedded in route components.
 ## Verification
 
 The generated migration is exercised from an empty Miniflare/D1 database and
-through a populated version-5 upgrade regression. Tests cover DTO allowlists,
-all restricted statuses, cancelled detail behavior, filter bounds, stable
-pagination, query-plan index use, active-generation isolation, manual/Meetup
-deduplication, public club URLs, robots/sitemap behavior, custom 404 output,
-structured data, CSP, and built-Worker private-field exclusion.
+through populated version-5 and version-6 upgrade regressions. Tests cover DTO
+allowlists, all restricted statuses, cancelled detail behavior, filter bounds,
+stable pagination, query-plan index use, active-generation isolation,
+manual/Meetup deduplication, public club URLs, organization-integrity guards,
+robots/sitemap behavior, custom 404 output, structured data, CSP, and
+built-Worker private-field exclusion.

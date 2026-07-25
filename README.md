@@ -36,6 +36,15 @@ The review database deliberately contains no fake production events. Home and
 Events therefore render a truthful empty state until a real manual event is
 published or a completed Meetup generation becomes active.
 
+A missing catalog is a valid review state and remains a truthful HTTP 200.
+An actual D1/public-service exception on Home or Events instead uses the
+App Router's server HTTP fallback: the built Worker returns 503, `no-store`,
+and `X-Robots-Tag: noindex, nofollow, noarchive` with an accessible,
+non-invented failure surface. The root layout intentionally emits no explicit
+healthy-page robots directive, so the fallback cannot inherit a contradictory
+`index` meta; healthy public pages remain indexable by default or by their
+route-level metadata.
+
 ## Unified event publication
 
 One server-only, parameterized read service supplies Home, Events, event
@@ -55,10 +64,13 @@ detail, club detail, related events, filter options, and sitemap slugs.
   inputs are centrally validated and bounded before prepared D1 queries run.
 - Previously published cancelled event pages remain available with an explicit
   cancellation notice while default Upcoming results exclude them.
+- Additive D1 guards require every public club profile to match both its club
+  and primary lane organization, and every public event detail to match its
+  event organization. Parent-side organization changes are guarded too.
 
 See
-`docs/architecture/0004-unified-phase-2-public-projection.md` for the full
-decision.
+`docs/architecture/0004-unified-phase-2-public-projection.md` and
+`docs/architecture/0005-phase-2-release-guards.md` for the full decisions.
 
 ## Meetup synchronization
 
@@ -132,7 +144,8 @@ git diff --check
 `npm.cmd run test:rendered` executes the built Cloudflare Worker in Miniflare
 against a fresh generated migration chain. It verifies public HTML, metadata,
 structured data, CSP, redirects, empty and cancelled states, 404 behavior,
-private-route protection, and private-field exclusion.
+private-route protection, private-field exclusion, and real 503/noindex
+behavior when the public D1 service cannot be read.
 
 `BUILD_STATUS.md` is the authoritative evidence ledger,
 `OWNER_INPUTS.md` records missing factual approvals without inventing them, and

@@ -20,6 +20,7 @@ import {
   getTrustedRequestOrigin,
   publicUrl,
 } from "@/lib/server/public/origin";
+import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
 export const dynamic = "force-dynamic";
@@ -250,7 +251,7 @@ async function loadHome(): Promise<{
       route: "/",
       status: 503,
     });
-    return null;
+    publicServiceUnavailable();
   }
 }
 
