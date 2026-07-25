@@ -13,7 +13,10 @@ The invariant also needs to survive crafted review states, cross-club writes, di
 ## Decision
 
 - Keep the canonical timezone-normalized timed interval, buffers, venue, primary organizer, and complete organizer scope on the `events` row used by the guard.
-- Use SQLite `BEFORE INSERT` and `BEFORE UPDATE` triggers shipped in generated migrations.
+- Use SQLite `BEFORE INSERT` and `BEFORE UPDATE` triggers installed and
+  persistently verified before Worker application dispatch. The original
+  generated-migration installation mechanism is superseded by ADR 0006; the
+  database-enforced trigger definitions and invariant are unchanged.
 - Treat `hold`, `tentative`, and `confirmed` as reserving statuses.
 - Block direct buffered overlap across the entire organization, including across clubs and when venue and organizer differ.
 - Emit deterministic database abort categories for shared venue, shared organizer scope, and otherwise organization-wide overlap. Every category blocks under the Phase 1 policy.
@@ -24,7 +27,9 @@ The invariant also needs to survive crafted review states, cross-club writes, di
 
 ## Verification contract
 
-The Miniflare D1 integration suite applies the shipped generated migrations, confirms the installed trigger SQL matches the source constant, and proves:
+The Miniflare D1 integration suite applies the normalized shipped migrations,
+runs the persistent invariant initializer, confirms the installed trigger SQL
+matches the source constants, and proves:
 
 - two synchronized competing writes commit at most one reservation;
 - the same result holds across different clubs, venues, and organizers;

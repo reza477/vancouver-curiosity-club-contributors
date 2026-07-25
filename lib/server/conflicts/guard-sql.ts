@@ -1,13 +1,15 @@
 /**
- * This SQL is part of the generated migration contract. Drizzle models tables
- * and indexes, but SQLite triggers must be appended to the generated migration.
+ * These are the authoritative database-enforced reservation guards. Sites
+ * production tokenizes packaged migrations at semicolons, so each complete
+ * trigger is prepared and installed by the server-only D1 invariant
+ * initializer before application access.
  *
  * A canonical organizer_scope_json snapshot is deliberately stored on events:
  * it lets SQLite evaluate the complete proposed organizer set in the same
  * statement that reserves the interval. event_organizers remains the normalized
  * association table and is written in the same D1 batch.
  */
-export const CONFLICT_GUARD_SQL = String.raw`
+const CONFLICT_GUARD_BEFORE_INSERT_SQL = String.raw`
 CREATE TRIGGER IF NOT EXISTS events_reservation_guard_before_insert
 BEFORE INSERT ON events
 WHEN NEW.deleted_at IS NULL
@@ -171,7 +173,9 @@ BEGIN
     THEN RAISE(ABORT, 'conflict_guard_overlap_organization')
   END;
 END;
+`;
 
+const CONFLICT_GUARD_BEFORE_UPDATE_SQL = String.raw`
 CREATE TRIGGER IF NOT EXISTS events_reservation_guard_before_update
 BEFORE UPDATE ON events
 WHEN NEW.deleted_at IS NULL
@@ -341,3 +345,15 @@ BEGIN
   END;
 END;
 `;
+
+export const CONFLICT_GUARD_TRIGGER_STATEMENTS = Object.freeze([
+  CONFLICT_GUARD_BEFORE_INSERT_SQL,
+  CONFLICT_GUARD_BEFORE_UPDATE_SQL,
+]);
+
+/**
+ * Retained as a combined proof artifact for tests and architecture review.
+ * Runtime installation always prepares the two statements independently.
+ */
+export const CONFLICT_GUARD_SQL =
+  CONFLICT_GUARD_TRIGGER_STATEMENTS.join("\n\n");

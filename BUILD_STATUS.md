@@ -4,424 +4,231 @@ Last updated: 2026-07-25 (America/Vancouver)
 
 ## Active phase and authorized scope
 
-- **Phase 2 — Public website only: Completed and verified locally.**
-- The complete public route, D1 catalog, unified public event projection,
-  Field Notes responsive system, SEO, privacy, security, and test work
-  authorized by the Phase 2 packet is implemented.
-- Phase 1 authorization, public-projection, conflict-guard, Meetup
-  generation-isolation, consent, timezone, and project-isolation guarantees
-  remain covered by the full regression suite.
-- The final Phase 2 gate corrections now return real noindex 503 responses for
-  Home/Events public-service failures and enforce cross-organization public
-  catalog integrity in additive migration 0007.
-- No Phase 3 surface was started.
-- The authorized owner-only deployment attempt for saved version 7 reached
-  terminal status **failed** before publication with
-  `incomplete input: SQLITE_ERROR`. Sites returned no URL; no preview or live
-  deployment exists.
-- Corrected unpublished Sites version 7: **Saved and provenance-verified** from
-  exact source commit
-  `978aca67c790d7e2216d40253f365bcc9d5d8b87`.
-- Version 6 remains preserved and unpublished.
-- Exact next phase: **Phase 3 — Not started**.
+- **Phase 2 production-migration compatibility correction — Completed and
+  verified locally; Sites save/deployment pending.**
+- Phase 1 and Phase 2 product behavior is unchanged. This correction is
+  limited to the Sites/D1 migration boundary, durable database-guard
+  initialization, its tests, and release evidence.
+- **Phase 3 — Not started.**
+- Public deployment is prohibited. The only authorized deployment is through
+  the Sites capability that verifies the current owner is the sole viewer.
 
 ## Completed and verified
 
-### Isolated Sites project and platform state
+### Root cause and version-7 evidence
 
-- The existing isolated project remains at
-  `C:\Users\user\Documents\Website`; no prior project source, data, asset, ID,
-  or configuration was copied.
-- `.openai/hosting.json` still contains only the original opaque project ID and
-  logical `DB`/`MEDIA` bindings.
-- The existing Sites project is active. Post-attempt readback reports latest
-  version 7, no preview URL, no live URL, and no successful deployment.
-- Access remains `custom` at revision 1 with exactly one allowed account and
-  zero allowed groups. The owner-only deployment capability accepted that
-  policy; public access was never enabled.
-- Sites runtime revision 1 contains only `INITIAL_OWNER_EMAIL` as a redacted
-  secret. Its value was not printed into source or documentation.
-- No GitHub, Supabase, PostgreSQL, Firebase, Vercel, Netlify, Resend, SMTP,
-  custom domain, alternate identity provider, or alternate host was created.
-
-### Complete Phase 2 public website
-
-- Implemented `/`, `/events`, `/events/[slug]`, `/clubs`,
-  `/clubs/[slug]`, `/community`, `/about`, `/get-involved`,
-  `/host-an-event`, `/contact`, `/conduct`, `/accessibility`, `/privacy`,
-  custom 404, `robots.txt`, and public-only XML sitemap.
-- `/events` is canonical. `/calendar` is a permanent 308, non-indexable
-  redirect and cannot create duplicate indexed content.
-- One responsive header/footer supplies the required navigation, confirmed
-  external links, current year, location, and restrained D1-backed mission
-  copy. Unconfirmed legal, charity, Society, sponsor, statistic, history,
-  organizer, and testimonial claims are absent.
-- The selected Field Notes identity remains warm, editorial, responsive, and
-  photography-free. Original category artwork and the original optimized mark
-  ship without implying real attendees.
-- Home reads its next events from the unified service and renders a truthful
-  empty state when none exist. It includes all four exact lanes, the three
-  confirmed featured clubs, honest attendance copy, community links, and
-  organizer login.
-- Events supplies Upcoming/Past, keyword, date range, club, lane, category,
-  attendance-mode filters, result count, clear filters, bounded pagination,
-  validated shareable query strings, and truthful empty/error/staleness
-  states.
-- Required browser QA found that the Clear Filters URL changed correctly but
-  uncontrolled fields retained stale DOM values during same-route navigation.
-  A deterministic server-value form key now remounts the form; the 390 px
-  filtered-to-cleared path was rerun and all fields visibly reset.
-- Public event detail displays only facts that exist, clearly marks cancelled
-  pages, uses Vancouver-local schedule wording, hides absent RSVP controls,
-  distinguishes unpublished location details from genuinely undecided
-  locations, and attributes Event structured data to the event's confirmed
-  public club.
-- Both draft program slugs and every draft, idea, hold, private, unpublished,
-  deleted, or guessed event slug return 404.
-
-### D1 catalog and migration
-
-- Added one additive generated migration,
-  `drizzle/0006_amusing_roughhouse.sql`, for:
-
-  - `club_public_profiles`
-  - `event_public_details`
-  - four bounded public-query indexes
-
-- Migration 0006 contains six D1 statements and no destructive data rewrite.
-- Added official custom migration
-  `drizzle/0007_public_organization_integrity.sql` without changing 0006.
-  Its nine-statement D1 batch installs seven `BEFORE INSERT/UPDATE` guards and
-  performs two zero-row validation updates. It rejects mismatches among a
-  public club profile, its club, primary lane, and organization; rejects
-  mismatches between a public event detail, its event, and organization; and
-  prevents parent organization updates from breaking either invariant.
-- Valid populated-v6 rows are byte-for-byte preserved. A malformed legacy row
-  aborts the entire migration batch, leaving none of the seven triggers
-  partially installed.
-- The shared authoritative catalog defines exactly:
-
-  - Think
-  - Reset & Make
-  - Explore
-  - Eat & Play
-  - Vancouver Curiosity Club — published/featured
-  - Vancouver Literature and Film — published/featured
-  - Vancouver Fantasy & Sci-Fi Group — published/featured
-  - Off-Radar Eats — draft/inaccessible
-  - Contemplative Meditation + Journaling Circle — draft/inaccessible
-
-- Catalog creation is idempotent, organization-scoped, and available only
-  after server-side Owner/Administrator authorization. It preserves later D1
-  editorial changes and never runs from a public GET.
-- The populated-version-5 upgrade regression preserves membership, private
-  feed configuration, active/pending generation pointers, snapshots, removal
-  counters, event/private fields, foreign keys, and both conflict triggers.
-- Fresh and populated-version-6 integrity regressions prove valid writes,
-  same-organization key changes, cross-organization insert/update rejection,
-  parent-side rejection, zero failed-write residue, seven installed integrity
-  triggers, unchanged conflict-trigger SQL, and zero foreign-key violations.
-
-### Unified public event projection
-
-- Home, Events, detail, club detail, related events, categories, and sitemap
-  use one parameterized server-only service.
-- Manual publication requires supported status, public visibility,
-  `published_at`, no deletion, and a published club. Every canonical event
-  with Meetup source-link history is excluded from this branch.
-- Meetup publication reads only the immutable completed snapshot selected by
-  `active_generation_id`. Pending and failed titles, times, additions,
-  cancellations, club changes, and RSVP destinations cannot leak through any
-  public surface.
-- DTOs allowlist public fields. No feed address/token, source ID, generation
-  ID, account identifier, organizer email, private note, private meeting
-  detail, private venue detail, invitation, audit row, or submission enters a
-  public DTO.
-- Venue publication requires both the event and venue public gates. Cards and
-  detail pages say that location details are not published rather than
-  pretending a private venue is undecided.
-- Filters, dates, slugs, state, page, and page size are validated and bounded.
-  Query-plan tests prove the manual and active-snapshot projection indexes are
-  used.
-
-### SEO, security, privacy, and accessibility
-
-- Public pages have unique titles/descriptions, request-origin-derived
-  canonical/Open Graph URLs, the original social image, semantic breadcrumbs,
-  and fact-bounded Organization/Event/Breadcrumb JSON-LD.
-- The Worker overwrites untrusted origin/path context, applies a per-request
-  production nonce with strict-dynamic CSP, rejects inline script attributes,
-  and applies HSTS, frame, content-type, referrer, permissions, opener, and
-  resource policies. Local unsafe-inline/unsafe-eval is restricted to Vite HMR.
-- Unknown, error, organizer, identity, API, preview, `/calendar`, and filtered
-  query routes are noindex through metadata and/or response headers.
-- A genuine Home or Events D1/public-service exception now uses the pinned
-  App Router's pre-stream HTTP fallback and returns 503. The Worker adds exact
-  `X-Robots-Tag: noindex, nofollow, noarchive` and `Cache-Control: no-store`;
-  the accessible surface exposes no guessed facts or database details. Healthy
-  Home/canonical Events remain indexable and healthy filtered Events remains
-  noindex.
-- Final read-only audit found that the fallback's noindex meta initially
-  coexisted with a root `index, follow` meta. The root now omits a generic
-  healthy robots directive; healthy pages remain indexable by default or
-  route metadata, while built failure tests prove every emitted robots meta
-  excludes the `index` token.
-- Privacy copy accurately describes public browsing, future organizer SIWC
-  identity sharing, Sites/D1/R2, and the absence of a public submission form.
-  It marks legal review as still required.
-- Skip link, landmarks, semantic headings, visible focus, mobile body text at
-  16 px, 44 px interactive targets, safe-area padding, reduced-motion
-  overrides, and horizontal-overflow guards are implemented.
-
-## Exact verification evidence
-
-All commands below were run from
-`C:\Users\user\Documents\Website` on 2026-07-25.
-
-- `npm.cmd ci` — **exit 0**; 503 packages installed from `package-lock.json`.
-- `npm.cmd run db:generate` — **exit 0**; 36 schema tables recognized; no
-  schema drift and no additional migration generated.
-- `npm.cmd run db:apply:local` — **exit 0**; 8 migrations, 38 SQLite tables
-  including migration bookkeeping, 0007 applied as 9 statements, 2 conflict
-  triggers, and 0 foreign-key violations.
-- `npm.cmd run db:apply:preview` — **exit 0**; the same 8 migrations, 38
-  tables, 2 triggers, and 0 foreign-key violations in the Sites local preview
-  D1.
-- `npm.cmd run typecheck` — **exit 0** under strict TypeScript.
-- `npm.cmd run lint` — **exit 0** before build.
-- `npm.cmd test` — **exit 0; 96/96 passed**, 0 failed, 0 skipped.
-  An immediately preceding run correctly failed 2 stale source-contract
-  assertions that required the removed root `index: true`; both were replaced
-  with the truthful no-inherited-index contract before this final passing run.
-- `npm.cmd run build` — **exit 0**; vinext production build completed and
-  emitted every authorized public route plus the preserved private Phase 1
-  routes/APIs.
-- Exact documented `npm.cmd run lint` after build and retained ignored
-  `work/**` artifacts — **exit 0**.
-- `npm.cmd run test:rendered` — **exit 0; 12/12 passed**, 0 failed, 0 skipped.
-  This applies the generated chain to a fresh Miniflare/D1 database and checks
-  built HTML, CSP, canonical metadata, public pages, empty Events, a synthetic
-  cancelled detail, accurate Event/Breadcrumb JSON-LD, robots/sitemap,
-  `/calendar`, custom 404, optimized assets, SIWC redirect, private API
-  behavior, and forced Home/Events D1 failures as truthful noindex 503s.
-- `git diff --check` — **exit 0**.
-- Exact public Meetup group destinations — **3/3 returned HTTP 200** without a
-  redirect to a different URL during the final link check.
-- Client-output scan — **0 hits** for feed-path, source URL, normalized email,
-  private-note, private-meeting, runtime owner variable, Gmail-address,
-  private-sentinel, or Windows-user-path patterns.
-- Built-server concrete-value scan — **0 hits** for any of the three official
-  feed paths, Gmail addresses, or Sites bypass-token labels. Generic
-  server-only iCalendar parsing and private schema column names are expected
-  and remain non-public.
-- Prior version-6 exact verified source commit
-  `23ce5db16eb313e2f404cb7d0e9d90729a0509ce` was pushed to the existing
-  Sites-managed `main` source branch; remote branch readback matched exactly.
-- The prior version-6 official Sites package had local
+- Immutable Sites version 7 remains preserved and must not be retried or
+  deployed.
+- Its owner-only deployment
+  `appgdep_6a65376e5b3881918d5653d913c5d447` failed before publication with
+  `incomplete input: SQLITE_ERROR`; Sites returned no URL.
+- The exact version-7 archive was intact:
   SHA-256
-  `8d6f67d76e465d77480e7e942d959b5fce63d8275a004c484a1eb8e5c0929337`,
-  1,658,238 bytes, and 70 regular files.
-- The prior version-6 archive inspection found all required
-  Worker/hosting/migration files,
-  0 forbidden paths, 0 missing required paths, 0 mismatches across the 54
-  original `dist` files, and 0 concrete private-value hits.
-- Sites version 6 readback matched the source commit and reported content
-  SHA-256
-  `136f94f571f9f7deac92fa42109a7f40e7630583006be5dda9378065cdcf474d`,
-  4,290,560 stored bytes, and 70 files.
-- Corrected source commit
-  `978aca67c790d7e2216d40253f365bcc9d5d8b87` was pushed to the existing
-  Sites-managed `main` source branch; remote branch readback matched exactly
-  and no remote or credential was persisted locally.
-- The first official packaging-helper invocation exited 1 because the bundled
-  shell process could not resolve its own `mktemp` utility; it produced no
-  archive. Re-running the same official helper with its bundled `usr/bin`
-  prepended only to that process's PATH exited 0.
-- Corrected local archive SHA-256:
-  `d259059221780c65df4f0958c14a59a541b42c85c662c98724734eb64cdc9493`;
-  1,668,409 bytes; 72 regular files.
-- Corrected archive inspection found 87 entries, all under `dist/`; all 8
-  required Worker/hosting/migration paths; 0 forbidden paths; 0 mismatches
-  against the exact committed build; 0 concrete private-value hits; and only
-  `d1`, `project_id`, and `r2` in packaged hosting metadata.
-- Sites version 7 readback matched source commit
-  `978aca67c790d7e2216d40253f365bcc9d5d8b87` and reported content SHA-256
-  `66d49020157a7b1209125561f1e03f575cee1431f5793973db94f383d0062cbc`,
-  4,464,640 stored bytes, and 72 files.
-- Final project/runtime readback: active project, latest version 7, access
-  revision 1, runtime revision 1 with only the redacted secret
-  `INITIAL_OWNER_EMAIL`, and null preview/live URLs.
-- Owner-only deployment
-  `appgdep_6a65376e5b3881918d5653d913c5d447` targeted saved version 7 and
-  source commit `978aca67c790d7e2216d40253f365bcc9d5d8b87`. At
-  `2026-07-25T22:23:49.593963+00:00`, Sites reported terminal status
-  **failed**, `incomplete input: SQLITE_ERROR`, environment revision 1, and a
-  null URL.
-- Post-failure readback confirms access is still custom owner-only, runtime
-  revision 1 is unchanged, versions remain exactly 1–7, latest version remains
-  7, and both preview/live URLs remain null. No new source version was saved.
-- The exact archive contains 8 migrations. The hosted applied-migration count
-  is **Not externally verified**: Sites exposes no production D1 migration
-  ledger/query in this workflow, returned no per-migration diagnostic, and the
-  deployment failed during SQLite processing.
-- Production Worker logs are unavailable because no Worker was successfully
-  published.
+  `d259059221780c65df4f0958c14a59a541b42c85c662c98724734eb64cdc9493`,
+  1,668,409 bytes, 87 archive entries, and 72 regular files.
+- All eight packaged SQL files and migration metadata matched source.
+  Applying each Drizzle breakpoint chunk as one prepared statement succeeded.
+- A semicolon tokenizer reproduced the exact first failure inside
+  `events_reservation_guard_before_insert` in packaged migration 0000.
+  Removing only the eleven historical `CREATE TRIGGER` chunks made every
+  remaining fragment across migrations 0000–0007 apply successfully.
+- The defect is therefore the Sites production tokenizer crossing SQLite
+  trigger-body semicolons, not corrupt packaging, table/index syntax, PRAGMA,
+  the 0007 validation updates, or SQLite trigger semantics.
+- Sites exposes no hosted D1 query, migration ledger, reset, or reprovision
+  capability. Version 7 never returned a Worker URL, so hosted user writes
+  were impossible. Its failed migration may still have left schema objects
+  before the first trigger.
 
-### Dependency audit
+### Retry-safe pre-production migration normalization
 
-- `npm.cmd audit --omit=dev --json` — **exit 1** with 3 high, 0 critical
-  production findings (`next`, transitive `postcss`, transitive `sharp`).
-- `npm.cmd audit --json` — **exit 1** with 18 total findings: 1 low,
-  4 moderate, 13 high, 0 critical.
-- No forced or unverified dependency upgrade was applied to the pinned Sites
-  starter runtime. Patch candidates exist, but compatibility must be
-  revalidated before any future public deployment.
+- Historical migrations 0000–0007 remain preserved in Git and immutable Sites
+  versions but are absent from the corrected package.
+- The new monotonic chain uses:
 
-## Browser QA
+  - `0008_preproduction_reset.sql` — 49 idempotent child-first drops for the
+    nine known triggers, three rebuild remnants, and 37 final tables.
+  - `0009_sites_compatible_baseline.sql` — 37 retry-safe table creates.
+  - `0010_sites_compatible_indexes_a.sql` — 38 retry-safe index creates.
+  - `0011_sites_compatible_indexes_b.sql` — 37 retry-safe index creates.
 
-Completed against the local Sites/vinext preview with the approved catalog and
-zero fake events:
+- Every file contains at most 49 single statements. No packaged migration
+  contains `CREATE TRIGGER`, `ALTER TABLE`, `PRAGMA`, a rename/rebuild
+  sequence, or a trigger body.
+- The final generated schema has 37 application tables, 75 explicit indexes
+  including 32 unique indexes, 102 foreign keys, and 40 checks.
+- `npm.cmd run db:generate` reports those 37 tables, no schema drift, and no
+  new migration.
+- Exhaustive regression coverage retries every cut point in the reset and
+  baseline/index chains. It also recovers a representative failed-version-7
+  prefix and all three known `__new_*` rebuild remnants.
+- A malformed/truncated packaged statement fails with `incomplete input`
+  rather than being accepted.
+- This destructive reset is authorized only because no production Worker or
+  hosted user data ever existed. It must never be reused after the first
+  successful deployment.
 
-- Final correction recheck: 320 × 800 Home and 390 × 844 Events failure
-  surfaces were visually inspected against a separate empty built Miniflare
-  D1. Both used 16 px body copy, had zero horizontal overflow, exposed
-  route-specific truthful alert copy and retry links, and the built response
-  regression confirmed 503/noindex/no-store.
-- Final correction recheck: 390 × 844 healthy Events combined keyword/lane
-  filters into a shareable noindex URL. Clear Filters then reset the URL and
-  every visible uncontrolled field without reload; zero horizontal overflow.
-- Final correction recheck: 1280 × 800 healthy Home showed the full desktop
-  navigation, hid the mobile menu, retained 16 px body copy, and had zero
-  horizontal overflow. Browser console: 0 errors and 0 warnings.
-- 320 × 800: no horizontal overflow; mobile menu and truthful Home state fit.
-- 390 × 844: 16 px/24 px body copy, original mark legible at about 30 px,
-  mobile menu opens, combined Events filters produce a shareable URL, and
-  Clear Filters returns to the canonical state.
-- 768 × 1024: public club page shows the exact confirmed group URL, no draft
-  club, truthful event states, and no overflow.
-- 1280 × 900: Community, Privacy, and custom 404 checked; exact external
-  destinations, no discussion CTA/form, correct 404 title/noindex, and no
-  overflow.
-- 1440 × 900: complete desktop navigation visible, mobile menu hidden, no
-  overflow, no fake event links, and no interactive target below 44 px.
-- DevTools 200% reflow simulation (1280 physical width represented by a
-  640-CSS-pixel viewport): responsive menu engaged, no overflow, and no target
-  below 44 px.
-- Reduced-motion emulation matched and reduced animation/transition duration
-  to effectively zero.
-- Visible focus was verified with the 3 px coral outline. Semantic keyboard
-  controls are present; the in-app CUA Tab event itself was unreliable and is
-  not claimed as a complete manual keyboard traversal.
-- Browser console contained Vite development messages only: **0 error and
-  0 warning entries; no hydration error**.
+### Persistent database-enforced guard installation
+
+- `database_invariant_state` stores a persistent singleton version,
+  64-character trigger fingerprint, and verification time.
+- Before any application dispatch in each Worker isolate, the server-only D1
+  initializer verifies:
+
+  - marker version and fingerprint;
+  - the exact normalized `sqlite_master` definitions and names of all nine
+    expected triggers;
+  - zero cross-organization public-club-profile violations;
+  - zero cross-organization public-event-detail violations.
+
+- A missing or mismatched state is repaired in one atomic prepared D1 batch:
+  marker delete, nine trigger drops, nine complete trigger creates, two
+  aborting integrity probes, and one guarded marker upsert.
+- Only successful per-binding promises are cached. Separate Worker isolates
+  still verify the persistent marker and database definitions.
+- Concurrent isolate-style initialization is idempotent and ends with one
+  marker and the exact nine-trigger set.
+- Malformed pre-existing public rows abort the entire batch, leaving no marker
+  and no partial trigger installation. After repair, initialization succeeds.
+- The two current organization-wide reservation triggers and seven
+  public-organization-integrity triggers remain database-enforced. Conflict
+  status, hold expiry, venue/organizer/buffer reasoning, organization-wide
+  overlap, public consent, and cross-organization integrity guarantees were
+  not weakened.
+- If initialization fails, the Worker does not call the application handler.
+  It logs only the allowlisted operational code and returns a no-store,
+  noindex 503 without SQL, identity, or private-content details.
+
+### Verification evidence
+
+Commands were run from `C:\Users\user\Documents\Website` on 2026-07-25.
+
+- `npm.cmd ci` — first attempt exited 1 because two completed local Miniflare
+  reproducer processes retained a Windows lock on the workspace
+  `workerd.exe`. The exact workspace processes were stopped. The unchanged
+  command then exited 0: 503 packages installed from `package-lock.json`.
+- `npm.cmd run db:generate` — exit 0; 37 tables; no drift and no generated
+  migration.
+- One non-operative command typo, `npm.cmd run db:migrate:local`, exited 1
+  because that script does not exist; it changed no state. The supported
+  `db:apply:local` and `db:apply:preview` commands below both passed.
+- First normalized `npm.cmd run db:apply:local` — exit 0; migrations applied as
+  49, 37, 38, and 37 statements.
+- Final `npm.cmd run db:apply:local` — exit 0; four migrations already applied;
+  37 application tables, nine exact invariant triggers, zero foreign-key
+  violations.
+- First and final `npm.cmd run db:apply:preview` — exit 0 with the same
+  statement counts and final 37-table/nine-trigger/zero-violation signature in
+  the Sites local preview D1.
+- `npm.cmd run typecheck` — exit 0 under strict TypeScript.
+- Exact `npm.cmd run lint` before and after retained build/work artifacts —
+  exit 0; no lint rule was disabled.
+- `npm.cmd test` — exit 0; **103/103 passed**, 0 failed, 0 skipped.
+- `npm.cmd run build` — exit 0; vinext produced the complete Phase 2 Worker and
+  route set.
+- `npm.cmd run test:rendered` — exit 0; **13/13 passed**, 0 failed, 0 skipped.
+  It applies the exact `dist/.openai/drizzle` files through semicolon
+  tokenization, proves zero migration-installed triggers, initializes and
+  fingerprints all nine runtime guards, exercises conflict/public-integrity
+  rejection, checks 37 tables/75 indexes/zero FK violations, rejects truncated
+  packaged SQL, and reruns public/private/security/error behavior.
+- `git diff --check` — exit 0.
+- Source and built privacy scan — zero exact official private feed URLs, Gmail
+  addresses, client iCalendar paths, `source_url`, `normalized_email`,
+  `INITIAL_OWNER_EMAIL`, private sentinels, Windows user paths, or packaged
+  master artwork.
+- `npm.cmd audit --omit=dev --json` — exit 1 with 3 high, 0 critical
+  production advisories.
+- `npm.cmd audit --json` — exit 1 with 18 advisories: 1 low, 4 moderate, 13
+  high, 0 critical.
+- No forced dependency upgrade was applied to the pinned Sites runtime.
+
+### Changed source
+
+- Schema/migrations: `db/schema.ts`, `drizzle/0008_*` through `0011_*`, and
+  aligned Drizzle journal/snapshots.
+- Runtime: `lib/server/database/invariants.ts`,
+  `lib/server/conflicts/guard-sql.ts`, and `worker/index.ts`.
+- Migration harness: `package.json`, local/preview migration scripts.
+- Regression coverage: database invariant, conflict, Meetup,
+  public-integrity, public catalog/projection, production-tokenizer,
+  partial-retry, and rendered-Worker tests.
+- Documentation: `README.md` and ADR
+  `docs/architecture/0006-sites-d1-trigger-compatibility.md`.
 
 ## Implemented but not externally verified
 
-- Hosted D1 catalog creation, hosted feed refresh, hosted sitemap/event data,
-  and SIWC owner persistence are implemented but cannot be externally verified
-  without a successful deployment.
-- D1 migration behavior remains verified in the supported local and
-  preview-compatible environments. The failed production deployment may have
-  attempted part of the hosted migration chain, but Sites exposes no D1 ledger
-  here, so remote D1 state is not claimed unchanged or complete. MEDIA remains
-  bound and unused in Phase 2.
+- The corrected hosted migration and persistent nine-trigger marker are
+  implemented and production-contract tested but not externally verified
+  until the next owner-only Sites deployment succeeds.
+- Hosted Home, Events, sitemap, Meetup refresh, SIWC owner persistence, and
+  hosted D1/R2 bindings retain their Phase 2 implementation but await the same
+  deployment.
+- The failed version-7 D1 state cannot be inspected. Migrations 0008–0011 are
+  deliberately idempotent and reset only the known unservable pre-production
+  application schema.
 
 ## Not implemented
 
-- Phase 3 invitations/team management, event editor, organizer settings, CMS
-  editing/revision restore, R2 media upload UI, conflict review/override UI,
-  public-to-private publishing workflows, and submission inbox.
-- Public forms, email, payments, donations, internal RSVP, attendee accounts,
-  comments, chat, forums, QR downloads, calendar export, and notifications.
-- No dead controls for those deferred features are shown.
+- Phase 3 invitations/team/event-editor/settings/CMS/media workflows.
+- Conflict review/override UI, public submission forms, email, payments,
+  donations, internal RSVP, attendee accounts, comments, chat, forums, QR
+  downloads, or calendar export.
+- No Phase 3 code or dead controls were added.
 
 ## Not run
 
-- Real interactive event browser smoke: **Not run** because the review D1
-  contains no real published event and fake production events are forbidden.
-  Service tests and the built synthetic cancelled-detail test cover the flow.
-- Hosted SIWC/Owner persistence and uninvited second-identity smoke:
-  **Not run** because the authorized owner-only deployment failed before a URL
-  was created. A second identity also remains unavailable under the one-user
-  outer access policy.
-- Hosted Meetup import and hosted D1 migration: **Not run** because no
-  deployment succeeded. The packaged migration count is 8; the hosted applied
-  count is not externally inspectable.
-- Hosted Home, Events, organizer/SIWC, and private-session browser checks:
-  **Not run** because Sites returned no deployed URL.
-- R2 upload/read: **Not run** because media upload is out of Phase 2 scope.
-- Lighthouse/Core Web Vitals measurement: **Not run**; no stable hosted URL
-  exists.
-- Automated axe audit: **Not run** because axe is not part of the pinned
-  starter. Built semantic regressions and measured browser checks were run
-  instead.
+- Corrected hosted browser checks — not run until the corrected Sites version
+  is saved and deployed owner-only.
+- Real interactive event smoke — not run because the review database has no
+  real published event and fake production events are prohibited.
+- Second authenticated identity denial — not run because the custom outer
+  access policy allows only the owner.
+- R2 upload/read — not run because upload UI is outside Phase 2.
+- Lighthouse/Core Web Vitals and automated axe — not run; no corrected hosted
+  URL exists yet and axe is not part of the pinned starter.
 
 ## Blocked
 
-- Owner-only deployment of immutable saved version 7 is **Blocked** by the
-  terminal Sites error `incomplete input: SQLITE_ERROR`. Fixing the production
-  D1 migration path would require a separately authorized source correction
-  and new saved version; neither is authorized in this deployment-only packet.
-- Public/shared deployment remains prohibited. The failed attempt used only
-  the verified owner-only capability and did not widen access.
-- Stable-origin QR downloads are blocked until an actual production Sites URL
-  exists.
-- A clean dependency audit is blocked on a separately validated Sites-runtime
-  patch update; no unsafe forced upgrade was made.
-
-## Missing owner inputs
-
-- Exact public Meetup discussion URL.
-- Real event RSVP URLs for a later hosted smoke test.
-- Exact BC legal name, legal form/status wording, registration number,
-  effective date, approved legal footer, and charity wording/status.
-- Final approved public copy.
-- Real photographs with rights, credits, and participant-consent state.
-- Approved organizer names/biographies and both attribution-consent gates.
-- Confirmed public contact email, if one should be published.
-- Per-event venue and accessibility facts.
-- Stable production origin.
+- Direct remote D1 inspection/reset is unavailable in the Sites capability.
+  The corrected monotonic, retry-safe pre-production baseline is the safe
+  recovery path authorized for this no-data project.
+- Remaining factual owner inputs: exact BC legal identity/status/footer and
+  charity wording; exact Meetup discussion URL; approved final copy; approved
+  organizer names/biographies; real photos with rights/credit/consent;
+  event-specific venue/accessibility facts.
 
 ## Sites version and deployment state
 
-- Existing versions 1–7 remain preserved and unpublished.
-- Version 3 remains superseded and must not be deployed.
-- Version 5 remains preserved, sourced from
-  `cb51a5969370e4bed39ce83adac8532f2900d3d7`.
-- New Phase 2 version 6 is **saved unpublished and provenance-verified** from
-  `23ce5db16eb313e2f404cb7d0e9d90729a0509ce`.
-- Corrected Phase 2 version 7 is **saved unpublished and provenance-verified**
-  from `978aca67c790d7e2216d40253f365bcc9d5d8b87`.
-- Preview deployment: **None**.
-- Owner-only production attempt: **Failed before publication** with
-  `incomplete input: SQLITE_ERROR`.
-- Active production deployment: **None**.
-- Owner-access URL: **None returned**.
-- Public access: **Not enabled**.
+- Existing Sites versions 1–7 remain preserved.
+- Version 7 is unpublished, failed before publication, and superseded for
+  deployment.
+- Corrected source commit/archive/new Sites version: pending the final clean
+  source freeze and provenance audit.
+- Access remains custom owner-only: one allowed account and zero groups.
+- Runtime revision remains 1 with only `INITIAL_OWNER_EMAIL` stored as a
+  redacted secret.
+- Custom domains: none.
+- Preview URL: none.
+- Live URL: none.
+- Public access: not enabled.
 
 ## Awaiting owner smoke test
 
-Status: **Awaiting owner smoke test — blocked until a private deployment
-succeeds**. No owner action is marked passed by the builder.
+Status: **Awaiting owner smoke test — pending corrected owner-only deployment.**
 
-Five-minute phone card, after a corrected owner-only deployment is available:
+Five-minute owner card after a URL is returned:
 
-1. Open Home at phone width; confirm the mark, menu, tagline, four lanes, three
-   featured clubs, and truthful event state are readable without sideways
-   scrolling.
-2. Open Events; combine two filters, confirm the URL changes, then use Clear
-   Filters.
-3. Open one genuinely published event when available; confirm Vancouver-local
-   time, truthful location wording, and that `RSVP on Meetup` appears only with
-   a real destination.
-4. Open each public club plus Community, Conduct, Accessibility, and Privacy;
-   confirm only the three approved Meetup group links appear and no legal,
-   discussion, contact-form, or organizer claim has been invented.
-5. Open Organizer Login signed out; confirm Sign in with ChatGPT is required.
-   After owner runtime activation, refresh as Reza and confirm access persists;
-   if a second identity is available, confirm an authenticated uninvited user
-   is denied.
+1. Open Home and Events; confirm both render without a migration/database
+   error and the event state is truthful.
+2. At phone width, confirm the mark, menu, four lanes, three featured clubs,
+   filters, and Clear Filters work without sideways scrolling.
+3. Open Organizer Login signed out; confirm Sites-owned Sign in with ChatGPT is
+   required and the route is noindex.
+4. Sign in as Reza; refresh and confirm owner access persists.
+5. If a second allowed test identity later exists, confirm an authenticated
+   but uninvited identity is denied.
 
 ## Next phase
 
-**Phase 3 — Not started. Stop for owner review.**
+**Phase 3 — Not started. Stop after the owner-only deployment handoff.**

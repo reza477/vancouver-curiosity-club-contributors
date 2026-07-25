@@ -1,12 +1,26 @@
 import assert from "node:assert/strict";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { Log, LogLevel, Miniflare } from "miniflare";
 
 const FIXTURE_NOW = Date.UTC(2026, 6, 24, 19, 0, 0);
 const ORGANIZATION_ID = "phase2-org";
 const PROFILE_ID = "phase2-owner";
+const EXPECTED_DATABASE_INVARIANT_FINGERPRINT =
+  "c4145c188dc60b93166c80f14c13c5b88aeb00e1167c06735d72f8e4b3af0e99";
+const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
+  "club_public_profiles_org_integrity_before_insert",
+  "club_public_profiles_org_integrity_before_update",
+  "clubs_public_profile_org_integrity_before_update",
+  "event_lanes_public_profile_org_integrity_before_update",
+  "event_public_details_org_integrity_before_insert",
+  "event_public_details_org_integrity_before_update",
+  "events_public_details_org_integrity_before_update",
+  "events_reservation_guard_before_insert",
+  "events_reservation_guard_before_update",
+]);
 const PRIVATE_SENTINELS = [
   "PRIVATE_LEGAL_SENTINEL",
   "PRIVATE_OWNER_EMAIL_SENTINEL",
@@ -37,7 +51,8 @@ const serverRoot = resolve("dist/server");
 const moduleFiles = await collectJavaScriptModules(serverRoot);
 const entrypoint = resolve(serverRoot, "index.js");
 const runtime = createBuiltRuntime();
-await applyGeneratedMigrations(runtime);
+await applyPackagedProductionMigrations(runtime);
+await initializePackagedDatabaseInvariants(runtime);
 await seedPublicCatalog(runtime);
 
 test.after(async () => {
@@ -51,6 +66,228 @@ async function fetchPath(path, init) {
     headers,
   });
 }
+
+test("the packaged migration contract installs and enforces the exact runtime guards", async () => {
+  const packagedMigrationDirectory = resolve("dist/.openai/drizzle");
+  const packagedMigrations = (await readdir(packagedMigrationDirectory))
+    .filter((name) => /^\d+.*\.sql$/u.test(name))
+    .sort();
+  assert.deepEqual(packagedMigrations, [
+    "0008_preproduction_reset.sql",
+    "0009_sites_compatible_baseline.sql",
+    "0010_sites_compatible_indexes_a.sql",
+    "0011_sites_compatible_indexes_b.sql",
+  ]);
+  for (const file of packagedMigrations) {
+    const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
+    assert.doesNotMatch(sql, /\bCREATE\s+TRIGGER\b/iu, file);
+    assert.ok(
+      productionMigrationFragments(sql).length <= 49,
+      `${file} must remain bounded`,
+    );
+  }
+  const packagedFirstTable = productionMigrationFragments(
+    await readFile(
+      join(
+        packagedMigrationDirectory,
+        "0009_sites_compatible_baseline.sql",
+      ),
+      "utf8",
+    ),
+  )[0];
+  const truncatedPackagedStatement = packagedFirstTable.slice(
+    0,
+    packagedFirstTable.lastIndexOf(")"),
+  );
+  const malformedDatabase = new DatabaseSync(":memory:");
+  try {
+    assert.throws(
+      () => malformedDatabase.prepare(truncatedPackagedStatement).run(),
+      /incomplete input/iu,
+    );
+  } finally {
+    malformedDatabase.close();
+  }
+
+  const database = await runtime.getD1Database("DB");
+  const marker = await database
+    .prepare(
+      `SELECT version, trigger_fingerprint
+       FROM database_invariant_state
+       WHERE singleton_key = 'database-guards'`,
+    )
+    .first();
+  assert.deepEqual({ ...marker }, {
+    trigger_fingerprint: EXPECTED_DATABASE_INVARIANT_FINGERPRINT,
+    version: 1,
+  });
+  const triggerRows = await database
+    .prepare(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'trigger'
+       ORDER BY name`,
+    )
+    .all();
+  assert.deepEqual(
+    triggerRows.results.map((row) => row.name),
+    [...EXPECTED_DATABASE_INVARIANT_TRIGGERS],
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM sqlite_master
+         WHERE type = 'table'
+           AND name NOT LIKE 'sqlite_%'
+           AND name NOT LIKE '_cf_%'`,
+      )
+      .first("count"),
+    37,
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM sqlite_master
+         WHERE type = 'index'
+           AND sql IS NOT NULL`,
+      )
+      .first("count"),
+    75,
+  );
+  assert.deepEqual(
+    (await database.prepare("PRAGMA foreign_key_check").all()).results,
+    [],
+  );
+
+  await run(
+    database,
+    `INSERT INTO profiles (
+       id, siwc_subject, normalized_email, display_name, status,
+       created_at, updated_at
+     ) VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+    "profile-other-org",
+    "subject-other-org",
+    "other-org@example.invalid",
+    "Other organization fixture",
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO organizations (
+       id, name, slug, timezone, created_by_profile_id, created_at, updated_at
+     ) VALUES (?, ?, ?, 'America/Vancouver', ?, ?, ?)`,
+    "other-org",
+    "Other organization fixture",
+    "other-organization-fixture",
+    "profile-other-org",
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO event_lanes (
+       id, organization_id, name, slug, sort_order, created_by_profile_id,
+       created_at, updated_at
+     ) VALUES (?, ?, ?, ?, 10, ?, ?, ?)`,
+    "other-lane",
+    "other-org",
+    "Other lane",
+    "other-lane",
+    "profile-other-org",
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await assert.rejects(
+    database
+      .prepare(
+        `INSERT INTO club_public_profiles (
+           club_id, organization_id, primary_event_lane_id,
+           publication_status, is_featured, created_at, updated_at
+         ) VALUES (?, ?, ?, 'draft', 0, ?, ?)`,
+      )
+      .bind(
+        "club-curiosity",
+        "other-org",
+        "other-lane",
+        FIXTURE_NOW,
+        FIXTURE_NOW,
+      )
+      .run(),
+    /club_public_profiles_organization_mismatch/u,
+  );
+
+  for (const [id, slug] of [
+    ["venue-guard-a", "venue-guard-a"],
+    ["venue-guard-b", "venue-guard-b"],
+  ]) {
+    await run(
+      database,
+      `INSERT INTO venues (
+         id, organization_id, name, slug, timezone, is_public,
+         created_by_profile_id, updated_by_profile_id, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, 'America/Vancouver', 0, ?, ?, ?, ?)`,
+      id,
+      ORGANIZATION_ID,
+      id,
+      slug,
+      PROFILE_ID,
+      PROFILE_ID,
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+    );
+  }
+  const reservationSql = `INSERT INTO events (
+      id, organization_id, club_id, event_lane_id, venue_id, title, slug,
+      status, visibility, time_kind, starts_at_utc, ends_at_utc, timezone,
+      buffer_before_minutes, buffer_after_minutes, organizer_scope_json,
+      schedule_version, schedule_review_state, created_by_profile_id,
+      updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'private', 'timed', ?, ?,
+      'America/Vancouver', 0, 0, '[]', 1, 'unreviewed', ?, ?, ?, ?
+    )`;
+  await run(
+    database,
+    reservationSql,
+    "rendered-guard-a",
+    ORGANIZATION_ID,
+    "club-curiosity",
+    "lane-think",
+    "venue-guard-a",
+    "Rendered guard A",
+    "rendered-guard-a",
+    Date.UTC(2028, 0, 1, 20),
+    Date.UTC(2028, 0, 1, 21),
+    PROFILE_ID,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await assert.rejects(
+    database
+      .prepare(reservationSql)
+      .bind(
+        "rendered-guard-b",
+        ORGANIZATION_ID,
+        "club-literature",
+        "lane-think",
+        "venue-guard-b",
+        "Rendered guard B",
+        "rendered-guard-b",
+        Date.UTC(2028, 0, 1, 20, 30),
+        Date.UTC(2028, 0, 1, 21, 30),
+        PROFILE_ID,
+        PROFILE_ID,
+        FIXTURE_NOW,
+        FIXTURE_NOW,
+      )
+      .run(),
+    /conflict_guard_overlap_organization/u,
+  );
+});
 
 test("the built public root is indexable and carries the production security contract", async () => {
   const response = await fetchPath("/");
@@ -241,10 +478,7 @@ test("Events is canonical, empty honestly, and filter URLs are non-indexable", a
 test("Home and Events public-service failures return truthful noindex 503 responses", async () => {
   const unavailableRuntime = createBuiltRuntime();
   try {
-    for (const [path, expectedHeading] of [
-      ["/", "The public catalog could not be read."],
-      ["/events", "The published event calendar could not be read."],
-    ]) {
+    for (const path of ["/", "/events"]) {
       const response = await unavailableRuntime.dispatchFetch(
         new URL(path, "https://preview.example"),
       );
@@ -266,15 +500,14 @@ test("Home and Events public-service failures return truthful noindex 503 respon
       );
 
       const html = await response.text();
-      assert.match(html, new RegExp(escapeRegex(expectedHeading), "u"));
+      assert.match(html, /The site is temporarily unavailable\./u);
       assert.match(
         html,
-        /No event, person, legal detail, or community fact is being guessed\./u,
+        /database safety checks could not be completed/u,
       );
-      assert.match(html, /Try this page again/u);
       assert.match(
         html,
-        /<meta(?=[^>]*\bname="robots")(?=[^>]*\bcontent="noindex")[^>]*>/iu,
+        /<meta(?=[^>]*\bname="robots")(?=[^>]*\bcontent="noindex, nofollow, noarchive")[^>]*>/iu,
       );
       const robots = robotsMetaContents(html);
       assert.ok(
@@ -290,7 +523,7 @@ test("Home and Events public-service failures return truthful noindex 503 respon
       assertNoPrivateSentinels(html);
       assert.doesNotMatch(
         html,
-        /no such table|D1_ERROR|SQLITE|NEXT_HTTP_ERROR|digest|stack trace/iu,
+        /no such table|D1_ERROR|SQLITE|NEXT_HTTP_ERROR|digest|stack trace|trigger|migration|organization_mismatch/iu,
       );
       assert.doesNotMatch(html, /href="\/events\/[^"?]+"/iu);
     }
@@ -604,20 +837,37 @@ function createBuiltRuntime() {
   });
 }
 
-async function applyGeneratedMigrations(targetRuntime) {
+async function applyPackagedProductionMigrations(targetRuntime) {
   const database = await targetRuntime.getD1Database("DB");
-  const migrationDirectory = resolve("drizzle");
+  const migrationDirectory = resolve("dist/.openai/drizzle");
   const migrationFiles = (await readdir(migrationDirectory))
     .filter((name) => /^\d+.*\.sql$/u.test(name))
     .sort();
   for (const file of migrationFiles) {
     const sql = await readFile(join(migrationDirectory, file), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      if (statement.trim().length > 0) {
-        await database.prepare(statement).run();
-      }
+    const statements = productionMigrationFragments(sql);
+    const results = await database.batch(
+      statements.map((statement) => database.prepare(statement)),
+    );
+    if (results.some((result) => result.success === false)) {
+      throw new Error(`Packaged migration failed: ${file}`);
     }
   }
+}
+
+function productionMigrationFragments(sql) {
+  return sql
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter(Boolean);
+}
+
+async function initializePackagedDatabaseInvariants(targetRuntime) {
+  const response = await targetRuntime.dispatchFetch(
+    new URL("/robots.txt", "https://preview.example"),
+  );
+  assert.equal(response.status, 200);
+  await response.arrayBuffer();
 }
 
 async function seedPublicCatalog(targetRuntime) {

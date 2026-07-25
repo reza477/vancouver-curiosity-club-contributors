@@ -37,12 +37,12 @@ function loadGeneratedMigrations() {
     .join("\n");
   assert.match(
     sql,
-    /CREATE TABLE `club_public_profiles`/u,
+    /CREATE TABLE IF NOT EXISTS `club_public_profiles`/u,
     "the generated Phase 2 catalog migration must be present",
   );
   assert.match(
     sql,
-    /CREATE TABLE `event_public_details`/u,
+    /CREATE TABLE IF NOT EXISTS `event_public_details`/u,
     "the generated Phase 2 public-event migration must be present",
   );
   return sql;

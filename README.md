@@ -64,13 +64,36 @@ detail, club detail, related events, filter options, and sitemap slugs.
   inputs are centrally validated and bounded before prepared D1 queries run.
 - Previously published cancelled event pages remain available with an explicit
   cancellation notice while default Upcoming results exclude them.
-- Additive D1 guards require every public club profile to match both its club
-  and primary lane organization, and every public event detail to match its
-  event organization. Parent-side organization changes are guarded too.
+- Database-enforced D1 guards require every public club profile to match both
+  its club and primary lane organization, and every public event detail to
+  match its event organization. Parent-side organization changes are guarded
+  too.
 
 See
 `docs/architecture/0004-unified-phase-2-public-projection.md` and
 `docs/architecture/0005-phase-2-release-guards.md` for the full decisions.
+
+## Sites-compatible database guards
+
+Sites production tokenizes packaged SQL migrations at semicolons. SQLite
+trigger bodies necessarily contain internal semicolons, so trigger DDL is not
+safe in that packaging path.
+
+The pre-production migration chain is therefore normalized into four
+retry-safe files, each with at most 49 single statements. It recreates the
+final 37-table/75-index schema without trigger, `ALTER`, `PRAGMA`, or rebuild
+grammar. Before the Worker dispatches any application request, a server-only
+D1 initializer atomically installs all two reservation guards and seven public
+organization-integrity guards as nine complete prepared statements. A
+persistent version/fingerprint marker, exact `sqlite_master` comparison, and
+two integrity probes must all pass before the request can proceed. Failure
+returns a private-detail-free, no-store/noindex 503.
+
+The destructive reset is a one-time pre-production recovery only: Sites
+version 7 failed before any Worker URL existed, so no hosted user writes were
+possible. It must never be reused after real hosted data exists.
+
+See `docs/architecture/0006-sites-d1-trigger-compatibility.md`.
 
 ## Meetup synchronization
 

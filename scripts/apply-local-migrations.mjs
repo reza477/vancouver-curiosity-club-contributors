@@ -3,6 +3,10 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import {
+  DATABASE_INVARIANT_TRIGGER_NAMES,
+  ensureDatabaseInvariants,
+} from "../lib/server/database/invariants.ts";
 
 const projectRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const migrationsDirectory = resolve(projectRoot, "drizzle");
@@ -79,24 +83,31 @@ try {
     console.log(`applied: ${name} (${statements.length - 1} statements)`);
   }
 
+  await ensureDatabaseInvariants(database);
+
   const tableCount = await database
     .prepare(
       `SELECT count(*) AS count
        FROM sqlite_master
-       WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
+       WHERE type = 'table'
+         AND name NOT LIKE 'sqlite_%'
+         AND name NOT LIKE '_cf_%'
+         AND name <> '_phase1_migrations'`,
     )
     .first("count");
   const triggerCount = await database
     .prepare(
       `SELECT count(*) AS count
        FROM sqlite_master
-       WHERE type = 'trigger'
-         AND name LIKE 'events_reservation_guard_%'`,
+       WHERE type = 'trigger'`,
     )
     .first("count");
   const foreignKeyCheck = await database
     .prepare("PRAGMA foreign_key_check")
     .all();
+  if (Number(triggerCount) !== DATABASE_INVARIANT_TRIGGER_NAMES.length) {
+    throw new Error("The complete database invariant trigger set is missing.");
+  }
   if ((foreignKeyCheck.results ?? []).length > 0) {
     throw new Error("Generated migrations left foreign-key violations.");
   }
@@ -105,7 +116,9 @@ try {
     JSON.stringify({
       migrations: migrationFiles.length,
       tables: Number(tableCount),
-      conflictGuardTriggers: Number(triggerCount),
+      databaseInvariantTriggers: Number(triggerCount),
+      expectedDatabaseInvariantTriggers:
+        DATABASE_INVARIANT_TRIGGER_NAMES.length,
       foreignKeyViolations: 0,
     }),
   );

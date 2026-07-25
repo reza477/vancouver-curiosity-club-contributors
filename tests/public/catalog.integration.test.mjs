@@ -77,7 +77,16 @@ function loadGeneratedMigrations() {
   const migrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+.*\.sql$/u.test(name))
     .sort();
-  assert.ok(migrations.length > 6, "Phase 2 generated migration must exist");
+  assert.deepEqual(
+    migrations,
+    [
+      "0008_preproduction_reset.sql",
+      "0009_sites_compatible_baseline.sql",
+      "0010_sites_compatible_indexes_a.sql",
+      "0011_sites_compatible_indexes_b.sql",
+    ],
+    "the normalized Sites-compatible baseline must be authoritative",
+  );
   return migrations
     .map((name) => readFileSync(join(migrationDirectory, name), "utf8"))
     .join("\n");

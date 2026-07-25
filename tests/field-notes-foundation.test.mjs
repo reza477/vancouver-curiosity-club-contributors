@@ -91,4 +91,12 @@ test("the worker applies a security and noindex header foundation", async () => 
   assert.match(worker, /"\/organizer"/);
   assert.match(worker, /"\/api"/);
   assert.match(worker, /pathname\.startsWith\(`\$\{path\}\/`\)/);
+  const invariantInitialization = worker.indexOf(
+    "await ensureDatabaseInvariants(env.DB)",
+  );
+  const applicationDispatch = worker.indexOf("handler.fetch(");
+  assert.ok(invariantInitialization >= 0);
+  assert.ok(applicationDispatch > invariantInitialization);
+  assert.match(worker, /database_invariants_unavailable/);
+  assert.match(worker, /The site is temporarily unavailable\./);
 });

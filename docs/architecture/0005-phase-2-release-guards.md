@@ -4,6 +4,10 @@
 - Date: 2026-07-25
 - Decision owner: Reza
 
+The seven organization-integrity invariants remain accepted. Their original
+installation in migration 0007 is superseded by the tokenizer-compatible,
+persistently verified runtime installation in ADR 0006.
+
 ## Context
 
 Two release-gate findings remained after Phase 2 version 6:
@@ -41,8 +45,8 @@ Sites/vinext runtime.
 
 ### Organization integrity
 
-- Keep recorded migration 0006 unchanged.
-- Add official custom migration 0007 with seven SQLite/D1 triggers:
+- Preserve the seven SQLite/D1 trigger definitions originally introduced by
+  migrations 0006/0007:
 
   - child INSERT and relevant-key UPDATE guards for
     `club_public_profiles`;
@@ -50,9 +54,10 @@ Sites/vinext runtime.
   - parent organization-update guards for `clubs`, `event_lanes`, and
     `events`.
 
-- Add two validation updates at the end of the same D1 batch. They affect zero
-  valid rows; a malformed populated-v6 row activates the new child guard and
-  aborts the entire migration batch instead of being silently grandfathered.
+- Run the same two validation updates in the atomic runtime installation
+  batch. They affect zero valid rows; a malformed pre-existing row activates
+  the child guard and aborts the entire batch instead of being silently
+  grandfathered.
 - Preserve the original foreign keys and both reservation conflict triggers.
 
 ## Consequences
@@ -72,6 +77,7 @@ Sites/vinext runtime.
   service failures and assert status, headers, truthful copy, absence of
   private or database-error details, and absence of any contradictory HTML
   `index` directive.
-- Migration tests cover fresh valid/mismatched inserts and updates, parent-side
-  changes, populated-v6 preservation, malformed-v6 atomic rejection, unchanged
-  reservation triggers, and `PRAGMA foreign_key_check`.
+- Migration/runtime tests cover fresh valid/mismatched inserts and updates,
+  parent-side changes, malformed-data atomic rejection, unchanged reservation
+  triggers, the durable marker/exact trigger set, and
+  `PRAGMA foreign_key_check`.

@@ -14,6 +14,7 @@ import {
   OrganizerAccessDeniedError,
   trustedIdentityFromSites,
 } from "../../lib/server/auth/index.ts";
+import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
 import { InputValidationError } from "../../lib/validation/index.ts";
 import {
   safeErrorResponse,
@@ -83,10 +84,6 @@ function loadGeneratedMigrations() {
   return migrations
     .map((name) => readFileSync(join(migrationDirectory, name), "utf8"))
     .join("\n");
-}
-
-function loadGeneratedMigration(name) {
-  return readFileSync(join(process.cwd(), "drizzle", name), "utf8");
 }
 
 function createDatabase({
@@ -318,75 +315,21 @@ test("isolates the same external UID across two official club feeds", async (t) 
   });
 });
 
-test("generated generation migration preserves a source and safely clears legacy partial state", async (t) => {
-  const database = new SqliteD1TestDatabase(
-    [
-      "0000_remarkable_mordo.sql",
-      "0001_outgoing_madelyne_pryor.sql",
-      "0002_warm_yellowjacket.sql",
-    ]
-      .map(loadGeneratedMigration)
-      .join("\n"),
-  );
+test("the normalized baseline contains the final Meetup generation schema", async (t) => {
+  const database = new SqliteD1TestDatabase(loadGeneratedMigrations());
   t.after(() => database.close());
-  database.exec(`
-    INSERT INTO profiles (
-      id, siwc_subject, normalized_email, display_name, status,
-      created_at, updated_at
-    ) VALUES (
-      'profile_owner', 'email:${OWNER_EMAIL}', '${OWNER_EMAIL}', 'Reza',
-      'active', 1, 1
-    );
-    INSERT INTO organizations (
-      id, name, slug, timezone, owner_bootstrap_closed_at,
-      owner_bootstrap_claimed_by_profile_id, created_by_profile_id,
-      created_at, updated_at
-    ) VALUES (
-      '${ORGANIZATION_ID}', 'Vancouver Curiosity and Education Society',
-      'vancouver-curiosity-and-education-society', 'America/Vancouver', 1,
-      'profile_owner', 'profile_owner', 1, 1
-    );
-    INSERT INTO clubs (
-      id, organization_id, name, slug, created_by_profile_id,
-      created_at, updated_at
-    ) VALUES (
-      'club_a', '${ORGANIZATION_ID}', 'Vancouver Curiosity Club',
-      'vancouver-curiosity-club',
-      'profile_owner', 1, 1
-    );
-    INSERT INTO sync_sources (
-      id, organization_id, club_id, source_type, source_url,
-      created_by_profile_id, updated_by_profile_id, created_at, updated_at
-    ) VALUES (
-      'source_before_cursor', '${ORGANIZATION_ID}', 'club_a',
-      'meetup_ics', '${FEED_A}', 'profile_owner', 'profile_owner', 1, 1
-    );
-  `);
-
-  database.exec(loadGeneratedMigration("0003_amusing_pyro.sql"));
-  database.exec(loadGeneratedMigration("0004_milky_fallen_one.sql"));
-  database.exec(`
-    UPDATE sync_sources
-    SET pending_snapshot_hash = '${"a".repeat(64)}',
-        pending_cursor = 3
-    WHERE id = 'source_before_cursor';
-  `);
-  database.exec(loadGeneratedMigration("0005_dashing_ronan.sql"));
-  const source = await database
-    .prepare(
-      `SELECT id, source_url, active_generation_id, pending_generation_id,
-              pending_snapshot_hash, pending_cursor
-       FROM sync_sources`,
-    )
-    .first();
-  assert.deepEqual({ ...source }, {
-    id: "source_before_cursor",
-    source_url: FEED_A,
-    active_generation_id: null,
-    pending_generation_id: null,
-    pending_snapshot_hash: null,
-    pending_cursor: null,
-  });
+  const syncSourceColumns = await database
+    .prepare("PRAGMA table_info(sync_sources)")
+    .all();
+  const columnNames = syncSourceColumns.results.map((row) => row.name);
+  for (const requiredColumn of [
+    "active_generation_id",
+    "pending_generation_id",
+    "pending_snapshot_hash",
+    "pending_cursor",
+  ]) {
+    assert.ok(columnNames.includes(requiredColumn), requiredColumn);
+  }
   assert.equal(
     await database
       .prepare(
@@ -397,6 +340,12 @@ test("generated generation migration preserves a source and safely clears legacy
       )
       .first("count"),
     2,
+  );
+  assert.equal(
+    await database
+      .prepare("SELECT count(*) AS count FROM sync_sources")
+      .first("count"),
+    0,
   );
 });
 
@@ -954,6 +903,7 @@ test("a three-event refresh stays within the per-invocation D1 query budget", as
 test("three conflict rejections stay within the per-invocation D1 query budget", async (t) => {
   const innerDatabase = createDatabase();
   t.after(() => innerDatabase.close());
+  await ensureDatabaseInvariants(innerDatabase);
   await configure(innerDatabase, "club_a", FEED_A, 1_000);
   innerDatabase.exec(`
     INSERT INTO events (

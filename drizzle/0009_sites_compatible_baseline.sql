@@ -1,4 +1,5 @@
-CREATE TABLE `audit_logs` (
+-- Sites-compatible final table baseline. Every statement is retry-safe.
+CREATE TABLE IF NOT EXISTS `audit_logs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`actor_profile_id` text,
@@ -10,11 +11,8 @@ CREATE TABLE `audit_logs` (
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`actor_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null,
 	CONSTRAINT "audit_logs_metadata_json_check" CHECK(json_valid("audit_logs"."metadata_json"))
-);
---> statement-breakpoint
-CREATE INDEX `audit_logs_org_entity_idx` ON `audit_logs` (`organization_id`,`entity_type`,`entity_id`,`created_at`);--> statement-breakpoint
-CREATE INDEX `audit_logs_org_actor_idx` ON `audit_logs` (`organization_id`,`actor_profile_id`,`created_at`);--> statement-breakpoint
-CREATE TABLE `categories` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `categories` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`name` text NOT NULL,
@@ -25,11 +23,8 @@ CREATE TABLE `categories` (
 	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	`deleted_at` integer,
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `categories_org_slug_unique` ON `categories` (`organization_id`,`slug`);--> statement-breakpoint
-CREATE INDEX `categories_org_active_idx` ON `categories` (`organization_id`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `club_memberships` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `club_memberships` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`club_id` text NOT NULL,
@@ -46,11 +41,25 @@ CREATE TABLE `club_memberships` (
 	FOREIGN KEY (`organization_membership_id`) REFERENCES `organization_memberships`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `club_memberships_club_profile_unique` ON `club_memberships` (`club_id`,`profile_id`);--> statement-breakpoint
-CREATE INDEX `club_memberships_authorization_idx` ON `club_memberships` (`organization_id`,`club_id`,`status`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `clubs` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `club_public_profiles` (
+	`club_id` text PRIMARY KEY NOT NULL,
+	`organization_id` text NOT NULL,
+	`primary_event_lane_id` text NOT NULL,
+	`publication_status` text DEFAULT 'draft' NOT NULL,
+	`is_featured` integer DEFAULT false NOT NULL,
+	`description` text,
+	`public_group_url` text,
+	`published_at` integer,
+	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	`deleted_at` integer,
+	FOREIGN KEY (`club_id`) REFERENCES `clubs`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`primary_event_lane_id`) REFERENCES `event_lanes`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "club_public_profiles_published_at_check" CHECK("club_public_profiles"."publication_status" <> 'published' OR "club_public_profiles"."published_at" IS NOT NULL)
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `clubs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`name` text NOT NULL,
@@ -62,11 +71,8 @@ CREATE TABLE `clubs` (
 	`deleted_at` integer,
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `clubs_org_slug_unique` ON `clubs` (`organization_id`,`slug`);--> statement-breakpoint
-CREATE INDEX `clubs_org_active_idx` ON `clubs` (`organization_id`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `community_links` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `community_links` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`label` text NOT NULL,
@@ -80,11 +86,8 @@ CREATE TABLE `community_links` (
 	`deleted_at` integer,
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `community_links_org_url_unique` ON `community_links` (`organization_id`,`url`);--> statement-breakpoint
-CREATE INDEX `community_links_public_sort_idx` ON `community_links` (`organization_id`,`is_published`,`sort_order`);--> statement-breakpoint
-CREATE TABLE `conflict_incidents` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `conflict_incidents` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`event_id` text NOT NULL,
@@ -104,10 +107,8 @@ CREATE TABLE `conflict_incidents` (
 	FOREIGN KEY (`policy_id`) REFERENCES `conflict_policies`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`detected_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null,
 	CONSTRAINT "conflict_incidents_interval_check" CHECK("conflict_incidents"."proposed_end_utc" > "conflict_incidents"."proposed_start_utc")
-);
---> statement-breakpoint
-CREATE INDEX `conflict_incidents_event_state_idx` ON `conflict_incidents` (`organization_id`,`event_id`,`state`);--> statement-breakpoint
-CREATE TABLE `conflict_overrides` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `conflict_overrides` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`conflict_incident_id` text NOT NULL,
@@ -122,11 +123,8 @@ CREATE TABLE `conflict_overrides` (
 	FOREIGN KEY (`event_id`) REFERENCES `events`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`actor_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`revoked_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `conflict_overrides_active_incident_unique` ON `conflict_overrides` (`conflict_incident_id`) WHERE "conflict_overrides"."revoked_at" IS NULL;--> statement-breakpoint
-CREATE INDEX `conflict_overrides_org_event_idx` ON `conflict_overrides` (`organization_id`,`event_id`);--> statement-breakpoint
-CREATE TABLE `conflict_policies` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `conflict_policies` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`name` text NOT NULL,
@@ -144,11 +142,16 @@ CREATE TABLE `conflict_policies` (
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`updated_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "conflict_policies_statuses_json_check" CHECK(json_valid("conflict_policies"."reserving_statuses_json") AND json_type("conflict_policies"."reserving_statuses_json") = 'array')
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `conflict_policies_org_slug_unique` ON `conflict_policies` (`organization_id`,`slug`);--> statement-breakpoint
-CREATE INDEX `conflict_policies_org_active_idx` ON `conflict_policies` (`organization_id`,`is_active`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `event_lanes` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `database_invariant_state` (
+	`singleton_key` text PRIMARY KEY NOT NULL,
+	`version` integer NOT NULL,
+	`trigger_fingerprint` text NOT NULL,
+	`verified_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	CONSTRAINT "database_invariant_state_version_check" CHECK("database_invariant_state"."version" >= 1),
+	CONSTRAINT "database_invariant_state_fingerprint_check" CHECK(length("database_invariant_state"."trigger_fingerprint") = 64)
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `event_lanes` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`name` text NOT NULL,
@@ -161,11 +164,8 @@ CREATE TABLE `event_lanes` (
 	`deleted_at` integer,
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `event_lanes_org_slug_unique` ON `event_lanes` (`organization_id`,`slug`);--> statement-breakpoint
-CREATE INDEX `event_lanes_org_sort_idx` ON `event_lanes` (`organization_id`,`sort_order`);--> statement-breakpoint
-CREATE TABLE `event_organizers` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `event_organizers` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`event_id` text NOT NULL,
@@ -179,11 +179,18 @@ CREATE TABLE `event_organizers` (
 	FOREIGN KEY (`event_id`) REFERENCES `events`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `event_organizers_event_profile_unique` ON `event_organizers` (`event_id`,`profile_id`);--> statement-breakpoint
-CREATE INDEX `event_organizers_conflict_lookup_idx` ON `event_organizers` (`organization_id`,`profile_id`,`deleted_at`,`event_id`);--> statement-breakpoint
-CREATE TABLE `event_revisions` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `event_public_details` (
+	`event_id` text PRIMARY KEY NOT NULL,
+	`organization_id` text NOT NULL,
+	`attendance_mode` text DEFAULT 'location_undecided' NOT NULL,
+	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	FOREIGN KEY (`event_id`) REFERENCES `events`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "event_public_details_attendance_mode_check" CHECK("event_public_details"."attendance_mode" IN ('in_person', 'online', 'hybrid', 'location_undecided'))
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `event_revisions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`event_id` text NOT NULL,
@@ -196,11 +203,8 @@ CREATE TABLE `event_revisions` (
 	FOREIGN KEY (`event_id`) REFERENCES `events`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`actor_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "event_revisions_snapshot_json_check" CHECK(json_valid("event_revisions"."snapshot_json"))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `event_revisions_event_version_unique` ON `event_revisions` (`event_id`,`schedule_version`);--> statement-breakpoint
-CREATE INDEX `event_revisions_org_created_idx` ON `event_revisions` (`organization_id`,`created_at`);--> statement-breakpoint
-CREATE TABLE `events` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `events` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`club_id` text NOT NULL,
@@ -226,6 +230,7 @@ CREATE TABLE `events` (
 	`organizer_scope_json` text DEFAULT '[]' NOT NULL,
 	`schedule_version` integer DEFAULT 1 NOT NULL,
 	`schedule_review_state` text DEFAULT 'unreviewed' NOT NULL,
+	`hold_expires_at` integer,
 	`private_notes` text,
 	`private_meeting_details` text,
 	`published_at` integer,
@@ -245,6 +250,13 @@ CREATE TABLE `events` (
 	FOREIGN KEY (`updated_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "events_nonnegative_buffers_check" CHECK("events"."buffer_before_minutes" >= 0 AND "events"."buffer_after_minutes" >= 0),
 	CONSTRAINT "events_schedule_version_check" CHECK("events"."schedule_version" >= 1),
+	CONSTRAINT "events_hold_expiry_shape_check" CHECK((
+        "events"."status" = 'hold'
+        AND "events"."hold_expires_at" IS NOT NULL
+      ) OR (
+        "events"."status" <> 'hold'
+        AND "events"."hold_expires_at" IS NULL
+      )),
 	CONSTRAINT "events_organizer_scope_json_check" CHECK(json_valid("events"."organizer_scope_json") AND json_type("events"."organizer_scope_json") = 'array'),
 	CONSTRAINT "events_time_shape_check" CHECK((
         "events"."time_kind" = 'timed'
@@ -261,31 +273,27 @@ CREATE TABLE `events` (
         AND "events"."all_day_end_date_exclusive" IS NOT NULL
         AND "events"."all_day_end_date_exclusive" > "events"."all_day_start_date"
       ))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `events_org_slug_unique` ON `events` (`organization_id`,`slug`);--> statement-breakpoint
-CREATE INDEX `events_public_projection_idx` ON `events` (`organization_id`,`visibility`,`status`,`published_at`,`deleted_at`);--> statement-breakpoint
-CREATE INDEX `events_timed_conflict_scan_idx` ON `events` (`organization_id`,`status`,`schedule_review_state`,`starts_at_utc`,`ends_at_utc`,`deleted_at`);--> statement-breakpoint
-CREATE INDEX `events_venue_conflict_idx` ON `events` (`organization_id`,`venue_id`,`starts_at_utc`,`ends_at_utc`);--> statement-breakpoint
-CREATE INDEX `events_primary_organizer_conflict_idx` ON `events` (`organization_id`,`primary_organizer_profile_id`,`starts_at_utc`,`ends_at_utc`);--> statement-breakpoint
-CREATE TABLE `external_source_links` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `external_source_links` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`entity_type` text NOT NULL,
 	`entity_id` text NOT NULL,
 	`source_type` text NOT NULL,
+	`sync_source_id` text,
 	`external_id` text NOT NULL,
 	`external_url` text,
+	`source_fingerprint` text,
+	`source_sequence` integer,
+	`source_last_modified_at` integer,
 	`last_imported_at` integer,
 	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	`deleted_at` integer,
-	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `external_source_links_source_unique` ON `external_source_links` (`organization_id`,`source_type`,`external_id`);--> statement-breakpoint
-CREATE INDEX `external_source_links_entity_idx` ON `external_source_links` (`organization_id`,`entity_type`,`entity_id`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `form_submissions` (
+	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "external_source_links_meetup_source_check" CHECK("external_source_links"."source_type" <> 'meetup_ics' OR "external_source_links"."sync_source_id" IS NOT NULL)
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `form_submissions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`form_key` text NOT NULL,
@@ -300,10 +308,8 @@ CREATE TABLE `form_submissions` (
 	FOREIGN KEY (`submitted_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`assigned_to_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null,
 	CONSTRAINT "form_submissions_payload_json_check" CHECK(json_valid("form_submissions"."payload_json"))
-);
---> statement-breakpoint
-CREATE INDEX `form_submissions_org_status_idx` ON `form_submissions` (`organization_id`,`form_key`,`status`,`created_at`);--> statement-breakpoint
-CREATE TABLE `ics_subscription_tokens` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `ics_subscription_tokens` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`profile_id` text NOT NULL,
@@ -315,11 +321,8 @@ CREATE TABLE `ics_subscription_tokens` (
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "ics_subscription_tokens_hash_check" CHECK(length("ics_subscription_tokens"."token_hash") = 64)
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `ics_subscription_tokens_hash_unique` ON `ics_subscription_tokens` (`token_hash`);--> statement-breakpoint
-CREATE INDEX `ics_subscription_tokens_profile_idx` ON `ics_subscription_tokens` (`organization_id`,`profile_id`,`revoked_at`);--> statement-breakpoint
-CREATE TABLE `import_batches` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `import_batches` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`source_type` text NOT NULL,
@@ -330,10 +333,8 @@ CREATE TABLE `import_batches` (
 	`completed_at` integer,
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict
-);
---> statement-breakpoint
-CREATE INDEX `import_batches_org_status_idx` ON `import_batches` (`organization_id`,`status`,`created_at`);--> statement-breakpoint
-CREATE TABLE `import_rows` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `import_rows` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`import_batch_id` text NOT NULL,
@@ -348,11 +349,8 @@ CREATE TABLE `import_rows` (
 	FOREIGN KEY (`import_batch_id`) REFERENCES `import_batches`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "import_rows_source_payload_json_check" CHECK(json_valid("import_rows"."source_payload_json")),
 	CONSTRAINT "import_rows_normalized_payload_json_check" CHECK("import_rows"."normalized_payload_json" IS NULL OR json_valid("import_rows"."normalized_payload_json"))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `import_rows_batch_number_unique` ON `import_rows` (`import_batch_id`,`row_number`);--> statement-breakpoint
-CREATE INDEX `import_rows_batch_status_idx` ON `import_rows` (`import_batch_id`,`status`);--> statement-breakpoint
-CREATE TABLE `invitations` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `invitations` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`club_id` text,
@@ -373,11 +371,8 @@ CREATE TABLE `invitations` (
 	CONSTRAINT "invitations_token_hash_check" CHECK(length("invitations"."token_hash") = 64),
 	CONSTRAINT "invitations_target_email_check" CHECK("invitations"."target_normalized_email" = lower(trim("invitations"."target_normalized_email"))),
 	CONSTRAINT "invitations_terminal_state_check" CHECK(NOT ("invitations"."revoked_at" IS NOT NULL AND "invitations"."used_at" IS NOT NULL))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `invitations_token_hash_unique` ON `invitations` (`token_hash`);--> statement-breakpoint
-CREATE INDEX `invitations_target_lookup_idx` ON `invitations` (`organization_id`,`target_normalized_email`,`expires_at`);--> statement-breakpoint
-CREATE TABLE `media_assets` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `media_assets` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`object_key` text NOT NULL,
@@ -396,11 +391,88 @@ CREATE TABLE `media_assets` (
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`uploaded_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "media_assets_byte_size_check" CHECK("media_assets"."byte_size" >= 0)
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `media_assets_org_object_key_unique` ON `media_assets` (`organization_id`,`object_key`);--> statement-breakpoint
-CREATE INDEX `media_assets_org_public_idx` ON `media_assets` (`organization_id`,`is_public`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `navigation_items` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `meetup_event_snapshots` (
+	`id` text PRIMARY KEY NOT NULL,
+	`organization_id` text NOT NULL,
+	`sync_source_id` text NOT NULL,
+	`generation_id` text NOT NULL,
+	`external_id` text NOT NULL,
+	`event_id` text NOT NULL,
+	`ordinal` integer NOT NULL,
+	`event_slug` text NOT NULL,
+	`title` text NOT NULL,
+	`event_url` text NOT NULL,
+	`status` text NOT NULL,
+	`time_kind` text NOT NULL,
+	`starts_at_utc` integer,
+	`ends_at_utc` integer,
+	`timezone` text NOT NULL,
+	`all_day_start_date` text,
+	`all_day_end_date_exclusive` text,
+	`source_fingerprint` text NOT NULL,
+	`source_sequence` integer,
+	`source_last_modified_at` integer,
+	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`sync_source_id`) REFERENCES `sync_sources`(`id`) ON UPDATE cascade ON DELETE cascade,
+	FOREIGN KEY (`generation_id`) REFERENCES `meetup_sync_generations`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`event_id`) REFERENCES `events`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "meetup_event_snapshots_ordinal_check" CHECK("meetup_event_snapshots"."ordinal" >= 0),
+	CONSTRAINT "meetup_event_snapshots_time_shape_check" CHECK((
+        "meetup_event_snapshots"."time_kind" = 'timed'
+        AND "meetup_event_snapshots"."starts_at_utc" IS NOT NULL
+        AND "meetup_event_snapshots"."ends_at_utc" IS NOT NULL
+        AND "meetup_event_snapshots"."ends_at_utc" > "meetup_event_snapshots"."starts_at_utc"
+        AND "meetup_event_snapshots"."all_day_start_date" IS NULL
+        AND "meetup_event_snapshots"."all_day_end_date_exclusive" IS NULL
+      ) OR (
+        "meetup_event_snapshots"."time_kind" = 'all_day'
+        AND "meetup_event_snapshots"."starts_at_utc" IS NULL
+        AND "meetup_event_snapshots"."ends_at_utc" IS NULL
+        AND "meetup_event_snapshots"."all_day_start_date" IS NOT NULL
+        AND "meetup_event_snapshots"."all_day_end_date_exclusive" IS NOT NULL
+        AND "meetup_event_snapshots"."all_day_end_date_exclusive" > "meetup_event_snapshots"."all_day_start_date"
+      ))
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `meetup_sync_generations` (
+	`id` text PRIMARY KEY NOT NULL,
+	`organization_id` text NOT NULL,
+	`sync_source_id` text NOT NULL,
+	`previous_generation_id` text,
+	`snapshot_hash` text NOT NULL,
+	`expected_item_count` integer NOT NULL,
+	`processed_item_count` integer DEFAULT 0 NOT NULL,
+	`rejected_item_count` integer DEFAULT 0 NOT NULL,
+	`state` text DEFAULT 'staging' NOT NULL,
+	`removed_count` integer DEFAULT 0 NOT NULL,
+	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	`published_at` integer,
+	`failed_at` integer,
+	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`sync_source_id`) REFERENCES `sync_sources`(`id`) ON UPDATE cascade ON DELETE cascade,
+	CONSTRAINT "meetup_sync_generations_snapshot_hash_check" CHECK(length("meetup_sync_generations"."snapshot_hash") = 64),
+	CONSTRAINT "meetup_sync_generations_expected_count_check" CHECK("meetup_sync_generations"."expected_item_count" >= 0),
+	CONSTRAINT "meetup_sync_generations_processed_count_check" CHECK("meetup_sync_generations"."processed_item_count" >= 0 AND "meetup_sync_generations"."processed_item_count" <= "meetup_sync_generations"."expected_item_count"),
+	CONSTRAINT "meetup_sync_generations_rejected_count_check" CHECK("meetup_sync_generations"."rejected_item_count" >= 0 AND "meetup_sync_generations"."rejected_item_count" <= "meetup_sync_generations"."processed_item_count"),
+	CONSTRAINT "meetup_sync_generations_removed_count_check" CHECK("meetup_sync_generations"."removed_count" >= 0),
+	CONSTRAINT "meetup_sync_generations_state_shape_check" CHECK((
+        "meetup_sync_generations"."state" = 'published'
+        AND "meetup_sync_generations"."published_at" IS NOT NULL
+        AND "meetup_sync_generations"."failed_at" IS NULL
+      ) OR (
+        "meetup_sync_generations"."state" = 'failed'
+        AND "meetup_sync_generations"."published_at" IS NULL
+        AND "meetup_sync_generations"."failed_at" IS NOT NULL
+      ) OR (
+        "meetup_sync_generations"."state" IN ('staging', 'abandoned')
+        AND "meetup_sync_generations"."published_at" IS NULL
+        AND "meetup_sync_generations"."failed_at" IS NULL
+      ))
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `navigation_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`label` text NOT NULL,
@@ -417,10 +489,8 @@ CREATE TABLE `navigation_items` (
 	FOREIGN KEY (`page_id`) REFERENCES `pages`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "navigation_items_target_check" CHECK(("navigation_items"."page_id" IS NOT NULL AND "navigation_items"."external_url" IS NULL) OR ("navigation_items"."page_id" IS NULL AND "navigation_items"."external_url" IS NOT NULL))
-);
---> statement-breakpoint
-CREATE INDEX `navigation_items_org_placement_sort_idx` ON `navigation_items` (`organization_id`,`placement`,`is_published`,`sort_order`);--> statement-breakpoint
-CREATE TABLE `notification_preferences` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `notification_preferences` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`profile_id` text NOT NULL,
@@ -431,10 +501,8 @@ CREATE TABLE `notification_preferences` (
 	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `notification_preferences_scope_unique` ON `notification_preferences` (`organization_id`,`profile_id`,`notification_type`,`channel`);--> statement-breakpoint
-CREATE TABLE `notifications` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `notifications` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`recipient_profile_id` text NOT NULL,
@@ -446,10 +514,8 @@ CREATE TABLE `notifications` (
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`recipient_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "notifications_payload_json_check" CHECK(json_valid("notifications"."payload_json"))
-);
---> statement-breakpoint
-CREATE INDEX `notifications_recipient_unread_idx` ON `notifications` (`recipient_profile_id`,`read_at`,`created_at`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `organization_memberships` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `organization_memberships` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`profile_id` text NOT NULL,
@@ -464,12 +530,8 @@ CREATE TABLE `organization_memberships` (
 	FOREIGN KEY (`profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null,
 	CONSTRAINT "organization_memberships_normalized_email_check" CHECK("organization_memberships"."normalized_email" = lower(trim("organization_memberships"."normalized_email")))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `organization_memberships_org_profile_unique` ON `organization_memberships` (`organization_id`,`profile_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `organization_memberships_org_email_unique` ON `organization_memberships` (`organization_id`,`normalized_email`);--> statement-breakpoint
-CREATE INDEX `organization_memberships_authorization_idx` ON `organization_memberships` (`organization_id`,`status`,`role`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `organizations` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `organizations` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`slug` text NOT NULL,
@@ -482,11 +544,8 @@ CREATE TABLE `organizations` (
 	`deleted_at` integer,
 	FOREIGN KEY (`owner_bootstrap_claimed_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `organizations_slug_unique` ON `organizations` (`slug`);--> statement-breakpoint
-CREATE INDEX `organizations_deleted_at_idx` ON `organizations` (`deleted_at`);--> statement-breakpoint
-CREATE TABLE `page_revisions` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `page_revisions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`page_id` text NOT NULL,
@@ -498,10 +557,8 @@ CREATE TABLE `page_revisions` (
 	FOREIGN KEY (`page_id`) REFERENCES `pages`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`actor_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "page_revisions_snapshot_json_check" CHECK(json_valid("page_revisions"."snapshot_json"))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `page_revisions_page_number_unique` ON `page_revisions` (`page_id`,`revision_number`);--> statement-breakpoint
-CREATE TABLE `page_sections` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `page_sections` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`page_id` text NOT NULL,
@@ -515,11 +572,8 @@ CREATE TABLE `page_sections` (
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`page_id`) REFERENCES `pages`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "page_sections_content_json_check" CHECK(json_valid("page_sections"."content_json"))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `page_sections_page_key_unique` ON `page_sections` (`page_id`,`section_key`);--> statement-breakpoint
-CREATE INDEX `page_sections_page_sort_idx` ON `page_sections` (`page_id`,`sort_order`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `pages` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `pages` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`title` text NOT NULL,
@@ -536,26 +590,20 @@ CREATE TABLE `pages` (
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`updated_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `pages_org_slug_unique` ON `pages` (`organization_id`,`slug`);--> statement-breakpoint
-CREATE INDEX `pages_public_idx` ON `pages` (`organization_id`,`status`,`visibility`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `profiles` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `profiles` (
 	`id` text PRIMARY KEY NOT NULL,
 	`siwc_subject` text NOT NULL,
 	`normalized_email` text NOT NULL,
 	`display_name` text,
+	`public_attribution_consent` integer DEFAULT false NOT NULL,
 	`status` text DEFAULT 'active' NOT NULL,
 	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	`deleted_at` integer,
 	CONSTRAINT "profiles_normalized_email_check" CHECK("profiles"."normalized_email" = lower(trim("profiles"."normalized_email")))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `profiles_siwc_subject_unique` ON `profiles` (`siwc_subject`);--> statement-breakpoint
-CREATE UNIQUE INDEX `profiles_normalized_email_unique` ON `profiles` (`normalized_email`);--> statement-breakpoint
-CREATE INDEX `profiles_status_idx` ON `profiles` (`status`);--> statement-breakpoint
-CREATE TABLE `programs` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `programs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`club_id` text,
@@ -569,11 +617,8 @@ CREATE TABLE `programs` (
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`club_id`) REFERENCES `clubs`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `programs_org_slug_unique` ON `programs` (`organization_id`,`slug`);--> statement-breakpoint
-CREATE INDEX `programs_org_active_idx` ON `programs` (`organization_id`,`deleted_at`);--> statement-breakpoint
-CREATE TABLE `site_settings` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `site_settings` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`key` text NOT NULL,
@@ -585,11 +630,61 @@ CREATE TABLE `site_settings` (
 	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`updated_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "site_settings_value_json_check" CHECK(json_valid("site_settings"."value_json"))
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `site_settings_org_key_unique` ON `site_settings` (`organization_id`,`key`);--> statement-breakpoint
-CREATE INDEX `site_settings_public_idx` ON `site_settings` (`organization_id`,`is_public`);--> statement-breakpoint
-CREATE TABLE `venues` (
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `sync_sources` (
+	`id` text PRIMARY KEY NOT NULL,
+	`organization_id` text NOT NULL,
+	`club_id` text NOT NULL,
+	`source_type` text NOT NULL,
+	`source_url` text NOT NULL,
+	`enabled` integer DEFAULT true NOT NULL,
+	`refresh_interval_minutes` integer DEFAULT 15 NOT NULL,
+	`next_refresh_at` integer,
+	`lease_token` text,
+	`lease_expires_at` integer,
+	`last_attempt_at` integer,
+	`last_success_at` integer,
+	`last_error_at` integer,
+	`last_error_code` text,
+	`etag` text,
+	`http_last_modified` text,
+	`active_generation_id` text,
+	`pending_generation_id` text,
+	`pending_snapshot_hash` text,
+	`pending_cursor` integer,
+	`created_by_profile_id` text NOT NULL,
+	`updated_by_profile_id` text NOT NULL,
+	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	`deleted_at` integer,
+	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`club_id`) REFERENCES `clubs`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`updated_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "sync_sources_refresh_interval_check" CHECK("sync_sources"."refresh_interval_minutes" >= 15),
+	CONSTRAINT "sync_sources_lease_shape_check" CHECK((
+        "sync_sources"."lease_token" IS NULL
+        AND "sync_sources"."lease_expires_at" IS NULL
+      ) OR (
+        "sync_sources"."lease_token" IS NOT NULL
+        AND "sync_sources"."lease_expires_at" IS NOT NULL
+      )),
+	CONSTRAINT "sync_sources_pending_shape_check" CHECK((
+        "sync_sources"."pending_generation_id" IS NULL
+        AND
+        "sync_sources"."pending_snapshot_hash" IS NULL
+        AND "sync_sources"."pending_cursor" IS NULL
+      ) OR (
+        "sync_sources"."pending_generation_id" IS NOT NULL
+        AND length("sync_sources"."pending_generation_id") > 0
+        AND
+        "sync_sources"."pending_snapshot_hash" IS NOT NULL
+        AND length("sync_sources"."pending_snapshot_hash") = 64
+        AND "sync_sources"."pending_cursor" IS NOT NULL
+        AND "sync_sources"."pending_cursor" >= 0
+      ))
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `venues` (
 	`id` text PRIMARY KEY NOT NULL,
 	`organization_id` text NOT NULL,
 	`name` text NOT NULL,
@@ -610,183 +705,3 @@ CREATE TABLE `venues` (
 	FOREIGN KEY (`created_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`updated_by_profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE set null
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `venues_org_slug_unique` ON `venues` (`organization_id`,`slug`);--> statement-breakpoint
-CREATE INDEX `venues_org_public_idx` ON `venues` (`organization_id`,`is_public`,`deleted_at`);
---> statement-breakpoint
-CREATE TRIGGER IF NOT EXISTS events_reservation_guard_before_insert
-BEFORE INSERT ON events
-WHEN NEW.deleted_at IS NULL
-  AND NEW.status IN ('hold', 'tentative', 'confirmed')
-  AND NEW.schedule_review_state = 'unreviewed'
-BEGIN
-  SELECT CASE
-    WHEN NEW.time_kind <> 'timed'
-    THEN RAISE(ABORT, 'conflict_guard_requires_normalized_timed_interval')
-  END;
-
-  SELECT CASE
-    WHEN NEW.primary_organizer_profile_id IS NOT NULL
-      AND NOT EXISTS (
-        SELECT 1
-        FROM json_each(NEW.organizer_scope_json) AS proposed_organizer
-        WHERE proposed_organizer.type = 'text'
-          AND proposed_organizer.value = NEW.primary_organizer_profile_id
-      )
-    THEN RAISE(ABORT, 'conflict_guard_primary_organizer_missing_from_scope')
-  END;
-
-  SELECT CASE
-    WHEN EXISTS (
-      SELECT 1
-      FROM json_each(NEW.organizer_scope_json) AS proposed_organizer
-      WHERE proposed_organizer.type <> 'text'
-        OR length(trim(proposed_organizer.value)) = 0
-    )
-    THEN RAISE(ABORT, 'conflict_guard_invalid_organizer_scope')
-  END;
-
-  SELECT CASE
-    WHEN EXISTS (
-      SELECT proposed_organizer.value
-      FROM json_each(NEW.organizer_scope_json) AS proposed_organizer
-      GROUP BY proposed_organizer.value
-      HAVING count(*) > 1
-    )
-    THEN RAISE(ABORT, 'conflict_guard_duplicate_organizer_scope')
-  END;
-
-  SELECT CASE
-    WHEN EXISTS (
-      SELECT 1
-      FROM events AS reserved
-      WHERE reserved.organization_id = NEW.organization_id
-        AND reserved.id <> NEW.id
-        AND reserved.deleted_at IS NULL
-        AND reserved.time_kind = 'timed'
-        AND reserved.status IN ('hold', 'tentative', 'confirmed')
-        AND reserved.schedule_review_state = 'unreviewed'
-        AND (
-          reserved.starts_at_utc
-            - (reserved.buffer_before_minutes * 60000)
-        ) < (
-          NEW.ends_at_utc
-            + (NEW.buffer_after_minutes * 60000)
-        )
-        AND (
-          NEW.starts_at_utc
-            - (NEW.buffer_before_minutes * 60000)
-        ) < (
-          reserved.ends_at_utc
-            + (reserved.buffer_after_minutes * 60000)
-        )
-        AND (
-          (
-            NEW.venue_id IS NOT NULL
-            AND reserved.venue_id = NEW.venue_id
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM json_each(NEW.organizer_scope_json) AS proposed_organizer
-            INNER JOIN json_each(reserved.organizer_scope_json)
-              AS reserved_organizer
-              ON reserved_organizer.value = proposed_organizer.value
-            WHERE proposed_organizer.type = 'text'
-              AND reserved_organizer.type = 'text'
-          )
-        )
-    )
-    THEN RAISE(ABORT, 'conflict_guard_overlap')
-  END;
-END;
---> statement-breakpoint
-CREATE TRIGGER IF NOT EXISTS events_reservation_guard_before_update
-BEFORE UPDATE ON events
-WHEN NEW.deleted_at IS NULL
-  AND NEW.status IN ('hold', 'tentative', 'confirmed')
-  AND NEW.schedule_review_state = 'unreviewed'
-BEGIN
-  SELECT CASE
-    WHEN NEW.schedule_version <> OLD.schedule_version + 1
-    THEN RAISE(ABORT, 'conflict_guard_stale_schedule_version')
-  END;
-
-  SELECT CASE
-    WHEN NEW.time_kind <> 'timed'
-    THEN RAISE(ABORT, 'conflict_guard_requires_normalized_timed_interval')
-  END;
-
-  SELECT CASE
-    WHEN NEW.primary_organizer_profile_id IS NOT NULL
-      AND NOT EXISTS (
-        SELECT 1
-        FROM json_each(NEW.organizer_scope_json) AS proposed_organizer
-        WHERE proposed_organizer.type = 'text'
-          AND proposed_organizer.value = NEW.primary_organizer_profile_id
-      )
-    THEN RAISE(ABORT, 'conflict_guard_primary_organizer_missing_from_scope')
-  END;
-
-  SELECT CASE
-    WHEN EXISTS (
-      SELECT 1
-      FROM json_each(NEW.organizer_scope_json) AS proposed_organizer
-      WHERE proposed_organizer.type <> 'text'
-        OR length(trim(proposed_organizer.value)) = 0
-    )
-    THEN RAISE(ABORT, 'conflict_guard_invalid_organizer_scope')
-  END;
-
-  SELECT CASE
-    WHEN EXISTS (
-      SELECT proposed_organizer.value
-      FROM json_each(NEW.organizer_scope_json) AS proposed_organizer
-      GROUP BY proposed_organizer.value
-      HAVING count(*) > 1
-    )
-    THEN RAISE(ABORT, 'conflict_guard_duplicate_organizer_scope')
-  END;
-
-  SELECT CASE
-    WHEN EXISTS (
-      SELECT 1
-      FROM events AS reserved
-      WHERE reserved.organization_id = NEW.organization_id
-        AND reserved.id <> NEW.id
-        AND reserved.deleted_at IS NULL
-        AND reserved.time_kind = 'timed'
-        AND reserved.status IN ('hold', 'tentative', 'confirmed')
-        AND reserved.schedule_review_state = 'unreviewed'
-        AND (
-          reserved.starts_at_utc
-            - (reserved.buffer_before_minutes * 60000)
-        ) < (
-          NEW.ends_at_utc
-            + (NEW.buffer_after_minutes * 60000)
-        )
-        AND (
-          NEW.starts_at_utc
-            - (NEW.buffer_before_minutes * 60000)
-        ) < (
-          reserved.ends_at_utc
-            + (reserved.buffer_after_minutes * 60000)
-        )
-        AND (
-          (
-            NEW.venue_id IS NOT NULL
-            AND reserved.venue_id = NEW.venue_id
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM json_each(NEW.organizer_scope_json) AS proposed_organizer
-            INNER JOIN json_each(reserved.organizer_scope_json)
-              AS reserved_organizer
-              ON reserved_organizer.value = proposed_organizer.value
-            WHERE proposed_organizer.type = 'text'
-              AND reserved_organizer.type = 'text'
-          )
-        )
-    )
-    THEN RAISE(ABORT, 'conflict_guard_overlap')
-  END;
-END;

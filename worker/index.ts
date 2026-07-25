@@ -1,6 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { ensureDatabaseInvariants } from "../lib/server/database/invariants";
 
 interface Env {
   ASSETS: Fetcher;
@@ -159,6 +160,34 @@ function secureResponse(
   });
 }
 
+function databaseInvariantUnavailableResponse(): Response {
+  return new Response(
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <title>Site temporarily unavailable</title>
+  </head>
+  <body>
+    <main>
+      <h1>The site is temporarily unavailable.</h1>
+      <p>The database safety checks could not be completed. Please try again shortly.</p>
+    </main>
+  </body>
+</html>`,
+    {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/html; charset=utf-8",
+        "Retry-After": "30",
+      },
+      status: 503,
+    },
+  );
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -182,6 +211,23 @@ const worker = {
         },
       }, allowedWidths);
       return secureResponse(request, response, policy);
+    }
+
+    try {
+      await ensureDatabaseInvariants(env.DB);
+    } catch {
+      console.error(
+        JSON.stringify({
+          code: "database_invariants_unavailable",
+          event: "database_invariant_initialization_failed",
+          level: "error",
+        }),
+      );
+      return secureResponse(
+        request,
+        databaseInvariantUnavailableResponse(),
+        policy,
+      );
     }
 
     const securedRequest = requestWithSecurityContext(

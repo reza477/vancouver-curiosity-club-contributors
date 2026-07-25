@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
+import {
+  DATABASE_INVARIANT_MARKER_KEY,
+  ensureDatabaseInvariants,
+} from "../../lib/server/database/invariants.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
 const INTEGRITY_TRIGGER_NAMES = [
@@ -30,21 +34,6 @@ function migrationSql(names) {
       readFileSync(join(process.cwd(), "drizzle", name), "utf8"),
     )
     .join("\n");
-}
-
-function migrationStatements(name) {
-  return migrationSql([name])
-    .split("--> statement-breakpoint")
-    .map((statement) => statement.trim())
-    .filter(Boolean);
-}
-
-async function applyMigrationBatch(database, name) {
-  return database.batch(
-    migrationStatements(name).map((statement) =>
-      database.prepare(statement),
-    ),
-  );
 }
 
 function seedOrganizations(database) {
@@ -124,6 +113,7 @@ test("fresh migrations enforce same-organization public catalog rows on every mu
   );
   t.after(() => database.close());
   seedOrganizations(database);
+  await ensureDatabaseInvariants(database);
 
   assert.deepEqual(
     await triggerNames(database, "%_org_integrity_before_%"),
@@ -275,17 +265,10 @@ test("fresh migrations enforce same-organization public catalog rows on every mu
   assert.equal(await foreignKeyViolationCount(database), 0);
 });
 
-test("populated version-6 data upgrades without row or conflict-trigger changes", async (t) => {
-  const names = migrationFiles();
-  const version6Names = names.filter((name) => !name.startsWith("0007_"));
-  const integrityMigration = names.find((name) => name.startsWith("0007_"));
-  assert.ok(integrityMigration);
-  assert.deepEqual(
-    version6Names.map((name) => name.slice(0, 4)),
-    ["0000", "0001", "0002", "0003", "0004", "0005", "0006"],
+test("runtime initialization preserves valid populated rows while installing every guard", async (t) => {
+  const database = new SqliteD1TestDatabase(
+    migrationSql(migrationFiles()),
   );
-
-  const database = new SqliteD1TestDatabase(migrationSql(version6Names));
   t.after(() => database.close());
   seedOrganizations(database);
   database.exec(`
@@ -313,13 +296,13 @@ test("populated version-6 data upgrades without row or conflict-trigger changes"
     database,
     "SELECT * FROM event_public_details ORDER BY event_id",
   );
-  const beforeReservationTriggers = await triggerDefinitions(
-    database,
-    "events_reservation_guard_%",
+  assert.deepEqual(
+    await triggerDefinitions(database, "%"),
+    [],
+    "packaged migrations must not install tokenizer-incompatible triggers",
   );
 
-  const results = await applyMigrationBatch(database, integrityMigration);
-  assert.equal(results.length, 9);
+  await ensureDatabaseInvariants(database);
   assert.deepEqual(
     await rows(
       database,
@@ -335,8 +318,8 @@ test("populated version-6 data upgrades without row or conflict-trigger changes"
     beforeDetails,
   );
   assert.deepEqual(
-    await triggerDefinitions(database, "events_reservation_guard_%"),
-    beforeReservationTriggers,
+    await triggerNames(database, "events_reservation_guard_%"),
+    RESERVATION_TRIGGER_NAMES,
   );
   assert.deepEqual(
     await triggerNames(database, "%_org_integrity_before_%"),
@@ -345,13 +328,10 @@ test("populated version-6 data upgrades without row or conflict-trigger changes"
   assert.equal(await foreignKeyViolationCount(database), 0);
 });
 
-test("the version-6 validation gate rejects malformed legacy rows atomically", async (t) => {
-  const names = migrationFiles();
-  const version6Names = names.filter((name) => !name.startsWith("0007_"));
-  const integrityMigration = names.find((name) => name.startsWith("0007_"));
-  assert.ok(integrityMigration);
-
-  const database = new SqliteD1TestDatabase(migrationSql(version6Names));
+test("runtime validation rejects malformed pre-existing rows atomically", async (t) => {
+  const database = new SqliteD1TestDatabase(
+    migrationSql(migrationFiles()),
+  );
   t.after(() => database.close());
   seedOrganizations(database);
   database.exec(`
@@ -369,8 +349,8 @@ test("the version-6 validation gate rejects malformed legacy rows atomically", a
   `);
 
   await assert.rejects(
-    applyMigrationBatch(database, integrityMigration),
-    /(?:club_public_profiles|event_public_details)_organization_mismatch/u,
+    ensureDatabaseInvariants(database),
+    /Database integrity guards are unavailable/u,
   );
   assert.deepEqual(
     await triggerNames(database, "%_org_integrity_before_%"),
@@ -391,7 +371,19 @@ test("the version-6 validation gate rejects malformed legacy rows atomically", a
   );
   assert.deepEqual(
     await triggerNames(database, "events_reservation_guard_%"),
-    RESERVATION_TRIGGER_NAMES,
+    [],
+    "the failed atomic batch must not leave reservation guards either",
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM database_invariant_state
+         WHERE singleton_key = ?`,
+      )
+      .bind(DATABASE_INVARIANT_MARKER_KEY)
+      .first("count"),
+    0,
   );
 });
 

@@ -10,6 +10,32 @@ import {
 
 const nowMs = sql`(unixepoch() * 1000)`;
 
+/**
+ * Persistent proof that the Worker-installed database guards match the
+ * expected runtime contract. SQLite trigger bodies are installed at runtime
+ * because the Sites production migration tokenizer cannot preserve their
+ * internal semicolons as one prepared statement.
+ */
+export const databaseInvariantState = sqliteTable(
+  "database_invariant_state",
+  {
+    singletonKey: text("singleton_key").primaryKey(),
+    version: integer("version").notNull(),
+    triggerFingerprint: text("trigger_fingerprint").notNull(),
+    verifiedAt: integer("verified_at").notNull().default(nowMs),
+  },
+  (table) => [
+    check(
+      "database_invariant_state_version_check",
+      sql`${table.version} >= 1`,
+    ),
+    check(
+      "database_invariant_state_fingerprint_check",
+      sql`length(${table.triggerFingerprint}) = 64`,
+    ),
+  ],
+);
+
 export const profiles = sqliteTable(
   "profiles",
   {

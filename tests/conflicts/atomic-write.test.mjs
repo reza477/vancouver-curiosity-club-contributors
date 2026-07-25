@@ -10,6 +10,7 @@ import {
   updateUnreviewedTimedReservation,
 } from "../../lib/server/conflicts/atomic-write.ts";
 import { CONFLICT_GUARD_SQL } from "../../lib/server/conflicts/guard-sql.ts";
+import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
 
 let miniflare;
 let database;
@@ -31,15 +32,6 @@ const migrationFileStatements = async (name) => {
     .map((statement) => statement.trim())
     .filter(Boolean);
 };
-
-const migrationStatements = async () =>
-  (
-    await Promise.all(
-      (await migrationFileNames()).map((name) =>
-        migrationFileStatements(name),
-      ),
-    )
-  ).flat();
 
 const seed = async (targetDatabase = database) => {
   await targetDatabase.batch([
@@ -215,11 +207,14 @@ before(async () => {
     d1Databases: { DB: crypto.randomUUID() },
   });
   database = await miniflare.getD1Database("DB");
-  await database.batch(
-    (await migrationStatements()).map((statement) =>
-      database.prepare(statement),
-    ),
-  );
+  for (const name of await migrationFileNames()) {
+    await database.batch(
+      (await migrationFileStatements(name)).map((statement) =>
+        database.prepare(statement),
+      ),
+    );
+  }
+  await ensureDatabaseInvariants(database);
 
   const installedTriggers = await database
     .prepare(
@@ -689,7 +684,7 @@ test("conflict reasons use venue, organizer, then organization priority", async 
   );
 });
 
-test("0001 backfills pre-expiry holds as expired, not permanent reservations", async () => {
+test("the normalized baseline and reservation path reject holds without expiry", async () => {
   const stagedMiniflare = new Miniflare({
     modules: true,
     script: "",
@@ -698,64 +693,33 @@ test("0001 backfills pre-expiry holds as expired, not permanent reservations", a
 
   try {
     const stagedDatabase = await stagedMiniflare.getD1Database("DB");
-    const migrationFiles = await migrationFileNames();
-    assert.ok(migrationFiles.length >= 2);
-    await stagedDatabase.batch(
-      (await migrationFileStatements(migrationFiles[0])).map((statement) =>
-        stagedDatabase.prepare(statement),
-      ),
-    );
-    await seed(stagedDatabase);
-
-    const startsAtUtc = Date.parse("2026-08-24T01:00:00.000Z");
-    await stagedDatabase
-      .prepare(
-        `INSERT INTO events (
-           id, organization_id, club_id, venue_id,
-           primary_organizer_profile_id, title, slug, status, visibility,
-           time_kind, starts_at_utc, ends_at_utc, timezone,
-           buffer_before_minutes, buffer_after_minutes, organizer_scope_json,
-           schedule_version, schedule_review_state,
-           created_by_profile_id, updated_by_profile_id
-         ) VALUES (
-           'legacy-hold', 'org-1', 'club-1', 'venue-a',
-           'organizer-a', 'Legacy hold', 'legacy-hold', 'hold', 'private',
-           'timed', ?, ?, 'America/Vancouver',
-           0, 0, '["organizer-a"]', 1, 'unreviewed', 'owner', 'owner'
-         )`,
-      )
-      .bind(startsAtUtc, startsAtUtc + 60 * 60_000)
-      .run();
-
-    for (const name of migrationFiles.slice(1)) {
+    for (const name of await migrationFileNames()) {
       await stagedDatabase.batch(
         (await migrationFileStatements(name)).map((statement) =>
           stagedDatabase.prepare(statement),
         ),
       );
     }
+    await ensureDatabaseInvariants(stagedDatabase);
+    await seed(stagedDatabase);
 
-    const migratedHold = await stagedDatabase
-      .prepare(
-        `SELECT hold_expires_at AS holdExpiresAt
-         FROM events WHERE id = 'legacy-hold'`,
-      )
-      .first();
-    assert.equal(migratedHold.holdExpiresAt, 0);
-
-    await createUnreviewedTimedReservation(
-      stagedDatabase,
-      reservation({
-        id: "after-legacy-hold",
-        slug: "after-legacy-hold",
-        clubId: "club-2",
-        venueId: "venue-b",
-        primaryOrganizerProfileId: "organizer-b",
-        startsAtUtc: startsAtUtc + 30 * 60_000,
-        endsAtUtc: startsAtUtc + 90 * 60_000,
-        bufferBeforeMinutes: 0,
-        bufferAfterMinutes: 0,
-      }),
+    const columns = await stagedDatabase
+      .prepare("PRAGMA table_info(events)")
+      .all();
+    assert.ok(
+      columns.results.some((column) => column.name === "hold_expires_at"),
+    );
+    await assert.rejects(
+      createUnreviewedTimedReservation(
+        stagedDatabase,
+        reservation({
+          id: "hold-without-expiry",
+          slug: "hold-without-expiry",
+          status: "hold",
+          holdExpiresAt: null,
+        }),
+      ),
+      /holdExpiresAt is required for hold reservations/u,
     );
   } finally {
     await stagedMiniflare.dispose();
