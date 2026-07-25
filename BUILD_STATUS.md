@@ -15,7 +15,10 @@ Last updated: 2026-07-25 (America/Vancouver)
   Home/Events public-service failures and enforce cross-organization public
   catalog integrity in additive migration 0007.
 - No Phase 3 surface was started.
-- No preview or production deployment was created.
+- The authorized owner-only deployment attempt for saved version 7 reached
+  terminal status **failed** before publication with
+  `incomplete input: SQLITE_ERROR`. Sites returned no URL; no preview or live
+  deployment exists.
 - Corrected unpublished Sites version 7: **Saved and provenance-verified** from
   exact source commit
   `978aca67c790d7e2216d40253f365bcc9d5d8b87`.
@@ -31,8 +34,11 @@ Last updated: 2026-07-25 (America/Vancouver)
   or configuration was copied.
 - `.openai/hosting.json` still contains only the original opaque project ID and
   logical `DB`/`MEDIA` bindings.
-- The existing Sites project is active. Final readback reports latest version
-  7, no preview URL, no live URL, and no deployment.
+- The existing Sites project is active. Post-attempt readback reports latest
+  version 7, no preview URL, no live URL, and no successful deployment.
+- Access remains `custom` at revision 1 with exactly one allowed account and
+  zero allowed groups. The owner-only deployment capability accepted that
+  policy; public access was never enabled.
 - Sites runtime revision 1 contains only `INITIAL_OWNER_EMAIL` as a redacted
   secret. Its value was not printed into source or documentation.
 - No GitHub, Supabase, PostgreSQL, Firebase, Vercel, Netlify, Resend, SMTP,
@@ -245,6 +251,21 @@ All commands below were run from
 - Final project/runtime readback: active project, latest version 7, access
   revision 1, runtime revision 1 with only the redacted secret
   `INITIAL_OWNER_EMAIL`, and null preview/live URLs.
+- Owner-only deployment
+  `appgdep_6a65376e5b3881918d5653d913c5d447` targeted saved version 7 and
+  source commit `978aca67c790d7e2216d40253f365bcc9d5d8b87`. At
+  `2026-07-25T22:23:49.593963+00:00`, Sites reported terminal status
+  **failed**, `incomplete input: SQLITE_ERROR`, environment revision 1, and a
+  null URL.
+- Post-failure readback confirms access is still custom owner-only, runtime
+  revision 1 is unchanged, versions remain exactly 1–7, latest version remains
+  7, and both preview/live URLs remain null. No new source version was saved.
+- The exact archive contains 8 migrations. The hosted applied-migration count
+  is **Not externally verified**: Sites exposes no production D1 migration
+  ledger/query in this workflow, returned no per-migration diagnostic, and the
+  deployment failed during SQLite processing.
+- Production Worker logs are unavailable because no Worker was successfully
+  published.
 
 ### Dependency audit
 
@@ -298,10 +319,12 @@ zero fake events:
 
 - Hosted D1 catalog creation, hosted feed refresh, hosted sitemap/event data,
   and SIWC owner persistence are implemented but cannot be externally verified
-  without a deployment.
-- Remote D1/R2 state is unchanged. D1 migration behavior is verified in the
-  supported local/preview-compatible environments; MEDIA is bound but unused
-  in Phase 2.
+  without a successful deployment.
+- D1 migration behavior remains verified in the supported local and
+  preview-compatible environments. The failed production deployment may have
+  attempted part of the hosted migration chain, but Sites exposes no D1 ledger
+  here, so remote D1 state is not claimed unchanged or complete. MEDIA remains
+  bound and unused in Phase 2.
 
 ## Not implemented
 
@@ -318,9 +341,14 @@ zero fake events:
   contains no real published event and fake production events are forbidden.
   Service tests and the built synthetic cancelled-detail test cover the flow.
 - Hosted SIWC/Owner persistence and uninvited second-identity smoke:
-  **Not run** because no deployment is authorized.
+  **Not run** because the authorized owner-only deployment failed before a URL
+  was created. A second identity also remains unavailable under the one-user
+  outer access policy.
 - Hosted Meetup import and hosted D1 migration: **Not run** because no
-  deployment is authorized; production imported data remains empty.
+  deployment succeeded. The packaged migration count is 8; the hosted applied
+  count is not externally inspectable.
+- Hosted Home, Events, organizer/SIWC, and private-session browser checks:
+  **Not run** because Sites returned no deployed URL.
 - R2 upload/read: **Not run** because media upload is out of Phase 2 scope.
 - Lighthouse/Core Web Vitals measurement: **Not run**; no stable hosted URL
   exists.
@@ -330,7 +358,12 @@ zero fake events:
 
 ## Blocked
 
-- Public deployment is blocked by this packet's explicit no-deploy gate.
+- Owner-only deployment of immutable saved version 7 is **Blocked** by the
+  terminal Sites error `incomplete input: SQLITE_ERROR`. Fixing the production
+  D1 migration path would require a separately authorized source correction
+  and new saved version; neither is authorized in this deployment-only packet.
+- Public/shared deployment remains prohibited. The failed attempt used only
+  the verified owner-only capability and did not widen access.
 - Stable-origin QR downloads are blocked until an actual production Sites URL
   exists.
 - A clean dependency audit is blocked on a separately validated Sites-runtime
@@ -360,16 +393,18 @@ zero fake events:
 - Corrected Phase 2 version 7 is **saved unpublished and provenance-verified**
   from `978aca67c790d7e2216d40253f365bcc9d5d8b87`.
 - Preview deployment: **None**.
-- Production deployment: **None**.
-- Public URL: **None claimed**.
+- Owner-only production attempt: **Failed before publication** with
+  `incomplete input: SQLITE_ERROR`.
+- Active production deployment: **None**.
+- Owner-access URL: **None returned**.
+- Public access: **Not enabled**.
 
 ## Awaiting owner smoke test
 
-Status: **Awaiting owner smoke test**. No owner action is marked passed by the
-builder.
+Status: **Awaiting owner smoke test — blocked until a private deployment
+succeeds**. No owner action is marked passed by the builder.
 
-Five-minute phone card, after a future owner-authorized preview or deployment
-is available:
+Five-minute phone card, after a corrected owner-only deployment is available:
 
 1. Open Home at phone width; confirm the mark, menu, tagline, four lanes, three
    featured clubs, and truthful event state are readable without sideways
