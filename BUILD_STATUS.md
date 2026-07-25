@@ -16,10 +16,10 @@ Last updated: 2026-07-25 (America/Vancouver)
   catalog integrity in additive migration 0007.
 - No Phase 3 surface was started.
 - No preview or production deployment was created.
-- Unpublished Sites version 6: **Saved and provenance-verified** from exact
-  source commit `23ce5db16eb313e2f404cb7d0e9d90729a0509ce`.
-- The corrected source has not yet been saved as a new Sites version; version
-  6 remains preserved and unpublished until the release gate completes.
+- Corrected unpublished Sites version 7: **Saved and provenance-verified** from
+  exact source commit
+  `978aca67c790d7e2216d40253f365bcc9d5d8b87`.
+- Version 6 remains preserved and unpublished.
 - Exact next phase: **Phase 3 — Not started**.
 
 ## Completed and verified
@@ -32,7 +32,7 @@ Last updated: 2026-07-25 (America/Vancouver)
 - `.openai/hosting.json` still contains only the original opaque project ID and
   logical `DB`/`MEDIA` bindings.
 - The existing Sites project is active. Final readback reports latest version
-  6, no preview URL, no live URL, and no deployment.
+  7, no preview URL, no live URL, and no deployment.
 - Sites runtime revision 1 contains only `INITIAL_OWNER_EMAIL` as a redacted
   secret. Its value was not printed into source or documentation.
 - No GitHub, Supabase, PostgreSQL, Firebase, Vercel, Netlify, Resend, SMTP,
@@ -223,8 +223,28 @@ All commands below were run from
   SHA-256
   `136f94f571f9f7deac92fa42109a7f40e7630583006be5dda9378065cdcf474d`,
   4,290,560 stored bytes, and 70 files.
-- Corrected source commit, package measurements, and unpublished Sites version:
-  **Pending the final source freeze and save gate**.
+- Corrected source commit
+  `978aca67c790d7e2216d40253f365bcc9d5d8b87` was pushed to the existing
+  Sites-managed `main` source branch; remote branch readback matched exactly
+  and no remote or credential was persisted locally.
+- The first official packaging-helper invocation exited 1 because the bundled
+  shell process could not resolve its own `mktemp` utility; it produced no
+  archive. Re-running the same official helper with its bundled `usr/bin`
+  prepended only to that process's PATH exited 0.
+- Corrected local archive SHA-256:
+  `d259059221780c65df4f0958c14a59a541b42c85c662c98724734eb64cdc9493`;
+  1,668,409 bytes; 72 regular files.
+- Corrected archive inspection found 87 entries, all under `dist/`; all 8
+  required Worker/hosting/migration paths; 0 forbidden paths; 0 mismatches
+  against the exact committed build; 0 concrete private-value hits; and only
+  `d1`, `project_id`, and `r2` in packaged hosting metadata.
+- Sites version 7 readback matched source commit
+  `978aca67c790d7e2216d40253f365bcc9d5d8b87` and reported content SHA-256
+  `66d49020157a7b1209125561f1e03f575cee1431f5793973db94f383d0062cbc`,
+  4,464,640 stored bytes, and 72 files.
+- Final project/runtime readback: active project, latest version 7, access
+  revision 1, runtime revision 1 with only the redacted secret
+  `INITIAL_OWNER_EMAIL`, and null preview/live URLs.
 
 ### Dependency audit
 
@@ -331,14 +351,14 @@ zero fake events:
 
 ## Sites version and deployment state
 
-- Existing versions 1–6 remain preserved and unpublished.
+- Existing versions 1–7 remain preserved and unpublished.
 - Version 3 remains superseded and must not be deployed.
 - Version 5 remains preserved, sourced from
   `cb51a5969370e4bed39ce83adac8532f2900d3d7`.
 - New Phase 2 version 6 is **saved unpublished and provenance-verified** from
   `23ce5db16eb313e2f404cb7d0e9d90729a0509ce`.
-- Corrected unpublished version: **Pending final source freeze, packaging, and
-  Sites save**.
+- Corrected Phase 2 version 7 is **saved unpublished and provenance-verified**
+  from `978aca67c790d7e2216d40253f365bcc9d5d8b87`.
 - Preview deployment: **None**.
 - Production deployment: **None**.
 - Public URL: **None claimed**.
