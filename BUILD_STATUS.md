@@ -6,11 +6,13 @@ Last updated: 2026-07-24 (America/Vancouver)
 
 - Phase 1 Sites foundation and its independent audit gate:
   **Completed and verified**.
-- Current authorized work: the narrow owner-input continuation that maps three
-  supplied official Meetup groups to three exact program records, configures
-  the existing Sites owner identity as the bootstrap secret, and proves the
-  live feeds through an isolated production-compatible local D1.
-- Current owner-input continuation: **Completed and verified** in the supported
+- Current authorized work: the narrow V5 release-evidence correction that keeps
+  the exact documented lint command reproducible while ignored packaging and
+  archive-audit artifacts remain under `work/`.
+- Current V5 release-evidence correction: **Completed and verified**. ESLint
+  globally ignores only the generated `work/**` root; no lint rule, severity,
+  tracked-source path, application behavior, or test was weakened.
+- Prior owner-input continuation: **Completed and verified** in the supported
   local Sites/Miniflare environment.
 - Unpublished Sites version 3: **Superseded** by the post-save publication
   audit. It remains unpublished and must not be deployed.
@@ -263,14 +265,21 @@ violations.
 - `npm.cmd run db:apply:preview` — **Completed and verified** and idempotent;
   the same 6 migrations, 36 total preview tables, 2 triggers, and 0
   foreign-key violations in the Sites local preview D1.
-- `npm.cmd run typecheck` — **Completed and verified**; strict TypeScript passed.
-- `npm.cmd run lint` — **Completed and verified**; passed without blanket
-  suppression.
+- Post-restart `npm.cmd run lint` reproduction before correction —
+  **Not a clean pass**; exit 1 with 10 errors and 3,410 warnings because ESLint
+  traversed generated `work/**/dist` packaging and archive-audit copies.
+- ESLint reproducibility correction — **Completed and verified**;
+  `globalIgnores()` now includes only `work/**` for this defect. The tracked
+  application remains covered and no lint rule or severity changed.
+- `npm.cmd run lint` after correction — **Completed and verified**; exit 0 with
+  the existing `work/` staging artifacts still present.
+- `npm.cmd run typecheck` after correction — **Completed and verified**; strict
+  TypeScript passed.
 - Focused Meetup/auth command (`node --import tsx --test` over
   `tests/auth/*.test.mjs` and `tests/meetup/*.test.mjs`) — **Completed and
   verified**; 40/40 tests passed.
-- `npm.cmd test` — **Completed and verified**; 78/78 unit and integration tests
-  passed.
+- `npm.cmd test` after correction — **Completed and verified**; 78/78 unit and
+  integration tests passed.
 - `npm.cmd run build` — **Completed and verified**; routes `/`, `/calendar`,
   `/organizer`, `/organizer/meetup`, organizer APIs, and session API built.
 - `npm.cmd run test:rendered` — **Completed and verified**; 6/6 built-Worker
@@ -286,8 +295,8 @@ violations.
   bypass token appears in tracked/intended source, `dist/client`, or
   `dist/server`. Older concrete iCal test literals were replaced with
   runtime-composed examples; the final source/build scans report zero matches.
-- `git diff --check` — **Completed and verified**; clean apart from Git's
-  informational LF-to-CRLF working-copy warnings.
+- `git diff --check` after correction — **Completed and verified**; exit 0 with
+  no whitespace errors.
 - `npm.cmd audit --omit=dev --json` — **Not a clean pass**; 3 high
   findings in the pinned production tree (`next`, transitive `postcss`, and
   transitive `sharp`).

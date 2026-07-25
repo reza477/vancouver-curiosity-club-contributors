@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Git-ignored packaging and archive-audit artifacts.
+    "work/**",
   ]),
 ]);
 
