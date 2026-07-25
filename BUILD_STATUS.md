@@ -13,8 +13,8 @@ Last updated: 2026-07-25 (America/Vancouver)
   remain covered by the full regression suite.
 - No Phase 3 surface was started.
 - No preview or production deployment was created.
-- Unpublished Sites version save: **Pending final Git/package handoff**. This
-  ledger will receive a provenance-only update after Sites readback.
+- Unpublished Sites version 6: **Saved and provenance-verified** from exact
+  source commit `23ce5db16eb313e2f404cb7d0e9d90729a0509ce`.
 - Exact next phase: **Phase 3 — Not started**.
 
 ## Completed and verified
@@ -26,8 +26,8 @@ Last updated: 2026-07-25 (America/Vancouver)
   or configuration was copied.
 - `.openai/hosting.json` still contains only the original opaque project ID and
   logical `DB`/`MEDIA` bindings.
-- The existing Sites project is active. Pre-save readback reported latest
-  version 5, no preview URL, no live URL, and no deployment.
+- The existing Sites project is active. Final readback reports latest version
+  6, no preview URL, no live URL, and no deployment.
 - Sites runtime revision 1 contains only `INITIAL_OWNER_EMAIL` as a redacted
   secret. Its value was not printed into source or documentation.
 - No GitHub, Supabase, PostgreSQL, Firebase, Vercel, Netlify, Resend, SMTP,
@@ -171,6 +171,20 @@ All commands below were run from
   feed paths, Gmail addresses, or Sites bypass-token labels. Generic
   server-only iCalendar parsing and private schema column names are expected
   and remain non-public.
+- Exact verified source commit
+  `23ce5db16eb313e2f404cb7d0e9d90729a0509ce` was pushed to the existing
+  Sites-managed `main` source branch; remote branch readback matched exactly.
+- The official Sites packaging helper produced a gzip archive with local
+  SHA-256
+  `8d6f67d76e465d77480e7e942d959b5fce63d8275a004c484a1eb8e5c0929337`,
+  1,658,238 bytes, and 70 regular files.
+- Archive inspection found all required Worker/hosting/migration files,
+  0 forbidden paths, 0 missing required paths, 0 mismatches across the 54
+  original `dist` files, and 0 concrete private-value hits.
+- Sites version 6 readback matched the source commit and reported content
+  SHA-256
+  `136f94f571f9f7deac92fa42109a7f40e7630583006be5dda9378065cdcf474d`,
+  4,290,560 stored bytes, and 70 files.
 
 ### Dependency audit
 
@@ -211,8 +225,6 @@ zero fake events:
 
 ## Implemented but not externally verified
 
-- The exact production archive and unpublished Sites version are not yet
-  saved at this pre-provenance ledger checkpoint.
 - Hosted D1 catalog creation, hosted feed refresh, hosted sitemap/event data,
   and SIWC owner persistence are implemented but cannot be externally verified
   without a deployment.
@@ -268,12 +280,12 @@ zero fake events:
 
 ## Sites version and deployment state
 
-- Existing versions 1–5 remain preserved and unpublished.
+- Existing versions 1–6 remain preserved and unpublished.
 - Version 3 remains superseded and must not be deployed.
-- Version 5 remains the latest saved version at this checkpoint, sourced from
+- Version 5 remains preserved, sourced from
   `cb51a5969370e4bed39ce83adac8532f2900d3d7`.
-- New Phase 2 unpublished version: **Pending exact commit, package, save, and
-  readback**.
+- New Phase 2 version 6 is **saved unpublished and provenance-verified** from
+  `23ce5db16eb313e2f404cb7d0e9d90729a0509ce`.
 - Preview deployment: **None**.
 - Production deployment: **None**.
 - Public URL: **None claimed**.
