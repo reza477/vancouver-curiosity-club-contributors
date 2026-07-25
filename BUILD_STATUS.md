@@ -5,13 +5,13 @@ Last updated: 2026-07-25 (America/Vancouver)
 ## Active phase and authorized scope
 
 - **Phase 2 production-migration compatibility correction — Completed and
-  verified locally; Sites save/deployment pending.**
+  verified locally and on the owner-only Sites deployment.**
 - Phase 1 and Phase 2 product behavior is unchanged. This correction is
   limited to the Sites/D1 migration boundary, durable database-guard
   initialization, its tests, and release evidence.
 - **Phase 3 — Not started.**
-- Public deployment is prohibited. The only authorized deployment is through
-  the Sites capability that verifies the current owner is the sole viewer.
+- Public/shared access remains prohibited. Version 8 was deployed only through
+  the Sites capability that verified the current owner is the sole viewer.
 
 ## Completed and verified
 
@@ -156,17 +156,58 @@ Commands were run from `C:\Users\user\Documents\Website` on 2026-07-25.
 - Documentation: `README.md` and ADR
   `docs/architecture/0006-sites-d1-trigger-compatibility.md`.
 
+### Hosted release evidence
+
+- Exact verified and pushed source commit:
+  `0bf8c52697bcd3a8352edcac22bf42479a37d33f`.
+- The official Sites package was built from that clean commit. Local archive
+  SHA-256:
+  `bbb2ba06d8bce26ccdf13bac4739a0fc9c10999109cd2e9a3a80e5613b1f2e0d`;
+  1,632,209 bytes, 79 archive entries, and 64 regular files.
+- Archive inspection found zero unsafe paths, missing required files,
+  source/package migration hash differences, email addresses, exact private
+  Meetup feed URLs, client private identifiers, Windows user paths, local
+  databases, environment files, or unoptimized master artwork.
+- Sites version 8,
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_eed88ec7d02c8191a865045cd32c940e`,
+  reads back the exact source commit above and 64 files. Sites storage reports
+  content hash
+  `sha256:9ea067b3116c8832a88d2069769196ed5a5552ee87308d1adbae13112cf3ad4d`
+  and 3,758,080 bytes.
+- Owner-only deployment
+  `appgdep_6a654533aee481918098af58b5a4f861` reached `succeeded` with runtime
+  revision 1. The production URL is
+  `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
+- Hosted Worker evidence after deployment shows authenticated Home and Events
+  requests completing with HTTP 200 and `outcome: ok`, with no migration,
+  SQLite, or invariant-initialization failure. Because every non-image app
+  request fails closed before dispatch unless the persistent marker, exact
+  nine-trigger set, and both integrity probes pass, these responses verify the
+  production runtime initializer completed. Sites does not expose direct
+  hosted `sqlite_master` or migration-ledger queries.
+- Hosted organizer evidence shows a non-member identity denied server-side
+  with the safe `authorization_denied` code; no private identity value was
+  emitted.
+- Browser verification reached the expected owner-only `Sign in required`
+  gate. The agent browser had no owner ChatGPT session, so interactive
+  post-login owner persistence remains for Reza's smoke test.
+- Post-deployment readback confirms version 8 is the only newly saved version,
+  the live URL points to it, preview URL remains null, access remains custom
+  with exactly one allowed account and zero groups, runtime revision remains 1
+  with only the redacted secret `INITIAL_OWNER_EMAIL`, and no custom domain
+  exists.
+
 ## Implemented but not externally verified
 
-- The corrected hosted migration and persistent nine-trigger marker are
-  implemented and production-contract tested but not externally verified
-  until the next owner-only Sites deployment succeeds.
-- Hosted Home, Events, sitemap, Meetup refresh, SIWC owner persistence, and
-  hosted D1/R2 bindings retain their Phase 2 implementation but await the same
-  deployment.
-- The failed version-7 D1 state cannot be inspected. Migrations 0008–0011 are
-  deliberately idempotent and reset only the known unservable pre-production
-  application schema.
+- Direct hosted D1 table/index/trigger counts cannot be queried through the
+  current Sites capability. Deployment success plus fail-closed HTTP 200
+  Worker evidence verifies migration/runtime compatibility; the exact
+  37-table/75-index/nine-trigger signature is directly verified in local,
+  preview, and packaged-Worker D1.
+- Interactive owner bootstrap/persistence, complete hosted visual QA, real
+  Meetup event rendering, and R2 behavior remain externally unverified until
+  the owner completes the smoke test or the corresponding later workflow is
+  authorized.
 
 ## Not implemented
 
@@ -178,21 +219,22 @@ Commands were run from `C:\Users\user\Documents\Website` on 2026-07-25.
 
 ## Not run
 
-- Corrected hosted browser checks — not run until the corrected Sites version
-  is saved and deployed owner-only.
+- Post-login owner browser checks — not run because the available browser had
+  no owner ChatGPT session. The owner-only sign-in gate itself was verified.
 - Real interactive event smoke — not run because the review database has no
   real published event and fake production events are prohibited.
-- Second authenticated identity denial — not run because the custom outer
-  access policy allows only the owner.
+- A second human identity smoke test — not run because no second allowed test
+  identity is available. Hosted server logs do verify non-member denial.
 - R2 upload/read — not run because upload UI is outside Phase 2.
-- Lighthouse/Core Web Vitals and automated axe — not run; no corrected hosted
-  URL exists yet and axe is not part of the pinned starter.
+- Lighthouse/Core Web Vitals and automated axe — not run; axe is not part of
+  the pinned starter and no performance claim is made.
 
 ## Blocked
 
-- Direct remote D1 inspection/reset is unavailable in the Sites capability.
-  The corrected monotonic, retry-safe pre-production baseline is the safe
-  recovery path authorized for this no-data project.
+- Direct remote D1 inspection/reset remains unavailable in the Sites
+  capability. The corrected monotonic, retry-safe pre-production baseline
+  successfully recovered the deployment without claiming a direct hosted
+  schema dump.
 - Remaining factual owner inputs: exact BC legal identity/status/footer and
   charity wording; exact Meetup discussion URL; approved final copy; approved
   organizer names/biographies; real photos with rights/credit/consent;
@@ -200,27 +242,31 @@ Commands were run from `C:\Users\user\Documents\Website` on 2026-07-25.
 
 ## Sites version and deployment state
 
-- Existing Sites versions 1–7 remain preserved.
+- Existing Sites versions 1–7 remain preserved; version 8 is the newest saved
+  version.
 - Version 7 is unpublished, failed before publication, and superseded for
   deployment.
-- Corrected source commit/archive/new Sites version: pending the final clean
-  source freeze and provenance audit.
+- Version 8 is deployed and provenance-verified against source commit
+  `0bf8c52697bcd3a8352edcac22bf42479a37d33f` and the 64-file Sites archive.
+- Deployment `appgdep_6a654533aee481918098af58b5a4f861`: `succeeded`.
 - Access remains custom owner-only: one allowed account and zero groups.
 - Runtime revision remains 1 with only `INITIAL_OWNER_EMAIL` stored as a
   redacted secret.
 - Custom domains: none.
 - Preview URL: none.
-- Live URL: none.
+- Owner-only live URL:
+  `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
 - Public access: not enabled.
 
 ## Awaiting owner smoke test
 
-Status: **Awaiting owner smoke test — pending corrected owner-only deployment.**
+Status: **Awaiting owner smoke test on the successful owner-only deployment.**
 
-Five-minute owner card after a URL is returned:
+Five-minute owner card:
 
-1. Open Home and Events; confirm both render without a migration/database
-   error and the event state is truthful.
+1. Open `https://vancouver-curiosity-club.reza5777.chatgpt.site`, continue with
+   ChatGPT, then open Home and Events. Confirm both render without a
+   migration/database error and the event state is truthful.
 2. At phone width, confirm the mark, menu, four lanes, three featured clubs,
    filters, and Clear Filters work without sideways scrolling.
 3. Open Organizer Login signed out; confirm Sites-owned Sign in with ChatGPT is
