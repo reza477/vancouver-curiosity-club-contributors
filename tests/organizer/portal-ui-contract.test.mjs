@@ -22,6 +22,7 @@ test("required private organizer routes share server membership revalidation and
   const pages = [
     "page.tsx",
     "calendar/page.tsx",
+    "conflicts/page.tsx",
     "events/page.tsx",
     "events/new/page.tsx",
     "events/[id]/page.tsx",
@@ -41,7 +42,7 @@ test("required private organizer routes share server membership revalidation and
     );
     assert.doesNotMatch(
       body,
-      /href=["'`]\/organizer\/(?:conflicts|exports|publishing)\b|>\s*(?:Publish|Unpublish|Export|QR download)\s*</u,
+      /href=["'`]\/organizer\/(?:exports|publishing)\b|>\s*(?:Publish|Unpublish|Export|QR download)\s*</u,
       `${page} must not expose later-phase actions`,
     );
   }
@@ -49,9 +50,10 @@ test("required private organizer routes share server membership revalidation and
   const shell = source("app", "_organizer", "WorkspaceShell.tsx");
   assert.match(shell, /Calendar/u);
   assert.match(shell, /Add event/u);
+  assert.match(shell, /href="\/organizer\/conflicts"|href:\s*"\/organizer\/conflicts"/u);
+  assert.match(shell, /Conflicts/u);
   assert.match(shell, /Team/u);
   assert.match(shell, /More/u);
-  assert.doesNotMatch(shell, /Conflicts/u);
 });
 
 test("private shell has no public chrome, canonical, Open Graph, or structured data", () => {
@@ -87,6 +89,7 @@ test("denied organizer identities use the real vinext 403 boundary", () => {
   for (const page of [
     "page.tsx",
     "calendar/page.tsx",
+    "conflicts/page.tsx",
     "events/page.tsx",
     "events/new/page.tsx",
     "events/[id]/page.tsx",

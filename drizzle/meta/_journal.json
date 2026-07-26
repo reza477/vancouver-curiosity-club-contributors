@@ -36,6 +36,13 @@
       "when": 1785023405209,
       "tag": "0012_phase3_organizer_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1785035889419,
+      "tag": "0013_phase4_conflict_engine",
+      "breakpoints": true
     }
   ]
 }

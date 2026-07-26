@@ -67,7 +67,7 @@
 .brand small {
   overflow: hidden;
   color: #b9c4ce;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -234,6 +234,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 2.75rem;
   min-height: 2.75rem;
   color: var(--ow-ink);
   font-size: 0.78rem;
@@ -556,6 +557,10 @@
   letter-spacing: -0.025em;
 }
 
+.calendarRangeControls button {
+  min-width: 2.8rem;
+}
+
 .calendarToolbar button,
 .calendarFilters button,
 .calendarFilters input,
@@ -748,7 +753,7 @@
 
 .eventIdentity small {
   color: var(--ow-ink-soft);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 
 .eventBadges {
@@ -810,7 +815,7 @@
 
 .dayEmpty {
   color: var(--ow-ink-soft);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 
 .monthWrapper {
@@ -866,12 +871,12 @@
 
 .monthView button > span {
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
 }
 
 .monthView button > strong {
   color: var(--ow-cobalt);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 
 .monthView .outsideMonth {
@@ -2268,6 +2273,495 @@
   to { transform: scaleX(1); transform-origin: left; }
 }
 
+.conflictPreview {
+  padding: 1rem;
+  border: 1px solid var(--ow-line);
+  border-left: 0.3rem solid var(--ow-amber);
+  background: rgb(255 255 255 / 38%);
+}
+
+.conflictPreview > header,
+.conflictPreviewList article > header,
+.conflictCard > header,
+.venueWorkspace > header,
+.venueList article > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.conflictPreview h3,
+.conflictPreview p,
+.conflictPreviewList,
+.conflictPreviewList article p,
+.conflictPreviewList article ul {
+  margin: 0;
+}
+
+.conflictPreview h3 {
+  margin-top: 0.15rem;
+  font-family: var(--display);
+  font-size: 1.6rem;
+  font-weight: 500;
+}
+
+.previewState {
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.conflictPreview > p {
+  margin-top: 0.8rem;
+  color: var(--ow-ink-soft);
+}
+
+.conflictPreviewList {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.conflictPreviewList article {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+}
+
+.conflictPreviewList article > header > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.conflictPreviewList article > header > span {
+  color: #7f4411;
+  font-size: 0.75rem;
+  font-weight: 780;
+}
+
+.conflictPreviewList article ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0;
+  list-style: none;
+}
+
+.conflictPreviewList article li li {
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--ow-line);
+  font-size: 0.75rem;
+}
+
+.conflictLinks,
+.conflictActions,
+.venueActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.conflictLinks a,
+.conflictLinks button,
+.conflictActions a,
+.conflictActions button,
+.conflictResultBar button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--ow-ink);
+  background: transparent;
+  color: var(--ow-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 740;
+  text-decoration: none;
+}
+
+.conflictCenter {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.conflictStateTabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid var(--ow-line);
+}
+
+.conflictStateTabs button {
+  display: grid;
+  min-width: 0;
+  min-height: 4rem;
+  place-items: center;
+  padding: 0.55rem 0.35rem;
+  border: 0;
+  border-right: 1px solid var(--ow-line);
+  background: transparent;
+  color: var(--ow-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.conflictStateTabs button:last-child {
+  border-right: 0;
+}
+
+.conflictStateTabs button[aria-pressed="true"] {
+  box-shadow: inset 0 -0.3rem var(--ow-coral);
+  background: rgb(255 255 255 / 48%);
+}
+
+.conflictStateTabs strong {
+  color: var(--ow-forest);
+  font-family: var(--mono);
+}
+
+.conflictResultBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--ow-line);
+}
+
+.conflictResultBar p {
+  margin: 0;
+  color: var(--ow-ink-soft);
+}
+
+.conflictDateGroups,
+.conflictDateGroups > section,
+.conflictCards {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.conflictDateGroups {
+  gap: 2.5rem;
+}
+
+.conflictCards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.conflictCard {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+  padding: clamp(1rem, 2.2vw, 1.5rem);
+  border: 1px solid var(--ow-line);
+  border-top: 0.35rem solid var(--ow-amber);
+  background: rgb(255 255 255 / 42%);
+}
+
+.conflictCard > header > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.conflictCard > header > p,
+.conflictPair p,
+.conflictFacts dd {
+  margin: 0;
+  color: var(--ow-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.conflictPair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-block: 1px solid var(--ow-line);
+}
+
+.conflictPair > section {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 1rem 1rem 1rem 0;
+}
+
+.conflictPair > section + section {
+  padding-right: 0;
+  padding-left: 1rem;
+  border-left: 1px solid var(--ow-line);
+}
+
+.conflictPair h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.45rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.conflictPair a,
+.conflictActivity summary {
+  color: var(--ow-cobalt);
+  font-weight: 720;
+}
+
+.conflictFacts {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.conflictFacts > div {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.conflictFacts dt {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.conflictActivity summary {
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+
+.conflictActivity ol {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding-left: 1.3rem;
+}
+
+.conflictActivity li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.actionDialog {
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100svh - 2rem);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--ow-ink);
+  background: var(--ow-paper);
+  color: var(--ow-ink);
+  box-shadow: 0 2rem 5rem rgb(16 27 47 / 35%);
+}
+
+.actionDialog::backdrop {
+  background: rgb(16 27 47 / 70%);
+}
+
+.actionDialog > form {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
+}
+
+.actionDialog h2,
+.actionDialog p {
+  margin: 0;
+}
+
+.actionDialog h2 {
+  font-family: var(--display);
+  font-size: 2.4rem;
+  font-weight: 470;
+}
+
+.actionDialog label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 700;
+}
+
+.actionDialog input,
+.actionDialog textarea {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ow-line);
+  background: #fffdf7;
+  color: var(--ow-ink);
+  font: inherit;
+}
+
+.actionDialog label small {
+  color: var(--ow-ink-soft);
+  font-weight: 450;
+}
+
+.actionDialog > form > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.actionDialog button {
+  min-height: 2.75rem;
+  padding: 0.6rem 0.9rem;
+}
+
+.phase4Settings {
+  display: grid;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.phase4Settings > p {
+  margin: 0;
+  color: var(--ow-ink-soft);
+}
+
+.policyPanel,
+.venueWorkspace {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.7fr) minmax(0, 1.3fr);
+  gap: clamp(1rem, 4vw, 3rem);
+  padding: clamp(1rem, 3vw, 2rem);
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 36%);
+}
+
+.policyPanel h2,
+.venueWorkspace h2,
+.venueForm h3,
+.venueList h3 {
+  margin: 0.25rem 0 0.7rem;
+  font-family: var(--display);
+  font-weight: 500;
+}
+
+.policyPanel h2,
+.venueWorkspace h2 {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+}
+
+.policyPanel header p:last-child,
+.venueWorkspace > header p:last-child {
+  color: var(--ow-ink-soft);
+}
+
+.policyPanel > div,
+.policyPanel fieldset,
+.policyNumbers,
+.venueList,
+.venueForm,
+.venueList article form {
+  display: grid;
+  gap: 1rem;
+}
+
+.policyPanel fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.policyPanel fieldset > label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  padding: 0.8rem;
+  border: 1px solid var(--ow-line);
+}
+
+.policyPanel fieldset > label > span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.policyPanel fieldset small,
+.policyNumbers small,
+.venueFields small {
+  color: var(--ow-ink-soft);
+  font-weight: 450;
+}
+
+.policyNumbers,
+.venueFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.policyNumbers label,
+.venueFields label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.policyNumbers input,
+.venueFields input,
+.venueFields textarea {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ow-line);
+  background: #fffdf7;
+  color: var(--ow-ink);
+  font: inherit;
+}
+
+.policyVersion {
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.venueWorkspace {
+  grid-template-columns: 1fr;
+}
+
+.venueForm,
+.venueList article {
+  padding: 1rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+}
+
+.venueForm h3,
+.venueList h3 {
+  font-size: 1.6rem;
+}
+
+.venueList article > header p {
+  margin: 0;
+  color: var(--ow-ink-soft);
+}
+
+.venueList details > summary {
+  min-height: 2.75rem;
+  margin-top: 0.75rem;
+  color: var(--ow-cobalt);
+  cursor: pointer;
+  font-weight: 720;
+}
+
+.monthConflictMark {
+  display: block;
+  color: #7f4411;
+  font-size: 0.75rem;
+  font-weight: 780;
+  line-height: 1.1;
+}
+
 .mobileNavigation {
   display: none;
 }
@@ -2315,7 +2809,7 @@
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     min-height: calc(4.25rem + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
     border-top: 1px solid #344255;
@@ -2413,6 +2907,19 @@
 
   .weekView > section {
     min-height: 0;
+  }
+
+  .conflictStateTabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .conflictStateTabs button:nth-child(4) {
+    border-right: 0;
+  }
+
+  .conflictCards,
+  .policyPanel {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2653,6 +3160,70 @@
   .assignedClubPanel,
   .profileForm > .formFooter {
     grid-column: 1;
+  }
+
+  .conflictPreview > header,
+  .conflictPreviewList article > header,
+  .conflictCard > header,
+  .conflictResultBar,
+  .venueWorkspace > header,
+  .venueList article > header {
+    display: grid;
+  }
+
+  .previewState {
+    text-align: left;
+  }
+
+  .conflictStateTabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .conflictStateTabs button:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .conflictPair,
+  .policyNumbers,
+  .venueFields {
+    grid-template-columns: 1fr;
+  }
+
+  .conflictPair > section,
+  .conflictPair > section + section {
+    padding: 0.9rem 0;
+    border-left: 0;
+  }
+
+  .conflictPair > section + section {
+    border-top: 1px solid var(--ow-line);
+  }
+
+  .conflictFacts > div {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+
+  .conflictActivity li,
+  .actionDialog > form > div,
+  .conflictLinks,
+  .conflictActions,
+  .venueActions {
+    display: grid;
+  }
+
+  .conflictLinks a,
+  .conflictLinks button,
+  .conflictActions a,
+  .conflictActions button,
+  .actionDialog button,
+  .venueActions button {
+    width: 100%;
+  }
+
+  .policyPanel,
+  .venueWorkspace {
+    padding: 1rem;
   }
 }
 

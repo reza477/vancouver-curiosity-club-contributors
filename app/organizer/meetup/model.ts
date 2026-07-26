@@ -5,6 +5,7 @@ export type MeetupUiState = Readonly<{
   lastAttemptAt: string | null;
   lastSuccessAt: string | null;
   nextRefreshAt: string | null;
+  scheduleConflict: boolean;
   status:
     | "current"
     | "disabled"
@@ -28,6 +29,7 @@ export function toMeetupUiState(
     lastAttemptAt: state.lastAttemptAt,
     lastSuccessAt: state.lastSuccessAt,
     nextRefreshAt: state.nextRefreshAt,
+    scheduleConflict: state.lastErrorCode === "conflict_rejected",
     status: state.status,
   });
 }

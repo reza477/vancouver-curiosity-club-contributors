@@ -62,7 +62,7 @@ export default async function OrganizerEventsPage({
       <PageHeader
         action={{ href: "/organizer/events/new", label: "Add an Idea or Draft" }}
         eyebrow="Private planning records"
-        introduction="Create and coordinate non-reserving Ideas and Drafts. Source-controlled, reserving, or published records remain read-only in Phase 3."
+        introduction="Create and coordinate private Ideas, Drafts, tentative holds, and confirmed schedules. Legacy and source-controlled records remain read-only."
         title="Events"
       />
       <EventIndex {...events} />

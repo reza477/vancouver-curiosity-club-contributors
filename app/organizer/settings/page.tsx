@@ -6,6 +6,7 @@ import {
 import { ActivityFeed } from "@/app/_organizer/ActivityFeed";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
 import { PageHeader } from "@/app/_organizer/PageHeader";
+import { Phase4SettingsPanels } from "@/app/_organizer/Phase4SettingsPanels";
 import { SettingsForm } from "@/app/_organizer/SettingsForm";
 import { listActivityHistory } from "@/lib/server/organizer/activity";
 import { getWorkspaceSettings } from "@/lib/server/organizer/settings";
@@ -62,10 +63,11 @@ export default async function OrganizerSettingsPage() {
     <>
       <PageHeader
         eyebrow="Workspace administration"
-        introduction="Private planning defaults and append-only activity live here. Public branding, legal wording, and conflict policy are deliberately absent."
+        introduction="Private planning defaults, conflict policy, venues, and append-only activity live here. Public branding and legal wording remain outside this phase."
         title="Settings"
       />
       <SettingsForm canManage={canManage} initialSettings={data.settings} />
+      <Phase4SettingsPanels canManage={canManage} />
       <ActivityFeed items={data.activity} />
     </>
   );

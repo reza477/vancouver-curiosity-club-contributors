@@ -49,7 +49,7 @@ export default async function OrganizerDashboardPage() {
       <PageHeader
         action={{ href: "/organizer/events/new", label: "Add an Idea or Draft" }}
         eyebrow="Private field desk"
-        introduction="Keep the organization’s Ideas, Drafts, assignments, and source health in view without reserving time or publishing to the website."
+        introduction="Keep private Ideas, Drafts, holds, confirmed schedules, conflicts, assignments, and source health in view. Website publication remains unavailable."
         title={`Good to see you, ${firstName(loaded.context.organizerDisplayName)}.`}
       />
       <Dashboard

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { OrganizerEventIndexStatus } from "@/lib/server/organizer/events";
 import type { OrganizerEventSummary } from "./types";
 import { StatusPill } from "./PageHeader";
 import styles from "./workspace.module.css";
@@ -22,7 +21,7 @@ export function EventIndex({
   lastResult: number;
   page: number;
   search: string;
-  status: OrganizerEventIndexStatus;
+  status: string;
   totalCount: number;
 }>) {
   return (
@@ -33,7 +32,7 @@ export function EventIndex({
         method="get"
       >
         <label>
-          <span>Search private Ideas and Drafts</span>
+          <span>Search private planning records</span>
           <input
             defaultValue={search}
             maxLength={120}
@@ -45,9 +44,14 @@ export function EventIndex({
         <label>
           <span>Planning status</span>
           <select defaultValue={status} name="status">
-            <option value="active">Active Ideas and Drafts</option>
+            <option value="active">Active planning records</option>
             <option value="idea">Ideas</option>
             <option value="draft">Drafts</option>
+            <option value="tentative_hold">Tentative holds</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="completed">Completed</option>
+            <option value="archived">Archived</option>
             <option value="deleted">Deleted items</option>
           </select>
         </label>
@@ -76,7 +80,7 @@ export function EventIndex({
               <Link href={`/organizer/events/${encodeURIComponent(event.id)}`}>
                 <span>
                   <StatusPill tone={event.planningStatus === "draft" ? "blue" : "amber"}>
-                    {event.planningStatus}
+                    {event.planningStatus.replace("_", " ")}
                   </StatusPill>
                   <StatusPill>{event.publicationStatus}</StatusPill>
                   {event.deleted ? <StatusPill>Deleted</StatusPill> : null}
@@ -91,7 +95,7 @@ export function EventIndex({
       ) : (
         <section className={styles.pageState} aria-labelledby="event-index-empty">
           <p className={styles.kicker}>Private planning</p>
-          <h2 id="event-index-empty">No Ideas or Drafts match.</h2>
+          <h2 id="event-index-empty">No private planning records match.</h2>
           <p>
             Clear the filters or create a real private planning record. No
             placeholder events are shown.
@@ -127,7 +131,7 @@ export function EventIndex({
 
 function eventIndexHref(
   search: string,
-  status: OrganizerEventIndexStatus,
+  status: string,
   page: number,
 ): string {
   const query = new URLSearchParams();

@@ -19,6 +19,19 @@ const migrationFiles = (await readdir(migrationsDirectory))
   .filter((name) => name.endsWith(".sql"))
   .sort();
 
+async function ensureDatabaseInvariantsReady(database, maxAttempts = 8) {
+  const statuses = [];
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const status = await ensureDatabaseInvariants(database);
+    statuses.push(status);
+    if (status === "ready") return statuses;
+  }
+  throw new Error(
+    `Database invariants did not converge within ${maxAttempts} attempts ` +
+      `(statuses=${statuses.join(",")}).`,
+  );
+}
+
 if (migrationFiles.length === 0) {
   console.error("No generated SQL migrations were found.");
   process.exit(2);
@@ -83,7 +96,8 @@ try {
     console.log(`applied: ${name} (${statements.length - 1} statements)`);
   }
 
-  await ensureDatabaseInvariants(database);
+  const invariantStatuses =
+    await ensureDatabaseInvariantsReady(database);
 
   const tableCount = await database
     .prepare(
@@ -119,6 +133,7 @@ try {
       databaseInvariantTriggers: Number(triggerCount),
       expectedDatabaseInvariantTriggers:
         DATABASE_INVARIANT_TRIGGER_NAMES.length,
+      invariantStatuses,
       foreignKeyViolations: 0,
     }),
   );

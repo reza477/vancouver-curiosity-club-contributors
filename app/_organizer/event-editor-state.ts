@@ -10,10 +10,18 @@ export type EventEditorValue = Readonly<{
   endDate: string;
   endTime: string;
   expectedEditVersion: number | null;
+  expectedScheduleVersion: number | null;
   internalNotes: string;
   laneId: string;
   meetupEventUrl: string;
-  planningStatus: "draft" | "idea";
+  planningStatus:
+    | "archived"
+    | "cancelled"
+    | "completed"
+    | "confirmed"
+    | "draft"
+    | "idea"
+    | "tentative_hold";
   primaryOrganizerProfileId: string;
   privateMeetingDetails: string | null;
   programId: string;

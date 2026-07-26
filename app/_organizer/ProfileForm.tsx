@@ -123,7 +123,7 @@ export function ProfileForm({
           <span>Optional biography draft</span>
           <textarea defaultValue={profile.publicBiography ?? ""} maxLength={800} name="publicBiography" rows={5} />
           <small>
-            This Phase 3 draft remains private and does not change the current
+            This private profile draft does not change the current
             public website.
           </small>
         </label>

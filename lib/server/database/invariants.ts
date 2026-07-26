@@ -1,12 +1,22 @@
 import type { D1DatabaseLike } from "../auth";
 import { CONFLICT_GUARD_TRIGGER_STATEMENTS } from "../conflicts/guard-sql";
 import {
+  PHASE4_INVARIANT_COUNT_SQL,
+  PHASE4_INVARIANT_TRIGGER_STATEMENTS,
+} from "../conflicts/organizer-invariant-sql";
+import {
   PHASE3_INVARIANT_COUNT_SQL,
   PHASE3_INVARIANT_TRIGGER_STATEMENTS,
 } from "../organizer/invariant-sql";
+import {
+  externalReservationSemanticFingerprint,
+  externalReservationStateFingerprint,
+  normalizeAllDayConflictInterval,
+  normalizeConflictInterval,
+} from "../organizer/conflict-domain";
 
 export const DATABASE_INVARIANT_MARKER_KEY = "database-guards";
-export const DATABASE_INVARIANT_VERSION = 3;
+export const DATABASE_INVARIANT_VERSION = 4;
 export const DATABASE_INVARIANT_STATEMENT_LIMIT = 50;
 
 const PUBLIC_INTEGRITY_TRIGGER_STATEMENTS = [
@@ -153,6 +163,7 @@ export const DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
   ...CONFLICT_GUARD_TRIGGER_STATEMENTS,
   ...PUBLIC_INTEGRITY_TRIGGER_STATEMENTS,
   ...PHASE3_INVARIANT_TRIGGER_STATEMENTS,
+  ...PHASE4_INVARIANT_TRIGGER_STATEMENTS,
 ]);
 
 export const DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
@@ -167,12 +178,33 @@ const INTEGRITY_COUNT_SQL = Object.freeze([
   CLUB_PUBLIC_PROFILE_INTEGRITY_COUNT_SQL,
   EVENT_PUBLIC_DETAILS_INTEGRITY_COUNT_SQL,
   ...PHASE3_INVARIANT_COUNT_SQL,
+  ...PHASE4_INVARIANT_COUNT_SQL,
 ]);
 
-const COMBINED_INTEGRITY_COUNT_SQL = String.raw`
-SELECT ${
-  INTEGRITY_COUNT_SQL.map((query) => `(${query.trim()})`).join("\n     + ")
-} AS violation_count`;
+// Production D1 caps both expression depth and compound-SELECT terms below the
+// full invariant set. Keep each shallow UNION group deliberately small.
+const INTEGRITY_COUNT_CHUNK_SIZE = 4;
+const COMBINED_INTEGRITY_COUNT_SQL = Object.freeze(
+  Array.from(
+    {
+      length: Math.ceil(
+        INTEGRITY_COUNT_SQL.length / INTEGRITY_COUNT_CHUNK_SIZE,
+      ),
+    },
+    (_, index) => {
+      const checks = INTEGRITY_COUNT_SQL.slice(
+        index * INTEGRITY_COUNT_CHUNK_SIZE,
+        (index + 1) * INTEGRITY_COUNT_CHUNK_SIZE,
+      );
+      return String.raw`
+SELECT COALESCE(sum(invariant_check.violation_count), 0)
+       AS violation_count
+FROM (
+  ${checks.map((query) => query.trim()).join("\n  UNION ALL\n  ")}
+) AS invariant_check`;
+    },
+  ),
+);
 
 /**
  * `database_invariant_state` rejects version zero and an empty fingerprint.
@@ -180,20 +212,43 @@ SELECT ${
  * the one conditional insert aborts the complete D1 batch and rolls back every
  * trigger change.
  */
-const ABORTING_INTEGRITY_PROBE_SQL = String.raw`
+const ABORTING_INTEGRITY_PROBE_SQL = COMBINED_INTEGRITY_COUNT_SQL.map(
+  (countSql) => String.raw`
 INSERT INTO database_invariant_state (
   singleton_key, version, trigger_fingerprint, verified_at
 )
 SELECT 'integrity-probe', 0, '', 0
-WHERE (${COMBINED_INTEGRITY_COUNT_SQL}) > 0`;
+WHERE (${countSql}) > 0`,
+);
 
-// Three preflight reads, one aborting probe, one marker write, three read-back
-// checks, and (only after a failed read-back) one marker invalidation must all
-// fit in one Worker invocation.
+// Marker/definition reads plus the bounded integrity chunks, matching atomic
+// aborting probes, one marker write, a complete read-back, and (only after a
+// failed read-back) one marker invalidation must fit in one Worker invocation.
+const INVARIANT_INSPECTION_STATEMENT_COUNT =
+  2 + COMBINED_INTEGRITY_COUNT_SQL.length;
+const PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT = 4;
 const MAX_ATOMIC_REPAIR_MUTATIONS =
-  DATABASE_INVARIANT_STATEMENT_LIMIT - 3 - 2 - 3 - 1;
+  DATABASE_INVARIANT_STATEMENT_LIMIT -
+  PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
+  INVARIANT_INSPECTION_STATEMENT_COUNT -
+  ABORTING_INTEGRITY_PROBE_SQL.length -
+  1 -
+  INVARIANT_INSPECTION_STATEMENT_COUNT -
+  1;
+// Adoption preflight can read marker, missing policies, manual projections,
+// external projections, plus the three invariant inspection statements.
 const MAX_FAIL_CLOSED_DROP_COUNT =
-  DATABASE_INVARIANT_STATEMENT_LIMIT - 3 - 1;
+  DATABASE_INVARIANT_STATEMENT_LIMIT -
+  PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
+  INVARIANT_INSPECTION_STATEMENT_COUNT -
+  1;
+const MAX_POLICY_ADOPTIONS_PER_REQUEST = 24;
+const MAX_MANUAL_ADOPTIONS_PER_REQUEST = 15;
+// A Meetup adoption emits two statements (normalization + projection). Keep
+// the whole repair request below D1's 50-statement invocation limit.
+const MAX_EXTERNAL_ADOPTIONS_PER_REQUEST = 22;
+const MAX_MANUAL_ALL_DAY_SCAN = 5_000;
+const MAX_EXTERNAL_SCAN = 5_000;
 
 const initializationByDatabase = new WeakMap<
   D1DatabaseLike,
@@ -268,6 +323,12 @@ export function normalizeTriggerDefinition(sql: string): string {
 async function initializeDatabaseInvariants(
   database: D1DatabaseLike,
 ): Promise<DatabaseInvariantInitializationStatus> {
+  if (
+    (await phase4AdoptionRequired(database)) &&
+    (await adoptMissingPhase4ConflictProjections(database))
+  ) {
+    return "repaired";
+  }
   const fingerprint = await getExpectedDatabaseInvariantFingerprint();
   const inspection = await inspectDatabaseInvariants(database, fingerprint);
   if (inspection.ready) return "ready";
@@ -313,10 +374,18 @@ async function initializeDatabaseInvariants(
    * Normal cold, missing-trigger, and ordinary mismatch repairs stay in one
    * atomic request. Every intermediate state has no readiness marker.
    */
-  if (
-    dropNames.length + createStatements.length >
-    MAX_ATOMIC_REPAIR_MUTATIONS
-  ) {
+  if (dropNames.length + createStatements.length >
+      MAX_ATOMIC_REPAIR_MUTATIONS) {
+    /*
+     * More exact guards than a single install+probe+read-back request can
+     * safely carry are staged while the durable readiness marker is absent.
+     * The Worker returns its fail-closed repair response; the next request
+     * completes the remaining definitions and only then writes the marker.
+     */
+    const mutationBudget = MAX_FAIL_CLOSED_DROP_COUNT;
+    const stagedDrops = dropNames.slice(0, mutationBudget);
+    const remainingBudget = mutationBudget - stagedDrops.length;
+    const stagedCreates = createStatements.slice(0, remainingBudget);
     const cleanupStatements = [
       database
         .prepare(
@@ -324,16 +393,16 @@ async function initializeDatabaseInvariants(
            WHERE singleton_key = ?`,
         )
         .bind(DATABASE_INVARIANT_MARKER_KEY),
-      ...dropNames
-        .slice(0, MAX_FAIL_CLOSED_DROP_COUNT)
+      ...stagedDrops
         .map((name) =>
           database.prepare(
             `DROP TRIGGER IF EXISTS ${quoteSqliteIdentifier(name)}`,
           ),
         ),
+      ...stagedCreates.map((sql) => database.prepare(sql)),
     ];
     await runInvariantBatch(database, cleanupStatements);
-    throw new DatabaseInvariantError();
+    return "repaired";
   }
 
   const triggerNames = [...DATABASE_INVARIANT_TRIGGER_NAMES];
@@ -344,14 +413,18 @@ async function initializeDatabaseInvariants(
       ),
     ),
     ...createStatements.map((sql) => database.prepare(sql)),
-    database.prepare(ABORTING_INTEGRITY_PROBE_SQL),
+    ...ABORTING_INTEGRITY_PROBE_SQL.map((sql) =>
+      database.prepare(sql),
+    ),
     database
       .prepare(
         `INSERT INTO database_invariant_state (
            singleton_key, version, trigger_fingerprint, verified_at
          )
          SELECT ?, ?, ?, ?
-         WHERE (${COMBINED_INTEGRITY_COUNT_SQL}) = 0
+         WHERE ${COMBINED_INTEGRITY_COUNT_SQL.map(
+           (sql) => `(${sql}) = 0`,
+         ).join("\n           AND ")}
            AND (
              SELECT count(*)
              FROM sqlite_master
@@ -398,6 +471,21 @@ async function initializeDatabaseInvariants(
   return "repaired";
 }
 
+async function phase4AdoptionRequired(
+  database: D1DatabaseLike,
+): Promise<boolean> {
+  const marker = await database
+    .prepare(
+      `SELECT version
+       FROM database_invariant_state
+       WHERE singleton_key = ?
+       LIMIT 1`,
+    )
+    .bind(DATABASE_INVARIANT_MARKER_KEY)
+    .first<Record<string, unknown>>();
+  return marker?.version !== DATABASE_INVARIANT_VERSION;
+}
+
 async function inspectDatabaseInvariants(
   database: D1DatabaseLike,
   fingerprint: string,
@@ -406,8 +494,7 @@ async function inspectDatabaseInvariants(
   ready: boolean;
   violationCount: number;
 }> {
-  const [marker, triggerResult, integrityResult] = await Promise.all([
-    database
+  const markerPromise = database
       .prepare(
         `SELECT version, trigger_fingerprint
          FROM database_invariant_state
@@ -415,18 +502,24 @@ async function inspectDatabaseInvariants(
          LIMIT 1`,
       )
       .bind(DATABASE_INVARIANT_MARKER_KEY)
-      .first<Record<string, unknown>>(),
-    database
+      .first<Record<string, unknown>>();
+  const triggerPromise = database
       .prepare(
         `SELECT name, sql
          FROM sqlite_master
          WHERE type = 'trigger'
          ORDER BY name`,
       )
-      .all<Record<string, unknown>>(),
-    database
-      .prepare(COMBINED_INTEGRITY_COUNT_SQL)
-      .first<Record<string, unknown>>(),
+      .all<Record<string, unknown>>();
+  const integrityPromise = Promise.all(
+    COMBINED_INTEGRITY_COUNT_SQL.map((sql) =>
+      database.prepare(sql).first<Record<string, unknown>>(),
+    ),
+  );
+  const [marker, triggerResult, integrityResults] = await Promise.all([
+    markerPromise,
+    triggerPromise,
+    integrityPromise,
   ]);
   const actualDefinitions = (triggerResult.results ?? []).map((row) => ({
     name: typeof row.name === "string" ? row.name : "",
@@ -440,7 +533,10 @@ async function inspectDatabaseInvariants(
         actual.name !== expectedDefinitions[index]?.name ||
         actual.sql !== expectedDefinitions[index]?.sql,
     );
-  const violationCount = readViolationCount(integrityResult);
+  const violationCount = integrityResults.reduce(
+    (total, result) => total + readViolationCount(result),
+    0,
+  );
   return {
     actualDefinitions,
     ready:
@@ -450,6 +546,1333 @@ async function inspectDatabaseInvariants(
       violationCount === 0,
     violationCount,
   };
+}
+
+const PHASE4_MANUAL_ADOPTION_SQL = String.raw`
+SELECT event.id AS event_id,
+       event.organization_id,
+       event.club_id,
+       event.planning_status,
+       event.schedule_shape,
+       event.starts_at_utc,
+       event.ends_at_utc,
+       event.timezone,
+       event.all_day_start_date,
+       event.all_day_end_date_exclusive,
+       event.buffer_before_minutes,
+       event.buffer_after_minutes,
+       event.venue_id,
+       event.primary_organizer_profile_id,
+       event.content_version,
+       event.schedule_version,
+       policy.id AS policy_id,
+       policy.policy_version,
+       policy.mode AS policy_mode,
+       (
+         SELECT owner_membership.profile_id
+         FROM organization_memberships AS owner_membership
+         JOIN profiles AS owner_profile
+           ON owner_profile.id = owner_membership.profile_id
+          AND owner_profile.status = 'active'
+          AND owner_profile.deleted_at IS NULL
+         WHERE owner_membership.organization_id = event.organization_id
+           AND owner_membership.role = 'owner'
+           AND owner_membership.status = 'active'
+           AND owner_membership.deleted_at IS NULL
+         ORDER BY owner_membership.id
+         LIMIT 1
+       ) AS actor_profile_id,
+       COALESCE((
+         SELECT json_group_array(profile_id)
+         FROM (
+           SELECT event.primary_organizer_profile_id AS profile_id
+           UNION
+           SELECT association.profile_id
+           FROM organizer_event_organizers AS association
+           WHERE association.organization_id = event.organization_id
+             AND association.organizer_event_id = event.id
+             AND association.deleted_at IS NULL
+           ORDER BY profile_id
+         )
+       ), '[]') AS organizer_scope_json,
+       state.actual_start_utc AS state_actual_start_utc,
+       state.actual_end_utc AS state_actual_end_utc,
+       state.expanded_start_utc AS state_expanded_start_utc,
+       state.expanded_end_utc AS state_expanded_end_utc,
+       state.schedule_shape AS state_schedule_shape,
+       state.timezone AS state_timezone,
+       state.all_day_start_date AS state_all_day_start_date,
+       state.all_day_end_date_exclusive AS state_all_day_end_date_exclusive,
+       state.buffer_before_minutes AS state_buffer_before_minutes,
+       state.buffer_after_minutes AS state_buffer_after_minutes,
+       state.venue_id AS state_venue_id,
+       state.primary_organizer_profile_id AS state_primary_organizer_profile_id,
+       state.organizer_scope_json AS state_organizer_scope_json,
+       state.schedule_version AS state_schedule_version,
+       state.policy_version AS state_policy_version,
+       state.organization_id AS state_organization_id,
+       state.organizer_event_id AS state_event_id,
+       state.club_id AS state_club_id,
+       state.planning_status AS state_planning_status
+FROM organizer_events AS event
+JOIN organizer_conflict_policies AS policy
+  ON policy.organization_id = event.organization_id
+LEFT JOIN organizer_reservation_states AS state
+  ON state.organizer_event_id = event.id
+ AND state.organization_id = event.organization_id
+WHERE event.schedule_shape IN ('timed', 'all_day')
+  AND event.planning_status IN ('idea', 'draft')
+  AND event.publication_status = 'private'
+  AND event.deleted_at IS NULL
+  AND (
+    state.organizer_event_id IS NULL
+    OR state.club_id <> event.club_id
+    OR state.planning_status <> event.planning_status
+    OR state.schedule_shape <> event.schedule_shape
+    OR state.timezone <> event.timezone
+    OR state.all_day_start_date IS NOT event.all_day_start_date
+    OR state.all_day_end_date_exclusive IS NOT
+       event.all_day_end_date_exclusive
+    OR state.buffer_before_minutes <> event.buffer_before_minutes
+    OR state.buffer_after_minutes <> event.buffer_after_minutes
+    OR state.venue_id IS NOT event.venue_id
+    OR state.primary_organizer_profile_id <>
+       event.primary_organizer_profile_id
+    OR state.schedule_version <> event.schedule_version
+    OR state.policy_version < 1
+    OR state.policy_version > policy.policy_version
+    OR state.organizer_scope_json <> COALESCE((
+      SELECT json_group_array(profile_id)
+      FROM (
+        SELECT event.primary_organizer_profile_id AS profile_id
+        UNION
+        SELECT association.profile_id
+        FROM organizer_event_organizers AS association
+        WHERE association.organization_id = event.organization_id
+          AND association.organizer_event_id = event.id
+          AND association.deleted_at IS NULL
+        ORDER BY profile_id
+      )
+    ), '[]')
+    OR (
+      event.schedule_shape = 'timed'
+      AND (
+        state.actual_start_utc <> event.starts_at_utc
+        OR state.actual_end_utc <> event.ends_at_utc
+        OR state.expanded_start_utc <>
+           event.starts_at_utc - event.buffer_before_minutes * 60000
+        OR state.expanded_end_utc <>
+           event.ends_at_utc + event.buffer_after_minutes * 60000
+      )
+    )
+    OR event.schedule_shape = 'all_day'
+  )
+ORDER BY
+  CASE WHEN state.organizer_event_id IS NULL THEN 0 ELSE 1 END,
+  event.id
+LIMIT 5001`;
+
+const PHASE4_POLICY_ADOPTION_SQL = String.raw`
+SELECT organization.id AS organization_id,
+       owner_membership.profile_id AS actor_profile_id
+FROM organizations AS organization
+JOIN organization_memberships AS owner_membership
+  ON owner_membership.organization_id = organization.id
+ AND owner_membership.role = 'owner'
+ AND owner_membership.status = 'active'
+ AND owner_membership.deleted_at IS NULL
+JOIN profiles AS owner_profile
+  ON owner_profile.id = owner_membership.profile_id
+ AND owner_profile.status = 'active'
+ AND owner_profile.deleted_at IS NULL
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM organizer_conflict_policies AS policy
+  WHERE policy.organization_id = organization.id
+)
+ORDER BY organization.id
+LIMIT 24`;
+
+const PHASE4_EXTERNAL_ADOPTION_SQL = String.raw`
+SELECT candidate.*,
+       interval.actual_start_utc AS state_actual_start_utc,
+       interval.actual_end_utc AS state_actual_end_utc,
+       interval.expanded_start_utc AS state_expanded_start_utc,
+       interval.expanded_end_utc AS state_expanded_end_utc,
+       interval.schedule_shape AS state_schedule_shape,
+       interval.timezone AS state_timezone,
+       interval.all_day_start_date AS state_all_day_start_date,
+       interval.all_day_end_date_exclusive AS state_all_day_end_date_exclusive,
+       interval.buffer_before_minutes AS state_buffer_before_minutes,
+       interval.buffer_after_minutes AS state_buffer_after_minutes,
+       interval.venue_id AS state_venue_id,
+       interval.primary_organizer_profile_id
+         AS state_primary_organizer_profile_id,
+       interval.organizer_scope_json AS state_organizer_scope_json,
+       interval.schedule_version AS state_schedule_version,
+       interval.planning_status AS state_planning_status,
+       interval.title AS state_title,
+       interval.source_fingerprint AS state_source_fingerprint,
+       interval.normalized_state_fingerprint
+         AS state_normalized_state_fingerprint,
+       interval.reservation_semantic_fingerprint
+         AS state_reservation_semantic_fingerprint,
+       interval.organization_id AS state_organization_id,
+       interval.source_kind AS state_source_kind,
+       interval.source_record_id AS state_source_record_id,
+       interval.sync_source_id AS state_sync_source_id,
+       interval.generation_id AS state_generation_id,
+       interval.event_id AS state_event_id,
+       interval.club_id AS state_club_id,
+       interval.hold_expires_at AS state_hold_expires_at,
+       normalization.id AS normalization_id,
+       normalization.organization_id AS normalization_organization_id,
+       normalization.sync_source_id AS normalization_sync_source_id,
+       normalization.generation_id AS normalization_generation_id,
+       normalization.snapshot_id AS normalization_snapshot_id,
+       normalization.event_id AS normalization_event_id,
+       normalization.club_id AS normalization_club_id,
+       normalization.planning_status AS normalization_planning_status,
+       normalization.schedule_shape AS normalization_schedule_shape,
+       normalization.actual_start_utc AS normalization_actual_start_utc,
+       normalization.actual_end_utc AS normalization_actual_end_utc,
+       normalization.expanded_start_utc AS normalization_expanded_start_utc,
+       normalization.expanded_end_utc AS normalization_expanded_end_utc,
+       normalization.timezone AS normalization_timezone,
+       normalization.all_day_start_date AS normalization_all_day_start_date,
+       normalization.all_day_end_date_exclusive
+         AS normalization_all_day_end_date_exclusive,
+       normalization.buffer_before_minutes
+         AS normalization_buffer_before_minutes,
+       normalization.buffer_after_minutes
+         AS normalization_buffer_after_minutes,
+       normalization.venue_id AS normalization_venue_id,
+       normalization.primary_organizer_profile_id
+         AS normalization_primary_organizer_profile_id,
+       normalization.organizer_scope_json
+         AS normalization_organizer_scope_json,
+       normalization.schedule_version AS normalization_schedule_version,
+       normalization.hold_expires_at AS normalization_hold_expires_at,
+       normalization.source_fingerprint AS normalization_source_fingerprint,
+       normalization.normalized_state_fingerprint
+         AS normalization_normalized_state_fingerprint,
+       normalization.reservation_semantic_fingerprint
+         AS normalization_reservation_semantic_fingerprint
+FROM (
+  SELECT 'legacy' AS source_kind,
+         event.id AS source_record_id,
+         NULL AS snapshot_id,
+         NULL AS sync_source_id,
+         NULL AS generation_id,
+         event.id AS event_id,
+         event.organization_id,
+         event.club_id,
+         event.status AS planning_status,
+         event.time_kind AS schedule_shape,
+         event.starts_at_utc,
+         event.ends_at_utc,
+         event.timezone,
+         event.all_day_start_date,
+         event.all_day_end_date_exclusive,
+         event.buffer_before_minutes,
+         event.buffer_after_minutes,
+         event.venue_id,
+         event.primary_organizer_profile_id,
+         event.organizer_scope_json,
+         event.schedule_version,
+         event.hold_expires_at,
+         event.title,
+         NULL AS source_fingerprint
+  FROM events AS event
+  WHERE event.deleted_at IS NULL
+    AND event.status IN ('hold', 'tentative', 'confirmed')
+    AND (
+      event.status <> 'hold'
+      OR event.hold_expires_at >
+         CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM external_source_links AS source_link
+      WHERE source_link.organization_id = event.organization_id
+        AND source_link.entity_type = 'event'
+        AND source_link.entity_id = event.id
+        AND source_link.source_type = 'meetup_ics'
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM organizer_events AS adopted
+      WHERE adopted.id = event.id
+        AND adopted.organization_id = event.organization_id
+    )
+
+  UNION ALL
+
+  SELECT 'meetup',
+         snapshot.id,
+         snapshot.id,
+         source.id,
+         source.active_generation_id,
+         snapshot.event_id,
+         snapshot.organization_id,
+         source.club_id,
+         snapshot.status,
+         snapshot.time_kind,
+         snapshot.starts_at_utc,
+         snapshot.ends_at_utc,
+         snapshot.timezone,
+         snapshot.all_day_start_date,
+         snapshot.all_day_end_date_exclusive,
+         0,
+         0,
+         event.venue_id,
+         event.primary_organizer_profile_id,
+         event.organizer_scope_json,
+         event.schedule_version,
+         NULL,
+         snapshot.title,
+         snapshot.source_fingerprint
+  FROM sync_sources AS source
+  JOIN meetup_sync_generations AS generation
+    ON generation.id = source.active_generation_id
+   AND generation.organization_id = source.organization_id
+   AND generation.sync_source_id = source.id
+   AND generation.state = 'published'
+  JOIN meetup_event_snapshots AS snapshot
+    ON snapshot.organization_id = source.organization_id
+   AND snapshot.sync_source_id = source.id
+   AND snapshot.generation_id = source.active_generation_id
+  JOIN events AS event
+    ON event.id = snapshot.event_id
+   AND event.organization_id = snapshot.organization_id
+  WHERE source.enabled = 1
+    AND source.deleted_at IS NULL
+    AND snapshot.status IN ('confirmed', 'tentative')
+) AS candidate
+LEFT JOIN organizer_external_reservation_intervals AS interval
+  ON interval.source_kind = candidate.source_kind
+ AND interval.source_record_id = candidate.source_record_id
+LEFT JOIN meetup_snapshot_reservation_normalizations AS normalization
+  ON candidate.source_kind = 'meetup'
+ AND normalization.organization_id = candidate.organization_id
+ AND normalization.sync_source_id = candidate.sync_source_id
+ AND normalization.generation_id = candidate.generation_id
+ AND normalization.snapshot_id = candidate.snapshot_id
+ AND normalization.event_id = candidate.event_id
+WHERE interval.id IS NULL
+   OR interval.organization_id <> candidate.organization_id
+   OR interval.source_kind <> candidate.source_kind
+   OR interval.source_record_id <> candidate.source_record_id
+   OR interval.sync_source_id IS NOT candidate.sync_source_id
+   OR interval.generation_id IS NOT candidate.generation_id
+   OR interval.event_id <> candidate.event_id
+   OR interval.club_id <> candidate.club_id
+   OR interval.planning_status <> candidate.planning_status
+   OR interval.schedule_shape <> candidate.schedule_shape
+   OR interval.timezone <> candidate.timezone
+   OR interval.all_day_start_date IS NOT candidate.all_day_start_date
+   OR interval.all_day_end_date_exclusive IS NOT
+      candidate.all_day_end_date_exclusive
+   OR interval.buffer_before_minutes <> candidate.buffer_before_minutes
+   OR interval.buffer_after_minutes <> candidate.buffer_after_minutes
+   OR interval.venue_id IS NOT candidate.venue_id
+   OR interval.primary_organizer_profile_id IS NOT
+      candidate.primary_organizer_profile_id
+   OR interval.organizer_scope_json <> candidate.organizer_scope_json
+   OR interval.schedule_version <> candidate.schedule_version
+   OR interval.hold_expires_at IS NOT candidate.hold_expires_at
+   OR interval.title <> candidate.title
+   OR (
+     candidate.source_kind = 'meetup'
+     AND interval.source_fingerprint <> candidate.source_fingerprint
+   )
+   OR interval.reservation_semantic_fingerprint IS NULL
+   OR (
+     candidate.source_kind = 'meetup'
+     AND (
+       normalization.id IS NULL
+       OR normalization.club_id <> candidate.club_id
+       OR normalization.planning_status <> candidate.planning_status
+       OR normalization.schedule_shape <> candidate.schedule_shape
+       OR normalization.timezone <> candidate.timezone
+       OR normalization.all_day_start_date IS NOT
+          candidate.all_day_start_date
+       OR normalization.all_day_end_date_exclusive IS NOT
+          candidate.all_day_end_date_exclusive
+       OR normalization.buffer_before_minutes <>
+          candidate.buffer_before_minutes
+       OR normalization.buffer_after_minutes <>
+          candidate.buffer_after_minutes
+       OR normalization.venue_id IS NOT candidate.venue_id
+       OR normalization.primary_organizer_profile_id IS NOT
+          candidate.primary_organizer_profile_id
+       OR normalization.organizer_scope_json <>
+          candidate.organizer_scope_json
+       OR normalization.schedule_version <> candidate.schedule_version
+       OR normalization.hold_expires_at IS NOT candidate.hold_expires_at
+       OR normalization.source_fingerprint <>
+          candidate.source_fingerprint
+       OR normalization.actual_start_utc IS NOT interval.actual_start_utc
+       OR normalization.actual_end_utc IS NOT interval.actual_end_utc
+       OR normalization.expanded_start_utc IS NOT
+          interval.expanded_start_utc
+       OR normalization.expanded_end_utc IS NOT
+          interval.expanded_end_utc
+       OR normalization.normalized_state_fingerprint IS NOT
+          interval.normalized_state_fingerprint
+       OR normalization.reservation_semantic_fingerprint IS NOT
+          interval.reservation_semantic_fingerprint
+     )
+   )
+   OR (
+     candidate.schedule_shape = 'timed'
+     AND (
+       interval.actual_start_utc <> candidate.starts_at_utc
+       OR interval.actual_end_utc <> candidate.ends_at_utc
+       OR interval.expanded_start_utc <>
+          candidate.starts_at_utc -
+          candidate.buffer_before_minutes * 60000
+       OR interval.expanded_end_utc <>
+          candidate.ends_at_utc +
+          candidate.buffer_after_minutes * 60000
+     )
+   )
+   -- Fingerprints and IANA-derived all-day boundaries cannot be recomputed in
+   -- SQLite. Scan every bounded active candidate and compare them in the
+   -- server normalizer before certifying readiness.
+   OR candidate.source_kind IN ('legacy', 'meetup')
+ORDER BY
+  CASE WHEN interval.id IS NULL THEN 0 ELSE 1 END,
+  candidate.source_kind,
+  candidate.source_record_id
+LIMIT 5001`;
+
+async function adoptMissingPhase4ConflictProjections(
+  database: D1DatabaseLike,
+): Promise<boolean> {
+  const missingPolicies =
+    (await database
+      .prepare(PHASE4_POLICY_ADOPTION_SQL)
+      .all<Record<string, unknown>>()).results ?? [];
+  if (missingPolicies.length > 0) {
+    const now = Date.now();
+    const policyStatements = [
+      database
+        .prepare(
+          `DELETE FROM database_invariant_state
+           WHERE singleton_key = ?`,
+        )
+        .bind(DATABASE_INVARIANT_MARKER_KEY),
+      ...missingPolicies
+        .slice(0, MAX_POLICY_ADOPTIONS_PER_REQUEST)
+        .map((row) => {
+          const organizationId = readString(row.organization_id);
+          const actorProfileId = readString(row.actor_profile_id);
+          return database
+            .prepare(
+              `INSERT OR IGNORE INTO organizer_conflict_policies (
+                 id, organization_id, mode, policy_version,
+                 default_hold_hours, nearing_expiry_hours,
+                 updated_by_profile_id, created_at, updated_at
+               ) VALUES (?, ?, 'warn_reason', 1, 72, 24, ?, ?, ?)`,
+            )
+            .bind(
+              `phase4-policy:${organizationId}`,
+              organizationId,
+              actorProfileId,
+              now,
+              now,
+            );
+        }),
+    ];
+    try {
+      await runInvariantBatch(database, policyStatements);
+    } catch {
+      await invalidateReadinessMarker(database);
+      throw new DatabaseInvariantError();
+    }
+    return true;
+  }
+
+  let manualRows: readonly Record<string, unknown>[];
+  try {
+    manualRows =
+      (await database
+        .prepare(PHASE4_MANUAL_ADOPTION_SQL)
+        .all<Record<string, unknown>>()).results ?? [];
+  } catch {
+    // The Phase 4 migration may not yet exist in a migration-only test seam.
+    return false;
+  }
+  if (manualRows.length > MAX_MANUAL_ALL_DAY_SCAN) {
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+  const manualCandidates: ManualAdoption[] = [];
+  for (const row of manualRows) {
+    const candidate = await readManualAdoption(row);
+    if (!candidate.stateMatches) manualCandidates.push(candidate);
+    if (manualCandidates.length >= MAX_MANUAL_ADOPTIONS_PER_REQUEST) break;
+  }
+  if (manualCandidates.length > 0) {
+    const statements = [
+      database
+        .prepare(
+          `DELETE FROM database_invariant_state
+           WHERE singleton_key = ?`,
+        )
+        .bind(DATABASE_INVARIANT_MARKER_KEY),
+    ];
+    for (const candidate of manualCandidates) {
+      statements.push(...manualAdoptionStatements(database, candidate));
+    }
+    try {
+      await runInvariantBatch(database, statements);
+    } catch {
+      await invalidateReadinessMarker(database);
+      throw new DatabaseInvariantError();
+    }
+    return true;
+  }
+
+  const externalRows =
+    (await database
+      .prepare(PHASE4_EXTERNAL_ADOPTION_SQL)
+      .all<Record<string, unknown>>()).results ?? [];
+  if (externalRows.length > MAX_EXTERNAL_SCAN) {
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+  const externalCandidates: ExternalAdoption[] = [];
+  for (const row of externalRows) {
+    const candidate = await readExternalAdoption(row);
+    if (!candidate.stateMatches) externalCandidates.push(candidate);
+    if (externalCandidates.length >= MAX_EXTERNAL_ADOPTIONS_PER_REQUEST) {
+      break;
+    }
+  }
+  if (externalCandidates.length === 0) return false;
+  const statements = [
+    database
+      .prepare(
+        `DELETE FROM database_invariant_state
+         WHERE singleton_key = ?`,
+      )
+      .bind(DATABASE_INVARIANT_MARKER_KEY),
+    ...externalCandidates.flatMap((candidate) =>
+      externalAdoptionStatements(database, candidate),
+    ),
+  ];
+  try {
+    await runInvariantBatch(database, statements);
+  } catch {
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+  return true;
+}
+
+type AdoptionInterval = Readonly<{
+  actualEndUtc: number;
+  actualStartUtc: number;
+  expandedEndUtc: number;
+  expandedStartUtc: number;
+}>;
+
+type ManualAdoption = Readonly<{
+  actorProfileId: string;
+  allDayEndDateExclusive: string | null;
+  allDayStartDate: string | null;
+  bufferAfterMinutes: number;
+  bufferBeforeMinutes: number;
+  clubId: string;
+  contentVersion: number;
+  eventId: string;
+  fingerprint: string;
+  interval: AdoptionInterval;
+  organizerScopeJson: string;
+  organizationId: string;
+  planningStatus: "draft" | "idea";
+  policyId: string;
+  policyMode: string;
+  policyVersion: number;
+  primaryOrganizerProfileId: string;
+  scheduleShape: "all_day" | "timed";
+  scheduleVersion: number;
+  stateMatches: boolean;
+  timeZone: string;
+  venueId: string | null;
+}>;
+
+type ExternalAdoption = Readonly<{
+  allDayEndDateExclusive: string | null;
+  allDayStartDate: string | null;
+  bufferAfterMinutes: number;
+  bufferBeforeMinutes: number;
+  clubId: string;
+  eventId: string;
+  generationId: string | null;
+  holdExpiresAt: number | null;
+  interval: AdoptionInterval;
+  organizerScopeJson: string;
+  organizationId: string;
+  planningStatus: string;
+  primaryOrganizerProfileId: string | null;
+  scheduleShape: "all_day" | "timed";
+  scheduleVersion: number;
+  sourceKind: "legacy" | "meetup";
+  sourceFingerprint: string;
+  sourceRecordId: string;
+  stateMatches: boolean;
+  normalizedStateFingerprint: string;
+  reservationSemanticFingerprint: string;
+  snapshotId: string | null;
+  syncSourceId: string | null;
+  timeZone: string;
+  title: string;
+  venueId: string | null;
+}>;
+
+async function readManualAdoption(
+  row: Record<string, unknown>,
+): Promise<ManualAdoption> {
+  const scheduleShape = readScheduleShape(row.schedule_shape);
+  const timeZone = readString(row.timezone);
+  const bufferBeforeMinutes = readInteger(row.buffer_before_minutes);
+  const bufferAfterMinutes = readInteger(row.buffer_after_minutes);
+  const allDayStartDate = readNullableString(row.all_day_start_date);
+  const allDayEndDateExclusive = readNullableString(
+    row.all_day_end_date_exclusive,
+  );
+  const interval =
+    scheduleShape === "timed"
+      ? normalizeConflictInterval({
+          startUtc: readInteger(row.starts_at_utc),
+          endUtc: readInteger(row.ends_at_utc),
+          bufferBeforeMinutes,
+          bufferAfterMinutes,
+        })
+      : normalizeAllDayConflictInterval({
+          startDate: allDayStartDate,
+          endDateExclusive: allDayEndDateExclusive,
+          timeZone,
+          bufferBeforeMinutes,
+          bufferAfterMinutes,
+        });
+  const organizerScope = readCanonicalIdentifierArray(
+    row.organizer_scope_json,
+    false,
+  );
+  const organizerScopeJson = JSON.stringify(organizerScope);
+  const stateMatches =
+    row.state_organization_id === row.organization_id &&
+    row.state_event_id === row.event_id &&
+    row.state_club_id === row.club_id &&
+    row.state_planning_status === row.planning_status &&
+    row.state_schedule_shape === scheduleShape &&
+    row.state_timezone === timeZone &&
+    row.state_all_day_start_date === allDayStartDate &&
+    row.state_all_day_end_date_exclusive === allDayEndDateExclusive &&
+    row.state_buffer_before_minutes === bufferBeforeMinutes &&
+    row.state_buffer_after_minutes === bufferAfterMinutes &&
+    row.state_venue_id === row.venue_id &&
+    row.state_primary_organizer_profile_id ===
+      row.primary_organizer_profile_id &&
+    row.state_organizer_scope_json === organizerScopeJson &&
+    row.state_schedule_version === row.schedule_version &&
+    row.state_policy_version === row.policy_version &&
+    row.state_actual_start_utc === interval.actualStartUtc &&
+    row.state_actual_end_utc === interval.actualEndUtc &&
+    row.state_expanded_start_utc === interval.expandedStartUtc &&
+    row.state_expanded_end_utc === interval.expandedEndUtc;
+  const fingerprint = await sha256Hex(
+    JSON.stringify({
+      allDayEndDateExclusive,
+      allDayStartDate,
+      bufferAfterMinutes,
+      bufferBeforeMinutes,
+      clubId: readString(row.club_id),
+      eventId: readString(row.event_id),
+      interval,
+      organizerScope,
+      organizationId: readString(row.organization_id),
+      planningStatus: readPlanningStatus(row.planning_status),
+      primaryOrganizerProfileId: readString(
+        row.primary_organizer_profile_id,
+      ),
+      scheduleShape,
+      scheduleVersion: readInteger(row.schedule_version),
+      timeZone,
+      venueId: readNullableString(row.venue_id),
+    }),
+  );
+  return Object.freeze({
+    actorProfileId: readString(row.actor_profile_id),
+    allDayEndDateExclusive,
+    allDayStartDate,
+    bufferAfterMinutes,
+    bufferBeforeMinutes,
+    clubId: readString(row.club_id),
+    contentVersion: readInteger(row.content_version),
+    eventId: readString(row.event_id),
+    fingerprint,
+    interval,
+    organizerScopeJson,
+    organizationId: readString(row.organization_id),
+    planningStatus: readPlanningStatus(row.planning_status),
+    policyId: readString(row.policy_id),
+    policyMode: readString(row.policy_mode),
+    policyVersion: readInteger(row.policy_version),
+    primaryOrganizerProfileId: readString(
+      row.primary_organizer_profile_id,
+    ),
+    scheduleShape,
+    scheduleVersion: readInteger(row.schedule_version),
+    stateMatches,
+    timeZone,
+    venueId: readNullableString(row.venue_id),
+  });
+}
+
+async function readExternalAdoption(
+  row: Record<string, unknown>,
+): Promise<ExternalAdoption> {
+  const scheduleShape = readScheduleShape(row.schedule_shape);
+  const timeZone = readString(row.timezone);
+  const bufferBeforeMinutes = readInteger(row.buffer_before_minutes);
+  const bufferAfterMinutes = readInteger(row.buffer_after_minutes);
+  const allDayStartDate = readNullableString(row.all_day_start_date);
+  const allDayEndDateExclusive = readNullableString(
+    row.all_day_end_date_exclusive,
+  );
+  const interval =
+    scheduleShape === "timed"
+      ? normalizeConflictInterval({
+          startUtc: readInteger(row.starts_at_utc),
+          endUtc: readInteger(row.ends_at_utc),
+          bufferBeforeMinutes,
+          bufferAfterMinutes,
+        })
+      : normalizeAllDayConflictInterval({
+          startDate: allDayStartDate,
+          endDateExclusive: allDayEndDateExclusive,
+          timeZone,
+          bufferBeforeMinutes,
+          bufferAfterMinutes,
+        });
+  const organizerScope = readCanonicalIdentifierArray(
+    row.organizer_scope_json,
+    true,
+  );
+  const organizerScopeJson = JSON.stringify(organizerScope);
+  const sourceKind = readString(row.source_kind);
+  if (sourceKind !== "legacy" && sourceKind !== "meetup") {
+    throw new DatabaseInvariantError();
+  }
+  const sourceFingerprint =
+    sourceKind === "meetup"
+      ? readSha256(row.source_fingerprint)
+      : await sha256Hex(
+          JSON.stringify({
+            eventId: readString(row.event_id),
+            organizationId: readString(row.organization_id),
+            scheduleVersion: readInteger(row.schedule_version),
+            title: readString(row.title),
+          }),
+        );
+  const normalizedStateFingerprint =
+    await externalReservationStateFingerprint({
+      allDayEndDateExclusive,
+      allDayStartDate,
+      bufferAfterMinutes,
+      bufferBeforeMinutes,
+      clubId: readString(row.club_id),
+      eventId: readString(row.event_id),
+      generationId: readNullableString(row.generation_id),
+      holdExpiresAt: readNullableInteger(row.hold_expires_at),
+      interval,
+      organizerScope,
+      organizationId: readString(row.organization_id),
+      planningStatus: readString(row.planning_status),
+      primaryOrganizerProfileId: readNullableString(
+        row.primary_organizer_profile_id,
+      ),
+      scheduleShape,
+      scheduleVersion: readInteger(row.schedule_version),
+      sourceFingerprint,
+      sourceKind,
+      sourceRecordId: readString(row.source_record_id),
+      syncSourceId: readNullableString(row.sync_source_id),
+      timeZone,
+      venueId: readNullableString(row.venue_id),
+    });
+  const reservationSemanticFingerprint =
+    await externalReservationSemanticFingerprint({
+      allDayEndDateExclusive,
+      allDayStartDate,
+      bufferAfterMinutes,
+      bufferBeforeMinutes,
+      clubId: readString(row.club_id),
+      eventId: readString(row.event_id),
+      generationId: readNullableString(row.generation_id),
+      holdExpiresAt: readNullableInteger(row.hold_expires_at),
+      interval,
+      organizerScope,
+      organizationId: readString(row.organization_id),
+      planningStatus: readString(row.planning_status),
+      primaryOrganizerProfileId: readNullableString(
+        row.primary_organizer_profile_id,
+      ),
+      scheduleShape,
+      scheduleVersion: readInteger(row.schedule_version),
+      sourceFingerprint,
+      sourceKind,
+      sourceRecordId: readString(row.source_record_id),
+      syncSourceId: readNullableString(row.sync_source_id),
+      timeZone,
+      venueId: readNullableString(row.venue_id),
+    });
+  const normalizationMatches =
+    sourceKind === "legacy"
+      ? row.normalization_id == null
+      : row.normalization_organization_id === row.organization_id &&
+        row.normalization_sync_source_id === row.sync_source_id &&
+        row.normalization_generation_id === row.generation_id &&
+        row.normalization_snapshot_id === row.snapshot_id &&
+        row.normalization_event_id === row.event_id &&
+        row.normalization_club_id === row.club_id &&
+        row.normalization_planning_status === row.planning_status &&
+        row.normalization_schedule_shape === scheduleShape &&
+        row.normalization_timezone === timeZone &&
+        row.normalization_all_day_start_date === allDayStartDate &&
+        row.normalization_all_day_end_date_exclusive ===
+          allDayEndDateExclusive &&
+        row.normalization_buffer_before_minutes === bufferBeforeMinutes &&
+        row.normalization_buffer_after_minutes === bufferAfterMinutes &&
+        row.normalization_venue_id === row.venue_id &&
+        row.normalization_primary_organizer_profile_id ===
+          row.primary_organizer_profile_id &&
+        row.normalization_organizer_scope_json === organizerScopeJson &&
+        row.normalization_schedule_version === row.schedule_version &&
+        row.normalization_hold_expires_at === row.hold_expires_at &&
+        row.normalization_source_fingerprint === sourceFingerprint &&
+        row.normalization_normalized_state_fingerprint ===
+          normalizedStateFingerprint &&
+        row.normalization_reservation_semantic_fingerprint ===
+          reservationSemanticFingerprint &&
+        row.normalization_actual_start_utc === interval.actualStartUtc &&
+        row.normalization_actual_end_utc === interval.actualEndUtc &&
+        row.normalization_expanded_start_utc === interval.expandedStartUtc &&
+        row.normalization_expanded_end_utc === interval.expandedEndUtc;
+  const stateMatches =
+    row.state_organization_id === row.organization_id &&
+    row.state_source_kind === sourceKind &&
+    row.state_source_record_id === row.source_record_id &&
+    row.state_sync_source_id === row.sync_source_id &&
+    row.state_generation_id === row.generation_id &&
+    row.state_event_id === row.event_id &&
+    row.state_club_id === row.club_id &&
+    row.state_hold_expires_at === row.hold_expires_at &&
+    row.state_schedule_shape === scheduleShape &&
+    row.state_timezone === timeZone &&
+    row.state_all_day_start_date === allDayStartDate &&
+    row.state_all_day_end_date_exclusive === allDayEndDateExclusive &&
+    row.state_buffer_before_minutes === bufferBeforeMinutes &&
+    row.state_buffer_after_minutes === bufferAfterMinutes &&
+    row.state_venue_id === row.venue_id &&
+    row.state_primary_organizer_profile_id ===
+      row.primary_organizer_profile_id &&
+    row.state_organizer_scope_json === organizerScopeJson &&
+    row.state_schedule_version === row.schedule_version &&
+    row.state_planning_status === row.planning_status &&
+    row.state_title === row.title &&
+    row.state_source_fingerprint === sourceFingerprint &&
+    row.state_normalized_state_fingerprint ===
+      normalizedStateFingerprint &&
+    row.state_reservation_semantic_fingerprint ===
+      reservationSemanticFingerprint &&
+    row.state_actual_start_utc === interval.actualStartUtc &&
+    row.state_actual_end_utc === interval.actualEndUtc &&
+    row.state_expanded_start_utc === interval.expandedStartUtc &&
+    row.state_expanded_end_utc === interval.expandedEndUtc &&
+    normalizationMatches;
+  return Object.freeze({
+    allDayEndDateExclusive,
+    allDayStartDate,
+    bufferAfterMinutes,
+    bufferBeforeMinutes,
+    clubId: readString(row.club_id),
+    eventId: readString(row.event_id),
+    generationId: readNullableString(row.generation_id),
+    holdExpiresAt: readNullableInteger(row.hold_expires_at),
+    interval,
+    organizerScopeJson,
+    organizationId: readString(row.organization_id),
+    planningStatus: readString(row.planning_status),
+    primaryOrganizerProfileId: readNullableString(
+      row.primary_organizer_profile_id,
+    ),
+    scheduleShape,
+    scheduleVersion: readInteger(row.schedule_version),
+    sourceKind,
+    sourceFingerprint,
+    sourceRecordId: readString(row.source_record_id),
+    stateMatches,
+    normalizedStateFingerprint,
+    reservationSemanticFingerprint,
+    snapshotId: readNullableString(row.snapshot_id),
+    syncSourceId: readNullableString(row.sync_source_id),
+    timeZone,
+    title: readString(row.title),
+    venueId: readNullableString(row.venue_id),
+  });
+}
+
+function manualAdoptionStatements(
+  database: D1DatabaseLike,
+  candidate: ManualAdoption,
+) {
+  const intentId = `phase4-backfill-${crypto.randomUUID()}`;
+  const now = Date.now();
+  const values = [
+    intentId,
+    candidate.organizationId,
+    candidate.eventId,
+    candidate.actorProfileId,
+    candidate.clubId,
+    candidate.planningStatus,
+    candidate.scheduleShape,
+    candidate.interval.actualStartUtc,
+    candidate.interval.actualEndUtc,
+    candidate.interval.expandedStartUtc,
+    candidate.interval.expandedEndUtc,
+    candidate.timeZone,
+    candidate.allDayStartDate,
+    candidate.allDayEndDateExclusive,
+    candidate.bufferBeforeMinutes,
+    candidate.bufferAfterMinutes,
+    candidate.venueId,
+    candidate.primaryOrganizerProfileId,
+    candidate.organizerScopeJson,
+    candidate.contentVersion,
+    candidate.scheduleVersion,
+    candidate.contentVersion,
+    candidate.scheduleVersion,
+    candidate.policyId,
+    candidate.policyVersion,
+    candidate.policyMode,
+    candidate.fingerprint,
+    now,
+  ] as const;
+  return [
+    database
+      .prepare(
+        `INSERT INTO organizer_schedule_write_intents (
+           id, organization_id, organizer_event_id, actor_profile_id,
+           club_id, operation, planning_status, schedule_shape,
+           actual_start_utc, actual_end_utc, expanded_start_utc,
+           expanded_end_utc, timezone, all_day_start_date,
+           all_day_end_date_exclusive, buffer_before_minutes,
+           buffer_after_minutes, venue_id, primary_organizer_profile_id,
+           organizer_scope_json, hold_expires_at,
+           expected_content_version, expected_schedule_version,
+           proposed_content_version, proposed_schedule_version,
+           policy_id, policy_version, policy_mode, reason,
+           review_request_id, state_fingerprint, created_at, completed_at
+         ) VALUES (
+           ?, ?, ?, ?, ?, 'phase4_backfill', ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL
+         )`,
+      )
+      .bind(...values),
+    database
+      .prepare(
+        `INSERT INTO organizer_reservation_states (
+           organizer_event_id, organization_id, club_id, planning_status,
+           schedule_shape, actual_start_utc, actual_end_utc,
+           expanded_start_utc, expanded_end_utc, timezone,
+           all_day_start_date, all_day_end_date_exclusive,
+           buffer_before_minutes, buffer_after_minutes, venue_id,
+           primary_organizer_profile_id, organizer_scope_json,
+           hold_expires_at, schedule_version, policy_version,
+           write_intent_id, updated_by_profile_id, updated_at
+         ) VALUES (
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?,
+           ?, ?, ?, ?
+         )
+         ON CONFLICT(organizer_event_id) DO UPDATE SET
+           organization_id = excluded.organization_id,
+           club_id = excluded.club_id,
+           planning_status = excluded.planning_status,
+           schedule_shape = excluded.schedule_shape,
+           actual_start_utc = excluded.actual_start_utc,
+           actual_end_utc = excluded.actual_end_utc,
+           expanded_start_utc = excluded.expanded_start_utc,
+           expanded_end_utc = excluded.expanded_end_utc,
+           timezone = excluded.timezone,
+           all_day_start_date = excluded.all_day_start_date,
+           all_day_end_date_exclusive =
+             excluded.all_day_end_date_exclusive,
+           buffer_before_minutes = excluded.buffer_before_minutes,
+           buffer_after_minutes = excluded.buffer_after_minutes,
+           venue_id = excluded.venue_id,
+           primary_organizer_profile_id =
+             excluded.primary_organizer_profile_id,
+           organizer_scope_json = excluded.organizer_scope_json,
+           hold_expires_at = excluded.hold_expires_at,
+           schedule_version = excluded.schedule_version,
+           policy_version = excluded.policy_version,
+           write_intent_id = excluded.write_intent_id,
+           updated_by_profile_id = excluded.updated_by_profile_id,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(
+        candidate.eventId,
+        candidate.organizationId,
+        candidate.clubId,
+        candidate.planningStatus,
+        candidate.scheduleShape,
+        candidate.interval.actualStartUtc,
+        candidate.interval.actualEndUtc,
+        candidate.interval.expandedStartUtc,
+        candidate.interval.expandedEndUtc,
+        candidate.timeZone,
+        candidate.allDayStartDate,
+        candidate.allDayEndDateExclusive,
+        candidate.bufferBeforeMinutes,
+        candidate.bufferAfterMinutes,
+        candidate.venueId,
+        candidate.primaryOrganizerProfileId,
+        candidate.organizerScopeJson,
+        candidate.scheduleVersion,
+        candidate.policyVersion,
+        intentId,
+        candidate.actorProfileId,
+        now,
+      ),
+    database
+      .prepare(
+        `UPDATE organizer_schedule_write_intents
+         SET completed_at = ?
+         WHERE id = ?
+           AND completed_at IS NULL`,
+      )
+      .bind(now, intentId),
+  ];
+}
+
+function externalAdoptionStatements(
+  database: D1DatabaseLike,
+  candidate: ExternalAdoption,
+) {
+  const id = `${candidate.sourceKind}-interval:${candidate.sourceRecordId}`;
+  const now = Date.now();
+  const statements = [];
+  if (candidate.sourceKind === "meetup") {
+    if (
+      candidate.snapshotId == null ||
+      candidate.syncSourceId == null ||
+      candidate.generationId == null
+    ) {
+      throw new DatabaseInvariantError();
+    }
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO meetup_snapshot_reservation_normalizations (
+             id, organization_id, sync_source_id, generation_id,
+             snapshot_id, event_id, club_id, planning_status,
+             schedule_shape, actual_start_utc, actual_end_utc,
+             expanded_start_utc, expanded_end_utc, timezone,
+             all_day_start_date, all_day_end_date_exclusive,
+             buffer_before_minutes, buffer_after_minutes, venue_id,
+             primary_organizer_profile_id, organizer_scope_json,
+             schedule_version, hold_expires_at, source_fingerprint,
+             normalized_state_fingerprint,
+             reservation_semantic_fingerprint, created_at, updated_at
+           ) VALUES (
+             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+             ?, ?, ?, ?, ?, ?, ?, ?
+           )
+           ON CONFLICT(
+             sync_source_id, generation_id, snapshot_id, event_id
+           ) DO UPDATE SET
+             organization_id = excluded.organization_id,
+             club_id = excluded.club_id,
+             planning_status = excluded.planning_status,
+             schedule_shape = excluded.schedule_shape,
+             actual_start_utc = excluded.actual_start_utc,
+             actual_end_utc = excluded.actual_end_utc,
+             expanded_start_utc = excluded.expanded_start_utc,
+             expanded_end_utc = excluded.expanded_end_utc,
+             timezone = excluded.timezone,
+             all_day_start_date = excluded.all_day_start_date,
+             all_day_end_date_exclusive =
+               excluded.all_day_end_date_exclusive,
+             buffer_before_minutes = excluded.buffer_before_minutes,
+             buffer_after_minutes = excluded.buffer_after_minutes,
+             venue_id = excluded.venue_id,
+             primary_organizer_profile_id =
+               excluded.primary_organizer_profile_id,
+             organizer_scope_json = excluded.organizer_scope_json,
+             schedule_version = excluded.schedule_version,
+             hold_expires_at = excluded.hold_expires_at,
+             source_fingerprint = excluded.source_fingerprint,
+             normalized_state_fingerprint =
+               excluded.normalized_state_fingerprint,
+             reservation_semantic_fingerprint =
+               excluded.reservation_semantic_fingerprint,
+             updated_at = excluded.updated_at`,
+        )
+        .bind(
+          `meetup-normalization:${candidate.sourceRecordId}`,
+          candidate.organizationId,
+          candidate.syncSourceId,
+          candidate.generationId,
+          candidate.snapshotId,
+          candidate.eventId,
+          candidate.clubId,
+          candidate.planningStatus,
+          candidate.scheduleShape,
+          candidate.interval.actualStartUtc,
+          candidate.interval.actualEndUtc,
+          candidate.interval.expandedStartUtc,
+          candidate.interval.expandedEndUtc,
+          candidate.timeZone,
+          candidate.allDayStartDate,
+          candidate.allDayEndDateExclusive,
+          candidate.bufferBeforeMinutes,
+          candidate.bufferAfterMinutes,
+          candidate.venueId,
+          candidate.primaryOrganizerProfileId,
+          candidate.organizerScopeJson,
+          candidate.scheduleVersion,
+          candidate.holdExpiresAt,
+          candidate.sourceFingerprint,
+          candidate.normalizedStateFingerprint,
+          candidate.reservationSemanticFingerprint,
+          now,
+          now,
+        ),
+    );
+  }
+  statements.push(
+    database
+    .prepare(
+      `INSERT INTO organizer_external_reservation_intervals (
+         id, organization_id, source_kind, source_record_id, sync_source_id,
+         generation_id, event_id, club_id, planning_status, schedule_shape,
+         actual_start_utc, actual_end_utc, expanded_start_utc,
+         expanded_end_utc, timezone, all_day_start_date,
+         all_day_end_date_exclusive, buffer_before_minutes,
+         buffer_after_minutes, venue_id, primary_organizer_profile_id,
+         organizer_scope_json, schedule_version, hold_expires_at, title,
+         source_fingerprint, normalized_state_fingerprint,
+         reservation_semantic_fingerprint,
+         created_at, updated_at
+       ) VALUES (
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?
+       )
+       ON CONFLICT(source_kind, source_record_id) DO UPDATE SET
+         organization_id = excluded.organization_id,
+         sync_source_id = excluded.sync_source_id,
+         generation_id = excluded.generation_id,
+         event_id = excluded.event_id,
+         club_id = excluded.club_id,
+         planning_status = excluded.planning_status,
+         schedule_shape = excluded.schedule_shape,
+         actual_start_utc = excluded.actual_start_utc,
+         actual_end_utc = excluded.actual_end_utc,
+         expanded_start_utc = excluded.expanded_start_utc,
+         expanded_end_utc = excluded.expanded_end_utc,
+         timezone = excluded.timezone,
+         all_day_start_date = excluded.all_day_start_date,
+         all_day_end_date_exclusive =
+           excluded.all_day_end_date_exclusive,
+         buffer_before_minutes = excluded.buffer_before_minutes,
+         buffer_after_minutes = excluded.buffer_after_minutes,
+         venue_id = excluded.venue_id,
+         primary_organizer_profile_id =
+           excluded.primary_organizer_profile_id,
+         organizer_scope_json = excluded.organizer_scope_json,
+         schedule_version = excluded.schedule_version,
+         hold_expires_at = excluded.hold_expires_at,
+         title = excluded.title,
+         source_fingerprint = excluded.source_fingerprint,
+         normalized_state_fingerprint =
+           excluded.normalized_state_fingerprint,
+         reservation_semantic_fingerprint =
+           excluded.reservation_semantic_fingerprint,
+         updated_at = excluded.updated_at
+       WHERE organizer_external_reservation_intervals.organization_id
+             IS NOT excluded.organization_id
+          OR organizer_external_reservation_intervals.sync_source_id
+             IS NOT excluded.sync_source_id
+          OR organizer_external_reservation_intervals.generation_id
+             IS NOT excluded.generation_id
+          OR organizer_external_reservation_intervals.event_id
+             <> excluded.event_id
+          OR organizer_external_reservation_intervals.club_id
+             <> excluded.club_id
+          OR organizer_external_reservation_intervals.planning_status
+             <> excluded.planning_status
+          OR organizer_external_reservation_intervals.actual_start_utc
+             <> excluded.actual_start_utc
+          OR organizer_external_reservation_intervals.actual_end_utc
+             <> excluded.actual_end_utc
+          OR organizer_external_reservation_intervals.expanded_start_utc
+             <> excluded.expanded_start_utc
+          OR organizer_external_reservation_intervals.expanded_end_utc
+             <> excluded.expanded_end_utc
+          OR organizer_external_reservation_intervals.timezone
+             <> excluded.timezone
+          OR organizer_external_reservation_intervals.all_day_start_date
+             IS NOT excluded.all_day_start_date
+          OR organizer_external_reservation_intervals.all_day_end_date_exclusive
+             IS NOT excluded.all_day_end_date_exclusive
+          OR organizer_external_reservation_intervals.buffer_before_minutes
+             <> excluded.buffer_before_minutes
+          OR organizer_external_reservation_intervals.buffer_after_minutes
+             <> excluded.buffer_after_minutes
+          OR organizer_external_reservation_intervals.venue_id
+             IS NOT excluded.venue_id
+          OR organizer_external_reservation_intervals.primary_organizer_profile_id
+             IS NOT excluded.primary_organizer_profile_id
+          OR organizer_external_reservation_intervals.organizer_scope_json
+             <> excluded.organizer_scope_json
+          OR organizer_external_reservation_intervals.schedule_version
+             <> excluded.schedule_version
+          OR organizer_external_reservation_intervals.hold_expires_at
+             IS NOT excluded.hold_expires_at
+          OR organizer_external_reservation_intervals.title
+             <> excluded.title
+          OR organizer_external_reservation_intervals.source_fingerprint
+             <> excluded.source_fingerprint
+          OR organizer_external_reservation_intervals.normalized_state_fingerprint
+             <> excluded.normalized_state_fingerprint
+          OR organizer_external_reservation_intervals.reservation_semantic_fingerprint
+             <> excluded.reservation_semantic_fingerprint`,
+    )
+    .bind(
+      id,
+      candidate.organizationId,
+      candidate.sourceKind,
+      candidate.sourceRecordId,
+      candidate.syncSourceId,
+      candidate.generationId,
+      candidate.eventId,
+      candidate.clubId,
+      candidate.planningStatus,
+      candidate.scheduleShape,
+      candidate.interval.actualStartUtc,
+      candidate.interval.actualEndUtc,
+      candidate.interval.expandedStartUtc,
+      candidate.interval.expandedEndUtc,
+      candidate.timeZone,
+      candidate.allDayStartDate,
+      candidate.allDayEndDateExclusive,
+      candidate.bufferBeforeMinutes,
+      candidate.bufferAfterMinutes,
+      candidate.venueId,
+      candidate.primaryOrganizerProfileId,
+      candidate.organizerScopeJson,
+      candidate.scheduleVersion,
+      candidate.holdExpiresAt,
+      candidate.title,
+      candidate.sourceFingerprint,
+      candidate.normalizedStateFingerprint,
+      candidate.reservationSemanticFingerprint,
+      now,
+      now,
+    ),
+  );
+  return statements;
+}
+
+function readCanonicalIdentifierArray(
+  value: unknown,
+  allowEmpty: boolean,
+): readonly string[] {
+  if (typeof value !== "string") throw new DatabaseInvariantError();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new DatabaseInvariantError();
+  }
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some(
+      (item) =>
+        typeof item !== "string" ||
+        item.length === 0 ||
+        item.length > 128,
+    )
+  ) {
+    throw new DatabaseInvariantError();
+  }
+  const unique = [...new Set(parsed)].sort();
+  if ((!allowEmpty && unique.length === 0) || unique.length !== parsed.length) {
+    throw new DatabaseInvariantError();
+  }
+  return Object.freeze(unique);
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+function readString(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new DatabaseInvariantError();
+  }
+  return value;
+}
+
+function readNullableString(value: unknown): string | null {
+  if (value === null) return null;
+  return readString(value);
+}
+
+function readInteger(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    throw new DatabaseInvariantError();
+  }
+  return value;
+}
+
+function readNullableInteger(value: unknown): number | null {
+  if (value === null) return null;
+  return readInteger(value);
+}
+
+function readScheduleShape(value: unknown): "all_day" | "timed" {
+  if (value !== "all_day" && value !== "timed") {
+    throw new DatabaseInvariantError();
+  }
+  return value;
+}
+
+function readPlanningStatus(value: unknown): "draft" | "idea" {
+  if (value !== "draft" && value !== "idea") {
+    throw new DatabaseInvariantError();
+  }
+  return value;
+}
+
+function readSha256(value: unknown): string {
+  const fingerprint = readString(value);
+  if (!/^[a-f0-9]{64}$/u.test(fingerprint)) {
+    throw new DatabaseInvariantError();
+  }
+  return fingerprint;
 }
 
 async function runInvariantBatch(

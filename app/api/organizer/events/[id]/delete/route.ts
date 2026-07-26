@@ -5,7 +5,10 @@ import {
   readOrganizerMutationBody,
   requireOrganizerApiActor,
 } from "../../../_shared";
-import { expectedVersionFromBody } from "../_action";
+import {
+  expectedScheduleVersionFromBody,
+  expectedVersionFromBody,
+} from "../_action";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +19,15 @@ export async function POST(
   const { id } = await context.params;
   try {
     const { database, identity } = await requireOrganizerApiActor();
-    const version = expectedVersionFromBody(
-      await readOrganizerMutationBody(request, 2_048),
-    );
+    const body = await readOrganizerMutationBody(request, 2_048);
+    const version = expectedVersionFromBody(body);
+    const scheduleVersion = expectedScheduleVersionFromBody(body);
     const event = await softDeleteOrganizerEvent(
       database,
       identity,
       id,
       version,
+      scheduleVersion,
     );
     return privateOrganizerJson({ event });
   } catch (error) {

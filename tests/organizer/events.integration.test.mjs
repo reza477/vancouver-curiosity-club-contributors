@@ -22,6 +22,7 @@ import {
 } from "../../lib/server/database/invariants.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 
 const ownerIdentity = Object.freeze({
   displayName: "Owner",
@@ -53,7 +54,7 @@ function newDatabase() {
 test("private Ideas and Drafts have atomic CRUD, revisions, audits, and stale CAS", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
   assert.equal(
     (
       await database
@@ -176,8 +177,8 @@ test("private Ideas and Drafts have atomic CRUD, revisions, audits, and stale CA
   assert.equal(deleted.contentVersion, 3);
   assert.equal(
     deleted.scheduleVersion,
-    2,
-    "soft deletion is a content edit, not a schedule edit",
+    3,
+    "soft deletion changes reservation behavior and advances schedule CAS",
   );
   assert.equal(typeof deleted.deletedAt, "number");
 
@@ -188,7 +189,7 @@ test("private Ideas and Drafts have atomic CRUD, revisions, audits, and stale CA
     3,
   );
   assert.equal(restored.contentVersion, 4);
-  assert.equal(restored.scheduleVersion, 2);
+  assert.equal(restored.scheduleVersion, 4);
   assert.equal(restored.deletedAt, null);
 
   const revisions = await listOrganizerEventRevisions(
@@ -212,7 +213,7 @@ test("private Ideas and Drafts have atomic CRUD, revisions, audits, and stale CA
 test("ordinary editor updates preserve adopted venue and private meeting data", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
   const created = await createOrganizerEvent(
     database,
     ownerIdentity,
@@ -228,8 +229,8 @@ test("ordinary editor updates preserve adopted venue and private meeting data", 
     created.contentVersion,
     draftInput({
       privateMeetingDetails: null,
-      title: "Title-only edit from an older open form",
-      venueId: null,
+      title: "Title-only editor round-trip",
+      venueId: "venue-main",
     }),
   );
 
@@ -286,7 +287,7 @@ test("ordinary editor updates preserve adopted venue and private meeting data", 
 test("duplicate rechecks the source version atomically and leaves no stale-copy residue", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
   const sourceInput = ideaInput({
     title: "Source for guarded duplicate",
     primaryOrganizerProfileId: "profile-organizer-1",
@@ -404,7 +405,7 @@ test("duplicate rechecks the source version atomically and leaves no stale-copy 
 test("Organizer mutation access is own/co-organizer and club scoped", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
   const created = await createOrganizerEvent(
     database,
     ownerIdentity,
@@ -499,7 +500,7 @@ test("Organizer mutation access is own/co-organizer and club scoped", async (t) 
 test("calendar filtering includes co-organizers, all-day boundaries, and truthful counts beyond the response cap", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
 
   const allDay = await createOrganizerEvent(
     database,
@@ -603,7 +604,7 @@ test("calendar filtering includes co-organizers, all-day boundaries, and truthfu
 test("private event index pages keep older and deleted records reachable", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
 
   const activeValues = Array.from({ length: 205 }, (_, index) => {
     const suffix = String(index).padStart(3, "0");
@@ -714,7 +715,7 @@ test("private event index pages keep older and deleted records reachable", async
 test("atomic edits validate the final organizer assignment set", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
 
   const promoted = await createOrganizerEvent(
     database,
@@ -769,7 +770,7 @@ test("atomic edits validate the final organizer assignment set", async (t) => {
 test("runtime guards reject crafted lifecycle and cross-organization writes", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
 
   assert.throws(
     () =>
@@ -780,7 +781,7 @@ test("runtime guards reject crafted lifecycle and cross-organization writes", as
         clubId: "club-main",
         organizationId: "org-main",
       }),
-    /phase3_event_lifecycle_forbidden/u,
+    /phase4_event_write_intent_required/u,
   );
   assert.throws(
     () =>
@@ -791,7 +792,7 @@ test("runtime guards reject crafted lifecycle and cross-organization writes", as
         clubId: "club-main",
         organizationId: "org-main",
       }),
-    /phase3_event_lifecycle_forbidden/u,
+    /phase4_event_lifecycle_forbidden/u,
   );
   assert.throws(
     () =>
@@ -810,7 +811,7 @@ test("runtime guards reject crafted lifecycle and cross-organization writes", as
 test("runtime guards enforce Organizer club assignment on direct writes and restore", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
 
   database.exec(`
     UPDATE club_memberships
@@ -835,18 +836,14 @@ test("runtime guards enforce Organizer club assignment on direct writes and rest
     /organizer_event_organization_mismatch/u,
   );
 
-  database.exec(`
-    INSERT INTO organizer_events (
-      id, organization_id, club_id, primary_organizer_profile_id,
-      title, slug, planning_status, publication_status, schedule_shape,
-      timezone, content_version, schedule_version,
-      created_by_profile_id, updated_by_profile_id, created_at, updated_at
-    ) VALUES (
-      'restore-guard-event', 'org-main', 'club-main', 'profile-owner',
-      'Restore guard', 'restore-guard', 'idea', 'private', 'unscheduled',
-      'America/Vancouver', 1, 1, 'profile-owner', 'profile-owner', 1, 1
-    );
-  `);
+  const restoreGuardEvent = await createOrganizerEvent(
+    database,
+    ownerIdentity,
+    ideaInput({
+      coOrganizerProfileIds: ["profile-organizer-2"],
+      title: "Restore guard",
+    }),
+  );
   assert.throws(
     () =>
       database.exec(`
@@ -854,24 +851,21 @@ test("runtime guards enforce Organizer club assignment on direct writes and rest
           id, organization_id, organizer_event_id, profile_id,
           created_by_profile_id, created_at
         ) VALUES (
-          'unassigned-association', 'org-main', 'restore-guard-event',
+          'unassigned-association', 'org-main', '${restoreGuardEvent.id}',
           'profile-organizer-3', 'profile-owner', 1
         );
       `),
     /organizer_event_organizer_organization_mismatch/u,
   );
 
+  const deleted = await softDeleteOrganizerEvent(
+    database,
+    ownerIdentity,
+    restoreGuardEvent.id,
+    restoreGuardEvent.contentVersion,
+    restoreGuardEvent.scheduleVersion,
+  );
   database.exec(`
-    INSERT INTO organizer_event_organizers (
-      id, organization_id, organizer_event_id, profile_id,
-      created_by_profile_id, created_at
-    ) VALUES (
-      'valid-association', 'org-main', 'restore-guard-event',
-      'profile-organizer-2', 'profile-owner', 1
-    );
-    UPDATE organizer_events
-    SET deleted_at = 3, updated_at = 3
-    WHERE id = 'restore-guard-event';
     UPDATE club_memberships
     SET status = 'suspended', updated_at = 4
     WHERE id = 'club-o2';
@@ -881,7 +875,7 @@ test("runtime guards enforce Organizer club assignment on direct writes and rest
       database.exec(`
         UPDATE organizer_events
         SET deleted_at = NULL, updated_at = 5
-        WHERE id = 'restore-guard-event';
+        WHERE id = '${restoreGuardEvent.id}';
       `),
     /organizer_event_organization_mismatch/u,
   );
@@ -889,8 +883,9 @@ test("runtime guards enforce Organizer club assignment on direct writes and rest
     restoreOrganizerEvent(
       database,
       ownerIdentity,
-      "restore-guard-event",
-      1,
+      restoreGuardEvent.id,
+      deleted.contentVersion,
+      deleted.scheduleVersion,
     ),
     (error) =>
       error?.code === "conflict" &&
@@ -903,11 +898,12 @@ test("runtime guards enforce Organizer club assignment on direct writes and rest
         .prepare(
           `SELECT deleted_at
            FROM organizer_events
-           WHERE id = 'restore-guard-event'`,
+           WHERE id = ?`,
         )
+        .bind(restoreGuardEvent.id)
         .first()
     ).deleted_at,
-    3,
+    deleted.deletedAt,
   );
 });
 
@@ -954,7 +950,7 @@ test("malformed existing Phase 3 data leaves no v3 marker or partial guard set",
 test("manual Phase 3 rows and source-controlled legacy rows cannot leak or mutate", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
   const created = await createOrganizerEvent(
     database,
     ownerIdentity,
@@ -1032,16 +1028,20 @@ function insertCraftedOrganizerEvent(
   database,
   { id, planningStatus, publicationStatus, clubId, organizationId },
 ) {
+  const scheduled = planningStatus !== "idea";
   database.exec(`
     INSERT INTO organizer_events (
       id, organization_id, club_id, primary_organizer_profile_id,
       title, slug, planning_status, publication_status, schedule_shape,
-      timezone, content_version, schedule_version,
+      starts_at_utc, ends_at_utc, timezone, content_version, schedule_version,
       created_by_profile_id, updated_by_profile_id, created_at, updated_at
     ) VALUES (
       '${id}', '${organizationId}', '${clubId}', 'profile-owner',
       'Crafted', '${id}', '${planningStatus}', '${publicationStatus}',
-      'unscheduled', 'America/Vancouver', 1, 1,
+      '${scheduled ? "timed" : "unscheduled"}',
+      ${scheduled ? "1800000000000" : "NULL"},
+      ${scheduled ? "1800003600000" : "NULL"},
+      'America/Vancouver', 1, 1,
       'profile-owner', 'profile-owner', 1, 1
     );
   `);
@@ -1077,6 +1077,13 @@ function seed(database) {
       ('membership-o3', 'org-main', 'profile-organizer-3', 'organizer3@example.test', 'organizer', 'active', 'profile-owner', 1, 1),
       ('membership-o4', 'org-main', 'profile-organizer-4', 'organizer4@example.test', 'organizer', 'active', 'profile-owner', 1, 1),
       ('membership-other', 'org-other', 'profile-other', 'other@example.test', 'owner', 'active', 'profile-other', 1, 1);
+
+    INSERT INTO organizer_conflict_policies (
+      id, organization_id, mode, policy_version, default_hold_hours,
+      nearing_expiry_hours, updated_by_profile_id, created_at, updated_at
+    ) VALUES
+      ('phase4-policy-org-main', 'org-main', 'warn_reason', 1, 72, 24, 'profile-owner', 1, 1),
+      ('phase4-policy-org-other', 'org-other', 'warn_reason', 1, 72, 24, 'profile-other', 1, 1);
 
     INSERT INTO clubs (
       id, organization_id, name, slug, created_by_profile_id,

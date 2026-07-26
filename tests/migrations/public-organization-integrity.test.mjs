@@ -7,6 +7,7 @@ import {
   ensureDatabaseInvariants,
 } from "../../lib/server/database/invariants.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 
 const INTEGRITY_TRIGGER_NAMES = [
   "club_public_profiles_org_integrity_before_insert",
@@ -113,7 +114,7 @@ test("fresh migrations enforce same-organization public catalog rows on every mu
   );
   t.after(() => database.close());
   seedOrganizations(database);
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
 
   assert.deepEqual(
     await triggerNames(database, "%_org_integrity_before_%"),
@@ -302,7 +303,7 @@ test("runtime initialization preserves valid populated rows while installing eve
     "packaged migrations must not install tokenizer-incompatible triggers",
   );
 
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
   assert.deepEqual(
     await rows(
       database,

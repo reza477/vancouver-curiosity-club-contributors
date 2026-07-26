@@ -216,10 +216,11 @@ export async function loadEventIndexData(
 export async function loadEventFormOptions(
   context: OrganizerPageContext,
 ): Promise<OrganizerEventFormOptions> {
-  const [clubs, team, taxonomy] = await Promise.all([
+  const [clubs, team, taxonomy, venues] = await Promise.all([
     listOrganizerClubs(context.database, context.identity),
     listTeamMembers(context.database, context.identity),
     loadTaxonomyOptions(context),
+    loadVenueOptions(context),
   ]);
   const clubIds = clubs.map((club) => club.id);
   const programs = await loadPrograms(context, clubIds);
@@ -243,6 +244,7 @@ export async function loadEventFormOptions(
         ),
     ),
     programs,
+    venues,
   });
 }
 
@@ -260,6 +262,7 @@ export function emptyEventValue(
     endDate: "",
     endTime: "",
     expectedEditVersion: null,
+    expectedScheduleVersion: null,
     internalNotes: "",
     laneId: "",
     meetupEventUrl: "",
@@ -304,6 +307,7 @@ export function eventEditorValue(event: OrganizerEventDto): EventEditorValue {
     endDate: timed.endDate,
     endTime: timed.endTime,
     expectedEditVersion: event.contentVersion,
+    expectedScheduleVersion: event.scheduleVersion,
     internalNotes: event.privateNotes ?? "",
     laneId: event.eventLaneId ?? "",
     meetupEventUrl: event.meetupEventUrl ?? "",
@@ -321,6 +325,44 @@ export function eventEditorValue(event: OrganizerEventDto): EventEditorValue {
     title: event.title,
     venueId: event.venueId,
   };
+}
+
+async function loadVenueOptions(
+  context: OrganizerPageContext,
+): Promise<
+  readonly Readonly<{
+    archived: boolean;
+    id: string;
+    label: string;
+    timezone: string;
+  }>[]
+> {
+  const result = await context.database
+    .prepare(
+      `SELECT id, name, timezone, deleted_at
+       FROM venues
+       WHERE organization_id = ?
+       ORDER BY deleted_at IS NOT NULL ASC, name COLLATE NOCASE ASC
+       LIMIT 250`,
+    )
+    .bind(context.membership.organizationId)
+    .all<Record<string, unknown>>();
+  return Object.freeze(
+    (result.results ?? []).flatMap((row) => {
+      const id = readString(row.id);
+      const label = readString(row.name);
+      const timezone = readString(row.timezone);
+      if (!id || !label || !timezone) return [];
+      return [
+        Object.freeze({
+          archived: row.deleted_at !== null && row.deleted_at !== undefined,
+          id,
+          label,
+          timezone,
+        }),
+      ];
+    }),
+  );
 }
 
 async function loadTaxonomyOptions(context: OrganizerPageContext) {
@@ -419,6 +461,7 @@ function calendarEntry(
   categoryById: ReadonlyMap<string, string>,
 ): OrganizerCalendarEntry {
   const schedule = calendarSchedule(event.schedule);
+  const phase4 = phase4CalendarDecoration(event);
   const organizerName =
     member?.displayName ??
     event.primaryOrganizerDisplayName ??
@@ -432,9 +475,13 @@ function calendarEntry(
         })
       : null,
     club: Object.freeze({ id: event.clubId, name: event.clubName }),
+    conflictCount: phase4.conflictCount,
+    conflictState: phase4.conflictState,
     dateKey: schedule.startDate,
     endDateKey: schedule.endDate,
     fullScheduleLabel: schedule.fullLabel,
+    holdExpiryLabel: phase4.holdExpiryLabel,
+    holdState: phase4.holdState,
     id: event.id,
     lane: event.eventLaneId
       ? Object.freeze({
@@ -461,6 +508,51 @@ function calendarEntry(
     sourceUrl: event.meetupEventUrl,
     timeLabel: schedule.timeLabel,
     title: event.title,
+  });
+}
+
+function phase4CalendarDecoration(value: unknown): Readonly<{
+  conflictCount: number;
+  conflictState: OrganizerCalendarEntry["conflictState"];
+  holdExpiryLabel: string | null;
+  holdState: OrganizerCalendarEntry["holdState"];
+}> {
+  const raw =
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  const conflictCount =
+    typeof raw.conflictCount === "number" &&
+    Number.isSafeInteger(raw.conflictCount) &&
+    raw.conflictCount >= 0 &&
+    raw.conflictCount <= 100
+      ? raw.conflictCount
+      : 0;
+  const conflictState =
+    raw.conflictState === "approved" ||
+    raw.conflictState === "invalidated" ||
+    raw.conflictState === "open" ||
+    raw.conflictState === "pending" ||
+    raw.conflictState === "rejected" ||
+    raw.conflictState === "resolved" ||
+    raw.conflictState === "warning"
+      ? raw.conflictState
+      : "none";
+  const holdState =
+    raw.holdState === "active" ||
+    raw.holdState === "expired" ||
+    raw.holdState === "nearing_expiry"
+      ? raw.holdState
+      : null;
+  return Object.freeze({
+    conflictCount,
+    conflictState,
+    holdExpiryLabel:
+      typeof raw.holdExpiryLabel === "string" &&
+      raw.holdExpiryLabel.length <= 160
+        ? raw.holdExpiryLabel
+        : null,
+    holdState,
   });
 }
 

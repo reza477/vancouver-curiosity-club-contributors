@@ -58,7 +58,7 @@ export default async function OrganizerNotificationsPage() {
     <>
       <PageHeader
         eyebrow="Private coordination"
-        introduction="Only genuine assignment, membership, invitation, and Draft coordination changes appear here. No email or digest is sent."
+        introduction="Only genuine membership, assignment, schedule, conflict-review, and hold changes appear here. No email or digest is sent."
         title="Notifications"
       />
       <NotificationCenter

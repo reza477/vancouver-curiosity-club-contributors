@@ -8,7 +8,7 @@ import {
   hashInvitationToken,
   trustedIdentityFromSites,
 } from "../../lib/server/auth/index.ts";
-import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
+import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 import {
   acceptOrganizerInvitation,
   createOrganizerInvitation,
@@ -45,6 +45,10 @@ import {
 } from "../../lib/server/organizer/clubs.ts";
 import { listActivityHistory } from "../../lib/server/organizer/activity.ts";
 import { consumeOrganizerRateLimit } from "../../lib/server/organizer/rate-limit.ts";
+import {
+  createOrganizerEvent,
+  softDeleteOrganizerEvent,
+} from "../../lib/server/organizer/events.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
@@ -60,7 +64,7 @@ function migrationSql() {
 
 async function newDatabase() {
   const database = new SqliteD1TestDatabase(migrationSql());
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
   database.exec(`
     INSERT INTO organizations (
       id, name, slug, timezone, owner_bootstrap_closed_at,
@@ -83,6 +87,15 @@ async function newDatabase() {
     profileId: "profile_owner",
     role: "owner",
   });
+  database.exec(`
+    INSERT INTO organizer_conflict_policies (
+      id, organization_id, mode, policy_version, default_hold_hours,
+      nearing_expiry_hours, updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'phase4-policy-org-vcc', 'org_vcc', 'warn_reason', 1, 72, 24,
+      'profile_owner', 1, 1
+    );
+  `);
   return database;
 }
 
@@ -712,27 +725,21 @@ test("team permissions hide email from Organizers and block owned/co-organized p
     (error) => error?.status === 404,
   );
 
+  const manualEvent = await createOrganizerEvent(
+    database,
+    identity("organizer@example.com"),
+    {
+      clubId: "club_think",
+      coOrganizerProfileIds: ["profile_co"],
+      planningStatus: "idea",
+      primaryOrganizerProfileId: "profile_organizer",
+      publicationStatus: "private",
+      scheduleShape: "unscheduled",
+      timeZone: "America/Vancouver",
+      title: "Manual idea",
+    },
+  );
   database.exec(`
-    INSERT INTO organizer_events (
-      id, organization_id, club_id, primary_organizer_profile_id,
-      title, slug, planning_status, publication_status, schedule_shape,
-      timezone, buffer_before_minutes, buffer_after_minutes,
-      content_version, schedule_version,
-      created_by_profile_id, updated_by_profile_id,
-      created_at, updated_at, deleted_at
-    ) VALUES (
-      'manual_event', 'org_vcc', 'club_think', 'profile_organizer',
-      'Manual idea', 'manual-idea', 'idea', 'private', 'unscheduled',
-      'America/Vancouver', 0, 0, 1, 1,
-      'profile_organizer', 'profile_organizer', 1, 1, NULL
-    );
-    INSERT INTO organizer_event_organizers (
-      id, organization_id, organizer_event_id, profile_id,
-      created_by_profile_id, created_at, deleted_at
-    ) VALUES (
-      'manual_co', 'org_vcc', 'manual_event', 'profile_co',
-      'profile_organizer', 1, NULL
-    );
     INSERT INTO events (
       id, organization_id, club_id, primary_organizer_profile_id,
       title, slug, status, visibility, time_kind,
@@ -788,11 +795,13 @@ test("team permissions hide email from Organizers and block owned/co-organized p
     ),
   );
 
-  database.exec(`
-    UPDATE organizer_events
-    SET deleted_at = 20_002, updated_at = 20_002
-    WHERE id = 'manual_event';
-  `);
+  await softDeleteOrganizerEvent(
+    database,
+    identity("organizer@example.com"),
+    manualEvent.id,
+    manualEvent.contentVersion,
+    manualEvent.scheduleVersion,
+  );
   await assert.rejects(
     updateTeamMember(
       database,
@@ -805,7 +814,7 @@ test("team permissions hide email from Organizers and block owned/co-organized p
       error instanceof TeamMutationBlockedError &&
       error.blockers.some(
         (blocker) =>
-          blocker.eventId === "manual_event" &&
+          blocker.eventId === manualEvent.id &&
           blocker.source === "manual",
       ),
   );

@@ -10,17 +10,26 @@ import {
   refreshMeetupCalendarSource,
 } from "../../lib/server/meetup/index.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
+import { normalizeAllDayConflictInterval } from "../../lib/server/organizer/conflict-domain.ts";
+import {
+  getOrganizerConflictPolicy,
+  updateOrganizerConflictPolicy,
+} from "../../lib/server/organizer/conflict-policy.ts";
+import { listOrganizerConflictCenter } from "../../lib/server/organizer/conflicts.ts";
+import { createOrganizerEvent } from "../../lib/server/organizer/events.ts";
+import { performOrganizerLifecycleAction } from "../../lib/server/organizer/scheduling.ts";
 import {
   OrganizerAccessDeniedError,
   trustedIdentityFromSites,
 } from "../../lib/server/auth/index.ts";
-import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
+import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 import { InputValidationError } from "../../lib/validation/index.ts";
 import {
   safeErrorResponse,
   writeSafeLog,
 } from "../../lib/validation/server-observability.ts";
 import { toMeetupUiState } from "../../app/organizer/meetup/model.ts";
+import { connectionCopy } from "../../app/organizer/meetup/MeetupControls.tsx";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
 const OWNER_EMAIL = "owner@example.com";
@@ -162,6 +171,29 @@ LAST-MODIFIED:${lastModified}
 END:VEVENT`;
 }
 
+function meetupAllDayEvent({
+  endDate = "20320316",
+  eventId = "all-day-1",
+  groupSlug = GROUP_A,
+  lastModified = "20260724T020000Z",
+  sequence = 1,
+  startDate = "20320314",
+  status = "CONFIRMED",
+  title = "All-day Meetup event",
+  uid = "all-day@meetup.com",
+} = {}) {
+  return `BEGIN:VEVENT
+UID:${uid}
+DTSTART;VALUE=DATE:${startDate}
+DTEND;VALUE=DATE:${endDate}
+SUMMARY:${title}
+URL:https://www.meetup.com/${groupSlug}/events/${eventId}/
+STATUS:${status}
+SEQUENCE:${sequence}
+LAST-MODIFIED:${lastModified}
+END:VEVENT`;
+}
+
 function calendar(...events) {
   return `BEGIN:VCALENDAR
 VERSION:2.0
@@ -240,6 +272,23 @@ async function refresh(
     clock: () => nowUtcMs,
     ...extra,
   });
+}
+
+function sourceOverlapDraftInput(title) {
+  return {
+    title,
+    clubId: "club_a",
+    primaryOrganizerProfileId: "profile_owner",
+    coOrganizerProfileIds: [],
+    planningStatus: "draft",
+    publicationStatus: "private",
+    scheduleShape: "timed",
+    timeZone: "America/Vancouver",
+    startLocal: "2032-08-14T18:30",
+    endLocal: "2032-08-14T20:30",
+    bufferBeforeMinutes: 0,
+    bufferAfterMinutes: 0,
+  };
 }
 
 test("isolates the same external UID across two official club feeds", async (t) => {
@@ -885,7 +934,7 @@ test("stale replays cannot undo a newer cancellation, which stays out of upcomin
       .prepare(`SELECT title, status FROM events`)
       .first()),
     },
-    { title: "Monotonic Event", status: "confirmed" },
+    { title: "Monotonic Event", status: "draft" },
   );
 
   const cancelled = await refresh(database, "club_a", fetcher, 4_000);
@@ -896,7 +945,7 @@ test("stale replays cannot undo a newer cancellation, which stays out of upcomin
       .prepare(`SELECT title, status FROM events`)
       .first()),
     },
-    { title: "Current Cancellation", status: "cancelled" },
+    { title: "Current Cancellation", status: "draft" },
   );
 
   await refresh(database, "club_a", fetcher, 5_000);
@@ -906,7 +955,7 @@ test("stale replays cannot undo a newer cancellation, which stays out of upcomin
       .prepare(`SELECT title, status FROM events`)
       .first()),
     },
-    { title: "Current Cancellation", status: "cancelled" },
+    { title: "Current Cancellation", status: "draft" },
   );
 
   const publicCalendar = await listPublicMeetupCalendar(database, {
@@ -1022,7 +1071,7 @@ test("a three-event refresh stays within the per-invocation D1 query budget", as
 test("three conflict rejections stay within the per-invocation D1 query budget", async (t) => {
   const innerDatabase = createDatabase();
   t.after(() => innerDatabase.close());
-  await ensureDatabaseInvariants(innerDatabase);
+  await ensureDatabaseInvariantsReady(innerDatabase);
   await configure(innerDatabase, "club_a", FEED_A, 1_000);
   innerDatabase.exec(`
     INSERT INTO events (
@@ -1070,6 +1119,801 @@ test("three conflict rejections stay within the per-invocation D1 query budget",
       .prepare(`SELECT count(*) AS count FROM events`)
       .first("count"),
     1,
+  );
+});
+
+test("completed activation materializes exact timed and Vancouver DST all-day reservation facts", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_a", FEED_A, 1_000);
+  const body = calendar(
+    meetupAllDayEvent(),
+    meetupEvent({
+      uid: "phase4-timed@meetup.com",
+      eventId: "phase4-timed",
+      title: "Phase 4 timed source",
+      start: "20320313T020000Z",
+      end: "20320313T040000Z",
+    }),
+  );
+  const completed = await refresh(
+    database,
+    "club_a",
+    sequenceFetcher([body]),
+    2_000,
+  );
+  assert.equal(completed.outcome, "completed");
+  const importedFacts = await database
+    .prepare(
+      `SELECT title, time_kind, all_day_start_date,
+              all_day_end_date_exclusive
+       FROM events
+       WHERE organization_id = ?
+       ORDER BY title`,
+    )
+    .bind(ORGANIZATION_ID)
+    .all();
+  assert.equal(
+    completed.counts.created,
+    2,
+    JSON.stringify({
+      completed,
+      importedFacts: importedFacts.results,
+    }),
+  );
+
+  const expectedAllDay = normalizeAllDayConflictInterval({
+    startDate: "2032-03-14",
+    endDateExclusive: "2032-03-16",
+    timeZone: "America/Vancouver",
+    bufferBeforeMinutes: 0,
+    bufferAfterMinutes: 0,
+  });
+  const source = await database
+    .prepare(
+      `SELECT id, active_generation_id
+       FROM sync_sources
+       WHERE organization_id = ? AND club_id = ?`,
+    )
+    .bind(ORGANIZATION_ID, "club_a")
+    .first();
+  assert.equal(typeof source.active_generation_id, "string");
+  const intervals = await database
+    .prepare(
+      `SELECT interval.title, interval.schedule_shape,
+              interval.actual_start_utc, interval.actual_end_utc,
+              interval.expanded_start_utc, interval.expanded_end_utc,
+              interval.timezone, interval.all_day_start_date,
+              interval.all_day_end_date_exclusive,
+              interval.generation_id, interval.source_fingerprint,
+              interval.normalized_state_fingerprint,
+              interval.reservation_semantic_fingerprint,
+              normalization.snapshot_id
+       FROM organizer_external_reservation_intervals AS interval
+       JOIN meetup_snapshot_reservation_normalizations AS normalization
+         ON normalization.organization_id = interval.organization_id
+        AND normalization.sync_source_id = interval.sync_source_id
+        AND normalization.generation_id = interval.generation_id
+        AND normalization.snapshot_id = interval.source_record_id
+        AND normalization.event_id = interval.event_id
+       WHERE interval.organization_id = ?
+         AND interval.source_kind = 'meetup'
+       ORDER BY interval.schedule_shape`,
+    )
+    .bind(ORGANIZATION_ID)
+    .all();
+  assert.equal(intervals.results.length, 2);
+  const allDay = intervals.results.find(
+    (interval) => interval.schedule_shape === "all_day",
+  );
+  const timed = intervals.results.find(
+    (interval) => interval.schedule_shape === "timed",
+  );
+  assert.deepEqual(
+    {
+      actualEndUtc: allDay.actual_end_utc,
+      actualStartUtc: allDay.actual_start_utc,
+      endDate: allDay.all_day_end_date_exclusive,
+      expandedEndUtc: allDay.expanded_end_utc,
+      expandedStartUtc: allDay.expanded_start_utc,
+      generationId: allDay.generation_id,
+      startDate: allDay.all_day_start_date,
+      timeZone: allDay.timezone,
+    },
+    {
+      actualEndUtc: expectedAllDay.actualEndUtc,
+      actualStartUtc: expectedAllDay.actualStartUtc,
+      endDate: "2032-03-16",
+      expandedEndUtc: expectedAllDay.expandedEndUtc,
+      expandedStartUtc: expectedAllDay.expandedStartUtc,
+      generationId: source.active_generation_id,
+      startDate: "2032-03-14",
+      timeZone: "America/Vancouver",
+    },
+  );
+  assert.deepEqual(
+    {
+      actualEndUtc: timed.actual_end_utc,
+      actualStartUtc: timed.actual_start_utc,
+      generationId: timed.generation_id,
+      timeZone: timed.timezone,
+    },
+    {
+      actualEndUtc: Date.parse("2032-03-13T04:00:00.000Z"),
+      actualStartUtc: Date.parse("2032-03-13T02:00:00.000Z"),
+      generationId: source.active_generation_id,
+      timeZone: "UTC",
+    },
+  );
+  for (const interval of intervals.results) {
+    assert.equal(interval.snapshot_id.length > 0, true);
+    assert.match(interval.source_fingerprint, /^[a-f0-9]{64}$/u);
+    assert.match(
+      interval.normalized_state_fingerprint,
+      /^[a-f0-9]{64}$/u,
+    );
+    assert.match(
+      interval.reservation_semantic_fingerprint,
+      /^[a-f0-9]{64}$/u,
+    );
+  }
+});
+
+test("a content-only new generation preserves reservation semantics while changing immutable source state", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_a", FEED_A, 1_000);
+  const firstBody = calendar(
+    meetupEvent({
+      uid: "semantic-refresh@meetup.com",
+      eventId: "semantic-refresh",
+      title: "Published title one",
+      start: "20320410T020000Z",
+      end: "20320410T040000Z",
+    }),
+  );
+  assert.equal(
+    (await refresh(database, "club_a", sequenceFetcher([firstBody]), 2_000))
+      .outcome,
+    "completed",
+  );
+  const overlapDraft = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    {
+      ...sourceOverlapDraftInput("Content-only continuity overlap"),
+      startLocal: "2032-04-09T19:30",
+      endLocal: "2032-04-09T21:30",
+    },
+  );
+  const warned = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    overlapDraft.id,
+    {
+      action: "confirm",
+      expectedContentVersion: overlapDraft.contentVersion,
+      expectedScheduleVersion: overlapDraft.scheduleVersion,
+      reason: "The source title changed, not its coordinated schedule.",
+    },
+  );
+  assert.equal(warned.outcome, "applied");
+  const originalConflict = await database
+    .prepare(
+      `SELECT incident.id, incident.state, override.invalidated_at
+       FROM organizer_conflict_incidents AS incident
+       JOIN organizer_conflict_overrides AS override
+         ON override.incident_id = incident.id
+       WHERE override.organizer_event_id = ?
+         AND incident.conflicting_candidate_key LIKE 'meetup:%'`,
+    )
+    .bind(overlapDraft.id)
+    .first();
+  assert.equal(originalConflict.state, "approved");
+  assert.equal(originalConflict.invalidated_at, null);
+  const first = await database
+    .prepare(
+      `SELECT source.active_generation_id,
+              interval.source_fingerprint,
+              interval.normalized_state_fingerprint,
+              interval.reservation_semantic_fingerprint
+       FROM sync_sources AS source
+       JOIN organizer_external_reservation_intervals AS interval
+         ON interval.sync_source_id = source.id
+        AND interval.generation_id = source.active_generation_id
+       WHERE source.organization_id = ? AND source.club_id = ?`,
+    )
+    .bind(ORGANIZATION_ID, "club_a")
+    .first();
+  const secondBody = calendar(
+    meetupEvent({
+      uid: "semantic-refresh@meetup.com",
+      eventId: "semantic-refresh",
+      title: "Published title two",
+      sequence: 2,
+      lastModified: "20260725T020000Z",
+      start: "20320410T020000Z",
+      end: "20320410T040000Z",
+    }),
+  );
+  const secondRefresh = await refresh(
+    database,
+    "club_a",
+    sequenceFetcher([secondBody]),
+    3_000,
+  );
+  assert.equal(
+    secondRefresh.outcome,
+    "completed",
+    JSON.stringify({
+      secondRefresh,
+      source: await database
+        .prepare(
+          `SELECT active_generation_id, pending_generation_id,
+                  last_error_code
+           FROM sync_sources
+           WHERE organization_id = ? AND club_id = ?`,
+        )
+        .bind(ORGANIZATION_ID, "club_a")
+        .first(),
+      snapshots: (
+        await database
+          .prepare(
+            `SELECT generation_id, event_id, title, source_fingerprint
+             FROM meetup_event_snapshots
+             WHERE organization_id = ?
+             ORDER BY created_at`,
+          )
+          .bind(ORGANIZATION_ID)
+          .all()
+      ).results,
+    }),
+  );
+  const second = await database
+    .prepare(
+      `SELECT source.active_generation_id,
+              interval.title, interval.source_fingerprint,
+              interval.normalized_state_fingerprint,
+              interval.reservation_semantic_fingerprint
+       FROM sync_sources AS source
+       JOIN organizer_external_reservation_intervals AS interval
+         ON interval.sync_source_id = source.id
+        AND interval.generation_id = source.active_generation_id
+       WHERE source.organization_id = ? AND source.club_id = ?`,
+    )
+    .bind(ORGANIZATION_ID, "club_a")
+    .first();
+  assert.notEqual(second.active_generation_id, first.active_generation_id);
+  assert.equal(second.title, "Published title two");
+  assert.notEqual(second.source_fingerprint, first.source_fingerprint);
+  assert.notEqual(
+    second.normalized_state_fingerprint,
+    first.normalized_state_fingerprint,
+  );
+  assert.equal(
+    second.reservation_semantic_fingerprint,
+    first.reservation_semantic_fingerprint,
+    "content-only source changes must not manufacture a new reservation",
+  );
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT incident.state, override.invalidated_at
+           FROM organizer_conflict_incidents AS incident
+           JOIN organizer_conflict_overrides AS override
+             ON override.incident_id = incident.id
+           WHERE incident.id = ?`,
+        )
+        .bind(originalConflict.id)
+        .first()),
+    },
+    {
+      state: "approved",
+      invalidated_at: null,
+    },
+    "an unchanged reservation semantic must retain its exact review",
+  );
+  const center = await listOrganizerConflictCenter(database, OWNER_IDENTITY);
+  const preserved = center.find((item) => item.id === originalConflict.id);
+  assert.ok(
+    preserved,
+    "the preserved incident resolves through the active equivalent generation",
+  );
+  assert.equal(preserved.state, "approved");
+  assert.equal(preserved.eventB.readOnly, true);
+  assert.equal(preserved.eventB.title, "Published title two");
+  assert.doesNotMatch(
+    JSON.stringify(preserved),
+    /events\/ical|source_url|feedUrl/iu,
+    "the private conflict DTO must not expose the official feed address",
+  );
+  assert.equal(
+    Object.hasOwn(preserved.eventB, "href"),
+    false,
+    "a read-only source event must not manufacture an organizer-event link",
+  );
+});
+
+test("a changed source schedule invalidates prior version-bound conflict authorization", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_a", FEED_A, 1_000);
+  const firstBody = calendar(
+    meetupEvent({
+      uid: "semantic-move@meetup.com",
+      eventId: "semantic-move",
+      title: "Source schedule before move",
+      start: "20320610T020000Z",
+      end: "20320610T040000Z",
+    }),
+  );
+  assert.equal(
+    (await refresh(database, "club_a", sequenceFetcher([firstBody]), 2_000))
+      .outcome,
+    "completed",
+  );
+  const overlapDraft = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    {
+      ...sourceOverlapDraftInput("Version-bound source overlap"),
+      startLocal: "2032-06-09T19:30",
+      endLocal: "2032-06-09T21:30",
+    },
+  );
+  const warned = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    overlapDraft.id,
+    {
+      action: "confirm",
+      expectedContentVersion: overlapDraft.contentVersion,
+      expectedScheduleVersion: overlapDraft.scheduleVersion,
+      reason: "Coordinated only for the original source schedule.",
+    },
+  );
+  assert.equal(warned.outcome, "applied");
+  const priorConflict = await database
+    .prepare(
+      `SELECT incident.id, override.id AS override_id
+       FROM organizer_conflict_incidents AS incident
+       JOIN organizer_conflict_overrides AS override
+         ON override.incident_id = incident.id
+       WHERE override.organizer_event_id = ?
+         AND override.invalidated_at IS NULL
+         AND incident.conflicting_candidate_key LIKE 'meetup:%'`,
+    )
+    .bind(overlapDraft.id)
+    .first();
+  assert.ok(priorConflict);
+
+  const movedBody = calendar(
+    meetupEvent({
+      uid: "semantic-move@meetup.com",
+      eventId: "semantic-move",
+      title: "Source schedule after move",
+      sequence: 2,
+      lastModified: "20260725T030000Z",
+      start: "20320612T020000Z",
+      end: "20320612T040000Z",
+    }),
+  );
+  assert.equal(
+    (await refresh(database, "club_a", sequenceFetcher([movedBody]), 3_000))
+      .outcome,
+    "completed",
+  );
+  const invalidated = await database
+    .prepare(
+      `SELECT incident.state, incident.resolved_at,
+              override.invalidated_at
+       FROM organizer_conflict_incidents AS incident
+       JOIN organizer_conflict_overrides AS override
+         ON override.incident_id = incident.id
+       WHERE incident.id = ?`,
+    )
+    .bind(priorConflict.id)
+    .first();
+  assert.equal(invalidated.state, "invalidated");
+  assert.equal(typeof invalidated.resolved_at, "number");
+  assert.equal(
+    invalidated.invalidated_at,
+    invalidated.resolved_at,
+    "one D1 activation statement must version-bind the invalidation time",
+  );
+  const center = await listOrganizerConflictCenter(database, OWNER_IDENTITY);
+  const historical = center.find((item) => item.id === priorConflict.id);
+  assert.ok(
+    historical,
+    "the invalidated incident remains safely readable as history",
+  );
+  assert.equal(historical.state, "invalidated");
+  assert.equal(historical.eventB.readOnly, true);
+  assert.equal(
+    historical.eventB.title,
+    "Source schedule before move",
+    "changed reservation semantics must not fall forward to the new generation",
+  );
+  assert.doesNotMatch(
+    JSON.stringify(historical),
+    /events\/ical|source_url|feedUrl/iu,
+  );
+});
+
+test("a changed source schedule closes pending reviews bound to the old external facts", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_a", FEED_A, 1_000);
+  const policy = await getOrganizerConflictPolicy(
+    database,
+    OWNER_IDENTITY,
+  );
+  await updateOrganizerConflictPolicy(database, OWNER_IDENTITY, {
+    defaultHoldHours: policy.defaultHoldHours,
+    expectedPolicyVersion: policy.version,
+    mode: "require_admin_approval",
+    nearingExpiryHours: policy.nearingExpiryHours,
+  });
+  const firstBody = calendar(
+    meetupEvent({
+      uid: "pending-source-move@meetup.com",
+      eventId: "pending-source-move",
+      title: "Source before pending review invalidation",
+      start: "20320710T020000Z",
+      end: "20320710T040000Z",
+    }),
+  );
+  assert.equal(
+    (await refresh(database, "club_a", sequenceFetcher([firstBody]), 2_000))
+      .outcome,
+    "completed",
+  );
+  const overlapDraft = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    {
+      ...sourceOverlapDraftInput("Pending review bound to source facts"),
+      startLocal: "2032-07-09T19:30",
+      endLocal: "2032-07-09T21:30",
+    },
+  );
+  const pending = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    overlapDraft.id,
+    {
+      action: "confirm",
+      expectedContentVersion: overlapDraft.contentVersion,
+      expectedScheduleVersion: overlapDraft.scheduleVersion,
+      reason: "Reviewing the exact current source schedule.",
+    },
+  );
+  assert.equal(pending.outcome, "pending_approval");
+  const beforeMove = await database
+    .prepare(
+      `SELECT review.state AS review_state,
+              incident.id AS incident_id,
+              incident.state AS incident_state
+       FROM organizer_conflict_review_requests AS review
+       JOIN organizer_conflict_incidents AS incident
+         ON incident.review_request_id = review.id
+       WHERE review.id = ?`,
+    )
+    .bind(pending.reviewRequestId)
+    .first();
+  assert.deepEqual(
+    {
+      review_state: beforeMove.review_state,
+      incident_state: beforeMove.incident_state,
+    },
+    {
+      review_state: "pending",
+      incident_state: "pending_approval",
+    },
+  );
+
+  const movedBody = calendar(
+    meetupEvent({
+      uid: "pending-source-move@meetup.com",
+      eventId: "pending-source-move",
+      title: "Source after pending review invalidation",
+      sequence: 2,
+      lastModified: "20260725T033000Z",
+      start: "20320712T020000Z",
+      end: "20320712T040000Z",
+    }),
+  );
+  assert.equal(
+    (await refresh(database, "club_a", sequenceFetcher([movedBody]), 3_000))
+      .outcome,
+    "completed",
+  );
+  const afterMove = await database
+    .prepare(
+      `SELECT review.state AS review_state,
+              review.updated_at,
+              incident.state AS incident_state,
+              incident.resolved_at
+       FROM organizer_conflict_review_requests AS review
+       JOIN organizer_conflict_incidents AS incident
+         ON incident.review_request_id = review.id
+       WHERE review.id = ? AND incident.id = ?`,
+    )
+    .bind(pending.reviewRequestId, beforeMove.incident_id)
+    .first();
+  assert.equal(afterMove.review_state, "invalidated");
+  assert.equal(afterMove.incident_state, "invalidated");
+  assert.equal(typeof afterMove.resolved_at, "number");
+  assert.equal(
+    afterMove.updated_at,
+    afterMove.resolved_at,
+    "review and incident must close in the same guarded activation statement",
+  );
+});
+
+test("a conflicting source activation rolls back generation publication and prior invalidation", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_a", FEED_A, 1_000);
+  const baselineBody = calendar(
+    meetupEvent({
+      uid: "activation-race@meetup.com",
+      eventId: "activation-race",
+      title: "Active source before rejected move",
+      start: "20320817T010000Z",
+      end: "20320817T030000Z",
+    }),
+  );
+  assert.equal(
+    (
+      await refresh(
+        database,
+        "club_a",
+        sequenceFetcher([baselineBody]),
+        2_000,
+      )
+    ).outcome,
+    "completed",
+  );
+  const sourceBefore = await database
+    .prepare(
+      `SELECT id, active_generation_id
+       FROM sync_sources
+       WHERE organization_id = ? AND club_id = ?`,
+    )
+    .bind(ORGANIZATION_ID, "club_a")
+    .first();
+  const oldOverlap = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    {
+      ...sourceOverlapDraftInput("Old active source overlap"),
+      startLocal: "2032-08-16T18:30",
+      endLocal: "2032-08-16T20:30",
+    },
+  );
+  const warned = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    oldOverlap.id,
+    {
+      action: "confirm",
+      expectedContentVersion: oldOverlap.contentVersion,
+      expectedScheduleVersion: oldOverlap.scheduleVersion,
+      reason: "Coordinated against the currently active source schedule.",
+    },
+  );
+  assert.equal(warned.outcome, "applied");
+  const oldConflict = await database
+    .prepare(
+      `SELECT incident.id, override.id AS override_id
+       FROM organizer_conflict_incidents AS incident
+       JOIN organizer_conflict_overrides AS override
+         ON override.incident_id = incident.id
+       WHERE override.organizer_event_id = ?
+         AND override.invalidated_at IS NULL
+         AND incident.conflicting_candidate_key LIKE 'meetup:%'`,
+    )
+    .bind(oldOverlap.id)
+    .first();
+  assert.ok(oldConflict);
+
+  const proposedBody = calendar(
+    meetupEvent({
+      uid: "activation-race@meetup.com",
+      eventId: "activation-race",
+      title: "Rejected source move",
+      sequence: 2,
+      lastModified: "20260725T040000Z",
+      start: "20320815T010000Z",
+      end: "20320815T030000Z",
+    }),
+    meetupEvent({
+      uid: "activation-filler-1@meetup.com",
+      eventId: "activation-filler-1",
+      title: "Activation filler one",
+      start: "20320901T010000Z",
+      end: "20320901T020000Z",
+    }),
+    meetupEvent({
+      uid: "activation-filler-2@meetup.com",
+      eventId: "activation-filler-2",
+      title: "Activation filler two",
+      start: "20320902T010000Z",
+      end: "20320902T020000Z",
+    }),
+    meetupEvent({
+      uid: "activation-filler-3@meetup.com",
+      eventId: "activation-filler-3",
+      title: "Activation filler three",
+      start: "20320903T010000Z",
+      end: "20320903T020000Z",
+    }),
+  );
+  const proposedFetcher = sequenceFetcher([proposedBody, proposedBody]);
+  const partial = await refresh(
+    database,
+    "club_a",
+    proposedFetcher,
+    3_000,
+  );
+  assert.equal(partial.outcome, "partial");
+  const sourceDuring = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id
+       FROM sync_sources
+       WHERE id = ?`,
+    )
+    .bind(sourceBefore.id)
+    .first();
+  assert.equal(
+    sourceDuring.active_generation_id,
+    sourceBefore.active_generation_id,
+  );
+  assert.equal(typeof sourceDuring.pending_generation_id, "string");
+
+  const newCollision = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    sourceOverlapDraftInput("Reservation created during staged source move"),
+  );
+  const newlyReserved = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    newCollision.id,
+    {
+      action: "confirm",
+      expectedContentVersion: newCollision.contentVersion,
+      expectedScheduleVersion: newCollision.scheduleVersion,
+    },
+  );
+  assert.equal(newlyReserved.outcome, "applied");
+
+  const failed = await refresh(
+    database,
+    "club_a",
+    proposedFetcher,
+    4_000,
+  );
+  assert.equal(failed.outcome, "failed");
+  assert.equal(failed.state.lastErrorCode, "conflict_rejected");
+  const conflictUiState = toMeetupUiState(failed.state);
+  assert.equal(conflictUiState.scheduleConflict, true);
+  assert.match(
+    connectionCopy(conflictUiState).detail,
+    /last completed source snapshot remains active[\s\S]*Move or release[\s\S]*refresh again/iu,
+  );
+  const sourceAfter = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id,
+              last_error_code
+       FROM sync_sources
+       WHERE id = ?`,
+    )
+    .bind(sourceBefore.id)
+    .first();
+  assert.equal(
+    sourceAfter.active_generation_id,
+    sourceBefore.active_generation_id,
+  );
+  assert.equal(
+    sourceAfter.pending_generation_id,
+    sourceDuring.pending_generation_id,
+  );
+  assert.equal(sourceAfter.last_error_code, "conflict_rejected");
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT incident.state, incident.resolved_at,
+                  override.invalidated_at
+           FROM organizer_conflict_incidents AS incident
+           JOIN organizer_conflict_overrides AS override
+             ON override.incident_id = incident.id
+           WHERE incident.id = ?`,
+        )
+        .bind(oldConflict.id)
+        .first()),
+    },
+    {
+      state: "approved",
+      resolved_at: null,
+      invalidated_at: null,
+    },
+    "the failed source activation must roll back its attempted invalidation",
+  );
+  const activePublic = await listPublicMeetupCalendar(database, {
+    organizationId: ORGANIZATION_ID,
+    fromUtcMs: 0,
+    todayDate: "2026-01-01",
+    nowUtcMs: 4_001,
+  });
+  assert.equal(activePublic.events.length, 1);
+  assert.equal(
+    activePublic.events[0].title,
+    "Active source before rejected move",
+  );
+
+  const cancelledCollision = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    newlyReserved.event.id,
+    {
+      action: "cancel",
+      expectedContentVersion: newlyReserved.event.contentVersion,
+      expectedScheduleVersion: newlyReserved.event.scheduleVersion,
+    },
+  );
+  assert.equal(cancelledCollision.outcome, "applied");
+  assert.equal(cancelledCollision.event.planningStatus, "cancelled");
+
+  const retried = await refresh(
+    database,
+    "club_a",
+    proposedFetcher,
+    5_000,
+  );
+  assert.equal(retried.outcome, "completed");
+  assert.equal(retried.state.lastErrorCode, null);
+  assert.equal(toMeetupUiState(retried.state).scheduleConflict, false);
+  const sourceRecovered = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id,
+              last_error_code
+       FROM sync_sources
+       WHERE id = ?`,
+    )
+    .bind(sourceBefore.id)
+    .first();
+  assert.equal(
+    sourceRecovered.active_generation_id,
+    sourceDuring.pending_generation_id,
+  );
+  assert.equal(sourceRecovered.pending_generation_id, null);
+  assert.equal(sourceRecovered.last_error_code, null);
+  const recoveredReview = await database
+    .prepare(
+      `SELECT incident.state, incident.resolved_at,
+              override.invalidated_at
+       FROM organizer_conflict_incidents AS incident
+       JOIN organizer_conflict_overrides AS override
+         ON override.incident_id = incident.id
+       WHERE incident.id = ?`,
+    )
+    .bind(oldConflict.id)
+    .first();
+  assert.equal(recoveredReview.state, "invalidated");
+  assert.equal(typeof recoveredReview.invalidated_at, "number");
+  assert.equal(
+    recoveredReview.invalidated_at,
+    recoveredReview.resolved_at,
+    "successful retry must atomically invalidate the old source-bound review",
   );
 });
 
@@ -1462,6 +2306,7 @@ X-CALENDAR-COLOR:#123456`,
 test("disabled sources pause publication as well as refresh", async (t) => {
   const database = createDatabase();
   t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
   await configure(database, "club_a", FEED_A, 1_000);
   const published = await refresh(
     database,
@@ -1493,6 +2338,297 @@ test("disabled sources pause publication as well as refresh", async (t) => {
   });
   assert.equal(publicCalendar.sync.status, "disabled");
   assert.deepEqual(publicCalendar.events, []);
+  database.exec(`
+    UPDATE sync_sources
+    SET enabled = 1
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND club_id = 'club_a';
+  `);
+  const reactivated = await listPublicMeetupCalendar(database, {
+    organizationId: ORGANIZATION_ID,
+    fromUtcMs: 0,
+    todayDate: "2026-01-01",
+    nowUtcMs: 2_002,
+  });
+  assert.equal(reactivated.events.length, 1);
+  assert.equal(reactivated.events[0].title, "Paused Source Event");
+  assert.throws(
+    () =>
+      database.exec(`
+        UPDATE sync_sources
+        SET club_id = 'club_b'
+        WHERE organization_id = '${ORGANIZATION_ID}'
+          AND club_id = 'club_a';
+      `),
+    /phase4_source_identity_immutable/u,
+  );
+  assert.throws(
+    () =>
+      database.exec(`
+        UPDATE sync_sources
+        SET organization_id = 'other-organization'
+        WHERE organization_id = '${ORGANIZATION_ID}'
+          AND club_id = 'club_a';
+      `),
+    /phase4_source_identity_immutable/u,
+  );
+  database.exec(`
+    UPDATE sync_sources
+    SET deleted_at = 3_000
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND club_id = 'club_a';
+  `);
+  database.exec(`
+    UPDATE sync_sources
+    SET deleted_at = NULL
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND club_id = 'club_a';
+  `);
+  const restored = await listPublicMeetupCalendar(database, {
+    organizationId: ORGANIZATION_ID,
+    fromUtcMs: 0,
+    todayDate: "2026-01-01",
+    nowUtcMs: 3_001,
+  });
+  assert.equal(restored.events.length, 1);
+});
+
+test("re-enabling an active source reruns the authoritative activation guard", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_a", FEED_A, 1_000);
+  const sourceBody = calendar(
+    meetupEvent({
+      uid: "reenable-guard@meetup.com",
+      eventId: "7051",
+      title: "Paused reservation",
+      start: "20320815T010000Z",
+      end: "20320815T030000Z",
+    }),
+  );
+  assert.equal(
+    (await refresh(database, "club_a", sequenceFetcher([sourceBody]), 2_000))
+      .outcome,
+    "completed",
+  );
+
+  database.exec(`
+    UPDATE sync_sources
+    SET enabled = 0
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND club_id = 'club_a';
+  `);
+
+  const overlappingDraft = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    sourceOverlapDraftInput("Reservation created while source is paused"),
+  );
+  const reserved = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    overlappingDraft.id,
+    {
+      action: "confirm",
+      expectedContentVersion: overlappingDraft.contentVersion,
+      expectedScheduleVersion: overlappingDraft.scheduleVersion,
+    },
+  );
+  assert.equal(reserved.outcome, "applied");
+
+  assert.throws(
+    () =>
+      database.exec(`
+        UPDATE sync_sources
+        SET enabled = 1
+        WHERE organization_id = '${ORGANIZATION_ID}'
+          AND club_id = 'club_a';
+      `),
+    /phase4_source_activation_conflict/u,
+    "enabled 0→1 must not make an existing generation reserving around the guard",
+  );
+  assert.equal(
+    (
+      await database
+        .prepare(
+          `SELECT enabled
+           FROM sync_sources
+           WHERE organization_id = ? AND club_id = ?`,
+        )
+        .bind(ORGANIZATION_ID, "club_a")
+        .first()
+    ).enabled,
+    0,
+    "the failed activation must leave the source disabled",
+  );
+
+  const cancelled = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    reserved.event.id,
+    {
+      action: "cancel",
+      expectedContentVersion: reserved.event.contentVersion,
+      expectedScheduleVersion: reserved.event.scheduleVersion,
+    },
+  );
+  assert.equal(cancelled.outcome, "applied");
+  database.exec(`
+    UPDATE sync_sources
+    SET enabled = 1
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND club_id = 'club_a';
+  `);
+  assert.equal(
+    (
+      await database
+        .prepare(
+          `SELECT enabled
+           FROM sync_sources
+           WHERE organization_id = ? AND club_id = ?`,
+        )
+        .bind(ORGANIZATION_ID, "club_a")
+        .first()
+    ).enabled,
+    1,
+  );
+});
+
+test("source deactivation invalidates active overrides, incidents, and pending reviews", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_a", FEED_A, 1_000);
+  const sourceBody = calendar(
+    meetupEvent({
+      uid: "deactivation-conflict@meetup.com",
+      eventId: "7101",
+      title: "Source reservation",
+      start: "20320815T010000Z",
+      end: "20320815T030000Z",
+    }),
+  );
+  assert.equal(
+    (await refresh(database, "club_a", sequenceFetcher([sourceBody]), 2_000))
+      .outcome,
+    "completed",
+  );
+  const warnDraft = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    sourceOverlapDraftInput("Warn overlap before deactivation"),
+  );
+  const warned = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    warnDraft.id,
+    {
+      action: "confirm",
+      expectedContentVersion: warnDraft.contentVersion,
+      expectedScheduleVersion: warnDraft.scheduleVersion,
+      reason: "Coordinated overlap before source pause.",
+    },
+  );
+  assert.equal(warned.outcome, "applied");
+  const activeOverride = await database
+    .prepare(
+      `SELECT override.id, override.incident_id
+       FROM organizer_conflict_overrides AS override
+       JOIN organizer_conflict_incidents AS incident
+         ON incident.id = override.incident_id
+       WHERE override.organizer_event_id = ?
+         AND override.invalidated_at IS NULL
+         AND incident.conflicting_candidate_key LIKE 'meetup:%'`,
+    )
+    .bind(warnDraft.id)
+    .first();
+  assert.ok(activeOverride);
+
+  database.exec(`
+    UPDATE sync_sources
+    SET enabled = 0
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND club_id = 'club_a';
+  `);
+  const invalidated = await database
+    .prepare(
+      `SELECT incident.state, incident.resolved_at,
+              override.invalidated_at
+       FROM organizer_conflict_incidents AS incident
+       JOIN organizer_conflict_overrides AS override
+         ON override.incident_id = incident.id
+       WHERE incident.id = ?`,
+    )
+    .bind(activeOverride.incident_id)
+    .first();
+  assert.equal(invalidated.state, "invalidated");
+  assert.equal(typeof invalidated.resolved_at, "number");
+  assert.equal(typeof invalidated.invalidated_at, "number");
+  await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    warned.event.id,
+    {
+      action: "cancel",
+      expectedContentVersion: warned.event.contentVersion,
+      expectedScheduleVersion: warned.event.scheduleVersion,
+    },
+  );
+
+  const policy = await getOrganizerConflictPolicy(
+    database,
+    OWNER_IDENTITY,
+  );
+  await updateOrganizerConflictPolicy(database, OWNER_IDENTITY, {
+    defaultHoldHours: policy.defaultHoldHours,
+    expectedPolicyVersion: policy.version,
+    mode: "require_admin_approval",
+    nearingExpiryHours: policy.nearingExpiryHours,
+  });
+  database.exec(`
+    UPDATE sync_sources
+    SET enabled = 1
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND club_id = 'club_a';
+  `);
+  const approvalDraft = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    sourceOverlapDraftInput("Pending overlap before deactivation"),
+  );
+  const pending = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    approvalDraft.id,
+    {
+      action: "confirm",
+      expectedContentVersion: approvalDraft.contentVersion,
+      expectedScheduleVersion: approvalDraft.scheduleVersion,
+      reason: "Requesting review before source pause.",
+    },
+  );
+  assert.equal(pending.outcome, "pending_approval");
+  assert.equal(typeof pending.reviewRequestId, "string");
+  database.exec(`
+    UPDATE sync_sources
+    SET enabled = 0
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND club_id = 'club_a';
+  `);
+  assert.equal(
+    (
+      await database
+        .prepare(
+          `SELECT state
+           FROM organizer_conflict_review_requests
+           WHERE id = ?`,
+        )
+        .bind(pending.reviewRequestId)
+        .first()
+    ).state,
+    "invalidated",
+  );
 });
 
 test("keeps the last completed generation public when a later chunk fails", async (t) => {
@@ -2134,7 +3270,7 @@ test("reconciles disappeared future events only after source-scoped finalization
         .first()),
     },
     {
-      status: "confirmed",
+      status: "draft",
       visibility: "public",
       published_at: 2_000,
       deleted_at: null,
@@ -2153,7 +3289,7 @@ test("reconciles disappeared future events only after source-scoped finalization
         .first()),
     },
     {
-      status: "confirmed",
+      status: "draft",
       visibility: "public",
       published_at: 2_000,
       deleted_at: null,
@@ -2237,7 +3373,7 @@ test("reconciles disappeared future events only after source-scoped finalization
       published_at: retiredMissing.published_at,
     },
     {
-      status: "cancelled",
+      status: "draft",
       visibility: "private",
       published_at: null,
     },
@@ -2258,7 +3394,7 @@ test("reconciles disappeared future events only after source-scoped finalization
       published_at: retiredSecondMissing.published_at,
     },
     {
-      status: "cancelled",
+      status: "draft",
       visibility: "private",
       published_at: null,
     },
@@ -2382,7 +3518,7 @@ test("reconciles disappeared future events only after source-scoped finalization
     )
     .first();
   assert.ok(activeReappearance);
-  assert.equal(activeReappearance.status, "confirmed");
+  assert.equal(activeReappearance.status, "draft");
   assert.equal(activeReappearance.visibility, "public");
   assert.equal(typeof activeReappearance.published_at, "number");
   assert.equal(activeReappearance.deleted_at, null);
@@ -2556,7 +3692,7 @@ test("keeps a shared canonical event while another active source still reserves 
         .first()),
     },
     {
-      status: "confirmed",
+      status: "draft",
       visibility: "public",
       published_at: 2_000,
       deleted_at: null,

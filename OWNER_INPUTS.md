@@ -11,9 +11,9 @@ data.
   never copied into this file, source, logs, or build artifacts.
 - Second invited test identity: **Not available under the current Sites access
   policy**, which permits exactly the owner account and zero groups. Phase 3
-  invitation acceptance is verified through isolated local and built-Worker
-  seams; hosted second-identity verification requires a separate explicit
-  access-policy authorization.
+  invitation acceptance and Phase 4 role/club authorization are verified
+  through isolated local and built-Worker seams; hosted second-identity
+  verification requires a separate explicit access-policy authorization.
 
 ## Meetup connection
 
@@ -37,11 +37,10 @@ data.
   destinations without committing them as fixtures; the Phase 2 review
   database intentionally contains no real event.
 
-Until a future owner-authorized deployment activates the runtime revision and
-the feeds are entered through the authenticated organizer workspace into
-Sites-managed D1, hosted production imported event data remains empty. Feed
-URLs are private configuration: they must not be copied into public content,
-client state, logs, or this file.
+Until the feeds are entered through an authenticated organizer workspace into
+Sites-managed D1, hosted imported event data remains empty. Feed URLs are
+private configuration: they must not be copied into public content, client
+state, logs, or this file.
 
 ## British Columbia legal identity
 
@@ -67,8 +66,8 @@ society-registration, tax, or charity claim.
 - Confirmed public contact email address: **Missing**. Phase 2 uses only the
   confirmed Meetup group destinations and renders no fake form.
 - Owner-only Sites origin: **Available for the deployed Phase 2 version 8**.
-  Public/shared access is not authorized, and the unpublished Phase 3
-  workspace must not be represented as live there. QR downloads remain a
+  Public/shared access is not authorized, and unpublished Phase 3 or Phase 4
+  candidates must not be represented as live there. QR downloads remain a
   later-phase feature and require a separately authorized stable destination.
 - Custom domain: **Not requested and not required**
 

@@ -25,8 +25,23 @@ import type {
 } from "./types";
 import { parseMeetupGroupCalendarFeedUrl } from "./url";
 import { assertMeetupProgramClubMapping } from "./clubs";
+import {
+  externalReservationSemanticFingerprint,
+  externalReservationStateFingerprint,
+  normalizeAllDayConflictInterval,
+  normalizeConflictInterval,
+} from "../organizer/conflict-domain";
 
 const SOURCE_TYPE = "meetup_ics";
+/**
+ * The mutable `events` row is only the stable content/relationship anchor for
+ * a Meetup record. Source-native planning state is owned by the immutable
+ * generation snapshot and its normalized reservation sidecar. Keeping this
+ * anchor non-reserving prevents the legacy Phase 1 proof triggers from
+ * becoming a second source-activation path (and lets all-day source records
+ * remain calendar dates rather than fake timed reservations).
+ */
+const SOURCE_CANONICAL_EVENT_STATUS = "draft";
 const REFRESH_INTERVAL_MS = 15 * 60_000;
 const STALE_AFTER_MS = 30 * 60_000;
 const LEASE_DURATION_MS = 2 * 60_000;
@@ -85,6 +100,9 @@ type SourceMapping = Readonly<{
   externalUrl: string | null;
   fingerprint: string | null;
   linkId: string;
+  organizerScope: readonly string[];
+  organizerScopeJson: string;
+  primaryOrganizerProfileId: string | null;
   scheduleVersion: number | null;
   sourceLastModifiedAt: number | null;
   sourceSequence: number | null;
@@ -94,6 +112,7 @@ type SourceMapping = Readonly<{
   timeKind: string | null;
   timeZone: string | null;
   title: string | null;
+  venueId: string | null;
 }>;
 
 type RefreshMode = "if_due" | "manual";
@@ -724,25 +743,6 @@ async function refreshOrganizationSource(
         continue;
       }
 
-      if (
-        event.schedule.kind === "all_day" &&
-        event.status !== "cancelled"
-      ) {
-        await recordRejectedRow(database, {
-          actorProfileId: input.actorProfileId,
-          errorCode: "unsupported_all_day_reservation",
-          importBatchId,
-          leaseToken,
-          now: rowNow,
-          organizationId: source.organizationId,
-          rowNumber: event.componentIndex + 1,
-          sourceId: source.id,
-          sourcePayload: sanitizedSourceFacts(event, identityHash),
-        });
-        mutableCounts.rejected += 1;
-        continue;
-      }
-
       try {
         const rowResult = await importEventRow(database, {
           actorProfileId: input.actorProfileId,
@@ -860,6 +860,7 @@ async function importEventRow(
   if (mapping && isStaleSourceRevision(mapping, input.event, input.sourceId)) {
     await recordSkippedRow(database, {
       ...input,
+      existingMapping: mapping,
       eventId: mapping.eventId ?? mapping.linkId,
       fingerprint: mapping.fingerprint ?? fingerprint,
       linkId: mapping.linkId,
@@ -874,6 +875,7 @@ async function importEventRow(
   ) {
     await recordSkippedRow(database, {
       ...input,
+      existingMapping: mapping,
       eventId: mapping.eventId,
       fingerprint,
       linkId: mapping.linkId,
@@ -886,11 +888,25 @@ async function importEventRow(
     await updateMappedEvent(database, {
       ...input,
       eventId: mapping.eventId,
+      existingMapping: mapping,
       expectedScheduleVersion: mapping.scheduleVersion,
       fingerprint,
       linkId: mapping.linkId,
+      scheduleChanged: !mappingScheduleMatchesEvent(mapping, input.event),
     });
     return "updated";
+  }
+
+  if (
+    input.event.status !== "cancelled" &&
+    (await hasAuthoritativeReservationCollision(
+      database,
+      input.organizationId,
+      input.event,
+      input.now,
+    ))
+  ) {
+    throw new MeetupSyncError("conflict_rejected");
   }
 
   const eventId = crypto.randomUUID();
@@ -902,6 +918,121 @@ async function importEventRow(
     replaceExistingLink: mapping !== null,
   });
   return "created";
+}
+
+async function hasAuthoritativeReservationCollision(
+  database: D1DatabaseLike,
+  organizationId: string,
+  event: ParsedMeetupEvent,
+  now: number,
+): Promise<boolean> {
+  const interval = externalScheduleFacts(event, null);
+  const row = await database
+    .prepare(
+      `SELECT 1 AS has_conflict
+       WHERE EXISTS (
+         SELECT 1
+         FROM organizer_reservation_states AS reservation
+         JOIN organizer_events AS reserved_event
+           ON reserved_event.id = reservation.organizer_event_id
+          AND reserved_event.organization_id = reservation.organization_id
+          AND reserved_event.deleted_at IS NULL
+         WHERE reservation.organization_id = ?
+           AND reservation.expanded_start_utc < ?
+           AND reservation.expanded_end_utc > ?
+           AND (
+             reservation.planning_status = 'confirmed'
+             OR (
+               reservation.planning_status = 'tentative_hold'
+               AND reservation.hold_expires_at > ?
+             )
+           )
+       )
+       OR EXISTS (
+         SELECT 1
+         FROM organizer_external_reservation_intervals AS external
+         WHERE external.organization_id = ?
+           AND external.expanded_start_utc < ?
+           AND external.expanded_end_utc > ?
+           AND external.planning_status IN (
+             'hold', 'tentative', 'tentative_hold', 'confirmed'
+           )
+           AND (
+             external.planning_status NOT IN ('hold', 'tentative_hold')
+             OR external.hold_expires_at > ?
+           )
+           AND (
+             external.source_kind = 'legacy'
+             OR (
+               external.source_kind = 'meetup'
+               AND EXISTS (
+                 SELECT 1
+                 FROM sync_sources AS active_source
+                 JOIN meetup_sync_generations AS active_generation
+                   ON active_generation.id =
+                      active_source.active_generation_id
+                  AND active_generation.sync_source_id = active_source.id
+                  AND active_generation.organization_id =
+                      active_source.organization_id
+                  AND active_generation.state = 'published'
+                 WHERE active_source.id = external.sync_source_id
+                   AND active_source.organization_id =
+                       external.organization_id
+                   AND active_source.active_generation_id =
+                       external.generation_id
+                   AND active_source.enabled = 1
+                   AND active_source.deleted_at IS NULL
+               )
+             )
+           )
+       )
+       OR EXISTS (
+         SELECT 1
+         FROM events AS legacy
+         WHERE legacy.organization_id = ?
+           AND legacy.deleted_at IS NULL
+           AND legacy.time_kind = 'timed'
+           AND legacy.starts_at_utc < ?
+           AND legacy.ends_at_utc > ?
+           AND legacy.status IN ('hold', 'tentative', 'confirmed')
+           AND (
+             legacy.status <> 'hold'
+             OR legacy.hold_expires_at > ?
+           )
+           AND NOT EXISTS (
+             SELECT 1
+             FROM organizer_events AS adopted
+             WHERE adopted.id = legacy.id
+               AND adopted.organization_id = legacy.organization_id
+           )
+           AND NOT EXISTS (
+             SELECT 1
+             FROM external_source_links AS source_link
+             WHERE source_link.organization_id = legacy.organization_id
+               AND source_link.entity_type = 'event'
+               AND source_link.entity_id = legacy.id
+               AND source_link.source_type = 'meetup_ics'
+               AND source_link.deleted_at IS NULL
+           )
+       )
+       LIMIT 1`,
+    )
+    .bind(
+      organizationId,
+      interval.expandedEndUtc,
+      interval.expandedStartUtc,
+      now,
+      organizationId,
+      interval.expandedEndUtc,
+      interval.expandedStartUtc,
+      now,
+      organizationId,
+      interval.expandedEndUtc,
+      interval.expandedStartUtc,
+      now,
+    )
+    .first<Record<string, unknown>>();
+  return row?.has_conflict === 1;
 }
 
 async function createMappedEvent(
@@ -924,6 +1055,16 @@ async function createMappedEvent(
   }>,
 ): Promise<void> {
   const scheduleVersion = 1;
+  const externalReservationStatements =
+    await stageExternalReservationStatements(
+      database,
+    {
+      ...input,
+      resourceMapping: null,
+      scheduleVersion,
+      stagedMapping: null,
+    },
+  );
   const statements = [
     insertEventStatement(database, {
       ...input,
@@ -977,6 +1118,7 @@ async function createMappedEvent(
       organizationId: input.organizationId,
     }),
     stageEventSnapshotStatement(database, input),
+    ...externalReservationStatements,
   ];
   await database.batch(statements);
 }
@@ -988,6 +1130,7 @@ async function updateMappedEvent(
     clubId: string;
     event: ParsedMeetupEvent;
     eventId: string;
+    existingMapping: SourceMapping;
     expectedScheduleVersion: number;
     fingerprint: string;
     generationId: string;
@@ -998,31 +1141,61 @@ async function updateMappedEvent(
     now: number;
     organizationId: string;
     sourceId: string;
+    scheduleChanged: boolean;
   }>,
 ): Promise<void> {
-  const scheduleVersion = input.expectedScheduleVersion + 1;
+  const scheduleVersion =
+    input.expectedScheduleVersion + (input.scheduleChanged ? 1 : 0);
+  const externalReservationStatements =
+    await stageExternalReservationStatements(
+    database,
+    {
+      ...input,
+      resourceMapping: input.existingMapping,
+      scheduleVersion,
+      stagedMapping: null,
+    },
+  );
+  const mutationAudit = auditAfterChangedStatement(database, {
+    action:
+      input.event.status === "cancelled"
+        ? "meetup.event_cancelled"
+        : "meetup.event_updated",
+    actorProfileId: input.actorProfileId,
+    entityId: input.eventId,
+    entityType: "event",
+    metadata: {
+      scheduleVersion,
+      sourceType: SOURCE_TYPE,
+      status: input.event.status,
+    },
+    now: input.now,
+    organizationId: input.organizationId,
+  });
+  const revisionStatement = database
+    .prepare(
+      `INSERT INTO event_revisions (
+         id, organization_id, event_id, schedule_version, snapshot_json,
+         reason, actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, CASE WHEN changes() = 1 THEN ? ELSE NULL END,
+         ?, ?, ?, ?, ?
+       )`,
+    )
+    .bind(
+      crypto.randomUUID(),
+      input.organizationId,
+      input.eventId,
+      scheduleVersion,
+      revisionSnapshot(input.eventId, input.event, scheduleVersion),
+      "Meetup calendar schedule update",
+      input.actorProfileId,
+      input.now,
+    );
   await database.batch([
     updateEventStatement(database, input),
-    database
-      .prepare(
-        `INSERT INTO event_revisions (
-           id, organization_id, event_id, schedule_version, snapshot_json,
-           reason, actor_profile_id, created_at
-         ) VALUES (
-           ?, ?, CASE WHEN changes() = 1 THEN ? ELSE NULL END,
-           ?, ?, ?, ?, ?
-         )`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        input.organizationId,
-        input.eventId,
-        scheduleVersion,
-        revisionSnapshot(input.eventId, input.event, scheduleVersion),
-        "Meetup calendar update",
-        input.actorProfileId,
-        input.now,
-      ),
+    mutationAudit,
+    ...(input.scheduleChanged ? [revisionStatement] : []),
     importRowStatement(database, {
       eventId: input.eventId,
       event: input.event,
@@ -1036,22 +1209,16 @@ async function updateMappedEvent(
     extendLeaseStatement(database, input),
     updateSourceLinkStatement(database, input),
     auditAfterChangedStatement(database, {
-      action:
-        input.event.status === "cancelled"
-          ? "meetup.event_cancelled"
-          : "meetup.event_updated",
+      action: "meetup.source_link_updated",
       actorProfileId: input.actorProfileId,
-      entityId: input.eventId,
-      entityType: "event",
-      metadata: {
-        scheduleVersion,
-        sourceType: SOURCE_TYPE,
-        status: input.event.status,
-      },
+      entityId: input.linkId,
+      entityType: "external_source_link",
+      metadata: { sourceType: SOURCE_TYPE },
       now: input.now,
       organizationId: input.organizationId,
     }),
     stageEventSnapshotStatement(database, input),
+    ...externalReservationStatements,
   ]);
 }
 
@@ -1059,6 +1226,7 @@ async function recordSkippedRow(
   database: D1DatabaseLike,
   input: Readonly<{
     actorProfileId: string;
+    clubId: string;
     event: ParsedMeetupEvent;
     eventId: string;
     fingerprint: string;
@@ -1071,8 +1239,20 @@ async function recordSkippedRow(
     organizationId: string;
     sourceId: string;
     staleRevision: boolean;
+    existingMapping: SourceMapping;
   }>,
 ): Promise<void> {
+  const externalReservationStatements =
+    await stageExternalReservationStatements(
+    database,
+    {
+      ...input,
+      resourceMapping: input.existingMapping,
+      scheduleVersion:
+        input.existingMapping.scheduleVersion ?? 1,
+      stagedMapping: input.staleRevision ? input.existingMapping : null,
+    },
+  );
   await database.batch([
     importRowStatement(database, {
       eventId: input.eventId,
@@ -1103,6 +1283,7 @@ async function recordSkippedRow(
     input.staleRevision
       ? stageExistingSnapshotStatement(database, input)
       : stageEventSnapshotStatement(database, input),
+    ...externalReservationStatements,
   ]);
 }
 
@@ -1197,7 +1378,7 @@ function insertEventStatement(
         input.clubId,
         input.event.title,
         slug,
-        input.event.status,
+        SOURCE_CANONICAL_EVENT_STATUS,
         input.event.schedule.startsAtUtcMs,
         input.event.schedule.endsAtUtcMs,
         input.event.schedule.timeZone,
@@ -1231,7 +1412,7 @@ function insertEventStatement(
       input.clubId,
       input.event.title,
       slug,
-      input.event.status,
+      SOURCE_CANONICAL_EVENT_STATUS,
       input.event.schedule.timeZone,
       input.event.schedule.startDate,
       input.event.schedule.endDateExclusive,
@@ -1253,6 +1434,7 @@ function updateEventStatement(
     expectedScheduleVersion: number;
     now: number;
     organizationId: string;
+    scheduleChanged: boolean;
   }>,
 ) {
   if (input.event.schedule.kind === "timed") {
@@ -1271,8 +1453,11 @@ function updateEventStatement(
              buffer_before_minutes = 0,
              buffer_after_minutes = 0,
              organizer_scope_json = '[]',
-             schedule_version = schedule_version + 1,
-             schedule_review_state = 'unreviewed',
+              schedule_version = schedule_version + ?,
+              schedule_review_state = CASE
+                WHEN ? = 1 THEN 'unreviewed'
+                ELSE schedule_review_state
+              END,
              hold_expires_at = NULL,
              updated_by_profile_id = ?,
              updated_at = ?
@@ -1284,10 +1469,12 @@ function updateEventStatement(
       .bind(
         input.clubId,
         input.event.title,
-        input.event.status,
+        SOURCE_CANONICAL_EVENT_STATUS,
         input.event.schedule.startsAtUtcMs,
         input.event.schedule.endsAtUtcMs,
         input.event.schedule.timeZone,
+        input.scheduleChanged ? 1 : 0,
+        input.scheduleChanged ? 1 : 0,
         input.actorProfileId,
         input.now,
         input.eventId,
@@ -1310,8 +1497,11 @@ function updateEventStatement(
            buffer_before_minutes = 0,
            buffer_after_minutes = 0,
            organizer_scope_json = '[]',
-           schedule_version = schedule_version + 1,
-           schedule_review_state = 'unreviewed',
+            schedule_version = schedule_version + ?,
+            schedule_review_state = CASE
+              WHEN ? = 1 THEN 'unreviewed'
+              ELSE schedule_review_state
+            END,
            hold_expires_at = NULL,
            updated_by_profile_id = ?,
            updated_at = ?
@@ -1323,10 +1513,12 @@ function updateEventStatement(
     .bind(
       input.clubId,
       input.event.title,
-      input.event.status,
+      SOURCE_CANONICAL_EVENT_STATUS,
       input.event.schedule.timeZone,
       input.event.schedule.startDate,
       input.event.schedule.endDateExclusive,
+      input.scheduleChanged ? 1 : 0,
+      input.scheduleChanged ? 1 : 0,
       input.actorProfileId,
       input.now,
       input.eventId,
@@ -1375,6 +1567,348 @@ function importRowStatement(
       input.now,
       input.now,
     );
+}
+
+async function stageExternalReservationStatements(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    clubId: string;
+    event: ParsedMeetupEvent;
+    eventId: string;
+    fingerprint: string;
+    generationId: string;
+    identityHash: string;
+    now: number;
+    organizationId: string;
+    resourceMapping: SourceMapping | null;
+    scheduleVersion: number;
+    sourceId: string;
+    stagedMapping: SourceMapping | null;
+  }>,
+) {
+  const snapshotId = meetupSnapshotRecordId(
+    input.sourceId,
+    input.generationId,
+    input.identityHash,
+  );
+  const schedule = externalScheduleFacts(input.event, input.stagedMapping);
+  const status =
+    input.stagedMapping?.status ?? input.event.status;
+  const title =
+    input.stagedMapping?.title ?? input.event.title;
+  const sourceFingerprint =
+    input.stagedMapping?.fingerprint ?? input.fingerprint;
+  if (status === "cancelled") {
+    return Object.freeze([]);
+  }
+  if (status !== "confirmed" && status !== "tentative") {
+    throw new MeetupSyncError("calendar_invalid");
+  }
+  const organizerScope =
+    input.resourceMapping?.organizerScope ?? Object.freeze([]);
+  const organizerScopeJson =
+    input.resourceMapping?.organizerScopeJson ?? "[]";
+  const primaryOrganizerProfileId =
+    input.resourceMapping?.primaryOrganizerProfileId ?? null;
+  const venueId = input.resourceMapping?.venueId ?? null;
+  const fingerprintInput = Object.freeze({
+    allDayEndDateExclusive: schedule.allDayEndDateExclusive,
+    allDayStartDate: schedule.allDayStartDate,
+    bufferAfterMinutes: 0,
+    bufferBeforeMinutes: 0,
+    clubId: input.clubId,
+    eventId: input.eventId,
+    generationId: input.generationId,
+    holdExpiresAt: null,
+    interval: Object.freeze({
+      actualEndUtc: schedule.actualEndUtc,
+      actualStartUtc: schedule.actualStartUtc,
+      expandedEndUtc: schedule.expandedEndUtc,
+      expandedStartUtc: schedule.expandedStartUtc,
+    }),
+    organizerScope,
+    organizationId: input.organizationId,
+    planningStatus: status,
+    primaryOrganizerProfileId,
+    scheduleShape: schedule.scheduleShape,
+    scheduleVersion: input.scheduleVersion,
+    sourceFingerprint,
+    sourceKind: "meetup",
+    sourceRecordId: snapshotId,
+    syncSourceId: input.sourceId,
+    timeZone: schedule.timeZone,
+    venueId,
+  } as const);
+  const normalizedStateFingerprint =
+    await externalReservationStateFingerprint(fingerprintInput);
+  const reservationSemanticFingerprint =
+    await externalReservationSemanticFingerprint(fingerprintInput);
+  const normalizationId = `meetup-normalization:${snapshotId}`;
+  const normalizationStatement = database
+    .prepare(
+      `INSERT INTO meetup_snapshot_reservation_normalizations (
+         id, organization_id, sync_source_id, generation_id, snapshot_id,
+         event_id, club_id, planning_status, schedule_shape,
+         actual_start_utc, actual_end_utc, expanded_start_utc,
+         expanded_end_utc, timezone, all_day_start_date,
+         all_day_end_date_exclusive, buffer_before_minutes,
+         buffer_after_minutes, venue_id, primary_organizer_profile_id,
+         organizer_scope_json, schedule_version, hold_expires_at,
+         source_fingerprint, normalized_state_fingerprint,
+         reservation_semantic_fingerprint, created_at, updated_at
+       )
+       SELECT ?, snapshot.organization_id, snapshot.sync_source_id,
+              snapshot.generation_id, snapshot.id, snapshot.event_id,
+              source.club_id, snapshot.status, snapshot.time_kind,
+              ?, ?, ?, ?, snapshot.timezone,
+              snapshot.all_day_start_date,
+              snapshot.all_day_end_date_exclusive,
+              0, 0, event.venue_id, event.primary_organizer_profile_id,
+              event.organizer_scope_json, event.schedule_version, NULL,
+              snapshot.source_fingerprint, ?, ?, ?, ?
+       FROM meetup_event_snapshots AS snapshot
+       JOIN sync_sources AS source
+         ON source.id = snapshot.sync_source_id
+        AND source.organization_id = snapshot.organization_id
+        AND source.pending_generation_id = snapshot.generation_id
+        AND source.enabled = 1
+        AND source.deleted_at IS NULL
+       JOIN meetup_sync_generations AS generation
+         ON generation.id = snapshot.generation_id
+        AND generation.sync_source_id = source.id
+        AND generation.organization_id = source.organization_id
+        AND generation.state = 'staging'
+       JOIN events AS event
+         ON event.id = snapshot.event_id
+        AND event.organization_id = snapshot.organization_id
+        AND event.deleted_at IS NULL
+       WHERE snapshot.id = ?
+         AND snapshot.organization_id = ?
+         AND snapshot.sync_source_id = ?
+         AND snapshot.generation_id = ?
+         AND snapshot.event_id = ?
+         AND snapshot.status IN ('confirmed', 'tentative')
+         AND snapshot.source_fingerprint = ?
+         AND source.club_id = ?
+         AND event.venue_id IS ?
+         AND event.primary_organizer_profile_id IS ?
+         AND event.organizer_scope_json = ?
+         AND event.schedule_version = ?
+       ON CONFLICT(sync_source_id, generation_id, snapshot_id, event_id)
+       DO UPDATE SET
+         club_id = excluded.club_id,
+         planning_status = excluded.planning_status,
+         schedule_shape = excluded.schedule_shape,
+         actual_start_utc = excluded.actual_start_utc,
+         actual_end_utc = excluded.actual_end_utc,
+         expanded_start_utc = excluded.expanded_start_utc,
+         expanded_end_utc = excluded.expanded_end_utc,
+         timezone = excluded.timezone,
+         all_day_start_date = excluded.all_day_start_date,
+         all_day_end_date_exclusive =
+           excluded.all_day_end_date_exclusive,
+         buffer_before_minutes = excluded.buffer_before_minutes,
+         buffer_after_minutes = excluded.buffer_after_minutes,
+         venue_id = excluded.venue_id,
+         primary_organizer_profile_id =
+           excluded.primary_organizer_profile_id,
+         organizer_scope_json = excluded.organizer_scope_json,
+         schedule_version = excluded.schedule_version,
+         hold_expires_at = excluded.hold_expires_at,
+         source_fingerprint = excluded.source_fingerprint,
+         normalized_state_fingerprint =
+           excluded.normalized_state_fingerprint,
+         reservation_semantic_fingerprint =
+           excluded.reservation_semantic_fingerprint,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      normalizationId,
+      schedule.actualStartUtc,
+      schedule.actualEndUtc,
+      schedule.expandedStartUtc,
+      schedule.expandedEndUtc,
+      normalizedStateFingerprint,
+      reservationSemanticFingerprint,
+      input.now,
+      input.now,
+      snapshotId,
+      input.organizationId,
+      input.sourceId,
+      input.generationId,
+      input.eventId,
+      sourceFingerprint,
+      input.clubId,
+      venueId,
+      primaryOrganizerProfileId,
+      organizerScopeJson,
+      input.scheduleVersion,
+    );
+  const externalReservationStatement = database
+    .prepare(
+      `INSERT INTO organizer_external_reservation_intervals (
+         id, organization_id, source_kind, source_record_id, sync_source_id,
+         generation_id, event_id, club_id, planning_status,
+         schedule_shape, actual_start_utc, actual_end_utc,
+         expanded_start_utc, expanded_end_utc, timezone,
+         all_day_start_date, all_day_end_date_exclusive,
+          buffer_before_minutes, buffer_after_minutes, venue_id,
+          primary_organizer_profile_id, organizer_scope_json,
+          source_fingerprint, normalized_state_fingerprint,
+          reservation_semantic_fingerprint, schedule_version,
+          hold_expires_at, title, created_at, updated_at
+       )
+       VALUES (
+         ?, ?, 'meetup', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         0, 0, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?
+       )
+       ON CONFLICT(source_kind, source_record_id) DO UPDATE SET
+         event_id = excluded.event_id,
+         club_id = excluded.club_id,
+         planning_status = excluded.planning_status,
+         schedule_shape = excluded.schedule_shape,
+         actual_start_utc = excluded.actual_start_utc,
+         actual_end_utc = excluded.actual_end_utc,
+         expanded_start_utc = excluded.expanded_start_utc,
+         expanded_end_utc = excluded.expanded_end_utc,
+         timezone = excluded.timezone,
+         all_day_start_date = excluded.all_day_start_date,
+         all_day_end_date_exclusive =
+           excluded.all_day_end_date_exclusive,
+         buffer_before_minutes = excluded.buffer_before_minutes,
+         buffer_after_minutes = excluded.buffer_after_minutes,
+         venue_id = excluded.venue_id,
+         primary_organizer_profile_id =
+           excluded.primary_organizer_profile_id,
+         organizer_scope_json = excluded.organizer_scope_json,
+         source_fingerprint = excluded.source_fingerprint,
+         normalized_state_fingerprint =
+           excluded.normalized_state_fingerprint,
+         reservation_semantic_fingerprint =
+           excluded.reservation_semantic_fingerprint,
+         schedule_version = excluded.schedule_version,
+         hold_expires_at = NULL,
+         title = excluded.title,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      `meetup-interval:${snapshotId}`,
+      input.organizationId,
+      snapshotId,
+      input.sourceId,
+      input.generationId,
+      input.eventId,
+      input.clubId,
+      status,
+      schedule.scheduleShape,
+      schedule.actualStartUtc,
+      schedule.actualEndUtc,
+      schedule.expandedStartUtc,
+      schedule.expandedEndUtc,
+      schedule.timeZone,
+      schedule.allDayStartDate,
+      schedule.allDayEndDateExclusive,
+      venueId,
+      primaryOrganizerProfileId,
+      organizerScopeJson,
+      sourceFingerprint,
+      normalizedStateFingerprint,
+      reservationSemanticFingerprint,
+      input.scheduleVersion,
+      title,
+      input.now,
+      input.now,
+    );
+  return Object.freeze([
+    normalizationStatement,
+    externalReservationStatement,
+  ]);
+}
+
+function externalScheduleFacts(
+  event: ParsedMeetupEvent,
+  mapping: SourceMapping | null,
+): Readonly<
+  NormalizedMeetupInterval & { timeZone: string }
+> {
+  if (mapping) {
+    const timeZone = mapping.timeZone ?? DEFAULT_TIME_ZONE;
+    if (
+      mapping.timeKind === "timed" &&
+      mapping.startsAtUtc !== null &&
+      mapping.endsAtUtc !== null
+    ) {
+      return Object.freeze({
+        ...normalizeConflictInterval({
+          startUtc: mapping.startsAtUtc,
+          endUtc: mapping.endsAtUtc,
+        }),
+        allDayEndDateExclusive: null,
+        allDayStartDate: null,
+        scheduleShape: "timed" as const,
+        timeZone,
+      });
+    }
+    if (
+      mapping.timeKind === "all_day" &&
+      mapping.allDayStartDate !== null &&
+      mapping.allDayEndDateExclusive !== null
+    ) {
+      return Object.freeze({
+        ...normalizeAllDayConflictInterval({
+          startDate: mapping.allDayStartDate,
+          endDateExclusive: mapping.allDayEndDateExclusive,
+          timeZone,
+        }),
+        allDayEndDateExclusive: mapping.allDayEndDateExclusive,
+        allDayStartDate: mapping.allDayStartDate,
+        scheduleShape: "all_day" as const,
+        timeZone,
+      });
+    }
+    throw new MeetupSyncError("calendar_invalid");
+  }
+  if (event.schedule.kind === "timed") {
+    return Object.freeze({
+      ...normalizeConflictInterval({
+        startUtc: event.schedule.startsAtUtcMs,
+        endUtc: event.schedule.endsAtUtcMs,
+      }),
+      allDayEndDateExclusive: null,
+      allDayStartDate: null,
+      scheduleShape: "timed" as const,
+      timeZone: event.schedule.timeZone,
+    });
+  }
+  return Object.freeze({
+    ...normalizeAllDayConflictInterval({
+      startDate: event.schedule.startDate,
+      endDateExclusive: event.schedule.endDateExclusive,
+      timeZone: event.schedule.timeZone,
+    }),
+    allDayEndDateExclusive: event.schedule.endDateExclusive,
+    allDayStartDate: event.schedule.startDate,
+    scheduleShape: "all_day" as const,
+    timeZone: event.schedule.timeZone,
+  });
+}
+
+type NormalizedMeetupInterval = Readonly<{
+  actualEndUtc: number;
+  actualStartUtc: number;
+  allDayEndDateExclusive: string | null;
+  allDayStartDate: string | null;
+  expandedEndUtc: number;
+  expandedStartUtc: number;
+  scheduleShape: "all_day" | "timed";
+}>;
+
+function meetupSnapshotRecordId(
+  sourceId: string,
+  generationId: string,
+  identityHash: string,
+): string {
+  return `meetup-snapshot:${sourceId}:${generationId}:${identityHash}`;
 }
 
 function extendLeaseStatement(
@@ -1640,7 +2174,11 @@ function stageEventSnapshotStatement(
          updated_at = excluded.updated_at`,
     )
     .bind(
-      crypto.randomUUID(),
+      meetupSnapshotRecordId(
+        input.sourceId,
+        input.generationId,
+        input.identityHash,
+      ),
       input.organizationId,
       input.sourceId,
       input.generationId,
@@ -1734,7 +2272,11 @@ function stageExistingSnapshotStatement(
          updated_at = excluded.updated_at`,
     )
     .bind(
-      crypto.randomUUID(),
+      meetupSnapshotRecordId(
+        input.sourceId,
+        input.generationId,
+        input.identityHash,
+      ),
       input.generationId,
       input.now,
       input.now,
@@ -2283,7 +2825,7 @@ async function finalizeCompletedRefresh(
          FROM events AS event
          WHERE event.organization_id = ?
            AND event.deleted_at IS NULL
-           AND event.status IN ('confirmed', 'tentative')
+           AND event.status IN ('draft', 'confirmed', 'tentative')
            AND (
              (event.time_kind = 'timed' AND event.ends_at_utc > ?)
              OR
@@ -2351,7 +2893,7 @@ async function finalizeCompletedRefresh(
     database
       .prepare(
         `UPDATE events
-         SET status = 'cancelled',
+         SET status = 'draft',
              visibility = 'private',
              published_at = NULL,
              schedule_version = schedule_version + 1,
@@ -2361,7 +2903,7 @@ async function finalizeCompletedRefresh(
              deleted_at = ?
          WHERE organization_id = ?
            AND deleted_at IS NULL
-           AND status IN ('confirmed', 'tentative')
+           AND status IN ('draft', 'confirmed', 'tentative')
            AND (
              (time_kind = 'timed' AND ends_at_utc > ?)
              OR
@@ -2695,14 +3237,45 @@ async function readSourceMapping(
               link.source_last_modified_at AS source_last_modified_at,
               event.id AS event_id,
               event.title AS title,
-              event.status AS status,
+              COALESCE((
+                SELECT snapshot.status
+                FROM sync_sources AS mapped_source
+                JOIN meetup_event_snapshots AS snapshot
+                  ON snapshot.organization_id =
+                     mapped_source.organization_id
+                 AND snapshot.sync_source_id = mapped_source.id
+                 AND snapshot.event_id = event.id
+                 AND (
+                   snapshot.generation_id =
+                     mapped_source.pending_generation_id
+                   OR snapshot.generation_id =
+                     mapped_source.active_generation_id
+                 )
+                WHERE mapped_source.id = link.sync_source_id
+                  AND mapped_source.organization_id =
+                      link.organization_id
+                ORDER BY
+                  CASE
+                    WHEN snapshot.generation_id =
+                         mapped_source.pending_generation_id
+                    THEN 0
+                    ELSE 1
+                  END,
+                  snapshot.updated_at DESC,
+                  snapshot.id ASC
+                LIMIT 1
+              ), event.status) AS status,
               event.time_kind AS time_kind,
               event.starts_at_utc AS starts_at_utc,
               event.ends_at_utc AS ends_at_utc,
               event.timezone AS timezone,
               event.all_day_start_date AS all_day_start_date,
               event.all_day_end_date_exclusive AS all_day_end_date_exclusive,
-              event.schedule_version AS schedule_version
+              event.schedule_version AS schedule_version,
+              event.venue_id AS venue_id,
+              event.primary_organizer_profile_id AS
+                primary_organizer_profile_id,
+              event.organizer_scope_json AS organizer_scope_json
        FROM external_source_links AS link
        LEFT JOIN events AS event
          ON event.id = link.entity_id
@@ -2719,6 +3292,7 @@ async function readSourceMapping(
     .bind(organizationId, SOURCE_TYPE, sourceId, identityHash)
     .first<Record<string, unknown>>();
   if (!row) return null;
+  const organizerScope = readSourceOrganizerScope(row);
   return Object.freeze({
     linkId: requiredRowString(row, "link_id"),
     eventId: readOptionalString(row, "event_id"),
@@ -2742,7 +3316,45 @@ async function readSourceMapping(
       "all_day_end_date_exclusive",
     ),
     scheduleVersion: readOptionalInteger(row, "schedule_version"),
+    venueId: readOptionalString(row, "venue_id"),
+    primaryOrganizerProfileId: readOptionalString(
+      row,
+      "primary_organizer_profile_id",
+    ),
+    organizerScope,
+    organizerScopeJson: JSON.stringify(organizerScope),
   });
+}
+
+function readSourceOrganizerScope(
+  row: Record<string, unknown>,
+): readonly string[] {
+  const raw = readOptionalString(row, "organizer_scope_json");
+  if (raw === null) return Object.freeze([]);
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every(
+        (value) =>
+          typeof value === "string" &&
+          value.length >= 1 &&
+          value.length <= 128,
+      )
+    ) {
+      throw new TypeError("invalid organizer scope");
+    }
+    const canonical = [...new Set(parsed)].sort();
+    if (
+      canonical.length !== parsed.length ||
+      JSON.stringify(canonical) !== raw
+    ) {
+      throw new TypeError("noncanonical organizer scope");
+    }
+    return Object.freeze(canonical);
+  } catch {
+    throw new MeetupSyncError("internal_error");
+  }
 }
 
 function sourceRecord(row: Record<string, unknown>): SourceRecord {
@@ -2899,6 +3511,25 @@ function mappingMatchesEvent(
     mapping.title !== event.title ||
     mapping.status !== event.status ||
     mapping.externalUrl !== event.eventUrl ||
+    mapping.timeKind !== event.schedule.kind ||
+    mapping.timeZone !== event.schedule.timeZone
+  ) {
+    return false;
+  }
+  return event.schedule.kind === "timed"
+    ? mapping.startsAtUtc === event.schedule.startsAtUtcMs &&
+        mapping.endsAtUtc === event.schedule.endsAtUtcMs
+    : mapping.allDayStartDate === event.schedule.startDate &&
+        mapping.allDayEndDateExclusive ===
+          event.schedule.endDateExclusive;
+}
+
+function mappingScheduleMatchesEvent(
+  mapping: SourceMapping,
+  event: ParsedMeetupEvent,
+): boolean {
+  if (
+    mapping.status !== event.status ||
     mapping.timeKind !== event.schedule.kind ||
     mapping.timeZone !== event.schedule.timeZone
   ) {
@@ -3082,9 +3713,15 @@ function eventSlug(
 }
 
 function isConflictRejection(error: unknown): boolean {
+  if (
+    error instanceof MeetupSyncError &&
+    error.code === "conflict_rejected"
+  ) {
+    return true;
+  }
   return (
     error instanceof Error &&
-    /conflict_guard_|event_revisions\.event_id|audit_logs\.entity_id/iu.test(
+    /conflict_guard_|phase4_source_activation_conflict|phase4_source_activation_mismatch|event_revisions\.event_id|audit_logs\.entity_id/iu.test(
       `${error.message} ${
         (error as Error & { cause?: unknown }).cause ?? ""
       }`,

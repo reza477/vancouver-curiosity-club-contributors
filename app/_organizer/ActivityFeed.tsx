@@ -27,7 +27,7 @@ export function ActivityFeed({
         </ol>
       ) : (
         <p className={styles.panelEmpty}>
-          No Phase 3 activity has been recorded yet.
+          No private workspace activity has been recorded yet.
         </p>
       )}
     </section>

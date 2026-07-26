@@ -200,8 +200,8 @@ export function NotificationCenter({
           <p className={styles.kicker}>Inbox clear</p>
           <h2 id="notifications-empty-title">No notifications yet.</h2>
           <p>
-            Relevant invitation, membership, assignment, and private Draft
-            coordination events will appear here when they genuinely occur.
+            Relevant membership, assignment, private planning, conflict-review,
+            and hold events will appear here when they genuinely occur.
           </p>
         </section>
       )}
@@ -250,9 +250,17 @@ function notificationContent(notification: NotificationDto): Readonly<{
     };
   }
   const labels = {
+    conflict_approved: "Conflict review approved",
+    conflict_created: "New schedule conflict",
+    conflict_rejected: "Conflict review rejected",
+    conflict_review_requested: "Conflict review requested",
     draft_coordination_changed: "Draft coordination changed",
     event_assignment: "Event assignment",
+    event_cancelled: "Private event cancelled",
+    event_confirmed: "Private event confirmed",
     event_schedule_changed: "Draft schedule changed",
+    hold_expired: "Tentative hold expired",
+    hold_nearing_expiry: "Tentative hold nearing expiry",
   } as const;
   return {
     detail: payload.title,

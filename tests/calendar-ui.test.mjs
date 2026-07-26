@@ -110,7 +110,7 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
   assert.match(shell, /Meetup connection/);
   assert.match(
     portal,
-    /without reserving time or publishing to the website/u,
+    /holds, confirmed schedules, conflicts[\s\S]*Website publication remains unavailable/u,
   );
   assert.doesNotMatch(portal, /private Phase 1 surface/i);
   assert.match(page, /loadOrganizerPageContext\("\/organizer\/meetup"\)/);
@@ -155,7 +155,14 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
     controls,
     /clubId\.length === 0[\s\S]*feedUrl\.length === 0/,
   );
-  assert.doesNotMatch(model, /feedUrl|lastErrorCode|organizationId/);
+  assert.doesNotMatch(
+    model,
+    /^\s*(feedUrl|lastErrorCode|organizationId)\s*:/mu,
+  );
+  assert.match(
+    model,
+    /scheduleConflict:\s*state\.lastErrorCode === "conflict_rejected"/u,
+  );
   assert.match(model, /Explicitly strips organization identifiers/);
 });
 
@@ -210,7 +217,11 @@ test("manual Meetup APIs derive authority server-side and restrict both mutation
     model,
     /^\s*(feedUrl|lastErrorCode|organizationId)\s*:/mu,
   );
-  assert.doesNotMatch(model, /state\.(feedUrl|lastErrorCode|organizationId)/u);
+  assert.doesNotMatch(model, /state\.(feedUrl|organizationId)/u);
+  assert.match(
+    model,
+    /scheduleConflict:\s*state\.lastErrorCode === "conflict_rejected"/u,
+  );
   assert.match(worker, /"\/organizer"/);
   assert.match(worker, /"\/api"/);
   assert.match(worker, /pathname\.startsWith\(`\$\{path\}\/`\)/);

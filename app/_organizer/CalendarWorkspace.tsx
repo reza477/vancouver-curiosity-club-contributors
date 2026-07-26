@@ -38,6 +38,7 @@ const SOURCE_VALUES = ["manual", "meetup", "legacy"] as const;
 type CalendarFilters = Readonly<{
   category: string;
   club: string;
+  conflicts: "" | "only";
   dateFrom: string;
   dateTo: string;
   lane: string;
@@ -51,6 +52,7 @@ type CalendarFilters = Readonly<{
 const EMPTY_FILTERS: CalendarFilters = Object.freeze({
   category: "",
   club: "",
+  conflicts: "",
   dateFrom: "",
   dateTo: "",
   lane: "",
@@ -121,6 +123,8 @@ export function CalendarWorkspace({
             entry.publicationStatus === filters.publication) &&
           (!filters.lane || entry.lane?.id === filters.lane) &&
           (!filters.category || entry.category?.id === filters.category) &&
+          (filters.conflicts !== "only" ||
+            (entry.conflictCount ?? 0) > 0) &&
           (!filters.source || entry.source === filters.source) &&
           (!filters.dateFrom || entry.endDateKey >= filters.dateFrom) &&
           (!filters.dateTo || entry.dateKey <= filters.dateTo)
@@ -255,6 +259,16 @@ export function CalendarWorkspace({
           <FilterSelect label="Lane" onChange={(value) => updateFilter("lane", value)} options={filterOptions.lanes} value={filters.lane} />
           <FilterSelect label="Category" onChange={(value) => updateFilter("category", value)} options={filterOptions.categories} value={filters.category} />
           <FilterSelect
+            label="Conflicts"
+            onChange={(value) =>
+              updateFilter("conflicts", value === "only" ? "only" : "")
+            }
+            options={[
+              { id: "only", label: "Only records with conflicts" },
+            ]}
+            value={filters.conflicts}
+          />
+          <FilterSelect
             label="Source"
             onChange={(value) => updateFilter("source", value)}
             options={[
@@ -313,7 +327,16 @@ export function CalendarWorkspace({
         <p aria-live="polite">{refreshNotice}</p>
       </div>
 
-      {view === "agenda" ? <Agenda entries={scheduled} /> : null}
+      {view === "agenda" ? (
+        <Agenda
+          entries={scheduled}
+          emptyMessage={
+            filters.conflicts === "only"
+              ? "No scheduled records with conflicts match."
+              : undefined
+          }
+        />
+      ) : null}
       {view === "day" ? (
         <DayView entries={scheduled} selectedDate={selectedDate} />
       ) : null}
@@ -359,10 +382,16 @@ export function CalendarWorkspace({
   );
 }
 
-function Agenda({ entries }: Readonly<{ entries: readonly OrganizerCalendarEntry[] }>) {
+function Agenda({
+  emptyMessage,
+  entries,
+}: Readonly<{
+  emptyMessage?: string;
+  entries: readonly OrganizerCalendarEntry[];
+}>) {
   const groups = groupByDate(entries);
   if (groups.length === 0) {
-    return <CalendarEmpty />;
+    return <CalendarEmpty message={emptyMessage} />;
   }
   return (
     <div className={styles.agenda} aria-label="Agenda">
@@ -437,12 +466,17 @@ function MonthView({
       </div>
       <div className={styles.monthView} aria-label={rangeLabel(selectedDate, "month")}>
         {cells.map((cell) => {
-          const count = entries.filter(
+          const records = entries.filter(
             (entry) => entry.dateKey <= cell.date && entry.endDateKey >= cell.date,
-          ).length;
+          );
+          const count = records.length;
+          const conflictCount = records.reduce(
+            (total, entry) => total + (entry.conflictCount ?? 0),
+            0,
+          );
           return (
             <button
-              aria-label={`${formatDate(cell.date, "full")}, ${count} ${count === 1 ? "record" : "records"}`}
+              aria-label={`${formatDate(cell.date, "full")}, ${count} ${count === 1 ? "record" : "records"}, ${conflictCount} ${conflictCount === 1 ? "conflict indicator" : "conflict indicators"}`}
               className={cell.inMonth ? undefined : styles.outsideMonth}
               key={cell.date}
               onClick={() => onSelectDate(cell.date)}
@@ -454,6 +488,11 @@ function MonthView({
                   {count}
                   <span aria-hidden="true"> {count === 1 ? "note" : "notes"}</span>
                 </strong>
+              ) : null}
+              {conflictCount > 0 ? (
+                <span className={styles.monthConflictMark}>
+                  {conflictCount} conflict
+                </span>
               ) : null}
             </button>
           );
@@ -475,7 +514,7 @@ function EventList({
       {entries.map((entry) => (
         <li key={entry.id}>
           <Link
-            aria-label={`${entry.title}. ${entry.fullScheduleLabel}. ${entry.organizer.displayName}. ${entry.club.name}. ${statusLabel(entry.planningStatus)}. ${entry.readOnly ? "Read-only source record." : "Private planning record."}`}
+            aria-label={`${entry.title}. ${entry.fullScheduleLabel}. ${entry.organizer.displayName}. ${entry.club.name}. ${statusLabel(entry.planningStatus)}. ${calendarConflictLabel(entry)} ${entry.holdExpiryLabel ?? ""} ${entry.readOnly ? "Read-only source record." : "Private planning record."}`}
             href={`/organizer/events/${encodeURIComponent(entry.id)}`}
           >
             <span
@@ -498,6 +537,27 @@ function EventList({
               <StatusPill tone={entry.source === "meetup" ? "green" : "neutral"}>
                 {sourceLabel(entry.source)}
               </StatusPill>
+              {(entry.conflictCount ?? 0) > 0 ? (
+                <StatusPill tone="amber">
+                  {(entry.conflictCount ?? 0) === 1
+                    ? "1 conflict"
+                    : `${entry.conflictCount} conflicts`}
+                  {entry.conflictState && entry.conflictState !== "none"
+                    ? ` · ${capitalize(entry.conflictState)}`
+                    : ""}
+                </StatusPill>
+              ) : null}
+              {entry.holdState ? (
+                <StatusPill
+                  tone={entry.holdState === "expired" ? "neutral" : "amber"}
+                >
+                  {entry.holdState === "expired"
+                    ? "Hold expired"
+                    : entry.holdState === "nearing_expiry"
+                      ? "Hold nearing expiry"
+                      : "Active hold"}
+                </StatusPill>
+              ) : null}
             </span>
           </Link>
         </li>
@@ -532,11 +592,13 @@ function FilterSelect({
   );
 }
 
-function CalendarEmpty() {
+function CalendarEmpty({
+  message = "No scheduled records match.",
+}: Readonly<{ message?: string }>) {
   return (
     <div className={styles.calendarEmpty}>
       <p className={styles.kicker}>Open calendar</p>
-      <h2>No scheduled records match.</h2>
+      <h2>{message}</h2>
       <p>Change the date or clear filters. No placeholder event has been added.</p>
     </div>
   );
@@ -655,6 +717,16 @@ function statusLabel(value: OrganizerCalendarEntry["planningStatus"]): string {
   return value.replace("_", " ");
 }
 
+function calendarConflictLabel(entry: OrganizerCalendarEntry): string {
+  const count = entry.conflictCount ?? 0;
+  if (count === 0) return "No recorded conflict.";
+  const state =
+    entry.conflictState && entry.conflictState !== "none"
+      ? ` ${capitalize(entry.conflictState)}.`
+      : "";
+  return `${count} ${count === 1 ? "conflict" : "conflicts"}.${state}`;
+}
+
 function capitalize(value: string): string {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
@@ -707,6 +779,7 @@ export function parseStoredFilters(snapshot: string): CalendarFilters {
   return Object.freeze({
     category: boundedIdentifier(candidate.category),
     club: boundedIdentifier(candidate.club),
+    conflicts: candidate.conflicts === "only" ? "only" : "",
     dateFrom: validDateKey(candidate.dateFrom),
     dateTo: validDateKey(candidate.dateTo),
     lane: boundedIdentifier(candidate.lane),

@@ -12,9 +12,9 @@ import { updateOrganizerEvent } from "../../lib/server/organizer/events.ts";
 import {
   DATABASE_INVARIANT_TRIGGER_NAMES,
   DATABASE_INVARIANT_VERSION,
-  ensureDatabaseInvariants,
 } from "../../lib/server/database/invariants.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 
 const DRIZZLE = join(process.cwd(), "drizzle");
 const V8_FILES = [
@@ -268,8 +268,13 @@ test("populated-v8 adoption is all-or-nothing and leaves ineligible legacy organ
   for (const fragment of productionFragments(sql(PHASE3_FILE))) {
     await database.prepare(fragment).run();
   }
+  for (const fragment of productionFragments(
+    sql("0013_phase4_conflict_engine.sql"),
+  )) {
+    await database.prepare(fragment).run();
+  }
 
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
   assert.equal(
     (
       await database

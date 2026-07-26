@@ -30,9 +30,21 @@ export type OrganizerCalendarEntry = Readonly<{
   allDay: boolean;
   category: Readonly<{ id: string; name: string }> | null;
   club: Readonly<{ id: string; name: string }>;
+  conflictCount?: number;
+  conflictState?:
+    | "approved"
+    | "invalidated"
+    | "none"
+    | "open"
+    | "pending"
+    | "rejected"
+    | "resolved"
+    | "warning";
   dateKey: string;
   endDateKey: string;
   fullScheduleLabel: string;
+  holdExpiryLabel?: string | null;
+  holdState?: "active" | "expired" | "nearing_expiry" | null;
   id: string;
   lane: Readonly<{ id: string; name: string }> | null;
   organizer: Readonly<{
@@ -62,7 +74,14 @@ export type OrganizerEventSummary = Readonly<{
   clubName: string;
   deleted: boolean;
   id: string;
-  planningStatus: "draft" | "idea";
+  planningStatus:
+    | "archived"
+    | "cancelled"
+    | "completed"
+    | "confirmed"
+    | "draft"
+    | "idea"
+    | "tentative_hold";
   publicationStatus: "private";
   scheduleLabel: string;
   title: string;
@@ -88,5 +107,11 @@ export type OrganizerEventFormOptions = Readonly<{
     clubId: string;
     id: string;
     label: string;
+  }>[];
+  venues?: readonly Readonly<{
+    archived?: boolean;
+    id: string;
+    label: string;
+    timezone: string;
   }>[];
 }>;

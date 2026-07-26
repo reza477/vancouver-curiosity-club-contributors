@@ -8,6 +8,7 @@ const primaryNavigation = [
   { href: "/organizer", label: "Dashboard" },
   { href: "/organizer/calendar", label: "Calendar" },
   { href: "/organizer/events", label: "Events" },
+  { href: "/organizer/conflicts", label: "Conflicts" },
   { href: "/organizer/team", label: "Team" },
   { href: "/organizer/clubs", label: "Clubs" },
 ] as const;
@@ -55,8 +56,8 @@ export function WorkspaceShell({
         </nav>
 
         <p className={styles.phaseNote}>
-          Phase 3 is for private Ideas and Drafts. Scheduling reservations and
-          website publishing are not available here.
+          Private scheduling and conflict coordination live here. Website
+          publishing remains unavailable in this phase.
         </p>
 
         <details className={styles.accountMenu}>
@@ -135,6 +136,11 @@ export function WorkspaceShell({
           currentPath={currentPath}
           href="/organizer/events/new"
           label="Add event"
+        />
+        <MobileLink
+          currentPath={currentPath}
+          href="/organizer/conflicts"
+          label="Conflicts"
         />
         <MobileLink
           currentPath={currentPath}

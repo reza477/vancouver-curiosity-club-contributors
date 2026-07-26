@@ -11,10 +11,15 @@ const ROUTES = [
   "clubs/route.ts",
   "clubs/[id]/route.ts",
   "clubs/[id]/archive/route.ts",
+  "conflicts/route.ts",
+  "conflicts/preview/route.ts",
+  "conflicts/incidents/[id]/review/route.ts",
+  "conflicts/reviews/[id]/decision/route.ts",
   "invitations/route.ts",
   "invitations/[id]/revoke/route.ts",
   "events/route.ts",
   "events/[id]/route.ts",
+  "events/[id]/actions/route.ts",
   "events/[id]/delete/route.ts",
   "events/[id]/duplicate/route.ts",
   "events/[id]/restore/route.ts",
@@ -24,19 +29,27 @@ const ROUTES = [
   "notifications/read-all/route.ts",
   "profile/route.ts",
   "settings/route.ts",
+  "settings/conflict-policy/route.ts",
   "team/route.ts",
   "team/[id]/route.ts",
   "team/ownership/route.ts",
+  "venues/route.ts",
+  "venues/[id]/route.ts",
+  "venues/[id]/archive/route.ts",
 ];
 
 const MUTATION_ROUTES = [
   "clubs/route.ts",
   "clubs/[id]/route.ts",
   "clubs/[id]/archive/route.ts",
+  "conflicts/preview/route.ts",
+  "conflicts/incidents/[id]/review/route.ts",
+  "conflicts/reviews/[id]/decision/route.ts",
   "invitations/route.ts",
   "invitations/[id]/revoke/route.ts",
   "events/route.ts",
   "events/[id]/route.ts",
+  "events/[id]/actions/route.ts",
   "events/[id]/delete/route.ts",
   "events/[id]/duplicate/route.ts",
   "events/[id]/restore/route.ts",
@@ -45,8 +58,12 @@ const MUTATION_ROUTES = [
   "notifications/read-all/route.ts",
   "profile/route.ts",
   "settings/route.ts",
+  "settings/conflict-policy/route.ts",
   "team/[id]/route.ts",
   "team/ownership/route.ts",
+  "venues/route.ts",
+  "venues/[id]/route.ts",
+  "venues/[id]/archive/route.ts",
 ];
 
 function routeSource(relativePath) {
@@ -62,7 +79,7 @@ function routeSource(relativePath) {
   );
 }
 
-test("every Phase 3 organizer JSON route revalidates trusted server membership and uses private response helpers", () => {
+test("every organizer JSON route revalidates trusted server membership and uses private response helpers", () => {
   for (const relativePath of ROUTES) {
     const source = routeSource(relativePath);
     assert.match(
@@ -83,7 +100,7 @@ test("every Phase 3 organizer JSON route revalidates trusted server membership a
   }
 });
 
-test("every Phase 3 organizer mutation authenticates before bounded same-origin body parsing", () => {
+test("every organizer mutation authenticates before bounded same-origin body parsing", () => {
   for (const relativePath of MUTATION_ROUTES) {
     const source = routeSource(relativePath);
     const mutationExportIndex = Math.max(
@@ -149,7 +166,7 @@ test("every Phase 3 organizer mutation authenticates before bounded same-origin 
   );
 });
 
-test("Phase 3 mutation bodies distinguish CSRF denial from 422 body validation", async () => {
+test("organizer mutation bodies distinguish CSRF denial from 422 body validation", async () => {
   const sameOrigin = "https://workspace.example";
   assert.deepEqual(
     await readOrganizerMutationBody(

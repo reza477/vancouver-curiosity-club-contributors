@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isRecord, organizerRequest, safeNotice } from "./client";
 import {
@@ -28,10 +28,18 @@ export function EventEditorForm({
 }>) {
   const router = useRouter();
   const summaryRef = useRef<HTMLDivElement>(null);
+  const scheduleHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previewSequenceRef = useRef(0);
   const [value, setValue] = useState(initialValue);
   const [errors, setErrors] = useState<readonly string[]>([]);
   const [notice, setNotice] = useState("");
+  const [conflictReason, setConflictReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<ConflictPreviewState>({
+    conflicts: [],
+    kind: "idle",
+    message: "Choose a real schedule to check for coordination conflicts.",
+  });
 
   function update<K extends keyof EventEditorValue>(
     key: K,
@@ -39,6 +47,66 @@ export function EventEditorForm({
   ) {
     setValue((current) => ({ ...current, [key]: next }));
   }
+
+  const previewFingerprint = conflictPreviewFingerprint(value, eventId);
+  useEffect(() => {
+    const sequence = ++previewSequenceRef.current;
+    const controller = new AbortController();
+    if (previewFingerprint === null) {
+      const idleTimer = window.setTimeout(() => {
+        if (previewSequenceRef.current !== sequence) return;
+        setPreview({
+          conflicts: [],
+          kind: "idle",
+          message: "Choose a real schedule to check for coordination conflicts.",
+        });
+      }, 0);
+      return () => {
+        window.clearTimeout(idleTimer);
+        controller.abort();
+      };
+    }
+
+    const timer = window.setTimeout(async () => {
+      if (previewSequenceRef.current !== sequence) return;
+      setPreview((current) => ({
+        ...current,
+        kind: "checking",
+        message: "Checking the current private schedule…",
+      }));
+      try {
+        const body = await organizerRequest("/api/organizer/conflicts/preview", {
+          body: previewFingerprint,
+          method: "POST",
+          signal: controller.signal,
+        });
+        if (previewSequenceRef.current !== sequence) return;
+        const conflicts = parseConflictPreview(body);
+        setPreview({
+          conflicts,
+          kind: "ready",
+          message:
+            conflicts.length === 0
+              ? "No current conflict was found. Final save will check D1 again."
+              : `${conflicts.length} current ${conflicts.length === 1 ? "conflict" : "conflicts"} found. Final save will check D1 again.`,
+        });
+      } catch {
+        if (controller.signal.aborted || previewSequenceRef.current !== sequence) {
+          return;
+        }
+        setPreview({
+          conflicts: [],
+          kind: "unavailable",
+          message:
+            "Advisory preview is unavailable. No safety claim is being made; final save still checks D1.",
+        });
+      }
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [previewFingerprint]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,13 +130,26 @@ export function EventEditorForm({
             mode === "create"
               ? eventEditorApiInput(value)
               : {
+                  conflictReason: conflictReason.trim() || null,
                   event: eventEditorApiInput(value),
                   expectedContentVersion: value.expectedEditVersion,
+                  expectedScheduleVersion: value.expectedScheduleVersion,
                 },
           ),
           method: mode === "create" ? "POST" : "PATCH",
         },
       );
+      if (
+        isRecord(body) &&
+        body.outcome === "pending_approval" &&
+        typeof body.reviewRequestId === "string" &&
+        isRecord(body.event)
+      ) {
+        setNotice(
+          "Approval requested. The current reservation remains unchanged until an authorized reviewer approves this exact schedule.",
+        );
+        return;
+      }
       if (!isRecord(body) || !isRecord(body.event) || typeof body.event.id !== "string") {
         throw new TypeError("Unexpected event response");
       }
@@ -83,7 +164,10 @@ export function EventEditorForm({
         mode === "create"
           ? "The private planning record could not be created."
           : "Your changes were not saved.";
-      setNotice(safeNotice(error, fallback));
+      const message = safeNotice(error, fallback);
+      setErrors([message]);
+      setNotice(message);
+      window.requestAnimationFrame(() => summaryRef.current?.focus());
     } finally {
       setBusy(false);
     }
@@ -110,6 +194,11 @@ export function EventEditorForm({
   const primaryOrganizerLocked =
     !canManageOrganizationWide &&
     value.primaryOrganizerProfileId !== currentActorProfileId;
+  const venueOptions = (options.venues ?? []).filter(
+    (venue) => !venue.archived || venue.id === value.venueId,
+  );
+  const planningIsEditable =
+    value.planningStatus === "idea" || value.planningStatus === "draft";
 
   return (
     <form className={styles.eventForm} noValidate onSubmit={submit}>
@@ -134,8 +223,8 @@ export function EventEditorForm({
           <p className={styles.kicker}>1 · Planning record</p>
           <h2 id="event-basics-title">What are you considering?</h2>
           <p>
-            Phase 3 saves private Ideas and Drafts only. It cannot reserve a
-            time or publish to the website.
+            Start with the title and the club responsible for this private
+            planning record.
           </p>
         </header>
         <div className={styles.formFields}>
@@ -172,61 +261,15 @@ export function EventEditorForm({
               ))}
             </select>
           </label>
-          <label>
-            <span>Program</span>
-            <select
-              disabled={!value.clubId}
-              onChange={(event) => update("programId", event.target.value)}
-              value={value.programId}
-            >
-              <option value="">No program</option>
-              {availablePrograms.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Lane</span>
-            <select onChange={(event) => update("laneId", event.target.value)} value={value.laneId}>
-              <option value="">No lane selected</option>
-              {options.lanes.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Category</span>
-            <select onChange={(event) => update("categoryId", event.target.value)} value={value.categoryId}>
-              <option value="">No category selected</option>
-              {options.categories.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Planning status <strong aria-hidden="true">*</strong></span>
-            <select
-              onChange={(event) =>
-                update("planningStatus", event.target.value as "draft" | "idea")
-              }
-              value={value.planningStatus}
-            >
-              <option value="idea">Idea</option>
-              <option value="draft">Draft</option>
-            </select>
-          </label>
-          <div className={styles.fixedField}>
-            <span>Publication</span>
-            <strong>Private</strong>
-            <small>Publication begins in a later authorized phase.</small>
-          </div>
         </div>
       </section>
 
       <section className={styles.formSection} aria-labelledby="event-schedule-title">
         <header>
           <p className={styles.kicker}>2 · Schedule</p>
-          <h2 id="event-schedule-title">When might it happen?</h2>
+          <h2 id="event-schedule-title" ref={scheduleHeadingRef} tabIndex={-1}>
+            When might it happen?
+          </h2>
           <p>
             An Idea may remain unscheduled. A Draft needs a real timed or
             all-day schedule.
@@ -387,6 +430,199 @@ export function EventEditorForm({
               </p>
             )}
           </fieldset>
+          <label className={styles.fieldFull}>
+            <span>Venue</span>
+            <select
+              onChange={(event) =>
+                update("venueId", event.target.value || null)
+              }
+              value={value.venueId ?? ""}
+            >
+              <option value="">No venue selected</option>
+              {venueOptions.map((venue) => (
+                <option
+                  disabled={venue.archived}
+                  key={venue.id}
+                  value={venue.id}
+                >
+                  {venue.label}
+                  {venue.archived ? " — archived, retained" : ""}
+                </option>
+              ))}
+            </select>
+            <small>
+              Only active private workspace venues can be selected. Venue
+              publishing is not available here.
+            </small>
+          </label>
+          <label>
+            <span>Setup buffer, minutes</span>
+            <input
+              max={1_440}
+              min={0}
+              onChange={(event) =>
+                update("setupBufferMinutes", Number(event.target.value))
+              }
+              step={5}
+              type="number"
+              value={value.setupBufferMinutes}
+            />
+          </label>
+          <label>
+            <span>Cleanup or travel buffer, minutes</span>
+            <input
+              max={1_440}
+              min={0}
+              onChange={(event) =>
+                update("cleanupBufferMinutes", Number(event.target.value))
+              }
+              step={5}
+              type="number"
+              value={value.cleanupBufferMinutes}
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className={styles.formSection} aria-labelledby="event-state-title">
+        <header>
+          <p className={styles.kicker}>4 · State and coordination</p>
+          <h2 id="event-state-title">How should this private record be saved?</h2>
+          <p>
+            Reserving transitions use the separate Hold and Confirm actions
+            after the record exists. Every final save rechecks current D1 state.
+          </p>
+        </header>
+        <div className={styles.formFields}>
+          {planningIsEditable ? (
+            <label>
+              <span>
+                Planning status <strong aria-hidden="true">*</strong>
+              </span>
+              <select
+                onChange={(event) =>
+                  update(
+                    "planningStatus",
+                    event.target.value as "draft" | "idea",
+                  )
+                }
+                value={value.planningStatus}
+              >
+                <option value="idea">Idea</option>
+                <option value="draft">Draft</option>
+              </select>
+            </label>
+          ) : (
+            <div className={styles.fixedField}>
+              <span>Planning status</span>
+              <strong>{planningStatusLabel(value.planningStatus)}</strong>
+              <small>Use the explicit lifecycle actions on the event page.</small>
+            </div>
+          )}
+          <div className={styles.fixedField}>
+            <span>Publication</span>
+            <strong>Private</strong>
+            <small>Website publication begins in a later authorized phase.</small>
+          </div>
+          <div
+            aria-busy={preview.kind === "checking"}
+            className={`${styles.conflictPreview} ${styles.fieldFull}`}
+          >
+            <header>
+              <div>
+                <span className={styles.kicker}>Advisory preview</span>
+                <h3>Current schedule conflicts</h3>
+              </div>
+              <span className={styles.previewState}>
+                {preview.kind === "checking" ? "Checking…" : "D1 rechecks on save"}
+              </span>
+            </header>
+            <p aria-atomic="true" aria-live="polite">
+              {preview.message}
+            </p>
+            {preview.conflicts.length > 0 ? (
+              <>
+                <ol className={styles.conflictPreviewList}>
+                  {preview.conflicts.map((conflict) => (
+                    <li key={conflict.id}>
+                      <article>
+                      <header>
+                        <div>
+                          <strong>{conflict.title}</strong>
+                          <span>
+                            {conflict.clubName} · {conflict.organizerName}
+                          </span>
+                        </div>
+                        <span>
+                          {conflict.classification === "direct"
+                            ? "Direct overlap"
+                            : "Buffer conflict"}
+                        </span>
+                      </header>
+                      <p>{conflict.scheduleLabel}</p>
+                      <p>
+                        <strong>Overlap:</strong> {conflict.overlapLabel}
+                      </p>
+                      <ul aria-label="Conflict resources">
+                        {conflict.resources.map((resource) => (
+                          <li key={`${resource.type}:${resource.label}`}>
+                            {resource.label}
+                          </li>
+                        ))}
+                      </ul>
+                      <p>
+                        {conflict.planningStatus} · {conflict.sourceLabel}
+                        {conflict.readOnly ? " · read-only" : ""}
+                      </p>
+                      <div className={styles.conflictLinks}>
+                        {conflict.readOnly ? (
+                          <span>Read-only source event</span>
+                        ) : (
+                          <a
+                            href={`/organizer/events/${encodeURIComponent(conflict.eventId)}`}
+                          >
+                            View event
+                          </a>
+                        )}
+                        <button
+                          onClick={() => {
+                            scheduleHeadingRef.current?.focus();
+                            scheduleHeadingRef.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          }}
+                          type="button"
+                        >
+                          Change time
+                        </button>
+                      </div>
+                      </article>
+                    </li>
+                  ))}
+                </ol>
+                {!planningIsEditable ? (
+                  <label className={styles.fieldFull}>
+                    <span>
+                      Coordination reason, when workspace policy requires it
+                    </span>
+                    <textarea
+                      maxLength={1_000}
+                      onChange={(event) =>
+                        setConflictReason(event.target.value)
+                      }
+                      rows={4}
+                      value={conflictReason}
+                    />
+                    <small>
+                      This is private and applies only to the exact schedule
+                      versions rechecked when you save.
+                    </small>
+                  </label>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
       </section>
 
@@ -395,11 +631,48 @@ export function EventEditorForm({
           <p className={styles.kicker}>4 · Working details</p>
           <h2 id="event-details-title">Notes for the team</h2>
           <p>
-            Public-facing copy remains private in Phase 3. Private notes never
-            enter the public event projection.
+            Draft public-facing copy remains private. Private notes never enter
+            the public event projection.
           </p>
         </header>
         <div className={styles.formFields}>
+          <label>
+            <span>Program</span>
+            <select
+              disabled={!value.clubId}
+              onChange={(event) => update("programId", event.target.value)}
+              value={value.programId}
+            >
+              <option value="">No program</option>
+              {availablePrograms.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Lane</span>
+            <select
+              onChange={(event) => update("laneId", event.target.value)}
+              value={value.laneId}
+            >
+              <option value="">No lane selected</option>
+              {options.lanes.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Category</span>
+            <select
+              onChange={(event) => update("categoryId", event.target.value)}
+              value={value.categoryId}
+            >
+              <option value="">No category selected</option>
+              {options.categories.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+          </label>
           <label className={styles.fieldFull}>
             <span>Private organizer notes</span>
             <textarea
@@ -440,32 +713,6 @@ export function EventEditorForm({
             />
             <small>This does not turn the manual record into a synced source record.</small>
           </label>
-          <label>
-            <span>Setup buffer, minutes</span>
-            <input
-              max={1_440}
-              min={0}
-              onChange={(event) => update("setupBufferMinutes", Number(event.target.value))}
-              step={5}
-              type="number"
-              value={value.setupBufferMinutes}
-            />
-          </label>
-          <label>
-            <span>Cleanup or travel buffer, minutes</span>
-            <input
-              max={1_440}
-              min={0}
-              onChange={(event) => update("cleanupBufferMinutes", Number(event.target.value))}
-              step={5}
-              type="number"
-              value={value.cleanupBufferMinutes}
-            />
-          </label>
-          <p className={`${styles.fieldFull} ${styles.formNotice}`}>
-            Buffers are stored for Phase 4 planning but do not reserve time or
-            produce a conflict claim in Phase 3.
-          </p>
         </div>
       </section>
 
@@ -492,6 +739,13 @@ function validate(value: EventEditorValue): readonly string[] {
   }
   if (value.planningStatus === "draft" && value.scheduleShape === "unscheduled") {
     errors.push("A Draft needs a timed or all-day schedule.");
+  }
+  if (
+    (value.planningStatus === "tentative_hold" ||
+      value.planningStatus === "confirmed") &&
+    value.scheduleShape === "unscheduled"
+  ) {
+    errors.push("A hold or confirmed event needs a real schedule.");
   }
   if (value.scheduleShape === "timed") {
     if (!value.startDate || !value.startTime || !value.endDate || !value.endTime) {
@@ -537,4 +791,159 @@ function isValidHttpsUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+type ConflictPreviewResource = Readonly<{
+  label: string;
+  type: "co_organizer" | "organization" | "organizer" | "venue";
+}>;
+
+type ConflictPreviewItem = Readonly<{
+  classification: "buffer" | "direct";
+  clubName: string;
+  eventId: string;
+  id: string;
+  organizerName: string;
+  overlapLabel: string;
+  planningStatus: string;
+  readOnly: boolean;
+  resources: readonly ConflictPreviewResource[];
+  scheduleLabel: string;
+  sourceLabel: string;
+  title: string;
+}>;
+
+type ConflictPreviewState = Readonly<{
+  conflicts: readonly ConflictPreviewItem[];
+  kind: "checking" | "idle" | "ready" | "unavailable";
+  message: string;
+}>;
+
+function conflictPreviewFingerprint(
+  value: EventEditorValue,
+  eventId: string | undefined,
+): string | null {
+  if (
+    !value.clubId ||
+    !value.primaryOrganizerProfileId ||
+    value.scheduleShape === "unscheduled"
+  ) {
+    return null;
+  }
+  const schedule =
+    value.scheduleShape === "timed"
+      ? value.startDate &&
+        value.startTime &&
+        value.endDate &&
+        value.endTime &&
+        value.timezone
+        ? {
+            endLocal: `${value.endDate}T${value.endTime}`,
+            shape: "timed",
+            startLocal: `${value.startDate}T${value.startTime}`,
+            timeZone: value.timezone,
+          }
+        : null
+      : value.allDayStartDate &&
+          value.allDayEndDateExclusive &&
+          value.timezone
+        ? {
+            allDayEndDateExclusive: value.allDayEndDateExclusive,
+            allDayStartDate: value.allDayStartDate,
+            shape: "all_day",
+            timeZone: value.timezone,
+          }
+        : null;
+  if (!schedule) return null;
+  return JSON.stringify({
+    bufferAfterMinutes: value.cleanupBufferMinutes,
+    bufferBeforeMinutes: value.setupBufferMinutes,
+    clubId: value.clubId,
+    coOrganizerProfileIds: [...value.coOrganizerProfileIds].sort(),
+    eventId: eventId ?? null,
+    expectedScheduleVersion: value.expectedScheduleVersion,
+    planningStatus: value.planningStatus,
+    primaryOrganizerProfileId: value.primaryOrganizerProfileId,
+    schedule,
+    venueId: value.venueId,
+  });
+}
+
+function parseConflictPreview(value: unknown): readonly ConflictPreviewItem[] {
+  if (!isRecord(value) || !Array.isArray(value.conflicts)) return [];
+  return Object.freeze(
+    value.conflicts.slice(0, 25).flatMap((raw) => {
+      if (!isRecord(raw)) return [];
+      const id = boundedText(raw.id, 128);
+      const eventId = boundedText(raw.eventId, 128);
+      const title = boundedText(raw.title, 180);
+      const clubName = boundedText(raw.clubName, 180);
+      const organizerName = boundedText(raw.organizerName, 180);
+      const planningStatus = boundedText(raw.planningStatus, 40);
+      const scheduleLabel = boundedText(raw.scheduleLabel, 300);
+      const overlapLabel = boundedText(raw.overlapLabel, 300);
+      const sourceLabel = boundedText(raw.sourceLabel, 80);
+      if (
+        !id ||
+        !eventId ||
+        !title ||
+        !clubName ||
+        !organizerName ||
+        !planningStatus ||
+        !scheduleLabel ||
+        !overlapLabel ||
+        !sourceLabel ||
+        (raw.classification !== "direct" && raw.classification !== "buffer")
+      ) {
+        return [];
+      }
+      const resources: ConflictPreviewResource[] = Array.isArray(raw.resources)
+        ? raw.resources.slice(0, 16).flatMap((resource) => {
+            if (!isRecord(resource)) return [];
+            const label = boundedText(resource.label, 180);
+            const type =
+              resource.type === "organization" ||
+              resource.type === "organizer" ||
+              resource.type === "co_organizer" ||
+              resource.type === "venue"
+                ? resource.type
+                : null;
+            return label && type
+              ? [Object.freeze({ label, type }) as ConflictPreviewResource]
+              : [];
+          })
+        : [];
+      return [
+        Object.freeze({
+          classification: raw.classification,
+          clubName,
+          eventId,
+          id,
+          organizerName,
+          overlapLabel,
+          planningStatus,
+          readOnly: raw.readOnly === true,
+          resources: Object.freeze(resources),
+          scheduleLabel,
+          sourceLabel,
+          title,
+        }),
+      ];
+    }),
+  );
+}
+
+function boundedText(value: unknown, maximum: number): string | null {
+  return typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.length <= maximum
+    ? value
+    : null;
+}
+
+function planningStatusLabel(value: EventEditorValue["planningStatus"]): string {
+  return value
+    .split("_")
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }

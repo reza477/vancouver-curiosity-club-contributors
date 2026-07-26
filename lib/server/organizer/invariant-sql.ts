@@ -336,12 +336,15 @@ BEGIN
 END;`,
   String.raw`
 CREATE TRIGGER IF NOT EXISTS organizer_events_phase3_integrity_before_insert
-BEFORE INSERT ON organizer_events
+AFTER INSERT ON organizer_events
 BEGIN
   SELECT CASE
-    WHEN NEW.planning_status NOT IN ('idea', 'draft')
-      OR NEW.publication_status <> 'private'
-    THEN RAISE(ABORT, 'phase3_event_lifecycle_forbidden')
+    WHEN NEW.publication_status <> 'private'
+      OR NEW.planning_status NOT IN (
+        'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
+        'completed', 'archived'
+      )
+    THEN RAISE(ABORT, 'phase4_event_lifecycle_forbidden')
   END;
   SELECT CASE
     WHEN NOT EXISTS (
@@ -435,10 +438,90 @@ BEGIN
     )
     THEN RAISE(ABORT, 'organizer_event_organization_mismatch')
   END;
+
+  SELECT CASE
+    WHEN NEW.schedule_shape <> 'unscheduled'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM organizer_schedule_write_intents AS intent
+        WHERE intent.organizer_event_id = NEW.id
+          AND intent.organization_id = NEW.organization_id
+          AND intent.actor_profile_id = NEW.updated_by_profile_id
+          AND intent.club_id = NEW.club_id
+          AND intent.planning_status = NEW.planning_status
+          AND intent.schedule_shape = NEW.schedule_shape
+          AND intent.timezone = NEW.timezone
+          AND intent.all_day_start_date IS NEW.all_day_start_date
+          AND intent.all_day_end_date_exclusive IS
+              NEW.all_day_end_date_exclusive
+          AND intent.buffer_before_minutes =
+              NEW.buffer_before_minutes
+          AND intent.buffer_after_minutes =
+              NEW.buffer_after_minutes
+          AND intent.venue_id IS NEW.venue_id
+          AND intent.primary_organizer_profile_id =
+              NEW.primary_organizer_profile_id
+          AND intent.expected_content_version = 0
+          AND intent.expected_schedule_version = 0
+          AND intent.proposed_content_version = NEW.content_version
+          AND intent.proposed_schedule_version = NEW.schedule_version
+          AND intent.operation <> 'phase4_backfill'
+          AND intent.completed_at IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM json_each(intent.organizer_scope_json) AS primary_scope
+            WHERE primary_scope.type = 'text'
+              AND CAST(primary_scope.value AS TEXT) =
+                  NEW.primary_organizer_profile_id
+          )
+          AND (
+            (
+              NEW.schedule_shape = 'timed'
+              AND intent.actual_start_utc = NEW.starts_at_utc
+              AND intent.actual_end_utc = NEW.ends_at_utc
+            )
+            OR NEW.schedule_shape = 'all_day'
+          )
+      )
+    THEN RAISE(ABORT, 'phase4_event_write_intent_required')
+  END;
+
+  DELETE FROM organizer_reservation_states
+  WHERE organizer_event_id = NEW.id
+    AND NEW.schedule_shape = 'unscheduled';
+
+  INSERT INTO organizer_reservation_states (
+    organizer_event_id, organization_id, club_id, planning_status,
+    schedule_shape, actual_start_utc, actual_end_utc,
+    expanded_start_utc, expanded_end_utc, timezone,
+    all_day_start_date, all_day_end_date_exclusive,
+    buffer_before_minutes, buffer_after_minutes, venue_id,
+    primary_organizer_profile_id,
+    organizer_scope_json, hold_expires_at, schedule_version,
+    policy_version, write_intent_id, updated_by_profile_id, updated_at
+  )
+  SELECT
+    NEW.id, NEW.organization_id, NEW.club_id, NEW.planning_status,
+    NEW.schedule_shape, intent.actual_start_utc, intent.actual_end_utc,
+    intent.expanded_start_utc, intent.expanded_end_utc, NEW.timezone,
+    NEW.all_day_start_date, NEW.all_day_end_date_exclusive,
+    NEW.buffer_before_minutes, NEW.buffer_after_minutes, NEW.venue_id,
+    NEW.primary_organizer_profile_id,
+    intent.organizer_scope_json, intent.hold_expires_at,
+    NEW.schedule_version, intent.policy_version, intent.id,
+    NEW.updated_by_profile_id,
+    CAST(unixepoch('subsec') * 1000 AS INTEGER)
+  FROM organizer_schedule_write_intents AS intent
+  WHERE intent.organizer_event_id = NEW.id
+    AND intent.organization_id = NEW.organization_id
+    AND intent.proposed_content_version = NEW.content_version
+    AND intent.proposed_schedule_version = NEW.schedule_version
+    AND intent.schedule_shape <> 'unscheduled'
+    AND intent.completed_at IS NULL;
 END;`,
   String.raw`
 CREATE TRIGGER IF NOT EXISTS organizer_events_phase3_integrity_before_update
-BEFORE UPDATE ON organizer_events
+AFTER UPDATE ON organizer_events
 BEGIN
   SELECT CASE
     WHEN NEW.id <> OLD.id
@@ -447,9 +530,12 @@ BEGIN
     THEN RAISE(ABORT, 'organizer_event_identity_immutable')
   END;
   SELECT CASE
-    WHEN NEW.planning_status NOT IN ('idea', 'draft')
-      OR NEW.publication_status <> 'private'
-    THEN RAISE(ABORT, 'phase3_event_lifecycle_forbidden')
+    WHEN NEW.publication_status <> 'private'
+      OR NEW.planning_status NOT IN (
+        'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
+        'completed', 'archived'
+      )
+    THEN RAISE(ABORT, 'phase4_event_lifecycle_forbidden')
   END;
   SELECT CASE
     WHEN NOT EXISTS (
@@ -567,6 +653,277 @@ BEGIN
     )
     THEN RAISE(ABORT, 'organizer_event_organization_mismatch')
   END;
+
+  SELECT CASE
+    WHEN NEW.content_version <> OLD.content_version + 1
+      OR (
+        (
+          NEW.club_id <> OLD.club_id
+          OR NEW.venue_id IS NOT OLD.venue_id
+          OR NEW.primary_organizer_profile_id <>
+             OLD.primary_organizer_profile_id
+          OR NEW.planning_status <> OLD.planning_status
+          OR NEW.schedule_shape <> OLD.schedule_shape
+          OR NEW.starts_at_utc IS NOT OLD.starts_at_utc
+          OR NEW.ends_at_utc IS NOT OLD.ends_at_utc
+          OR NEW.timezone <> OLD.timezone
+          OR NEW.all_day_start_date IS NOT OLD.all_day_start_date
+          OR NEW.all_day_end_date_exclusive IS NOT
+             OLD.all_day_end_date_exclusive
+          OR NEW.buffer_before_minutes <> OLD.buffer_before_minutes
+          OR NEW.buffer_after_minutes <> OLD.buffer_after_minutes
+          OR NEW.deleted_at IS NOT OLD.deleted_at
+          OR NEW.schedule_version <> OLD.schedule_version
+        )
+        AND (
+          NEW.schedule_version <> OLD.schedule_version + 1
+          OR NOT EXISTS (
+            SELECT 1
+            FROM organizer_schedule_write_intents AS intent
+            WHERE intent.organizer_event_id = NEW.id
+              AND intent.organization_id = NEW.organization_id
+              AND intent.actor_profile_id = NEW.updated_by_profile_id
+              AND intent.club_id = NEW.club_id
+              AND intent.planning_status = NEW.planning_status
+              AND intent.schedule_shape = NEW.schedule_shape
+              AND intent.timezone = NEW.timezone
+              AND intent.all_day_start_date IS
+                  NEW.all_day_start_date
+              AND intent.all_day_end_date_exclusive IS
+                  NEW.all_day_end_date_exclusive
+              AND intent.buffer_before_minutes =
+                  NEW.buffer_before_minutes
+              AND intent.buffer_after_minutes =
+                  NEW.buffer_after_minutes
+              AND intent.venue_id IS NEW.venue_id
+              AND intent.primary_organizer_profile_id =
+                  NEW.primary_organizer_profile_id
+              AND intent.expected_content_version =
+                  OLD.content_version
+              AND intent.expected_schedule_version =
+                  OLD.schedule_version
+              AND intent.proposed_content_version =
+                  NEW.content_version
+              AND intent.proposed_schedule_version =
+                  NEW.schedule_version
+              AND intent.operation <> 'phase4_backfill'
+              AND intent.completed_at IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(intent.organizer_scope_json)
+                     AS primary_scope
+                WHERE primary_scope.type = 'text'
+                  AND CAST(primary_scope.value AS TEXT) =
+                      NEW.primary_organizer_profile_id
+              )
+              AND (
+                (
+                  NEW.schedule_shape = 'timed'
+                  AND intent.actual_start_utc = NEW.starts_at_utc
+                  AND intent.actual_end_utc = NEW.ends_at_utc
+                )
+                OR NEW.schedule_shape IN ('all_day', 'unscheduled')
+              )
+          )
+        )
+      )
+      OR (
+        NEW.schedule_version = OLD.schedule_version
+        AND (
+          NEW.club_id <> OLD.club_id
+          OR NEW.venue_id IS NOT OLD.venue_id
+          OR NEW.primary_organizer_profile_id <>
+             OLD.primary_organizer_profile_id
+          OR NEW.planning_status <> OLD.planning_status
+          OR NEW.schedule_shape <> OLD.schedule_shape
+          OR NEW.starts_at_utc IS NOT OLD.starts_at_utc
+          OR NEW.ends_at_utc IS NOT OLD.ends_at_utc
+          OR NEW.timezone <> OLD.timezone
+          OR NEW.all_day_start_date IS NOT OLD.all_day_start_date
+          OR NEW.all_day_end_date_exclusive IS NOT
+             OLD.all_day_end_date_exclusive
+          OR NEW.buffer_before_minutes <> OLD.buffer_before_minutes
+          OR NEW.buffer_after_minutes <> OLD.buffer_after_minutes
+          OR NEW.deleted_at IS NOT OLD.deleted_at
+        )
+      )
+    THEN RAISE(ABORT, 'phase4_event_write_intent_required')
+  END;
+
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM organization_memberships AS actor_membership
+      WHERE actor_membership.organization_id = NEW.organization_id
+        AND actor_membership.profile_id = NEW.updated_by_profile_id
+        AND actor_membership.status = 'active'
+        AND actor_membership.deleted_at IS NULL
+        AND (
+          actor_membership.role IN ('owner', 'administrator')
+          OR (
+            actor_membership.role = 'organizer'
+            AND (
+              OLD.primary_organizer_profile_id =
+                  NEW.updated_by_profile_id
+              OR EXISTS (
+                SELECT 1
+                FROM organizer_event_organizers AS actor_association
+                WHERE actor_association.organization_id =
+                      OLD.organization_id
+                  AND actor_association.organizer_event_id = OLD.id
+                  AND actor_association.profile_id =
+                      NEW.updated_by_profile_id
+                  AND actor_association.deleted_at IS NULL
+              )
+            )
+            AND EXISTS (
+              SELECT 1
+              FROM club_memberships AS actor_club
+              WHERE actor_club.organization_id =
+                    NEW.organization_id
+                AND actor_club.club_id = NEW.club_id
+                AND actor_club.organization_membership_id =
+                    actor_membership.id
+                AND actor_club.profile_id =
+                    NEW.updated_by_profile_id
+                AND actor_club.status = 'active'
+                AND actor_club.deleted_at IS NULL
+            )
+          )
+        )
+    )
+    THEN RAISE(ABORT, 'phase4_event_actor_forbidden')
+  END;
+
+  SELECT CASE
+    WHEN NEW.schedule_version <> OLD.schedule_version
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM organizer_conflict_incidents AS incident
+          WHERE incident.organization_id = NEW.organization_id
+            AND incident.state IN (
+              'open', 'pending_approval', 'approved', 'informational'
+            )
+            AND (
+              (
+                incident.organizer_event_id = NEW.id
+                AND incident.proposed_schedule_version <>
+                    NEW.schedule_version
+              )
+              OR (
+                incident.conflicting_event_id = NEW.id
+                AND incident.conflicting_schedule_version <>
+                    NEW.schedule_version
+              )
+            )
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM organizer_conflict_review_requests AS review
+          WHERE review.organization_id = NEW.organization_id
+            AND review.organizer_event_id = NEW.id
+            AND review.state IN ('pending', 'approved')
+            AND NOT EXISTS (
+              SELECT 1
+              FROM organizer_schedule_write_intents AS intent
+              WHERE intent.organizer_event_id = NEW.id
+                AND intent.organization_id = NEW.organization_id
+                AND intent.proposed_schedule_version =
+                    NEW.schedule_version
+                AND intent.review_request_id = review.id
+                AND intent.state_fingerprint =
+                    review.state_fingerprint
+                AND intent.completed_at IS NULL
+            )
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM organizer_conflict_overrides AS override
+          JOIN organizer_conflict_incidents AS incident
+            ON incident.id = override.incident_id
+           AND incident.organization_id = override.organization_id
+          WHERE override.organization_id = NEW.organization_id
+            AND override.invalidated_at IS NULL
+            AND (
+              (
+                incident.organizer_event_id = NEW.id
+                AND incident.proposed_schedule_version <>
+                    NEW.schedule_version
+              )
+              OR (
+                incident.conflicting_event_id = NEW.id
+                AND incident.conflicting_schedule_version <>
+                    NEW.schedule_version
+              )
+            )
+        )
+      )
+    THEN RAISE(ABORT, 'phase4_conflict_artifacts_stale')
+  END;
+
+  DELETE FROM organizer_reservation_states
+  WHERE organizer_event_id = NEW.id
+    AND (
+      NEW.schedule_shape = 'unscheduled'
+      OR NEW.deleted_at IS NOT NULL
+    )
+    AND NEW.schedule_version <> OLD.schedule_version;
+
+  INSERT INTO organizer_reservation_states (
+    organizer_event_id, organization_id, club_id, planning_status,
+    schedule_shape, actual_start_utc, actual_end_utc,
+    expanded_start_utc, expanded_end_utc, timezone,
+    all_day_start_date, all_day_end_date_exclusive,
+    buffer_before_minutes, buffer_after_minutes, venue_id,
+    primary_organizer_profile_id,
+    organizer_scope_json, hold_expires_at, schedule_version,
+    policy_version, write_intent_id, updated_by_profile_id, updated_at
+  )
+  SELECT
+    NEW.id, NEW.organization_id, NEW.club_id, NEW.planning_status,
+    NEW.schedule_shape, intent.actual_start_utc, intent.actual_end_utc,
+    intent.expanded_start_utc, intent.expanded_end_utc, NEW.timezone,
+    NEW.all_day_start_date, NEW.all_day_end_date_exclusive,
+    NEW.buffer_before_minutes, NEW.buffer_after_minutes, NEW.venue_id,
+    NEW.primary_organizer_profile_id,
+    intent.organizer_scope_json, intent.hold_expires_at,
+    NEW.schedule_version, intent.policy_version, intent.id,
+    NEW.updated_by_profile_id,
+    CAST(unixepoch('subsec') * 1000 AS INTEGER)
+  FROM organizer_schedule_write_intents AS intent
+  WHERE intent.organizer_event_id = NEW.id
+    AND intent.organization_id = NEW.organization_id
+    AND intent.proposed_content_version = NEW.content_version
+    AND intent.proposed_schedule_version = NEW.schedule_version
+    AND intent.schedule_shape <> 'unscheduled'
+    AND NEW.deleted_at IS NULL
+    AND intent.completed_at IS NULL
+  ON CONFLICT(organizer_event_id) DO UPDATE SET
+    organization_id = excluded.organization_id,
+    club_id = excluded.club_id,
+    planning_status = excluded.planning_status,
+    schedule_shape = excluded.schedule_shape,
+    actual_start_utc = excluded.actual_start_utc,
+    actual_end_utc = excluded.actual_end_utc,
+    expanded_start_utc = excluded.expanded_start_utc,
+    expanded_end_utc = excluded.expanded_end_utc,
+    timezone = excluded.timezone,
+    all_day_start_date = excluded.all_day_start_date,
+    all_day_end_date_exclusive =
+        excluded.all_day_end_date_exclusive,
+    buffer_before_minutes = excluded.buffer_before_minutes,
+    buffer_after_minutes = excluded.buffer_after_minutes,
+    venue_id = excluded.venue_id,
+    primary_organizer_profile_id =
+        excluded.primary_organizer_profile_id,
+    organizer_scope_json = excluded.organizer_scope_json,
+    hold_expires_at = excluded.hold_expires_at,
+    schedule_version = excluded.schedule_version,
+    policy_version = excluded.policy_version,
+    write_intent_id = excluded.write_intent_id,
+    updated_by_profile_id = excluded.updated_by_profile_id,
+    updated_at = excluded.updated_at;
 END;`,
   String.raw`
 CREATE TRIGGER IF NOT EXISTS organizer_event_organizers_integrity_before_insert
@@ -607,6 +964,24 @@ BEGIN
       FROM organization_memberships AS creator
       WHERE creator.organization_id = NEW.organization_id
         AND creator.profile_id = NEW.created_by_profile_id
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM organizer_schedule_write_intents AS intent
+      JOIN organizer_events AS event
+        ON event.id = intent.organizer_event_id
+       AND event.organization_id = intent.organization_id
+      WHERE intent.organizer_event_id = NEW.organizer_event_id
+        AND intent.organization_id = NEW.organization_id
+        AND intent.proposed_schedule_version = event.schedule_version
+        AND intent.completed_at IS NULL
+        AND intent.operation <> 'phase4_backfill'
+        AND EXISTS (
+          SELECT 1
+          FROM json_each(intent.organizer_scope_json) AS scope
+          WHERE scope.type = 'text'
+            AND CAST(scope.value AS TEXT) = NEW.profile_id
+        )
     )
     THEN RAISE(ABORT, 'organizer_event_organizer_organization_mismatch')
   END;
@@ -652,7 +1027,53 @@ BEGIN
       WHERE creator.organization_id = NEW.organization_id
         AND creator.profile_id = NEW.created_by_profile_id
     )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM organizer_schedule_write_intents AS intent
+      JOIN organizer_events AS event
+        ON event.id = intent.organizer_event_id
+       AND event.organization_id = intent.organization_id
+      WHERE intent.organizer_event_id = NEW.organizer_event_id
+        AND intent.organization_id = NEW.organization_id
+        AND intent.proposed_schedule_version = event.schedule_version
+        AND intent.completed_at IS NULL
+        AND intent.operation <> 'phase4_backfill'
+        AND (
+          (
+            NEW.deleted_at IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM json_each(intent.organizer_scope_json) AS scope
+              WHERE scope.type = 'text'
+                AND CAST(scope.value AS TEXT) = NEW.profile_id
+            )
+          )
+          OR (
+            NEW.deleted_at IS NOT NULL
+          )
+        )
+    )
     THEN RAISE(ABORT, 'organizer_event_organizer_organization_mismatch')
+  END;
+END;`,
+  String.raw`
+CREATE TRIGGER IF NOT EXISTS organizer_event_organizers_phase4_before_delete
+BEFORE DELETE ON organizer_event_organizers
+BEGIN
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM organizer_schedule_write_intents AS intent
+      JOIN organizer_events AS event
+        ON event.id = intent.organizer_event_id
+       AND event.organization_id = intent.organization_id
+      WHERE intent.organizer_event_id = OLD.organizer_event_id
+        AND intent.organization_id = OLD.organization_id
+        AND intent.proposed_schedule_version = event.schedule_version
+        AND intent.completed_at IS NULL
+        AND intent.operation <> 'phase4_backfill'
+    )
+    THEN RAISE(ABORT, 'phase4_event_write_intent_required')
   END;
 END;`,
   String.raw`
@@ -814,7 +1235,10 @@ WHERE NOT EXISTS (
 OR (
   event.deleted_at IS NULL
   AND (
-    event.planning_status NOT IN ('idea', 'draft')
+    event.planning_status NOT IN (
+      'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
+      'completed', 'archived'
+    )
     OR event.publication_status <> 'private'
     OR NOT EXISTS (
      SELECT 1 FROM clubs AS club

@@ -69,7 +69,7 @@ export default async function NewOrganizerEventPage() {
     <>
       <PageHeader
         eyebrow="Private planning"
-        introduction="Use one clear form. An Idea may stay unscheduled; a Draft needs a real schedule. Every saved record remains private."
+        introduction="Use one clear form. An Idea may stay unscheduled; a Draft needs a real schedule. Advisory conflicts appear before save, and every authoritative write rechecks D1. Every record remains private."
         title="Add an Idea or Draft"
       />
       <EventEditorForm

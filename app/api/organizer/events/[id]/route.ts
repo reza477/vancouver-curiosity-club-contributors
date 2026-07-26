@@ -47,7 +47,16 @@ export async function PATCH(
       await readOrganizerMutationBody(request, 48_000),
       "body",
     );
-    assertOnlyKeys(payload, ["event", "expectedContentVersion"], "body");
+    assertOnlyKeys(
+      payload,
+      [
+        "conflictReason",
+        "event",
+        "expectedContentVersion",
+        "expectedScheduleVersion",
+      ],
+      "body",
+    );
     const expectedContentVersion = parseFiniteInteger(
       payload.expectedContentVersion,
       {
@@ -55,14 +64,26 @@ export async function PATCH(
         minimum: 1,
       },
     );
-    const event = await updateOrganizerEvent(
+    const expectedScheduleVersion = parseFiniteInteger(
+      payload.expectedScheduleVersion,
+      {
+        path: "expectedScheduleVersion",
+        minimum: 1,
+      },
+    );
+    const result = await updateOrganizerEvent(
       database,
       identity,
       id,
       expectedContentVersion,
       payload.event,
+      expectedScheduleVersion,
+      payload.conflictReason,
     );
-    return privateOrganizerJson({ event });
+    if ("outcome" in result && result.outcome === "pending_approval") {
+      return privateOrganizerJson(result, { status: 202 });
+    }
+    return privateOrganizerJson({ event: result });
   } catch (error) {
     return organizerApiError(
       error,

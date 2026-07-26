@@ -245,7 +245,16 @@ export function MeetupControls({
   );
 }
 
-function connectionCopy(state: MeetupUiState) {
+export function connectionCopy(state: MeetupUiState) {
+  if (state.scheduleConflict) {
+    return {
+      label: "Schedule conflict",
+      heading: "A staged feed update needs schedule coordination.",
+      detail:
+        "The last completed source snapshot remains active. Move or release the conflicting private reservation, then refresh again to retry the retained feed snapshot. Saved source addresses remain hidden.",
+      tone: "error",
+    };
+  }
   if (state.status === "not_connected") {
     return {
       label: "Not connected",
@@ -454,6 +463,7 @@ function isMeetupUiState(value: unknown): value is MeetupUiState {
   ]);
   return (
     typeof value.enabled === "boolean" &&
+    typeof value.scheduleConflict === "boolean" &&
     typeof value.status === "string" &&
     statuses.has(value.status) &&
     isNullableString(value.lastAttemptAt) &&

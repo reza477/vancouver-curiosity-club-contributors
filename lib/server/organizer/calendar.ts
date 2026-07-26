@@ -25,6 +25,7 @@ import {
   type EventPublicationStatus,
 } from "./lifecycle";
 import { organizerScheduleOverlapsUtcRange } from "./schedule-state";
+import { reconcileOrganizerHoldNotices } from "./hold-reconciliation";
 
 const CALENDAR_QUERY_PAGE_SIZE = 250;
 const CALENDAR_CANDIDATE_SCAN_LIMIT = 5_000;
@@ -50,6 +51,15 @@ export type OrganizerCalendarEventDto = Readonly<{
   primaryOrganizerDisplayName: string | null;
   meetupEventUrl: string | null;
   contentVersion: number | null;
+  conflictCount: number;
+  conflictState:
+    | "approved"
+    | "none"
+    | "open"
+    | "pending"
+    | "warning";
+  holdExpiresAt: number | null;
+  holdState: "active" | "expired" | "nearing_expiry" | null;
   scheduleVersion: number;
   updatedAt: number;
 }>;
@@ -83,6 +93,7 @@ export async function listOrganizerCalendarEvents(
   identity: TrustedServerIdentity,
   rawFilters: OrganizerCalendarFilters = {},
 ): Promise<OrganizerCalendarResult> {
+  await reconcileOrganizerHoldNotices(database, identity);
   const actor = await authorizeMembership(database, identity);
   const filters = parseFilters(rawFilters);
   const candidates = await loadCalendarCandidates(database, actor, null);
@@ -116,6 +127,7 @@ export async function getOrganizerCalendarEvent(
   eventIdValue: unknown,
 ): Promise<OrganizerCalendarEventDto> {
   const eventId = parseIdentifier(eventIdValue, "eventId");
+  await reconcileOrganizerHoldNotices(database, identity);
   const actor = await authorizeMembership(database, identity);
   const events = await loadCalendarCandidates(database, actor, eventId);
   const event = events[0];
@@ -185,6 +197,61 @@ async function loadManualEvents(
               event.meetup_event_url,
               event.content_version,
               event.schedule_version,
+              reservation.hold_expires_at,
+              CASE
+                WHEN event.planning_status <> 'tentative_hold'
+                  OR reservation.hold_expires_at IS NULL
+                THEN NULL
+                WHEN reservation.hold_expires_at <=
+                     CAST(unixepoch('subsec') * 1000 AS INTEGER)
+                THEN 'expired'
+                WHEN reservation.hold_expires_at <=
+                     CAST(unixepoch('subsec') * 1000 AS INTEGER) +
+                     (COALESCE(policy.nearing_expiry_hours, 24) * 3600000)
+                THEN 'nearing_expiry'
+                ELSE 'active'
+              END AS hold_state,
+              (
+                SELECT count(*)
+                FROM organizer_conflict_incidents AS incident
+                WHERE incident.organization_id = event.organization_id
+                  AND (
+                    incident.organizer_event_id = event.id
+                    OR (
+                      incident.conflicting_source_kind = 'manual'
+                      AND incident.conflicting_event_id = event.id
+                    )
+                  )
+                  AND incident.state IN (
+                    'open', 'pending_approval', 'approved', 'informational'
+                  )
+              ) AS conflict_count,
+              COALESCE((
+                SELECT CASE incident.state
+                  WHEN 'pending_approval' THEN 'pending'
+                  WHEN 'informational' THEN 'warning'
+                  ELSE incident.state
+                END
+                FROM organizer_conflict_incidents AS incident
+                WHERE incident.organization_id = event.organization_id
+                  AND (
+                    incident.organizer_event_id = event.id
+                    OR (
+                      incident.conflicting_source_kind = 'manual'
+                      AND incident.conflicting_event_id = event.id
+                    )
+                  )
+                  AND incident.state IN (
+                    'open', 'pending_approval', 'approved', 'informational'
+                  )
+                ORDER BY CASE incident.state
+                  WHEN 'pending_approval' THEN 1
+                  WHEN 'open' THEN 2
+                  WHEN 'approved' THEN 3
+                  ELSE 4
+                END, incident.id
+                LIMIT 1
+              ), 'none') AS conflict_state,
               event.updated_at,
               CASE
                 WHEN ? <> 'organizer'
@@ -210,6 +277,11 @@ async function loadManualEvents(
        LEFT JOIN organizer_profile_preferences AS profile_preference
          ON profile_preference.profile_id = profile.id
         AND profile_preference.organization_id = event.organization_id
+       LEFT JOIN organizer_reservation_states AS reservation
+         ON reservation.organizer_event_id = event.id
+        AND reservation.organization_id = event.organization_id
+       LEFT JOIN organizer_conflict_policies AS policy
+         ON policy.organization_id = event.organization_id
        WHERE event.organization_id = ?
          AND event.deleted_at IS NULL
          AND (? IS NULL OR event.id = ?)
@@ -376,6 +448,7 @@ async function loadMeetupEvents(
          AND source.source_type = 'meetup_ics'
          AND source.enabled = 1
          AND source.active_generation_id IS NOT NULL
+         AND source.enabled = 1
          AND source.deleted_at IS NULL
          AND (? IS NULL OR snapshot.event_id = ?)
        ORDER BY snapshot.updated_at DESC, snapshot.event_id ASC
@@ -433,6 +506,16 @@ function readCalendarRow(
     meetupEventUrl: optionalString(row.meetup_event_url),
     contentVersion:
       source === "manual" ? requiredInteger(row.content_version) : null,
+    conflictCount:
+      source === "manual" ? requiredInteger(row.conflict_count) : 0,
+    conflictState:
+      source === "manual"
+        ? readConflictState(row.conflict_state)
+        : "none",
+    holdExpiresAt:
+      source === "manual" ? optionalInteger(row.hold_expires_at) : null,
+    holdState:
+      source === "manual" ? readHoldState(row.hold_state) : null,
     scheduleVersion: requiredInteger(row.schedule_version),
     updatedAt: requiredInteger(row.updated_at),
   });
@@ -652,7 +735,38 @@ function readSchedule(row: Record<string, unknown>): CanonicalEventSchedule {
 }
 
 function readManualPlanningStatus(value: unknown): EventPlanningStatus {
-  if (value === "idea" || value === "draft") return value;
+  if (EVENT_PLANNING_STATUSES.some((status) => status === value)) {
+    return value as EventPlanningStatus;
+  }
+  throw dataUnavailable();
+}
+
+function readConflictState(
+  value: unknown,
+): OrganizerCalendarEventDto["conflictState"] {
+  if (
+    value === "approved" ||
+    value === "none" ||
+    value === "open" ||
+    value === "pending" ||
+    value === "warning"
+  ) {
+    return value;
+  }
+  throw dataUnavailable();
+}
+
+function readHoldState(
+  value: unknown,
+): OrganizerCalendarEventDto["holdState"] {
+  if (
+    value === null ||
+    value === "active" ||
+    value === "expired" ||
+    value === "nearing_expiry"
+  ) {
+    return value;
+  }
   throw dataUnavailable();
 }
 
@@ -726,6 +840,11 @@ function requiredInteger(value: unknown): number {
     throw dataUnavailable();
   }
   return value;
+}
+
+function optionalInteger(value: unknown): number | null {
+  if (value === null) return null;
+  return requiredInteger(value);
 }
 
 function dataUnavailable(): SafeApplicationError {

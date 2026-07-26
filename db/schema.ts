@@ -1044,6 +1044,935 @@ export const organizerEventRevisions = sqliteTable(
   ],
 );
 
+/**
+ * Phase 4's single active, organization-scoped scheduling policy. The legacy
+ * conflict_policies table remains the immutable Phase 1 proof surface.
+ */
+export const organizerConflictPolicies = sqliteTable(
+  "organizer_conflict_policies",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    mode: text("mode", {
+      enum: ["warn_reason", "require_admin_approval", "block"],
+    })
+      .notNull()
+      .default("warn_reason"),
+    policyVersion: integer("policy_version").notNull().default(1),
+    defaultHoldHours: integer("default_hold_hours").notNull().default(72),
+    nearingExpiryHours: integer("nearing_expiry_hours").notNull().default(24),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_conflict_policies_org_unique").on(
+      table.organizationId,
+    ),
+    index("organizer_conflict_policies_org_version_idx").on(
+      table.organizationId,
+      table.policyVersion,
+    ),
+    check(
+      "organizer_conflict_policies_mode_check",
+      sql`${table.mode} IN ('warn_reason', 'require_admin_approval', 'block')`,
+    ),
+    check(
+      "organizer_conflict_policies_version_check",
+      sql`${table.policyVersion} >= 1`,
+    ),
+    check(
+      "organizer_conflict_policies_hold_check",
+      sql`${table.defaultHoldHours} BETWEEN 1 AND 720
+          AND ${table.nearingExpiryHours} BETWEEN 1 AND ${table.defaultHoldHours}`,
+    ),
+  ],
+);
+
+/**
+ * A transaction-local, complete proposed scheduling state. Runtime guards
+ * require a matching intent before any schedule-affecting organizer-event
+ * mutation. Intents contain IDs and normalized facts only, never private
+ * notes, identity headers, emails, or secrets.
+ */
+export const organizerScheduleWriteIntents = sqliteTable(
+  "organizer_schedule_write_intents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id").notNull(),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "restrict" }),
+    operation: text("operation").notNull(),
+    planningStatus: text("planning_status", {
+      enum: [
+        "idea",
+        "draft",
+        "tentative_hold",
+        "confirmed",
+        "cancelled",
+        "completed",
+        "archived",
+      ],
+    }).notNull(),
+    scheduleShape: text("schedule_shape", {
+      enum: ["unscheduled", "timed", "all_day"],
+    }).notNull(),
+    actualStartUtc: integer("actual_start_utc"),
+    actualEndUtc: integer("actual_end_utc"),
+    expandedStartUtc: integer("expanded_start_utc"),
+    expandedEndUtc: integer("expanded_end_utc"),
+    timezone: text("timezone").notNull(),
+    allDayStartDate: text("all_day_start_date"),
+    allDayEndDateExclusive: text("all_day_end_date_exclusive"),
+    bufferBeforeMinutes: integer("buffer_before_minutes").notNull().default(0),
+    bufferAfterMinutes: integer("buffer_after_minutes").notNull().default(0),
+    venueId: text("venue_id").references(() => venues.id, {
+      onDelete: "restrict",
+    }),
+    primaryOrganizerProfileId: text("primary_organizer_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    organizerScopeJson: text("organizer_scope_json").notNull(),
+    holdExpiresAt: integer("hold_expires_at"),
+    expectedContentVersion: integer("expected_content_version").notNull(),
+    expectedScheduleVersion: integer("expected_schedule_version").notNull(),
+    proposedContentVersion: integer("proposed_content_version").notNull(),
+    proposedScheduleVersion: integer("proposed_schedule_version").notNull(),
+    policyId: text("policy_id")
+      .notNull()
+      .references(() => organizerConflictPolicies.id, {
+        onDelete: "restrict",
+      }),
+    policyVersion: integer("policy_version").notNull(),
+    policyMode: text("policy_mode", {
+      enum: ["warn_reason", "require_admin_approval", "block"],
+    }).notNull(),
+    reason: text("reason"),
+    reviewRequestId: text("review_request_id"),
+    stateFingerprint: text("state_fingerprint").notNull(),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    completedAt: integer("completed_at"),
+  },
+  (table) => [
+    index("organizer_schedule_write_intents_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.createdAt,
+    ),
+    index("organizer_schedule_write_intents_actor_idx").on(
+      table.organizationId,
+      table.actorProfileId,
+      table.createdAt,
+    ),
+    check(
+      "organizer_schedule_write_intents_status_check",
+      sql`${table.planningStatus} IN (
+        'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
+        'completed', 'archived'
+      )`,
+    ),
+    check(
+      "organizer_schedule_write_intents_policy_mode_check",
+      sql`${table.policyMode} IN ('warn_reason', 'require_admin_approval', 'block')`,
+    ),
+    check(
+      "organizer_schedule_write_intents_versions_check",
+      sql`${table.expectedContentVersion} >= 0
+          AND ${table.expectedScheduleVersion} >= 0
+          AND ${table.proposedContentVersion} >= 1
+          AND ${table.proposedScheduleVersion} >= 1
+          AND ${table.policyVersion} >= 1`,
+    ),
+    check(
+      "organizer_schedule_write_intents_scope_check",
+      sql`json_valid(${table.organizerScopeJson})
+          AND json_type(${table.organizerScopeJson}) = 'array'
+          AND length(${table.organizerScopeJson}) <= 4096`,
+    ),
+    check(
+      "organizer_schedule_write_intents_interval_check",
+      sql`(
+        ${table.scheduleShape} = 'unscheduled'
+        AND ${table.planningStatus} IN ('idea', 'archived')
+        AND ${table.actualStartUtc} IS NULL
+        AND ${table.actualEndUtc} IS NULL
+        AND ${table.expandedStartUtc} IS NULL
+        AND ${table.expandedEndUtc} IS NULL
+        AND ${table.allDayStartDate} IS NULL
+        AND ${table.allDayEndDateExclusive} IS NULL
+      ) OR (
+        ${table.scheduleShape} = 'timed'
+        AND ${table.actualStartUtc} IS NOT NULL
+        AND ${table.actualEndUtc} > ${table.actualStartUtc}
+        AND ${table.expandedStartUtc} IS NOT NULL
+        AND ${table.expandedStartUtc} <= ${table.actualStartUtc}
+        AND ${table.expandedEndUtc} >= ${table.actualEndUtc}
+        AND ${table.allDayStartDate} IS NULL
+        AND ${table.allDayEndDateExclusive} IS NULL
+      ) OR (
+        ${table.scheduleShape} = 'all_day'
+        AND ${table.actualStartUtc} IS NOT NULL
+        AND ${table.actualEndUtc} > ${table.actualStartUtc}
+        AND ${table.expandedStartUtc} IS NOT NULL
+        AND ${table.expandedStartUtc} <= ${table.actualStartUtc}
+        AND ${table.expandedEndUtc} >= ${table.actualEndUtc}
+        AND ${table.allDayStartDate} IS NOT NULL
+        AND ${table.allDayEndDateExclusive} > ${table.allDayStartDate}
+      )`,
+    ),
+    check(
+      "organizer_schedule_write_intents_buffer_check",
+      sql`${table.bufferBeforeMinutes} BETWEEN 0 AND 1440
+          AND ${table.bufferAfterMinutes} BETWEEN 0 AND 1440
+          AND (
+            ${table.expandedStartUtc} IS NULL
+            OR ${table.expandedStartUtc} =
+               ${table.actualStartUtc} - (${table.bufferBeforeMinutes} * 60000)
+          )
+          AND (
+            ${table.expandedEndUtc} IS NULL
+            OR ${table.expandedEndUtc} =
+               ${table.actualEndUtc} + (${table.bufferAfterMinutes} * 60000)
+          )`,
+    ),
+    check(
+      "organizer_schedule_write_intents_hold_check",
+      sql`(
+        ${table.planningStatus} = 'tentative_hold'
+        AND ${table.scheduleShape} <> 'unscheduled'
+        AND (
+          ${table.holdExpiresAt} IS NOT NULL
+          OR ${table.operation} = 'soft_delete'
+        )
+      ) OR (
+        ${table.planningStatus} <> 'tentative_hold'
+        AND ${table.holdExpiresAt} IS NULL
+      )`,
+    ),
+    check(
+      "organizer_schedule_write_intents_reason_check",
+      sql`${table.reason} IS NULL
+          OR (length(trim(${table.reason})) BETWEEN 1 AND 1000)`,
+    ),
+    check(
+      "organizer_schedule_write_intents_fingerprint_check",
+      sql`length(${table.stateFingerprint}) = 64`,
+    ),
+  ],
+);
+
+/**
+ * Materialized normalized schedule facts for every manual organizer event.
+ * This is a conflict projection of organizer_events, not a second event store.
+ */
+export const organizerReservationStates = sqliteTable(
+  "organizer_reservation_states",
+  {
+    organizerEventId: text("organizer_event_id")
+      .primaryKey()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "restrict" }),
+    planningStatus: text("planning_status", {
+      enum: [
+        "idea",
+        "draft",
+        "tentative_hold",
+        "confirmed",
+        "cancelled",
+        "completed",
+        "archived",
+      ],
+    }).notNull(),
+    scheduleShape: text("schedule_shape", {
+      enum: ["timed", "all_day"],
+    }).notNull(),
+    actualStartUtc: integer("actual_start_utc").notNull(),
+    actualEndUtc: integer("actual_end_utc").notNull(),
+    expandedStartUtc: integer("expanded_start_utc").notNull(),
+    expandedEndUtc: integer("expanded_end_utc").notNull(),
+    timezone: text("timezone").notNull(),
+    allDayStartDate: text("all_day_start_date"),
+    allDayEndDateExclusive: text("all_day_end_date_exclusive"),
+    bufferBeforeMinutes: integer("buffer_before_minutes").notNull().default(0),
+    bufferAfterMinutes: integer("buffer_after_minutes").notNull().default(0),
+    venueId: text("venue_id").references(() => venues.id, {
+      onDelete: "restrict",
+    }),
+    primaryOrganizerProfileId: text("primary_organizer_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    organizerScopeJson: text("organizer_scope_json").notNull(),
+    holdExpiresAt: integer("hold_expires_at"),
+    scheduleVersion: integer("schedule_version").notNull(),
+    policyVersion: integer("policy_version").notNull(),
+    writeIntentId: text("write_intent_id")
+      .notNull()
+      .references(() => organizerScheduleWriteIntents.id, {
+        onDelete: "restrict",
+      }),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    index("organizer_reservation_states_interval_idx").on(
+      table.organizationId,
+      table.actualStartUtc,
+      table.actualEndUtc,
+    ),
+    index("organizer_reservation_states_expanded_idx").on(
+      table.organizationId,
+      table.expandedStartUtc,
+      table.expandedEndUtc,
+    ),
+    index("organizer_reservation_states_venue_idx").on(
+      table.organizationId,
+      table.venueId,
+      table.actualStartUtc,
+    ),
+    index("organizer_reservation_states_hold_expiry_idx").on(
+      table.organizationId,
+      table.planningStatus,
+      table.holdExpiresAt,
+    ),
+    index("organizer_reservation_states_club_idx").on(
+      table.organizationId,
+      table.clubId,
+      table.actualStartUtc,
+    ),
+    check(
+      "organizer_reservation_states_status_check",
+      sql`${table.planningStatus} IN (
+        'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
+        'completed', 'archived'
+      )`,
+    ),
+    check(
+      "organizer_reservation_states_interval_check",
+      sql`${table.actualEndUtc} > ${table.actualStartUtc}
+          AND ${table.expandedStartUtc} <= ${table.actualStartUtc}
+          AND ${table.expandedEndUtc} >= ${table.actualEndUtc}
+          AND (
+            ${table.scheduleShape} = 'timed'
+            AND ${table.allDayStartDate} IS NULL
+            AND ${table.allDayEndDateExclusive} IS NULL
+            OR
+            ${table.scheduleShape} = 'all_day'
+            AND ${table.allDayStartDate} IS NOT NULL
+            AND ${table.allDayEndDateExclusive} > ${table.allDayStartDate}
+          )
+          AND ${table.bufferBeforeMinutes} BETWEEN 0 AND 1440
+          AND ${table.bufferAfterMinutes} BETWEEN 0 AND 1440
+          AND ${table.expandedStartUtc} =
+              ${table.actualStartUtc} - (${table.bufferBeforeMinutes} * 60000)
+          AND ${table.expandedEndUtc} =
+              ${table.actualEndUtc} + (${table.bufferAfterMinutes} * 60000)`,
+    ),
+    check(
+      "organizer_reservation_states_scope_check",
+      sql`json_valid(${table.organizerScopeJson})
+          AND json_type(${table.organizerScopeJson}) = 'array'
+          AND length(${table.organizerScopeJson}) <= 4096`,
+    ),
+    check(
+      "organizer_reservation_states_hold_check",
+      sql`(
+        ${table.planningStatus} = 'tentative_hold'
+        AND ${table.holdExpiresAt} IS NOT NULL
+      ) OR (
+        ${table.planningStatus} <> 'tentative_hold'
+        AND ${table.holdExpiresAt} IS NULL
+      )`,
+    ),
+    check(
+      "organizer_reservation_states_version_check",
+      sql`${table.scheduleVersion} >= 1 AND ${table.policyVersion} >= 1`,
+    ),
+  ],
+);
+
+/**
+ * Immutable-generation and legacy reservation intervals. Meetup rows are
+ * reserving only while their generation is the source's active completed
+ * generation; pending/failed rows never become candidates.
+ */
+export const organizerExternalReservationIntervals = sqliteTable(
+  "organizer_external_reservation_intervals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sourceKind: text("source_kind", {
+      enum: ["legacy", "meetup"],
+    }).notNull(),
+    sourceRecordId: text("source_record_id").notNull(),
+    syncSourceId: text("sync_source_id").references(() => syncSources.id, {
+      onDelete: "cascade",
+    }),
+    generationId: text("generation_id").references(
+      () => meetupSyncGenerations.id,
+      { onDelete: "cascade" },
+    ),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "restrict" }),
+    planningStatus: text("planning_status").notNull(),
+    scheduleShape: text("schedule_shape", {
+      enum: ["timed", "all_day"],
+    }).notNull(),
+    actualStartUtc: integer("actual_start_utc").notNull(),
+    actualEndUtc: integer("actual_end_utc").notNull(),
+    expandedStartUtc: integer("expanded_start_utc").notNull(),
+    expandedEndUtc: integer("expanded_end_utc").notNull(),
+    timezone: text("timezone").notNull(),
+    allDayStartDate: text("all_day_start_date"),
+    allDayEndDateExclusive: text("all_day_end_date_exclusive"),
+    bufferBeforeMinutes: integer("buffer_before_minutes").notNull().default(0),
+    bufferAfterMinutes: integer("buffer_after_minutes").notNull().default(0),
+    venueId: text("venue_id").references(() => venues.id, {
+      onDelete: "set null",
+    }),
+    primaryOrganizerProfileId: text("primary_organizer_profile_id").references(
+      () => profiles.id,
+      { onDelete: "set null" },
+    ),
+    organizerScopeJson: text("organizer_scope_json").notNull(),
+    sourceFingerprint: text("source_fingerprint").notNull(),
+    normalizedStateFingerprint: text(
+      "normalized_state_fingerprint",
+    ).notNull(),
+    reservationSemanticFingerprint: text(
+      "reservation_semantic_fingerprint",
+    ).notNull(),
+    scheduleVersion: integer("schedule_version").notNull(),
+    holdExpiresAt: integer("hold_expires_at"),
+    title: text("title").notNull(),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_external_reservations_source_record_unique").on(
+      table.sourceKind,
+      table.sourceRecordId,
+    ),
+    index("organizer_external_reservations_interval_idx").on(
+      table.organizationId,
+      table.actualStartUtc,
+      table.actualEndUtc,
+    ),
+    index("organizer_external_reservations_expanded_idx").on(
+      table.organizationId,
+      table.expandedStartUtc,
+      table.expandedEndUtc,
+    ),
+    index("organizer_external_reservations_source_generation_idx").on(
+      table.syncSourceId,
+      table.generationId,
+      table.actualStartUtc,
+    ),
+    index("organizer_external_reservations_venue_idx").on(
+      table.organizationId,
+      table.venueId,
+      table.actualStartUtc,
+    ),
+    check(
+      "organizer_external_reservations_source_check",
+      sql`(
+        ${table.sourceKind} = 'legacy'
+        AND ${table.syncSourceId} IS NULL
+        AND ${table.generationId} IS NULL
+      ) OR (
+        ${table.sourceKind} = 'meetup'
+        AND ${table.syncSourceId} IS NOT NULL
+        AND ${table.generationId} IS NOT NULL
+      )`,
+    ),
+    check(
+      "organizer_external_reservations_interval_check",
+      sql`${table.actualEndUtc} > ${table.actualStartUtc}
+          AND ${table.expandedStartUtc} <= ${table.actualStartUtc}
+          AND ${table.expandedEndUtc} >= ${table.actualEndUtc}
+          AND (
+            ${table.scheduleShape} = 'timed'
+            AND ${table.allDayStartDate} IS NULL
+            AND ${table.allDayEndDateExclusive} IS NULL
+            OR
+            ${table.scheduleShape} = 'all_day'
+            AND ${table.allDayStartDate} IS NOT NULL
+            AND ${table.allDayEndDateExclusive} > ${table.allDayStartDate}
+          )
+          AND ${table.bufferBeforeMinutes} BETWEEN 0 AND 1440
+          AND ${table.bufferAfterMinutes} BETWEEN 0 AND 1440
+          AND ${table.expandedStartUtc} =
+              ${table.actualStartUtc} - (${table.bufferBeforeMinutes} * 60000)
+          AND ${table.expandedEndUtc} =
+              ${table.actualEndUtc} + (${table.bufferAfterMinutes} * 60000)`,
+    ),
+    check(
+      "organizer_external_reservations_scope_check",
+      sql`json_valid(${table.organizerScopeJson})
+          AND json_type(${table.organizerScopeJson}) = 'array'
+          AND length(${table.organizerScopeJson}) <= 4096`,
+    ),
+    check(
+      "organizer_external_reservations_version_check",
+      sql`${table.scheduleVersion} >= 1`,
+    ),
+    check(
+      "organizer_external_reservations_fingerprint_check",
+      sql`length(${table.sourceFingerprint}) = 64
+          AND length(${table.normalizedStateFingerprint}) = 64
+          AND length(${table.reservationSemanticFingerprint}) = 64`,
+    ),
+  ],
+);
+
+/**
+ * Generation-owned, server-normalized Meetup reservation facts.
+ *
+ * In particular, all-day UTC boundaries are calculated in TypeScript with the
+ * source IANA timezone while a generation is staged. D1 activation can then
+ * compare the proposed external reservation projection to this immutable
+ * normalization row without attempting timezone conversion in SQL.
+ */
+export const meetupSnapshotReservationNormalizations = sqliteTable(
+  "meetup_snapshot_reservation_normalizations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    syncSourceId: text("sync_source_id")
+      .notNull()
+      .references(() => syncSources.id, { onDelete: "cascade" }),
+    generationId: text("generation_id")
+      .notNull()
+      .references(() => meetupSyncGenerations.id, { onDelete: "cascade" }),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => meetupEventSnapshots.id, { onDelete: "cascade" }),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "restrict" }),
+    planningStatus: text("planning_status", {
+      enum: ["confirmed", "tentative"],
+    }).notNull(),
+    scheduleShape: text("schedule_shape", {
+      enum: ["timed", "all_day"],
+    }).notNull(),
+    actualStartUtc: integer("actual_start_utc").notNull(),
+    actualEndUtc: integer("actual_end_utc").notNull(),
+    expandedStartUtc: integer("expanded_start_utc").notNull(),
+    expandedEndUtc: integer("expanded_end_utc").notNull(),
+    timezone: text("timezone").notNull(),
+    allDayStartDate: text("all_day_start_date"),
+    allDayEndDateExclusive: text("all_day_end_date_exclusive"),
+    bufferBeforeMinutes: integer("buffer_before_minutes").notNull().default(0),
+    bufferAfterMinutes: integer("buffer_after_minutes").notNull().default(0),
+    venueId: text("venue_id").references(() => venues.id, {
+      onDelete: "set null",
+    }),
+    primaryOrganizerProfileId: text("primary_organizer_profile_id").references(
+      () => profiles.id,
+      { onDelete: "set null" },
+    ),
+    organizerScopeJson: text("organizer_scope_json").notNull(),
+    scheduleVersion: integer("schedule_version").notNull(),
+    holdExpiresAt: integer("hold_expires_at"),
+    sourceFingerprint: text("source_fingerprint").notNull(),
+    normalizedStateFingerprint: text(
+      "normalized_state_fingerprint",
+    ).notNull(),
+    reservationSemanticFingerprint: text(
+      "reservation_semantic_fingerprint",
+    ).notNull(),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("meetup_snapshot_reservation_normalization_unique").on(
+      table.syncSourceId,
+      table.generationId,
+      table.snapshotId,
+      table.eventId,
+    ),
+    index("meetup_snapshot_reservation_normalization_generation_idx").on(
+      table.organizationId,
+      table.syncSourceId,
+      table.generationId,
+      table.actualStartUtc,
+    ),
+    index("meetup_snapshot_reservation_normalization_event_idx").on(
+      table.organizationId,
+      table.eventId,
+      table.generationId,
+    ),
+    check(
+      "meetup_snapshot_reservation_normalization_status_check",
+      sql`${table.planningStatus} IN ('confirmed', 'tentative')`,
+    ),
+    check(
+      "meetup_snapshot_reservation_normalization_interval_check",
+      sql`${table.actualEndUtc} > ${table.actualStartUtc}
+          AND ${table.expandedStartUtc} =
+              ${table.actualStartUtc} - (${table.bufferBeforeMinutes} * 60000)
+          AND ${table.expandedEndUtc} =
+              ${table.actualEndUtc} + (${table.bufferAfterMinutes} * 60000)
+          AND ${table.bufferBeforeMinutes} BETWEEN 0 AND 1440
+          AND ${table.bufferAfterMinutes} BETWEEN 0 AND 1440
+          AND (
+            ${table.scheduleShape} = 'timed'
+            AND ${table.allDayStartDate} IS NULL
+            AND ${table.allDayEndDateExclusive} IS NULL
+            OR
+            ${table.scheduleShape} = 'all_day'
+            AND ${table.allDayStartDate} IS NOT NULL
+            AND ${table.allDayEndDateExclusive} >
+                ${table.allDayStartDate}
+          )`,
+    ),
+    check(
+      "meetup_snapshot_reservation_normalization_scope_check",
+      sql`json_valid(${table.organizerScopeJson})
+          AND json_type(${table.organizerScopeJson}) = 'array'
+          AND length(${table.organizerScopeJson}) <= 4096`,
+    ),
+    check(
+      "meetup_snapshot_reservation_normalization_fingerprint_check",
+      sql`length(${table.sourceFingerprint}) = 64
+          AND length(${table.normalizedStateFingerprint}) = 64
+          AND length(${table.reservationSemanticFingerprint}) = 64`,
+    ),
+    check(
+      "meetup_snapshot_reservation_normalization_version_check",
+      sql`${table.scheduleVersion} >= 1`,
+    ),
+  ],
+);
+
+export const organizerConflictReviewRequests = sqliteTable(
+  "organizer_conflict_review_requests",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    requestedPlanningStatus: text("requested_planning_status", {
+      enum: ["tentative_hold", "confirmed"],
+    }).notNull(),
+    requestedStateJson: text("requested_state_json").notNull(),
+    requestedScheduleVersion: integer("requested_schedule_version").notNull(),
+    stateFingerprint: text("state_fingerprint").notNull(),
+    policyId: text("policy_id")
+      .notNull()
+      .references(() => organizerConflictPolicies.id, {
+        onDelete: "restrict",
+      }),
+    policyVersion: integer("policy_version").notNull(),
+    requesterProfileId: text("requester_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    reason: text("reason").notNull(),
+    state: text("state", {
+      enum: ["pending", "approved", "rejected", "invalidated"],
+    })
+      .notNull()
+      .default("pending"),
+    decidedByProfileId: text("decided_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "restrict" },
+    ),
+    decidedAt: integer("decided_at"),
+    decisionNote: text("decision_note"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    index("organizer_conflict_reviews_queue_idx").on(
+      table.organizationId,
+      table.state,
+      table.createdAt,
+    ),
+    index("organizer_conflict_reviews_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.requestedScheduleVersion,
+    ),
+    check(
+      "organizer_conflict_reviews_version_check",
+      sql`${table.requestedScheduleVersion} >= 1 AND ${table.policyVersion} >= 1`,
+    ),
+    check(
+      "organizer_conflict_reviews_fingerprint_check",
+      sql`length(${table.stateFingerprint}) = 64`,
+    ),
+    check(
+      "organizer_conflict_reviews_requested_state_check",
+      sql`json_valid(${table.requestedStateJson})
+          AND json_type(${table.requestedStateJson}) = 'object'
+          AND length(${table.requestedStateJson}) <= 8192`,
+    ),
+    check(
+      "organizer_conflict_reviews_reason_check",
+      sql`length(trim(${table.reason})) BETWEEN 1 AND 1000`,
+    ),
+    check(
+      "organizer_conflict_reviews_state_check",
+      sql`(
+        ${table.state} = 'pending'
+        AND ${table.decidedByProfileId} IS NULL
+        AND ${table.decidedAt} IS NULL
+      ) OR (
+        ${table.state} IN ('approved', 'rejected')
+        AND ${table.decidedByProfileId} IS NOT NULL
+        AND ${table.decidedAt} IS NOT NULL
+      ) OR ${table.state} = 'invalidated'`,
+    ),
+  ],
+);
+
+export const organizerConflictIncidents = sqliteTable(
+  "organizer_conflict_incidents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    conflictingCandidateKey: text("conflicting_candidate_key").notNull(),
+    conflictingEventId: text("conflicting_event_id").notNull(),
+    conflictingSourceKind: text("conflicting_source_kind", {
+      enum: ["manual", "legacy", "meetup"],
+    }).notNull(),
+    proposedScheduleVersion: integer("proposed_schedule_version").notNull(),
+    conflictingScheduleVersion: integer(
+      "conflicting_schedule_version",
+    ).notNull(),
+    policyId: text("policy_id")
+      .notNull()
+      .references(() => organizerConflictPolicies.id, {
+        onDelete: "restrict",
+      }),
+    policyVersion: integer("policy_version").notNull(),
+    classification: text("classification", {
+      enum: ["direct", "buffer"],
+    }).notNull(),
+    overlapStartUtc: integer("overlap_start_utc").notNull(),
+    overlapEndUtc: integer("overlap_end_utc").notNull(),
+    resourcesJson: text("resources_json").notNull(),
+    stateFingerprint: text("state_fingerprint").notNull(),
+    state: text("state", {
+      enum: [
+        "open",
+        "pending_approval",
+        "approved",
+        "rejected",
+        "invalidated",
+        "resolved",
+        "informational",
+      ],
+    })
+      .notNull()
+      .default("open"),
+    writeIntentId: text("write_intent_id").references(
+      () => organizerScheduleWriteIntents.id,
+      { onDelete: "cascade" },
+    ),
+    reviewRequestId: text("review_request_id").references(
+      () => organizerConflictReviewRequests.id,
+      { onDelete: "set null" },
+    ),
+    detectedByProfileId: text("detected_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    resolvedAt: integer("resolved_at"),
+  },
+  (table) => [
+    uniqueIndex("organizer_conflict_incidents_pair_version_unique").on(
+      table.organizerEventId,
+      table.proposedScheduleVersion,
+      table.conflictingCandidateKey,
+      table.conflictingScheduleVersion,
+      table.classification,
+    ),
+    index("organizer_conflict_incidents_queue_idx").on(
+      table.organizationId,
+      table.state,
+      table.createdAt,
+    ),
+    index("organizer_conflict_incidents_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.proposedScheduleVersion,
+    ),
+    index("organizer_conflict_incidents_conflicting_event_idx").on(
+      table.organizationId,
+      table.conflictingEventId,
+      table.state,
+    ),
+    check(
+      "organizer_conflict_incidents_versions_check",
+      sql`${table.proposedScheduleVersion} >= 1
+          AND ${table.conflictingScheduleVersion} >= 1
+          AND ${table.policyVersion} >= 1`,
+    ),
+    check(
+      "organizer_conflict_incidents_interval_check",
+      sql`${table.overlapEndUtc} > ${table.overlapStartUtc}`,
+    ),
+    check(
+      "organizer_conflict_incidents_resources_check",
+      sql`json_valid(${table.resourcesJson})
+          AND json_type(${table.resourcesJson}) = 'array'
+          AND length(${table.resourcesJson}) <= 4096`,
+    ),
+    check(
+      "organizer_conflict_incidents_fingerprint_check",
+      sql`length(${table.stateFingerprint}) = 64`,
+    ),
+  ],
+);
+
+export const organizerConflictOverrides = sqliteTable(
+  "organizer_conflict_overrides",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    incidentId: text("incident_id")
+      .notNull()
+      .references(() => organizerConflictIncidents.id, {
+        onDelete: "cascade",
+      }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    conflictingCandidateKey: text("conflicting_candidate_key").notNull(),
+    proposedScheduleVersion: integer("proposed_schedule_version").notNull(),
+    conflictingScheduleVersion: integer(
+      "conflicting_schedule_version",
+    ).notNull(),
+    policyId: text("policy_id")
+      .notNull()
+      .references(() => organizerConflictPolicies.id, {
+        onDelete: "restrict",
+      }),
+    policyVersion: integer("policy_version").notNull(),
+    stateFingerprint: text("state_fingerprint").notNull(),
+    reason: text("reason").notNull(),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    reviewRequestId: text("review_request_id").references(
+      () => organizerConflictReviewRequests.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    invalidatedAt: integer("invalidated_at"),
+    invalidatedByProfileId: text("invalidated_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "set null" },
+    ),
+  },
+  (table) => [
+    uniqueIndex("organizer_conflict_overrides_active_incident_unique")
+      .on(table.incidentId)
+      .where(sql`${table.invalidatedAt} IS NULL`),
+    index("organizer_conflict_overrides_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.proposedScheduleVersion,
+    ),
+    check(
+      "organizer_conflict_overrides_versions_check",
+      sql`${table.proposedScheduleVersion} >= 1
+          AND ${table.conflictingScheduleVersion} >= 1
+          AND ${table.policyVersion} >= 1`,
+    ),
+    check(
+      "organizer_conflict_overrides_fingerprint_check",
+      sql`length(${table.stateFingerprint}) = 64`,
+    ),
+    check(
+      "organizer_conflict_overrides_reason_check",
+      sql`length(trim(${table.reason})) BETWEEN 1 AND 1000`,
+    ),
+  ],
+);
+
+export const organizerHoldNoticeReceipts = sqliteTable(
+  "organizer_hold_notice_receipts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    scheduleVersion: integer("schedule_version").notNull(),
+    noticeType: text("notice_type", {
+      enum: ["nearing_expiry", "expired"],
+    }).notNull(),
+    recipientProfileId: text("recipient_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    notificationId: text("notification_id")
+      .notNull()
+      .references(() => notifications.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_hold_notice_receipts_dedupe_unique").on(
+      table.organizerEventId,
+      table.scheduleVersion,
+      table.noticeType,
+      table.recipientProfileId,
+    ),
+    index("organizer_hold_notice_receipts_org_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.scheduleVersion,
+    ),
+    check(
+      "organizer_hold_notice_receipts_version_check",
+      sql`${table.scheduleVersion} >= 1`,
+    ),
+  ],
+);
+
 export const conflictPolicies = sqliteTable(
   "conflict_policies",
   {

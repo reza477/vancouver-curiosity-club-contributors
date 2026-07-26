@@ -13,6 +13,10 @@ import { PageHeader, StatusPill } from "@/app/_organizer/PageHeader";
 import styles from "@/app/_organizer/workspace.module.css";
 import type { OrganizerCalendarEventDto } from "@/lib/server/organizer/calendar";
 import {
+  listOrganizerEventConflictSummaries,
+  type OrganizerEventConflictSummaryDto,
+} from "@/lib/server/organizer/event-conflicts";
+import {
   getOrganizerEventRecord,
   listOrganizerEventRevisions,
   type OrganizerEventDto,
@@ -73,7 +77,7 @@ export default async function OrganizerEventDetailPage({
     return <ReadOnlyEvent record={data.record} names={data.names} />;
   }
 
-  const { names, options, record, revisions } = data;
+  const { conflicts, names, options, record, revisions } = data;
   const deleted = record.deletedAt !== null;
   return (
     <>
@@ -93,6 +97,14 @@ export default async function OrganizerEventDetailPage({
         <StatusPill>Private</StatusPill>
         {deleted ? <StatusPill>Deleted</StatusPill> : null}
         <p>{scheduleLabel(record)}</p>
+        {record.holdState ? (
+          <p>
+            Hold: <strong>{record.holdState.replace("_", " ")}</strong>
+            {record.holdExpiresAt
+              ? ` · ${formatDateTime(record.holdExpiresAt)}`
+              : ""}
+          </p>
+        ) : null}
         <p>
           Primary organizer:{" "}
           <strong>
@@ -116,10 +128,66 @@ export default async function OrganizerEventDetailPage({
           {formatDateTime(record.updatedAt)}
         </p>
       </section>
+      {conflicts.length > 0 ? (
+        <section
+          aria-labelledby="event-conflicts-title"
+          className={styles.conflictPreview}
+        >
+          <header>
+            <div>
+              <p className={styles.kicker}>Private schedule coordination</p>
+              <h2 id="event-conflicts-title">Current conflicts and reviews</h2>
+            </div>
+            <Link href="/organizer/conflicts">Open Conflicts</Link>
+          </header>
+          <ol className={styles.conflictPreviewList}>
+            {conflicts.map((conflict) => (
+              <li key={conflict.id}>
+                <article
+                  aria-label={`${conflict.title}. ${conflict.scheduleLabel}. ${conflict.organizerName}. ${conflict.clubName}. ${conflict.planningStatus}. ${conflict.state}.`}
+                >
+                  <header>
+                    <div>
+                      <strong>{conflict.title}</strong>
+                      <span>
+                        {conflict.clubName} · {conflict.organizerName}
+                      </span>
+                    </div>
+                    <span>{conflict.state}</span>
+                  </header>
+                  <p>{conflict.scheduleLabel}</p>
+                  <p>{conflict.overlapLabel}</p>
+                  <p>{conflict.sourceLabel}</p>
+                  {conflict.destination ? (
+                    conflict.destination.external ? (
+                      <a
+                        href={conflict.destination.href}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        {conflict.destination.label}
+                      </a>
+                    ) : (
+                      <Link href={conflict.destination.href}>
+                        {conflict.destination.label}
+                      </Link>
+                    )
+                  ) : (
+                    <span>Read-only source record</span>
+                  )}
+                </article>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
       <EventActions
         contentVersion={record.contentVersion}
         deleted={deleted}
         eventId={record.id}
+        planningStatus={record.planningStatus}
+        scheduleVersion={record.scheduleVersion}
+        scheduled={record.schedule.shape !== "unscheduled"}
       />
       {deleted ? (
         <OrganizerPageState
@@ -172,6 +240,7 @@ export default async function OrganizerEventDetailPage({
 
 type EventDetailData =
   | Readonly<{
+      conflicts: readonly OrganizerEventConflictSummaryDto[];
       kind: "editable";
       names: ReadonlyMap<string, string>;
       options: Awaited<ReturnType<typeof loadEventFormOptions>>;
@@ -203,7 +272,12 @@ async function loadEventDetailData(
   if (!isEditableManualRecord(record)) {
     return Object.freeze({ kind: "read_only", names, record });
   }
-  const [options, revisions] = await Promise.all([
+  const [conflicts, options, revisions] = await Promise.all([
+    listOrganizerEventConflictSummaries(
+      context.database,
+      context.identity,
+      record.id,
+    ),
     loadEventFormOptions(context),
     listOrganizerEventRevisions(
       context.database,
@@ -212,7 +286,14 @@ async function loadEventDetailData(
       50,
     ),
   ]);
-  return Object.freeze({ kind: "editable", names, options, record, revisions });
+  return Object.freeze({
+    conflicts,
+    kind: "editable",
+    names,
+    options,
+    record,
+    revisions,
+  });
 }
 
 function ReadOnlyEvent({
@@ -226,7 +307,7 @@ function ReadOnlyEvent({
     <>
       <PageHeader
         eyebrow={`${record.sourceLabel} · read-only`}
-        introduction="This source-controlled, reserving, or previously published record is visible for coordination but cannot be changed through Phase 3 manual tools."
+        introduction="This legacy or source-controlled record is visible for coordination but cannot be changed through the authoritative manual scheduling tools."
         title={record.title}
       />
       <section className={styles.readOnlyEventDetail}>

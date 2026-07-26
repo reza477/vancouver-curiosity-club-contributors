@@ -4,305 +4,312 @@ Last updated: 2026-07-25 (America/Vancouver)
 
 ## Active phase and authorized scope
 
-- **Phase 3 — Organizer portal, non-reserving workflow.**
-- Phase 3 implementation is complete and verified in local, preview-D1,
-  source-test, built-Worker, and browser test seams.
-- The exact verified source was committed, pushed, packaged, audited, and saved
-  once as unpublished ChatGPT Sites version 9.
-- Phase 4 conflict/reserving work is not authorized and has not started.
-- The existing owner-only live deployment remains version 8. No Phase 3 source
-  has been deployed.
+- **Phase 4 — Authoritative conflict engine and reserving writes.**
+- Phase 4 application work is implemented and verified in isolated local,
+  preview-D1, source-test, built-Worker, and browser seams.
+- Phase 5 public preview/publication work is not authorized and has not
+  started.
+- Authorized cuts: **none**.
+- The owner-only live deployment remains version 8. Phase 4 has not been
+  deployed.
 
 ## Completed and verified
 
-### Private organizer workspace
+### Authoritative private scheduling
 
-- Added the separate private organizer shell and routes:
+- `organizer_events` remains the only writable manual-event record.
+- Every schedule-affecting create, edit, lifecycle, duplicate, delete, and
+  restore path uses the same server-only scheduling protocol. The legacy
+  `events` conflict proof is not an organizer write path.
+- Timed and all-day Drafts, tentative holds, and confirmed private events use
+  separate content and schedule versions. Unscheduled Ideas retain no invented
+  date.
+- Tentative holds and confirmed records reserve. Drafts are informational.
+  Cancelled, completed, archived, deleted, and D1-time-expired holds do not
+  reserve.
+- Held and confirmed records can be rescheduled by an authorized actor. Time,
+  timezone, club, venue, buffer, primary organizer, and co-organizer changes
+  receive a complete atomic recheck.
+- Completion is rejected before the canonical event end and succeeds at the
+  exact D1-time boundary or later. Restore returns to a safe non-reserving
+  Draft.
+- Every successful mutation commits the canonical row, exact organizer set,
+  normalized reservation state, version-bound incident/review/override facts,
+  immutable revision, audit entry, and allowlisted notifications in one
+  bounded `DB.batch()` transaction.
+- Zero-row, stale-content, stale-schedule, conflict, expired-hold,
+  authorization, and invariant failures are treated as failure and roll back
+  all residue.
 
-  - `/organizer`
-  - `/organizer/calendar`
-  - `/organizer/events`
-  - `/organizer/events/new`
-  - `/organizer/events/[id]`
-  - `/organizer/team`
-  - `/organizer/clubs`
-  - `/organizer/notifications`
-  - `/organizer/profile`
-  - `/organizer/settings`
-  - existing `/organizer/meetup`
-  - `/accept-invitation`
+### Conflict semantics and policy
 
-- Organizer pages do not use public header/footer chrome or emit public
-  canonical, Open Graph, JSON-LD, or sitemap data.
-- Organizer pages, invitation surfaces, and organizer APIs are server
-  protected, `no-store`, and `noindex, nofollow, noarchive`.
-- Desktop sidebar and compact mobile navigation expose only Phase 3 actions.
-  There is no dead Conflicts, publishing, media, export, email, or later-phase
-  control.
+- Direct overlap uses half-open intervals. A 6:00 PM end and 6:00 PM start do
+  not overlap when both buffers are zero.
+- Buffer-only overlap uses both records' setup and cleanup/travel expansion.
+  Direct overlap takes priority while every relevant organization, organizer,
+  co-organizer, and venue fact remains available for explanation.
+- Conflicts are organization-wide across clubs. All-day bounds are normalized
+  at local midnight in the original IANA timezone, including Vancouver
+  spring-forward and fall-back behavior.
+- One active D1 policy supports:
 
-### Authentication, invitations, team, and ownership
+  - `warn_reason`;
+  - `require_admin_approval`;
+  - `block`.
 
-- Sign in with ChatGPT remains identity only. Every protected request derives
-  the actor and organization from trusted server context, then revalidates
-  active profile, active membership, role, and required club assignment.
-- Authenticated but uninvited identities are denied in source and rendered
-  Worker tests.
-- Owners can create Administrator or Organizer invitations. Administrators can
-  create Organizer invitations only. Organizer invitations require an active
-  same-organization club.
-- Invitation tokens are 256-bit random, stored only as hashes, email-bound,
-  organization-bound, one-time, expiring, revocable, and D1-rate-limited.
-  Copyable links are shown only on creation; no email-sent claim is made.
-- Acceptance captures the token into a short-lived path-scoped HttpOnly cookie,
-  cleans the browser URL, requires the matching ChatGPT email, and atomically
-  creates membership, club assignment, notification, and audit records.
-- Team reads restrict email to Owner/Administrator management views.
-  Organizer writes remain assigned-club and owned/co-organized-event scoped.
-- Membership changes recheck active and soft-deleted restorable event blockers
-  inside the committing batch.
-- Ownership transfer is atomic. Durable guards preserve exactly one active
-  Owner with an active, nondeleted profile under concurrent and crafted
-  attempts. Membership organization/profile/email identity is immutable.
+- Default hold duration is 72 hours; nearing-expiry threshold is 24 hours.
+- Warn overlaps require an exact bounded reason stored atomically with both
+  event versions, policy version, and conflict facts.
+- Administrator-approval requests remain non-reserving Drafts. An
+  Administrator cannot self-approve but may reject or withdraw their own
+  request. An Owner may self-approve.
+- Policy or schedule/resource changes atomically close stale pending reviews,
+  overrides, and incident presentation state. Rejected or invalidated reviews
+  may be requested again without uniqueness collisions.
+- Authoritative candidate reads fail closed rather than authorize a truncated
+  set.
 
-### Canonical lifecycle and private event workflow
+### Read-only source coordination
 
-- Additive migration `0012_phase3_organizer_foundation.sql` establishes one
-  authoritative private event model:
+- Active read-only legacy reservations and enabled completed active Meetup
+  generations participate in the same conflict model without becoming
+  writable.
+- Pending, failed, disabled, or deleted Meetup sources remain invisible.
+- Timed and IANA-normalized all-day Meetup facts stage with exact immutable
+  snapshot parity and normalized interval/resource parity.
+- A separate generation-independent reservation-semantic fingerprint permits
+  an identical or content-only refresh while detecting schedule, resource, or
+  reserving-state changes.
+- Changing `active_generation_id`, re-enabling a source with an active
+  generation, or restoring that source runs the same database activation
+  guard.
+- Changed external reservation semantics atomically close manual incidents,
+  pending reviews, and overrides bound to the old external facts. If
+  activation fails, those closures roll back with it.
+- A genuinely new source overlap fails closed. The prior completed generation
+  remains active, the staged generation is retained with a redacted actionable
+  schedule-conflict state, and the documented resolution is to move/release
+  the manual reservation and refresh again.
+- Saved feed addresses, tokens, raw feed bodies, descriptions, and private
+  locations remain absent from client DTOs, public output, logs, and artifacts.
 
-  - planning: `idea`, `draft`, `tentative_hold`, `confirmed`, `cancelled`,
-    `completed`, `archived`;
-  - publication: `private`, `scheduled`, `published`, `unpublished`;
-  - schedule: `unscheduled`, `timed`, `all_day`.
+### Private organizer experience
 
-- Every Phase 3 manual mutation is service- and database-limited to private
-  Ideas or Drafts. Only Ideas may be unscheduled. Timed and all-day shape
-  rules are enforced without invented dates or UTC offsets.
-- Manual create, edit, duplicate, soft delete, and restore use optimistic
-  `content_version` compare-and-swap. `schedule_version` remains distinct for
-  future Phase 4 authorization.
-- Each successful mutation writes the current row, immutable revision, and
-  append-only audit entry in one bounded D1 batch. Stale edits return
-  `409 stale_edit` without partial residue.
-- Ordinary editor updates preserve adopted venue and private meeting details;
-  title-only edits do not spuriously increment `schedule_version`.
-- Moving a Draft between clubs removes stale organizer selections while
-  preserving any still-valid organization-wide assignment.
-- Duplicate records are source-free and private. Source-controlled, reserving,
-  public, or unsupported legacy records remain read-only.
-- Legacy publication mapping labels a record Published only when visibility is
-  public and `published_at` is present.
+- Added protected `/organizer/conflicts`, conflict preview and review APIs,
+  lifecycle-action API, private venue APIs, and conflict-policy settings.
+- Desktop and mobile organizer navigation expose Calendar, Add Event,
+  Conflicts, Team, and More/Settings without Phase 5 controls.
+- The event editor presents schedule, timezone, people, venue, buffers, and
+  lifecycle in one accessible workflow. The preview is debounced,
+  cancellable, stale-response-safe, and explicitly advisory.
+- Conflict Center groups Open, Pending approval, Approved, Rejected,
+  Invalidated, Resolved, and informational Draft warnings.
+- Conflict actions are emitted only for a manual side the actor can actually
+  edit. Legacy and Meetup sources use honest read-only destinations or labels.
+- Event detail loads a real organization-scoped conflict summary; unrelated
+  reasons and private source facts are not disclosed.
+- Calendar has a real Conflict-only filter, visible counts, Clear Filters,
+  bounded-load disclosure, and a distinct unscheduled Ideas area.
+- Owner/Administrator can manage private venues and policy. Organizer
+  permissions remain assigned-club and owned/co-organized-event scoped.
+- D1-time reconciliation creates at most one nearing-expiry and one expiry
+  notification per event schedule version and affected recipient.
+- Conflict, review, decision, hold, confirmation, cancellation, and material
+  schedule notifications use bounded allowlisted payloads and durable
+  deduplication. No email, digest, cron, scheduler, or realtime claim exists.
 
-### Migration adoption and persistent D1 invariants
+### Migration and persistent invariants
 
-- Existing migrations `0008`–`0011` remain byte-for-byte unchanged.
-- Migration `0012` is additive, retry-safe, and Sites-tokenizer compatible:
-  24 complete statements, no packaged trigger body, `ALTER`, `PRAGMA`, rename,
-  reset, or destructive rebuild.
-- Legacy adoption is all-or-nothing. It requires:
+- Existing migrations `0008` through `0012` remain unchanged.
+- Additive migration `0013_phase4_conflict_engine.sql` contains **37 complete
+  single statements**, including **9 tables** and **27 indexes**. It contains
+  no trigger body, destructive rebuild, `ALTER`, `DROP`, rename, reset, or
+  `PRAGMA` mutation.
+- Migration 0013 is retry-safe against clean, populated-version-8, repeated,
+  and every partial production-tokenizer prefix tested.
+- Current schema evidence:
 
-  - exact valid and unique equality between canonical
-    `organizer_scope_json` and normalized active primary/co-organizer rows;
-  - valid same-organization references and assignments;
-  - same-organization creator membership;
-  - valid updater and schedule/lifecycle shape.
+  - 52 tables;
+  - 117 explicit indexes;
+  - 44 unique indexes;
+  - 177 foreign keys;
+  - 91 checks;
+  - zero `PRAGMA foreign_key_check` violations.
 
-- Divergent records remain intact and read-only; no co-organizer is silently
-  discarded.
-- Phase 3 editable display name, biography, and attribution-consent values are
-  staged in `organizer_profile_preferences`. Migration and snapshot contain
-  nullable `workspace_display_name` and
-  `public_attribution_consent_draft`; migrated-column contract tests prepare
-  those exact fields.
-- Public Phase 2 host projection still reads canonical `profiles` fields only.
-  Private profile edits cannot rename, add, or remove a published host.
-- Runtime invariant state is version **3** with fingerprint
-  `0d89f16aa0a5a462b73a34c8ecb98cd011527bc50124697a90bffcbd095e5621`.
-- The initializer verifies and repairs **30 exact triggers** before
-  application dispatch while retaining the existing two reservation and seven
-  public-integrity guards.
-- The new guards cover private lifecycle/organization integrity, organizer
-  associations, immutable revisions/audits, rate limits, ownership transfer,
-  membership identity, and sole usable Owner profile state.
-- Concurrent isolate installation is idempotent. Invalid existing data leaves
-  no false durable marker or partial guard set.
+- Runtime invariant version is **4**, with **48 exact triggers** and fingerprint
+  `0cd660044b22630341bde84ef8d48951842797c2b48c8b60450abb2f66f86f49`.
+- The fail-closed initializer verifies normalized `sqlite_master` definitions,
+  exact trigger count, durable marker, and organization/policy/reservation/
+  incident/review/override/source integrity before application dispatch.
+- Cold, healthy, ordinary repair, bounded full-repair, manual adoption, and
+  external adoption paths remain within the 50-statement D1 invocation limit.
+- Concurrent-isolate initialization is idempotent. Malformed existing data
+  writes no false readiness marker or partial trusted guard set.
 
-### Calendar, events index, clubs, profiles, notifications, and history
+### Public/private separation
 
-- Private calendar combines private manual records, read-only legacy records,
-  and completed active Meetup snapshots only. Pending Meetup generation facts
-  remain invisible.
-- Agenda, Day, Week, Month, and unscheduled Ideas surfaces render timed,
-  all-day, overnight, multi-day, leap-date, and Vancouver DST cases.
-- Calendar returns the exact D1 match count, an explicit bounded loaded count,
-  and validated cumulative `take` links up to 5,000 records. Client-side filter
-  copy states that filters apply to the loaded records.
-- Events index applies search and lifecycle filters in parameterized D1
-  queries and provides deterministic 200-record pages. Older and soft-deleted
-  restorable records remain reachable.
-- Club update and archive repeat active Owner/Administrator authorization in
-  the committing batch.
-- Club archive is blocked by any organizer event including soft-deleted
-  records, any nondeleted legacy event, retained or active/pending Meetup
-  source, active program, pending invitation, active assignment, or public
-  profile. Blocker details are bounded and actionable.
-- Meetup source connection revalidates the actor and active same-organization
-  club in the commit, preventing archive/configuration races without returning
-  a saved feed address.
-- Profile drafts remain private/inert for public attribution. Settings change
-  only private workspace name and default IANA timezone.
-- Notifications use a server allowlist and minimum safe payloads. Read/unread,
-  mark-all, and preference modes are D1-backed. Activity history is append-only
-  and organization-scoped.
-
-### Phase 2 preservation
-
-- Public Home, Events, event details, clubs, metadata, sitemap, structured
-  data, and error behavior remain on explicit allowlisted projections.
-- New Phase 3 Ideas, Drafts, notes, invitations, notifications, audit data,
-  identities, and private Meetup configuration are absent from public list,
-  detail, guessed slug, metadata, JSON-LD, sitemap, and built-Worker surfaces.
-- Existing completed-generation Meetup publication isolation remains intact.
-- Owner/Administrator may still configure and manually refresh Meetup;
-  Organizer access remains read-only. Saved feed addresses never render.
+- Every Phase 4 manual record keeps `publication_status = 'private'`.
+- Phase 2 public projections do not read `organizer_events`.
+- Private holds, confirmations, reasons, notes, venues, organizer identity,
+  notifications, audit history, invitations, and source configuration remain
+  absent from Home, Events, event/club detail, metadata, JSON-LD, sitemap,
+  guessed public slugs, and public error surfaces.
+- Existing active-generation Meetup publication isolation remains unchanged.
+- Organizer routes and APIs remain trusted-context protected, `no-store`, and
+  `noindex, nofollow, noarchive`.
 
 ## Exact verification evidence
 
 Commands ran from `C:\Users\user\Documents\Website` on 2026-07-25.
 
-- `npm.cmd ci` — exit 0; 503 packages installed from `package-lock.json`, 504
-  packages audited.
-- `npm.cmd run db:generate` — exit 0; 43 tables; no schema changes and no
-  generated migration.
-- `npm.cmd run db:apply:local` — final exit 0; five migrations applied as 49,
-  37, 38, 37, and 24 statements; 43 tables, 30 exact runtime triggers, zero
-  foreign-key violations.
-- `npm.cmd run db:apply:preview` — final exit 0 with the same five-migration,
-  43-table, 30-trigger, zero-violation result against the Sites local preview
-  D1.
+- `npm.cmd ci` — exit 0; 503 packages installed from the existing lockfile.
+  Deprecation notices and seven packages with pending install scripts were
+  reported; the pinned Sites runtime was not force-upgraded.
+- `npm.cmd run db:generate` — exit 0; 52 tables; no schema drift and no new
+  migration generated.
+- Fresh local migration proof — exit 0 after preserving an ignored
+  in-progress local D1 backup; six migrations, 52 tables, 48/48 triggers,
+  bounded `repaired` then `ready`, zero foreign-key violations.
+- Fresh preview-D1 migration proof — exit 0 with the same six migrations, 52
+  tables, 48/48 triggers, bounded repair convergence, and zero violations.
+- Final `npm.cmd run db:apply:local` — exit 0; all six migrations recorded,
+  invariant status `ready`, 52 tables, 48/48 triggers, zero violations.
+- Final `npm.cmd run db:apply:preview` — exit 0 with the same result against the
+  Sites local preview D1.
 - `npm.cmd run typecheck` — exit 0 under strict TypeScript.
 - Exact `npm.cmd run lint` before build — exit 0.
-- `npm.cmd test` — final exit 0; **167/167 passed**, 0 failed, 0 skipped.
-- `npm.cmd run build` — exit 0; vinext produced the complete public and private
+- `npm.cmd test` — exit 0; **246/246 passed**, 0 failed, 0 skipped.
+- `npm.cmd run build` — exit 0; vinext built the full public and protected
   Worker route set.
 - Exact `npm.cmd run lint` after retained build artifacts — exit 0.
-- `npm.cmd run test:rendered` — final exit 0; **19/19 passed**, 0 failed, 0
-  skipped. The built Worker applies packaged migrations, verifies the exact
-  version-3/30-trigger fingerprint, enforces private/public boundaries, renders
-  authenticated owner flows, rejects uninvited access, validates organizer
-  filters, and exercises invitation and mutation safety.
-- Migration/invariant focused gate — 20/20 passed, including clean and
-  populated-version-8 adoption, every partial production-tokenizer prefix,
-  malformed SQL rejection, invariant repair/concurrency, identity, usable
-  Owner, and creator integrity.
-- Organizer correction gate — 43/43 passed, including event data
-  round-tripping, club reassignment, profile/public isolation, archive races,
-  pagination, lifecycle, ownership, and UI contracts.
-- Independent final read-only red-team — 71/71 focused migration, invariant,
-  Meetup, auth/team, event/calendar, and UI checks passed; no release blocker
-  found across the complete audit correction set.
-- `git diff --check` — exit 0.
-- Built-output audit — `dist` contains 100 files / 4,865,389 bytes.
-  Source and packaged migrations 0008–0012 are byte-identical.
-- Exact compressed upload archive — 115 entries / 100 regular files /
-  1,824,852 bytes; SHA-256
-  `de7a65fc8656b241f7e136bf0088b19437804a8cb7175ef538ad8d2a3de6cbc1`.
-  Every entry is rooted under `dist/`; required Worker, hosting, and all 11
-  Drizzle resources are present; no unsafe path or forbidden package artifact
-  was found.
-- Exact archive migration audit — all 11 source/package resources are
-  byte-identical. Migration `0012` and `meta/0012_snapshot.json` both contain
-  `workspace_display_name` and `public_attribution_consent_draft`; the packaged
-  migration contains no trigger body.
-- Source and built privacy scans — zero exact official private Meetup feed
-  URLs; zero email-like values in `dist`; zero credentials, bearer tokens,
-  local paths, private fixture sentinels, environment files, local databases,
-  work artifacts, logs, or unoptimized design master in `dist`. Client assets
-  contain no source URL, token-hash, or identity-header names.
-- `npm.cmd audit --omit=dev --json` — exit 1 with 3 high, 0 critical
-  production advisories.
-- `npm.cmd audit --json` — exit 1 with 18 advisories: 1 low, 4 moderate, 13
-  high, 0 critical.
-- No forced upgrade was applied to the pinned Sites runtime.
+- `npm.cmd run test:rendered` — exit 0; **21/21 passed**, 0 failed, 0 skipped.
+  The built Worker applies packaged migrations, installs the version-4 guard
+  set, renders protected flows, commits a real private hold and reviewed Warn
+  overlap, rejects unreviewed conflict, and preserves public isolation.
+- Focused migration/invariant/conflict/concurrency/security/public-leakage gate
+  — exit 0; **157/157 passed**, 0 failed, 0 skipped.
+- Administrator self-rejection with no notification recipient — exact D1
+  regression passed: review rejected, one audit, zero notices.
+- Source-activation regressions passed for timed/all-day staging, mapped
+  resources, identical generation refresh, content-only change, schedule
+  change, new conflict refusal, stale-artifact invalidation, rollback,
+  re-enable guard, deactivation, disappearance/reappearance, and statement
+  budget.
+- `git diff --check` — exit 0; only expected Windows line-ending notices.
+- Built-output audit — `dist` contains **106 files / 5,759,354 bytes**.
+- Source/package Drizzle comparison — **13/13 resources byte-identical**.
+- Source and built privacy scans — zero concrete private Meetup feed URLs,
+  zero email-like values in `dist`, zero credential/private-key/Bearer-token
+  patterns, and zero environment, local-D1, test, fixture, work, or log files
+  in `dist`.
+- `npm.cmd audit --omit=dev --json` — **Not run to a usable result**. The npm
+  advisory endpoint returned malformed gzip bytes and npm exit 1.
+- `npm.cmd audit --json` — **Not run to a usable result** for the same external
+  registry response. The last reproducible version-9 baseline remains 3 high /
+  0 critical production advisories and 18 total advisories (1 low, 4 moderate,
+  13 high, 0 critical); it is retained as historical evidence, not claimed as
+  a current rerun.
 
-Interim evidence retained honestly:
+### Failures encountered and resolved
 
-- The first local migration replay rejected a recorded hash from an ignored
-  in-progress local `0012`. Both local D1 directories were preserved as
-  timestamped ignored backups, then fresh local and preview stores passed.
-  No hosted D1 or deployed version was changed.
-- One direct Node test invocation without the project `tsx` loader failed on
-  TypeScript ESM resolution; the supported loader invocation passed 16/16.
-- Initial full-suite and rendered-Worker runs exposed stale expected
-  schema/test contracts after the final audit corrections. Assertions were
-  updated to the real stronger schema and private-shell boundary; the complete
-  suites then passed without disabling a rule or weakening public leakage
-  checks.
+- An ignored local D1 recorded an earlier hash of the in-progress migration
+  0013. It was preserved as a timestamped ignored backup; only disposable
+  local/preview stores were re-created. Hosted D1 was never reset or changed.
+- The local migration harness initially stopped after one bounded invariant
+  repair request. Both supported local and preview harnesses now continue
+  bounded repair calls until the durable status is `ready`.
+- One direct Node test command omitted the project `tsx` loader and failed ESM
+  resolution. The supported loader command and the complete project runner
+  passed.
+- Final red-team reproduction found that an Administrator self-rejection with
+  no other notification recipient could abort after the successful review
+  mutation. Audit/sentinel gating now follows the review/incident mutation
+  rather than optional notification count; the regression and full suite pass.
+- Notification-page starter copy described only Phase 3 categories. It now
+  truthfully includes schedule, conflict-review, and hold changes.
 
-### Browser and accessibility QA
+## Browser and accessibility evidence
 
-- Authenticated local browser QA used an isolated synthetic `.invalid` owner
-  fixture and ignored local D1 only.
-- Public Home, Events, private-slug 404, dashboard, Calendar, Events, new/edit
-  event, Team, Clubs, Notifications, Profile, Settings, Meetup, and invitation
-  flows were exercised.
-- Widths checked: 320×800, 390×844, tablet 768px, 1280px, and 1440px. No page
-  overflow was observed.
-- Create/edit persistence, Agenda/Week/Month, filters, unscheduled Ideas,
-  invitation create/reset/revoke, noindex/private chrome, and mobile
-  navigation were verified.
-- Reduced-motion media produced near-zero transition/animation durations.
-  Skip-link/landmark structure and visible focus styles are present.
-- Browser console showed no application, hydration, or accessibility warning;
-  the only warning was the expected authorization-denied diagnostic.
+- Authenticated browser QA used an isolated synthetic `.invalid` identity,
+  ignored local D1, and a local trusted-header proxy. No production auth seam
+  or hosted data was changed; the local secret file was removed afterward.
+- A private unscheduled Idea was created through the UI and retained no date.
+  Scheduled Draft fixtures were created through the protected local API
+  because browser automation could not reliably set the native date control.
+- A real 4:00–6:00 PM hold was placed through the UI. A 5:00–7:00 PM
+  overlapping Draft showed the exact 5:00–6:00 PM organization/organizer
+  conflict. Confirm with a bounded Warn reason succeeded, persisted as
+  `confirmed`, and appeared in Conflict Center as Approved with the exact
+  private reason.
+- Conflict-only filtering returned zero matching records from two total, and
+  Clear Filters restored both. The unscheduled Idea remained in the Ideas area.
+- Widths checked: 320×800, 390×844, 768×1024, 1280×800, and 1440×900. No
+  essential horizontal overflow was observed; mobile body text remained 16px.
+- A 720px viewport provided a 1440-at-200%-equivalent reflow check with no
+  horizontal overflow. Exact browser zoom measurement was not run.
+- Visible keyboard focus was verified on the editor. Skip link, landmarks,
+  headings, text-plus-color states, and mobile navigation were inspected.
+- Public Home and Events contained none of the isolated private fixture titles,
+  identity, or source values. Events rendered a truthful empty review state.
+- Completed-flow console logs contained no application, hydration, or
+  accessibility warning. An earlier expected 403 diagnostic occurred while
+  establishing the isolated authentication seam.
+- Browser reduced-motion emulation was blocked by the browser security policy
+  and was not retried. Reduced-motion CSS and source-contract tests pass.
 
 ## Implemented but not externally verified
 
-- Phase 3 is not deployed. All Phase 3 hosted behavior remains unverified until
-  a later owner-authorized private deployment.
-- Hosted second-identity invitation acceptance cannot be tested while Sites
-  access remains exactly one allowed owner and zero groups.
-- Hosted D1 table/index/trigger counts are not directly queryable through the
-  current Sites capability. Local, preview, and built-Worker D1 verify 43
-  tables, 90 explicit indexes, 38 unique indexes, 125 foreign keys, 51 checks,
-  30 triggers, and zero foreign-key violations.
-- R2 remains bound as `MEDIA` and unchanged; Phase 3 has no authorized media
-  workflow.
+- Phase 4 is not deployed; hosted Phase 4 behavior remains unverified.
+- Hosted D1 schema/table/index/trigger introspection is unavailable through the
+  current Sites capability. Local, preview, source, and built-Worker D1 provide
+  the evidence above.
+- Hosted second-identity invitation and role/club authorization cannot be
+  tested while Sites access remains exactly one owner and zero groups.
+- R2 remains bound as `MEDIA` and unchanged. Phase 4 has no media workflow.
+- Automatic background hold or Meetup work is not claimed. Reconciliation and
+  refresh are request-driven.
 
 ## Not implemented
 
-- Tentative holds, confirmed-event mutation, schedule reservation, conflict
-  preview/review/policies/overrides, public event preview, scheduled
-  publication, publish/unpublish, public CMS, community-link editing, R2
-  upload, CSV/ICS file import, export, public forms, email/digests, QR,
-  payments, donations, internal RSVP, attendee accounts, comments, messaging,
-  forums, or chat.
-- No disabled or dead control for those later phases is present.
+- Public event preview, scheduled publication, publish/unpublish, public CMS,
+  Community editing, R2 upload, CSV/ICS file import, export, public forms,
+  email/digests, QR downloads, payments, donations, internal RSVP, attendee
+  accounts, comments, messaging, forums, and chat.
+- No Phase 5 or later dead control is present.
 
 ## Not run
 
-- Hosted Phase 3 owner smoke test — no Phase 3 version is deployed.
+- Hosted Phase 4 owner smoke test — no Phase 4 version is deployed.
 - Hosted second human identity — current Sites policy permits one owner and
   zero groups.
-- Automated axe and Lighthouse/Core Web Vitals — not available in the pinned
-  toolchain; no score or performance claim is made.
-- A complete keyboard-only create/edit browser flow and 200% zoom measurement
-  were not captured. Keyboard semantics, focus styling, responsive reflow,
-  source contracts, and rendered flows were checked, but are not represented
-  as those unrun measurements.
-- Real hosted Meetup import and R2 behavior — no Phase 3 deployment or
-  authorized media workflow exists.
+- Hosted D1 schema introspection — current Sites tools expose migration
+  application status but not direct SQL introspection.
+- Hosted real Meetup conflict/activation smoke — private production feed
+  configuration is not printed or copied into this review.
+- Automated Axe, Lighthouse, and Core Web Vitals — unavailable in the pinned
+  toolchain; no score is claimed.
+- Exact 200% browser zoom and a complete keyboard-only scheduled-Draft flow —
+  browser automation limitations are recorded above.
+- Browser reduced-motion emulation — blocked by the browser security policy;
+  static behavior is covered instead.
+- R2 workflow — out of Phase 4 scope.
 
 ## Blocked
 
-- Hosted second-identity testing is blocked by the unchanged one-owner Sites
-  access policy.
-- Remaining factual owner inputs: exact BC legal identity/status/footer and
-  charity wording; exact Meetup discussion URL; approved final copy; approved
-  public organizer names/biographies; real photos with rights, credit, and
-  participant consent; event-specific venue/accessibility facts; a hosted
-  second invited test identity.
+- Hosted second-identity verification requires a separately authorized Sites
+  access-policy change.
+- Remaining factual owner inputs:
 
-## Sites project, version, bindings, and deployment state
+  - exact BC legal name, legal form/status wording, registration number,
+    effective date, approved legal footer, and charity status;
+  - exact public Meetup discussion URL;
+  - owner-selected hosted RSVP URLs for a real-event smoke test;
+  - approved final copy and confirmed public contact;
+  - real photographs with rights, credit, and participant-consent state;
+  - approved public organizer names, biographies, and both consent gates;
+  - event-specific venue and accessibility facts.
+
+## Sites project, bindings, version, and deployment state
 
 - Sites project:
   `appgprj_6a62eaf79c4881919bb8e47998af851a`.
@@ -311,39 +318,37 @@ Interim evidence retained honestly:
 - Existing live deployment remains owner-only version 8 at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
 - Access remains custom: exactly one allowed owner and zero groups.
-- Custom domains: none. Preview URL: none. Public/shared access: not enabled.
+- Custom domains: none. Preview deployment: none. Public/shared access: not
+  enabled.
 - Phase 3 source commit:
   `0071fbf1fb2fc11a2cdb68d19f71c0ac4a69886c`.
-- Unpublished Phase 3 Sites version 9:
+- Unpublished Phase 3 Sites version 9 remains preserved:
   `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_3b9448669e5c8191ba6dad4b9e7a6c31`.
-- Sites readback matches the exact source commit and reports 100 files,
-  4,945,920 stored bytes, and content hash
-  `sha256:0e070cf11a4af8e33e28aa4920055c51eb77378ffb95ca366cbe83b5bd4ff103`.
-- Version 9 is saved only; screenshot and preview URLs are null.
-- No Phase 3 deployment is authorized.
+- Phase 4 source commit: **Pending final intentional commit.**
+- Phase 4 unpublished Sites version: **Pending final save and readback.**
+- No Phase 4 deployment is authorized.
 
 ## Awaiting a future private deployment
 
 Status: **Awaiting a future private deployment.**
 
 Five-minute owner smoke card for a later explicitly authorized private
-deployment of this Phase 3-or-later source:
+deployment of this Phase 4-or-later source:
 
-1. Sign in with the matching ChatGPT owner account.
-2. Create one unscheduled private Idea and one scheduled private Draft.
-3. Refresh, sign out, and sign back in; confirm both persist.
-4. Open Calendar and Ideas; confirm the Draft appears on its date and the
-   unscheduled Idea has no fake date.
-5. Confirm neither record appears on public Events, a guessed public slug, or
-   public search/filter results.
-6. Create a copyable Organizer invitation, confirm there is no email-sent
-   claim, then revoke it.
-7. If a second invited identity becomes allowed in a later authorized policy
-   change, confirm it can edit only its assigned-club owned/co-organized
-   records and cannot edit another organizer's Draft.
-8. Confirm Meetup remains Owner/Administrator configurable and Organizer
-   read-only.
+1. Sign in with the matching owner account.
+2. Create a private 4:00–6:00 PM tentative hold.
+3. Propose a 5:00–7:00 PM event and confirm the exact overlap appears.
+4. With zero buffers, confirm a second event starting at 6:00 PM does not
+   conflict.
+5. Add a 30-minute cleanup buffer and confirm a 6:15 PM start produces a buffer
+   warning.
+6. Under Block mode, confirm an unreviewed reserving save is refused.
+7. Return to Warn-and-require-reason, save one intentional overlap with a
+   written reason, and inspect it in Conflicts.
+8. Refresh and confirm the hold, review, and conflict state persist.
+9. Confirm both records remain absent from public Events, Home, club pages,
+   sitemap, metadata, structured data, and guessed public slugs.
 
 ## Exact next phase
 
-**Phase 4 — Not started.**
+**Phase 5 — Not started.**

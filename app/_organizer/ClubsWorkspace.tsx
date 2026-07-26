@@ -173,7 +173,7 @@ export function ClubsWorkspace({
             <p>
               {blocking.programCount} active{" "}
               {blocking.programCount === 1 ? "program belongs" : "programs belong"}{" "}
-              to this club. Program identity is read-only in Phase 3, so keep
+              to this club. Public program identity is read-only here, so keep
               this club active.
             </p>
           ) : null}
@@ -234,7 +234,7 @@ export function ClubsWorkspace({
               <textarea maxLength={2_000} name="planningNotes" rows={4} />
             </label>
             <p className={`${styles.fieldFull} ${styles.formNotice}`}>
-              New Phase 3 clubs are organizer-private and do not create a public club page.
+              New clubs remain organizer-private and do not create a public club page.
             </p>
             <button className={styles.primaryButton} disabled={busy === "create"} type="submit">
               {busy === "create" ? "Creating…" : "Create private club"}

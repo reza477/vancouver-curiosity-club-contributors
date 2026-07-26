@@ -10,7 +10,7 @@ import {
   updateUnreviewedTimedReservation,
 } from "../../lib/server/conflicts/atomic-write.ts";
 import { CONFLICT_GUARD_SQL } from "../../lib/server/conflicts/guard-sql.ts";
-import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
+import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 
 let miniflare;
 let database;
@@ -214,7 +214,7 @@ before(async () => {
       ),
     );
   }
-  await ensureDatabaseInvariants(database);
+  await ensureDatabaseInvariantsReady(database);
 
   const installedTriggers = await database
     .prepare(
@@ -700,7 +700,7 @@ test("the normalized baseline and reservation path reject holds without expiry",
         ),
       );
     }
-    await ensureDatabaseInvariants(stagedDatabase);
+    await ensureDatabaseInvariantsReady(stagedDatabase);
     await seed(stagedDatabase);
 
     const columns = await stagedDatabase

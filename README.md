@@ -79,15 +79,20 @@ Sites production tokenizes packaged SQL migrations at semicolons. SQLite
 trigger bodies necessarily contain internal semicolons, so trigger DDL is not
 safe in that packaging path.
 
-The pre-production migration chain is therefore normalized into four
-retry-safe files, each with at most 49 single statements. It recreates the
-final 37-table/75-index schema without trigger, `ALTER`, `PRAGMA`, or rebuild
-grammar. Before the Worker dispatches any application request, a server-only
-D1 initializer atomically installs all two reservation guards and seven public
-organization-integrity guards as nine complete prepared statements. A
-persistent version/fingerprint marker, exact `sqlite_master` comparison, and
-two integrity probes must all pass before the request can proceed. Failure
-returns a private-detail-free, no-store/noindex 503.
+The deployed Phase 2 pre-production chain is normalized into four retry-safe
+files, each with at most 49 single statements. Phase 3 and Phase 4 then add
+tokenizer-safe, retryable migrations without trigger bodies, destructive
+rebuilds, `ALTER`, `PRAGMA`, or rename grammar. The current Phase 4 schema has
+52 tables and 117 explicit indexes.
+
+Before the Worker dispatches any application request, a server-only D1
+initializer installs every reservation, public-integrity, membership,
+ownership, organizer, and Phase 4 conflict/source-activation guard as one
+complete prepared statement per trigger. A persistent version/fingerprint
+marker, exact `sqlite_master` comparison, and combined integrity probes must
+all pass before the request can proceed. Healthy, cold-install, ordinary
+repair, and bounded fail-closed repair paths stay within D1's 50-statement
+limit. Failure returns a private-detail-free, no-store/noindex 503.
 
 The destructive reset is a one-time pre-production recovery only: Sites
 version 7 failed before any Worker URL existed, so no hosted user writes were
@@ -225,9 +230,11 @@ private event index applies search and lifecycle filters in parameterized D1
 queries and exposes deterministic 200-record pages, including recoverable
 soft-deleted records.
 
-The runtime invariant initializer is version 3 and verifies/repairs the full
-set of 30 database guards before application dispatch. The Phase 3 migration
-is additive and tokenizer-safe after the immutable deployed version-8 chain.
+Phase 3 introduced runtime invariant version 3 with 30 guards. Phase 4
+advances the active initializer to version 4 and verifies or repairs the full
+set of 48 database guards before application dispatch. Both additive
+migrations remain tokenizer-safe after the immutable deployed version-8
+chain.
 
 See:
 
@@ -237,4 +244,60 @@ See:
 
 The existing owner-only live URL continues to serve the deployed Phase 2
 version 8. Phase 3 is not live unless a later turn explicitly authorizes its
+deployment.
+
+## Phase 4 authoritative private scheduling
+
+Phase 4 keeps `organizer_events` as the sole writable manual-event record and
+adds one server-only scheduling service for:
+
+- timed and all-day Draft warnings;
+- tentative holds with exact D1-time expiry;
+- private confirmed events;
+- organizer/co-organizer, private venue, buffer, and organization-wide
+  conflicts;
+- Warn-with-reason, Administrator-approval, and Block policies;
+- version-bound incidents, reviews, decisions, and overrides;
+- cancellation, completion, archive, safe restore, and hold reconciliation;
+- an accessible private conflict centre and venue/policy settings.
+
+The final save never trusts the advisory preview. It submits the complete
+normalized proposal and both optimistic versions to one bounded D1 batch.
+Runtime triggers revalidate the actor, membership, role, club, event ownership,
+policy version, complete organizer scope, interval, venue, buffers, hold
+expiry, and every current conflict before allowing a reservation. Concurrent
+Worker requests therefore cannot both claim one empty slot under Block, and a
+Warn overlap cannot commit without its exact written review.
+
+Intervals are half-open. Direct actual overlap takes priority over a
+buffer-only collision, and every relevant organization, organizer, and venue
+resource is retained for explanation. All-day conflict bounds use local
+midnight in the event's original IANA timezone, including Vancouver DST
+boundaries.
+
+Read-only legacy reservations and only enabled, completed active Meetup
+generations participate in coordination. Pending, failed, disabled, or deleted
+sources remain invisible. Changing the active generation, re-enabling a source
+that already has one, or restoring a source is guarded. Generation-specific
+parity proves exact staging integrity, while a generation-independent
+reservation-semantic fingerprint distinguishes harmless content refreshes from
+schedule or resource changes. Changed semantics atomically close stale
+incidents, reviews, and overrides; semantically identical refreshes retain
+valid coordination state. A refused activation keeps the previous completed
+generation authoritative.
+
+Every Phase 4 manual record remains `publication_status = private`.
+`organizer_events` is still absent from the Phase 2 public projection, so even
+a confirmed private record cannot appear on Home, Events, a club page,
+metadata, structured data, sitemap output, or a guessed public slug. Public
+preview and publication remain Phase 5.
+
+See:
+
+- `docs/architecture/0008-phase-4-conflict-engine.md`
+- `docs/owner-guide-phase4.md`
+- `docs/organizer-guide-phase4.md`
+
+The existing owner-only live URL continues to serve version 8. Phase 4 is saved
+only as an unpublished Sites version unless a later turn explicitly authorizes
 deployment.

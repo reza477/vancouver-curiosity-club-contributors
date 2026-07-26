@@ -11,18 +11,34 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0010_sites_compatible_indexes_a.sql",
   "0011_sites_compatible_indexes_b.sql",
   "0012_phase3_organizer_foundation.sql",
+  "0013_phase4_conflict_engine.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
-  checks: 51,
-  explicitIndexes: 90,
-  foreignKeys: 125,
-  tables: 43,
+  checks: 91,
+  explicitIndexes: 117,
+  foreignKeys: 177,
+  tables: 52,
   triggers: 0,
-  uniqueIndexes: 38,
+  uniqueIndexes: 44,
 });
 
 test("the normalized migration chain is safe for the Sites production tokenizer", () => {
   assert.deepEqual(migrationFiles(), [...EXPECTED_MIGRATIONS]);
+  assert.deepEqual(
+    readdirSync(join(MIGRATION_DIRECTORY, "meta"))
+      .filter((name) => name.endsWith(".json"))
+      .sort(),
+    [
+      "0008_snapshot.json",
+      "0009_snapshot.json",
+      "0010_snapshot.json",
+      "0011_snapshot.json",
+      "0012_snapshot.json",
+      "0013_snapshot.json",
+      "_journal.json",
+    ],
+    "the normalized chain must end exactly at 0013 with no 0014 residue",
+  );
 
   const journal = JSON.parse(
     readFileSync(join(MIGRATION_DIRECTORY, "meta", "_journal.json"), "utf8"),
@@ -35,10 +51,11 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 10, tag: "0010_sites_compatible_indexes_a" },
       { idx: 11, tag: "0011_sites_compatible_indexes_b" },
       { idx: 12, tag: "0012_phase3_organizer_foundation" },
+      { idx: 13, tag: "0013_phase4_conflict_engine" },
     ],
   );
   assert.deepEqual(
-    ["0008", "0009", "0010", "0011", "0012"].map((prefix) => {
+    ["0008", "0009", "0010", "0011", "0012", "0013"].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
           join(MIGRATION_DIRECTORY, "meta", `${prefix}_snapshot.json`),
@@ -51,7 +68,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90],
+    [0, 0, 38, 75, 90, 117],
     "migration snapshots must match the cumulative packaged index state",
   );
 

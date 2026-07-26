@@ -11,6 +11,7 @@ import {
   parseIdentifier,
 } from "../../validation";
 import { SafeApplicationError } from "../../validation/server-observability";
+import { reconcileOrganizerHoldNotices } from "./hold-reconciliation";
 
 export const NOTIFICATION_TYPES = [
   "invitation_accepted",
@@ -20,6 +21,14 @@ export const NOTIFICATION_TYPES = [
   "event_assignment",
   "event_schedule_changed",
   "draft_coordination_changed",
+  "conflict_created",
+  "conflict_review_requested",
+  "conflict_approved",
+  "conflict_rejected",
+  "hold_nearing_expiry",
+  "hold_expired",
+  "event_confirmed",
+  "event_cancelled",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -56,9 +65,17 @@ export type SafeNotificationPayload =
       eventId: string;
       title: string;
       type:
+        | "conflict_approved"
+        | "conflict_created"
+        | "conflict_rejected"
+        | "conflict_review_requested"
         | "draft_coordination_changed"
+        | "event_cancelled"
+        | "event_confirmed"
         | "event_assignment"
-        | "event_schedule_changed";
+        | "event_schedule_changed"
+        | "hold_expired"
+        | "hold_nearing_expiry";
     }>;
 
 export type NotificationDto = Readonly<{
@@ -80,6 +97,14 @@ const IMPORTANT_NOTIFICATION_TYPES = new Set<NotificationType>([
   "membership_changed",
   "ownership_transferred",
   "event_schedule_changed",
+  "conflict_created",
+  "conflict_review_requested",
+  "conflict_approved",
+  "conflict_rejected",
+  "hold_nearing_expiry",
+  "hold_expired",
+  "event_confirmed",
+  "event_cancelled",
 ]);
 
 export async function listNotifications(
@@ -87,6 +112,7 @@ export async function listNotifications(
   identity: TrustedServerIdentity,
   options: Readonly<{ cursor?: unknown; limit?: unknown }> = {},
 ): Promise<NotificationPage> {
+  await reconcileOrganizerHoldNotices(database, identity);
   const actor = await authorizeMembership(database, identity);
   const limit =
     options.limit === undefined
@@ -386,9 +412,17 @@ export function normalizeNotificationPayload(
   }
   const type = parseEnum(payload.type, NOTIFICATION_TYPES, "type");
   if (
+    type === "conflict_approved" ||
+    type === "conflict_created" ||
+    type === "conflict_rejected" ||
+    type === "conflict_review_requested" ||
     type === "event_assignment" ||
+    type === "event_cancelled" ||
+    type === "event_confirmed" ||
     type === "event_schedule_changed" ||
-    type === "draft_coordination_changed"
+    type === "draft_coordination_changed" ||
+    type === "hold_expired" ||
+    type === "hold_nearing_expiry"
   ) {
     return Object.freeze({
       type,
@@ -546,9 +580,17 @@ function withoutType(
   payload: SafeNotificationPayload,
 ): Readonly<Record<string, string>> {
   if (
+    payload.type === "conflict_approved" ||
+    payload.type === "conflict_created" ||
+    payload.type === "conflict_rejected" ||
+    payload.type === "conflict_review_requested" ||
     payload.type === "event_assignment" ||
+    payload.type === "event_cancelled" ||
+    payload.type === "event_confirmed" ||
     payload.type === "event_schedule_changed" ||
-    payload.type === "draft_coordination_changed"
+    payload.type === "draft_coordination_changed" ||
+    payload.type === "hold_expired" ||
+    payload.type === "hold_nearing_expiry"
   ) {
     return Object.freeze({
       eventId: payload.eventId,

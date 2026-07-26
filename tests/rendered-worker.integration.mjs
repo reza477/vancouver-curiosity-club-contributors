@@ -10,7 +10,7 @@ const FIXTURE_NOW = Date.UTC(2026, 6, 24, 19, 0, 0);
 const ORGANIZATION_ID = "phase2-org";
 const PROFILE_ID = "phase2-owner";
 const EXPECTED_DATABASE_INVARIANT_FINGERPRINT =
-  "0d89f16aa0a5a462b73a34c8ecb98cd011527bc50124697a90bffcbd095e5621";
+  "0cd660044b22630341bde84ef8d48951842797c2b48c8b60450abb2f66f86f49";
 const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
   "audit_logs_immutable_before_delete",
   "audit_logs_immutable_before_update",
@@ -26,22 +26,40 @@ const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
   "organization_memberships_single_owner_before_delete",
   "organization_memberships_single_owner_before_insert",
   "organization_memberships_single_owner_before_update",
+  "organizer_conflict_overrides_phase4_before_insert",
+  "organizer_conflict_overrides_phase4_before_update",
+  "organizer_conflict_policies_phase4_before_insert",
+  "organizer_conflict_policies_phase4_before_update",
+  "organizer_conflict_reviews_phase4_before_insert",
+  "organizer_conflict_reviews_phase4_before_update",
   "organizer_event_organizers_integrity_before_insert",
   "organizer_event_organizers_integrity_before_update",
+  "organizer_event_organizers_phase4_before_delete",
   "organizer_event_revisions_integrity_before_delete",
   "organizer_event_revisions_integrity_before_insert",
   "organizer_event_revisions_integrity_before_update",
   "organizer_events_phase3_integrity_before_insert",
   "organizer_events_phase3_integrity_before_update",
+  "organizer_external_reservations_phase4_before_delete",
+  "organizer_external_reservations_phase4_before_insert",
+  "organizer_external_reservations_phase4_before_update",
   "organizer_profile_preferences_integrity_before_insert",
   "organizer_profile_preferences_integrity_before_update",
   "organizer_rate_limits_integrity_before_insert",
   "organizer_rate_limits_integrity_before_update",
+  "organizer_reservation_states_phase4_before_delete",
+  "organizer_reservation_states_phase4_before_insert",
+  "organizer_reservation_states_phase4_before_update",
+  "organizer_schedule_write_intents_phase4_before_insert",
+  "organizer_schedule_write_intents_phase4_before_update",
   "ownership_transfer_locks_before_delete",
   "ownership_transfer_locks_before_insert",
   "ownership_transfer_locks_before_update",
   "profiles_membership_identity_before_delete",
   "profiles_membership_identity_before_update",
+  "sync_sources_phase4_activation_before_update",
+  "sync_sources_phase4_deactivation_before_update",
+  "sync_sources_phase4_identity_before_update",
 ]);
 const PRIVATE_SENTINELS = [
   "PRIVATE_LEGAL_SENTINEL",
@@ -87,8 +105,8 @@ const moduleFiles = await collectJavaScriptModules(serverRoot);
 const entrypoint = resolve(serverRoot, "index.js");
 const runtime = createBuiltRuntime();
 await applyPackagedProductionMigrations(runtime);
-await initializePackagedDatabaseInvariants(runtime);
 await seedPublicCatalog(runtime);
+await initializePackagedDatabaseInvariants(runtime);
 
 test.after(async () => {
   await runtime.dispose();
@@ -102,6 +120,84 @@ async function fetchPath(path, init) {
   });
 }
 
+async function organizerMutation(path, method, body) {
+  return fetchPath(path, {
+    body: JSON.stringify(body),
+    headers: {
+      ...OWNER_AUTH_HEADERS,
+      "content-type": "application/json",
+      origin: "https://preview.example",
+    },
+    method,
+  });
+}
+
+async function createRenderedTimedDraft({
+  clubId = "club-curiosity",
+  endLocal,
+  startLocal,
+  title,
+  venueId = null,
+}) {
+  const response = await organizerMutation(
+    "/api/organizer/events",
+    "POST",
+    {
+      bufferAfterMinutes: 0,
+      bufferBeforeMinutes: 0,
+      clubId,
+      coOrganizerProfileIds: [],
+      endLocal,
+      planningStatus: "draft",
+      primaryOrganizerProfileId: PROFILE_ID,
+      publicationStatus: "private",
+      scheduleShape: "timed",
+      startLocal,
+      timeZone: "America/Vancouver",
+      title,
+      venueId,
+    },
+  );
+  let createDiagnostics = "";
+  if (response.status !== 201) {
+    const database = await runtime.getD1Database("DB");
+    createDiagnostics = JSON.stringify({
+      events: (
+        await database
+          .prepare(
+            `SELECT id, content_version, schedule_version
+             FROM organizer_events
+             WHERE title = ?`,
+          )
+          .bind(title)
+          .all()
+      ).results,
+      intents: (
+        await database
+          .prepare(
+            `SELECT intent.operation, intent.completed_at
+             FROM organizer_schedule_write_intents AS intent
+             JOIN organizer_events AS event
+               ON event.id = intent.organizer_event_id
+             WHERE event.title = ?`,
+          )
+          .bind(title)
+          .all()
+      ).results,
+    });
+  }
+  assert.equal(
+    response.status,
+    201,
+    `create rendered Draft: ${await response.clone().text()} ${createDiagnostics}`,
+  );
+  assertOrganizerPrivateResponse(response);
+  const { event } = await response.json();
+  assert.equal(event.planningStatus, "draft");
+  assert.equal(event.publicationStatus, "private");
+  return event;
+}
+
 test("the packaged migration contract installs and enforces the exact runtime guards", async () => {
   const packagedMigrationDirectory = resolve("dist/.openai/drizzle");
   const packagedMigrations = (await readdir(packagedMigrationDirectory))
@@ -113,6 +209,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0010_sites_compatible_indexes_a.sql",
     "0011_sites_compatible_indexes_b.sql",
     "0012_phase3_organizer_foundation.sql",
+    "0013_phase4_conflict_engine.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -155,7 +252,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     .first();
   assert.deepEqual({ ...marker }, {
     trigger_fingerprint: EXPECTED_DATABASE_INVARIANT_FINGERPRINT,
-    version: 3,
+    version: 4,
   });
   const triggerRows = await database
     .prepare(
@@ -179,7 +276,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    43,
+    52,
   );
   assert.equal(
     await database
@@ -190,7 +287,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    90,
+    117,
   );
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
@@ -323,6 +420,14 @@ test("the packaged migration contract installs and enforces the exact runtime gu
       .run(),
     /conflict_guard_overlap_organization/u,
   );
+  await database
+    .prepare(`DELETE FROM events WHERE id = ?`)
+    .bind("rendered-guard-a")
+    .run();
+  await database
+    .prepare(`DELETE FROM venues WHERE id IN (?, ?)`)
+    .bind("venue-guard-a", "venue-guard-b")
+    .run();
 });
 
 test("the built public root is indexable and carries the production security contract", async () => {
@@ -916,6 +1021,220 @@ test("built organizer mutations enforce origin and bounded JSON before validatio
   assertNoPrivateSentinels(oversizedText);
 });
 
+test("the built Worker commits a private hold, refuses an unreviewed conflict, and records an intentional Warn overlap", async () => {
+  const holdDraft = await createRenderedTimedDraft({
+    endLocal: "2034-09-12T20:00",
+    startLocal: "2034-09-12T18:00",
+    title: "RENDERED_PHASE4_PRIVATE_HOLD",
+    venueId: "venue-rendered-private",
+  });
+  const holdResponse = await organizerMutation(
+    `/api/organizer/events/${encodeURIComponent(holdDraft.id)}/actions`,
+    "POST",
+    {
+      action: "place_hold",
+      expectedContentVersion: holdDraft.contentVersion,
+      expectedScheduleVersion: holdDraft.scheduleVersion,
+      holdDurationHours: 72,
+    },
+  );
+  assert.equal(holdResponse.status, 200);
+  assertOrganizerPrivateResponse(holdResponse);
+  const holdResult = await holdResponse.json();
+  assert.equal(holdResult.outcome, "applied");
+  assert.equal(holdResult.reviewRequestId, null);
+  assert.equal(holdResult.event.planningStatus, "tentative_hold");
+  assert.equal(holdResult.event.publicationStatus, "private");
+  assert.ok(
+    Number.isSafeInteger(holdResult.event.holdExpiresAt) &&
+      holdResult.event.holdExpiresAt > Date.now(),
+  );
+
+  const policyResponse = await fetchPath(
+    "/api/organizer/settings/conflict-policy",
+    { headers: OWNER_AUTH_HEADERS },
+  );
+  assert.equal(policyResponse.status, 200);
+  assertOrganizerPrivateResponse(policyResponse);
+  const initialPolicy = (await policyResponse.json()).policy;
+  assert.equal(initialPolicy.mode, "warn_reason");
+
+  const overlapDraft = await createRenderedTimedDraft({
+    clubId: "club-literature",
+    endLocal: "2034-09-12T21:00",
+    startLocal: "2034-09-12T19:00",
+    title: "RENDERED_PHASE4_PRIVATE_REVIEWED_OVERLAP",
+    venueId: null,
+  });
+  const refusedResponse = await organizerMutation(
+    `/api/organizer/events/${encodeURIComponent(overlapDraft.id)}/actions`,
+    "POST",
+    {
+      action: "confirm",
+      expectedContentVersion: overlapDraft.contentVersion,
+      expectedScheduleVersion: overlapDraft.scheduleVersion,
+    },
+  );
+  assert.equal(refusedResponse.status, 409);
+  assertOrganizerPrivateResponse(refusedResponse);
+  const refusalText = await refusedResponse.text();
+  assert.match(refusalText, /"code":"conflict"/u);
+  assert.match(refusalText, /written coordination reason is required/iu);
+  assert.doesNotMatch(refusalText, /RENDERED_PHASE4_PRIVATE_HOLD/u);
+
+  const reviewedResponse = await organizerMutation(
+    `/api/organizer/events/${encodeURIComponent(overlapDraft.id)}/actions`,
+    "POST",
+    {
+      action: "confirm",
+      expectedContentVersion: overlapDraft.contentVersion,
+      expectedScheduleVersion: overlapDraft.scheduleVersion,
+      reason: "Owner reviewed the exact overlap for rendered-Worker proof.",
+    },
+  );
+  assert.equal(reviewedResponse.status, 200);
+  assertOrganizerPrivateResponse(reviewedResponse);
+  const reviewedResult = await reviewedResponse.json();
+  assert.equal(reviewedResult.outcome, "applied");
+  assert.equal(reviewedResult.reviewRequestId, null);
+  assert.equal(reviewedResult.event.planningStatus, "confirmed");
+  assert.equal(reviewedResult.event.publicationStatus, "private");
+
+  const database = await runtime.getD1Database("DB");
+  const persistedReservation = await database
+    .prepare(
+      `SELECT planning_status, publication_status, schedule_version
+       FROM organizer_events
+       WHERE id = ?`,
+    )
+    .bind(overlapDraft.id)
+    .first();
+  assert.deepEqual({ ...persistedReservation }, {
+    planning_status: "confirmed",
+    publication_status: "private",
+    schedule_version: overlapDraft.scheduleVersion + 1,
+  });
+  const activeOverride = await database
+    .prepare(
+      `SELECT override.reason, override.invalidated_at,
+              incident.state AS incident_state,
+              incident.proposed_schedule_version
+       FROM organizer_conflict_overrides AS override
+       JOIN organizer_conflict_incidents AS incident
+         ON incident.id = override.incident_id
+        AND incident.organization_id = override.organization_id
+       WHERE override.organizer_event_id = ?
+         AND override.invalidated_at IS NULL
+       LIMIT 1`,
+    )
+    .bind(overlapDraft.id)
+    .first();
+  assert.deepEqual({ ...activeOverride }, {
+    incident_state: "approved",
+    invalidated_at: null,
+    proposed_schedule_version: overlapDraft.scheduleVersion + 1,
+    reason: "Owner reviewed the exact overlap for rendered-Worker proof.",
+  });
+
+  const privateDetail = await fetchPath(
+    `/organizer/events/${encodeURIComponent(overlapDraft.id)}`,
+    { headers: OWNER_AUTH_HEADERS },
+  );
+  assert.equal(privateDetail.status, 200);
+  assertOrganizerPrivateResponse(privateDetail);
+  const privateHtml = await privateDetail.text();
+  assert.match(privateHtml, /RENDERED_PHASE4_PRIVATE_REVIEWED_OVERLAP/u);
+  assert.match(privateHtml, /Current conflicts and reviews/u);
+  assert.match(privateHtml, />Approved</u);
+
+  for (const path of [
+    "/",
+    "/events",
+    `/events/${encodeURIComponent(holdDraft.slug)}`,
+    `/events/${encodeURIComponent(overlapDraft.slug)}`,
+    "/sitemap.xml",
+  ]) {
+    const response = await fetchPath(path);
+    if (path.includes(holdDraft.slug) || path.includes(overlapDraft.slug)) {
+      assert.equal(response.status, 404, `${path} status`);
+    } else {
+      assert.equal(response.status, 200, `${path} status`);
+    }
+    const publicBody = await response.text();
+    assert.doesNotMatch(publicBody, /RENDERED_PHASE4_PRIVATE_/u, path);
+    assert.doesNotMatch(
+      publicBody,
+      /Owner reviewed the exact overlap/iu,
+      path,
+    );
+  }
+});
+
+test("policy changes keep active historical reservation versions invariant-ready", async () => {
+  const beforeResponse = await fetchPath(
+    "/api/organizer/settings/conflict-policy",
+    { headers: OWNER_AUTH_HEADERS },
+  );
+  assert.equal(beforeResponse.status, 200);
+  assertOrganizerPrivateResponse(beforeResponse);
+  const before = (await beforeResponse.json()).policy;
+  assert.equal(before.mode, "warn_reason");
+
+  const blockedResponse = await organizerMutation(
+    "/api/organizer/settings/conflict-policy",
+    "PATCH",
+    {
+      defaultHoldHours: before.defaultHoldHours,
+      expectedPolicyVersion: before.version,
+      mode: "block",
+      nearingExpiryHours: before.nearingExpiryHours,
+    },
+  );
+  assert.equal(blockedResponse.status, 200);
+  assertOrganizerPrivateResponse(blockedResponse);
+  const blocked = (await blockedResponse.json()).policy;
+  assert.equal(blocked.mode, "block");
+  assert.equal(blocked.version, before.version + 1);
+
+  const readyAfterBlock = await fetchPath("/robots.txt");
+  assert.equal(readyAfterBlock.status, 200);
+  await readyAfterBlock.arrayBuffer();
+
+  const database = await runtime.getD1Database("DB");
+  const historicalVersions = await database
+    .prepare(
+      `SELECT DISTINCT policy_version
+       FROM organizer_reservation_states
+       ORDER BY policy_version`,
+    )
+    .all();
+  assert.deepEqual(
+    historicalVersions.results.map((row) => row.policy_version),
+    [before.version],
+    "existing reservations retain the policy version of their guarded write",
+  );
+
+  const restoredResponse = await organizerMutation(
+    "/api/organizer/settings/conflict-policy",
+    "PATCH",
+    {
+      defaultHoldHours: blocked.defaultHoldHours,
+      expectedPolicyVersion: blocked.version,
+      mode: "warn_reason",
+      nearingExpiryHours: blocked.nearingExpiryHours,
+    },
+  );
+  assert.equal(restoredResponse.status, 200);
+  assertOrganizerPrivateResponse(restoredResponse);
+  const restored = (await restoredResponse.json()).policy;
+  assert.equal(restored.mode, "warn_reason");
+  assert.equal(restored.version, blocked.version + 1);
+
+  const readyAfterRestore = await fetchPath("/robots.txt");
+  assert.equal(readyAfterRestore.status, 200);
+  await readyAfterRestore.arrayBuffer();
+});
+
 test("the built invitation flow strips the token and clears it on success and reuse", async () => {
   const capture = await fetchPath(
     `/accept-invitation?token=${INVITATION_TOKEN}`,
@@ -1159,30 +1478,39 @@ function productionMigrationFragments(sql) {
     .filter(Boolean);
 }
 
-async function initializePackagedDatabaseInvariants(targetRuntime) {
-  const repairResponse = await targetRuntime.dispatchFetch(
-    new URL("/robots.txt", "https://preview.example"),
-  );
-  assert.equal(repairResponse.status, 503);
-  assert.match(
-    repairResponse.headers.get("cache-control") ?? "",
-    /no-store/u,
-  );
-  assert.equal(repairResponse.headers.get("retry-after"), "30");
-  assert.equal(
-    repairResponse.headers.get("x-robots-tag"),
-    "noindex, nofollow, noarchive",
-  );
-  assert.match(
-    await repairResponse.text(),
-    /database safety checks were updated/u,
-  );
-
-  const verifiedResponse = await targetRuntime.dispatchFetch(
-    new URL("/robots.txt", "https://preview.example"),
-  );
-  assert.equal(verifiedResponse.status, 200);
-  await verifiedResponse.arrayBuffer();
+async function initializePackagedDatabaseInvariants(
+  targetRuntime,
+  requireRepair = true,
+) {
+  let repairResponses = 0;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const response = await targetRuntime.dispatchFetch(
+      new URL("/robots.txt", "https://preview.example"),
+    );
+    if (response.status === 200) {
+      if (requireRepair) {
+        assert.ok(
+          repairResponses >= 1,
+          "a cold packaged D1 must fail closed while its guards are installed",
+        );
+      }
+      await response.arrayBuffer();
+      return;
+    }
+    repairResponses += 1;
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/u);
+    assert.equal(response.headers.get("retry-after"), "30");
+    assert.equal(
+      response.headers.get("x-robots-tag"),
+      "noindex, nofollow, noarchive",
+    );
+    assert.match(
+      await response.text(),
+      /database safety checks were updated/u,
+    );
+  }
+  assert.fail("packaged database invariants did not converge");
 }
 
 async function seedPublicCatalog(targetRuntime) {

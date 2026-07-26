@@ -3,12 +3,14 @@ import {
   type AuthorizedMembership,
   type D1DatabaseLike,
   type D1PreparedStatementLike,
+  type D1ResultLike,
   type TrustedServerIdentity,
 } from "../auth";
 import {
   parseEnum,
   parseFiniteInteger,
   parseIdentifier,
+  parseObject,
   parseOptionalBoundedString,
   validationIssue,
 } from "../../validation";
@@ -20,6 +22,7 @@ import {
 import {
   parsePhase3ManualEventInput,
   type CanonicalEventSchedule,
+  type EventPlanningStatus,
   type Phase3ManualEventInput,
   type Phase3WritablePlanningStatus,
 } from "./lifecycle";
@@ -28,6 +31,17 @@ import {
   getOrganizerCalendarEvent,
   type OrganizerCalendarEventDto,
 } from "./calendar";
+import {
+  prepareOrganizerScheduleEditGuard,
+  prepareNonReservingScheduleGuard,
+} from "./scheduling";
+import type { Phase4PlanningStatus } from "./conflict-domain";
+
+type OrganizerEditableEventInput = Omit<
+  Phase3ManualEventInput,
+  "planningStatus"
+> &
+  Readonly<{ planningStatus: Phase4PlanningStatus }>;
 
 export type OrganizerEventDto = Readonly<{
   id: string;
@@ -48,7 +62,7 @@ export type OrganizerEventDto = Readonly<{
   privateNotes: string | null;
   privateMeetingDetails: string | null;
   meetupEventUrl: string | null;
-  planningStatus: Phase3WritablePlanningStatus;
+  planningStatus: EventPlanningStatus;
   publicationStatus: "private";
   schedule: CanonicalEventSchedule;
   bufferBeforeMinutes: number;
@@ -60,7 +74,19 @@ export type OrganizerEventDto = Readonly<{
   createdAt: number;
   updatedAt: number;
   deletedAt: number | null;
+  holdExpiresAt: number | null;
+  holdState: "active" | "expired" | "nearing_expiry" | null;
+  conflictCount: number;
+  conflictState: string | null;
 }>;
+
+export type OrganizerEventUpdateResult =
+  | OrganizerEventDto
+  | Readonly<{
+      event: OrganizerEventDto;
+      outcome: "pending_approval";
+      reviewRequestId: string;
+    }>;
 
 export type OrganizerEventRevisionDto = Readonly<{
   id: string;
@@ -165,6 +191,45 @@ SELECT event.id,
        event.created_at,
        event.updated_at,
        event.deleted_at,
+       reservation.hold_expires_at,
+       CAST(unixepoch('subsec') * 1000 AS INTEGER) AS d1_now_utc,
+       (
+         SELECT COUNT(*)
+         FROM organizer_conflict_incidents AS incident
+         WHERE incident.organization_id = event.organization_id
+           AND (
+             incident.organizer_event_id = event.id
+             OR (
+               incident.conflicting_source_kind = 'manual'
+               AND incident.conflicting_event_id = event.id
+             )
+           )
+           AND incident.state IN (
+             'open', 'pending_approval', 'approved', 'informational'
+           )
+       ) AS conflict_count,
+       (
+         SELECT incident.state
+         FROM organizer_conflict_incidents AS incident
+         WHERE incident.organization_id = event.organization_id
+           AND (
+             incident.organizer_event_id = event.id
+             OR (
+               incident.conflicting_source_kind = 'manual'
+               AND incident.conflicting_event_id = event.id
+             )
+           )
+           AND incident.state IN (
+             'open', 'pending_approval', 'approved', 'informational'
+           )
+         ORDER BY CASE incident.state
+           WHEN 'open' THEN 1
+           WHEN 'pending_approval' THEN 2
+           WHEN 'approved' THEN 3
+           ELSE 4
+         END, incident.created_at DESC
+         LIMIT 1
+       ) AS conflict_state,
        COALESCE((
          SELECT json_group_array(ordered.profile_id)
          FROM (
@@ -176,7 +241,10 @@ SELECT event.id,
            ORDER BY association.profile_id
          ) AS ordered
        ), '[]') AS co_organizer_profile_ids_json
-FROM organizer_events AS event`;
+FROM organizer_events AS event
+LEFT JOIN organizer_reservation_states AS reservation
+  ON reservation.organizer_event_id = event.id
+ AND reservation.organization_id = event.organization_id`;
 
 const ORGANIZER_EVENT_INDEX_WHERE_SQL = `
   event.organization_id = ?
@@ -244,7 +312,10 @@ FROM organizer_events AS source
 WHERE source.id = ?
   AND source.organization_id = ?
   AND source.content_version = ?
-  AND source.planning_status IN ('idea', 'draft')
+  AND source.planning_status IN (
+    'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
+    'completed', 'archived'
+  )
   AND source.publication_status = 'private'
   AND source.deleted_at IS ?`;
 
@@ -279,7 +350,7 @@ SET club_id = ?,
 WHERE id = ?
   AND organization_id = ?
   AND content_version = ?
-  AND planning_status IN ('idea', 'draft')
+  AND planning_status = ?
   AND publication_status = 'private'
   AND deleted_at IS NULL`;
 
@@ -332,7 +403,36 @@ export async function createOrganizerEvent(
     updatedAt: now,
     deletedAt: null,
   });
+  const scheduleGuard = await prepareNonReservingScheduleGuard(
+    database,
+    identity,
+    actor,
+    {
+      allDayEndDateExclusive: input.schedule.allDayEndDateExclusive,
+      allDayStartDate: input.schedule.allDayStartDate,
+      bufferAfterMinutes: input.bufferAfterMinutes,
+      bufferBeforeMinutes: input.bufferBeforeMinutes,
+      clubId: input.clubId,
+      endsAtUtc: input.schedule.endsAtUtc,
+      eventId: id,
+      expectedContentVersion: 0,
+      expectedScheduleVersion: 0,
+      operation: "create",
+      organizerScope: organizerScope(input),
+      planningStatus: input.planningStatus,
+      primaryOrganizerProfileId: input.primaryOrganizerProfileId,
+      proposedContentVersion: 1,
+      proposedScheduleVersion: 1,
+      scheduleShape: input.schedule.shape,
+      startsAtUtc: input.schedule.startsAtUtc,
+      timeZone: input.schedule.timeZone,
+      venueId: input.venueId,
+    },
+    now,
+  );
   const statements: D1PreparedStatementLike[] = [
+    ...scheduleGuard.invalidationStatements,
+    scheduleGuard.intentStatement,
     database.prepare(INSERT_EVENT_SQL).bind(
       id,
       actor.organizationId,
@@ -364,6 +464,7 @@ export async function createOrganizerEvent(
       now,
     ),
     ...coOrganizerInsertStatements(database, actor, id, input),
+    scheduleGuard.incidentStatement,
     database.prepare(INSERT_REVISION_SQL).bind(
       createId("organizer-event-revision"),
       actor.organizationId,
@@ -390,9 +491,14 @@ export async function createOrganizerEvent(
       false,
       now,
     ),
+    scheduleGuard.completionStatement,
   ];
-  const results = await database.batch(statements);
-  if (results[0]?.meta?.changes !== 1) throw new StaleOrganizerEventEditError();
+  const createInsertIndex =
+    scheduleGuard.invalidationStatements.length + 1;
+  await runStaleGuardedBatch(database, statements, [
+    createInsertIndex,
+    statements.length - 1,
+  ]);
   return requireManualEvent(database, actor, id, true);
 }
 
@@ -402,27 +508,46 @@ export async function updateOrganizerEvent(
   eventIdValue: unknown,
   expectedContentVersionValue: unknown,
   rawInput: unknown,
-): Promise<OrganizerEventDto> {
+  expectedScheduleVersionValue?: unknown,
+  conflictReasonValue?: unknown,
+): Promise<OrganizerEventUpdateResult> {
   const eventId = parseIdentifier(eventIdValue, "eventId");
   const expectedContentVersion = parseExpectedVersion(
     expectedContentVersionValue,
   );
-  const requestedInput = parsePhase3ManualEventInput(rawInput);
   const actor = await authorizeMembership(database, identity);
   const existing = await requireManualEvent(database, actor, eventId, true);
   assertEditable(existing);
   await authorizeEventEdit(database, actor, existing);
+  const requestedInput = parseOrganizerEventEditInput(rawInput, existing);
+  const conflictReason = parseOptionalBoundedString(conflictReasonValue, {
+    path: "conflictReason",
+    maxLength: 1_000,
+  });
   const input = Object.freeze({
     ...requestedInput,
-    // Phase 3 does not expose venue or private-meeting editing. Keep adopted
-    // values server-side even when an older open form submits null.
+    // Private meeting details are intentionally not exposed by the Phase 4
+    // editor. Preserve them server-side; venue is now an explicit validated
+    // conflict resource and must round-trip from the submitted form.
     privateMeetingDetails: existing.privateMeetingDetails,
-    venueId: existing.venueId,
   });
   await authorizeMembership(database, identity, { clubId: input.clubId });
   await validateEventReferences(database, actor, input, existing);
 
   const scheduleChanged = scheduleAffectingFieldsChanged(existing, input);
+  const expectedScheduleVersion =
+    expectedScheduleVersionValue === undefined
+      ? existing.scheduleVersion
+      : parseFiniteInteger(expectedScheduleVersionValue, {
+          path: "expectedScheduleVersion",
+          minimum: 1,
+        });
+  if (
+    existing.contentVersion !== expectedContentVersion ||
+    existing.scheduleVersion !== expectedScheduleVersion
+  ) {
+    throw new StaleOrganizerEventEditError();
+  }
   const nextContentVersion = expectedContentVersion + 1;
   const nextScheduleVersion =
     existing.scheduleVersion + (scheduleChanged ? 1 : 0);
@@ -440,14 +565,101 @@ export async function updateOrganizerEvent(
     updatedAt: now,
     deletedAt: null,
   });
-  const statements: D1PreparedStatementLike[] = [
-    database
-      .prepare(
-        `DELETE FROM organizer_event_organizers
-         WHERE organization_id = ? AND organizer_event_id = ?`,
-      )
-      .bind(actor.organizationId, eventId),
-    database.prepare(UPDATE_EVENT_SQL).bind(
+  const reservingEdit =
+    scheduleChanged &&
+    (existing.planningStatus === "tentative_hold" ||
+      existing.planningStatus === "confirmed");
+  const scheduleGuard = scheduleChanged
+    ? reservingEdit
+      ? await prepareOrganizerScheduleEditGuard(
+          database,
+          identity,
+          actor,
+          {
+            allDayEndDateExclusive:
+              input.schedule.allDayEndDateExclusive,
+            allDayStartDate: input.schedule.allDayStartDate,
+            bufferAfterMinutes: input.bufferAfterMinutes,
+            bufferBeforeMinutes: input.bufferBeforeMinutes,
+            clubId: input.clubId,
+            endsAtUtc: input.schedule.endsAtUtc,
+            eventId,
+            expectedContentVersion,
+            expectedScheduleVersion,
+            holdExpiresAt: existing.holdExpiresAt,
+            organizerScope: organizerScope(input),
+            planningStatus: existing.planningStatus,
+            primaryOrganizerProfileId:
+              input.primaryOrganizerProfileId,
+            proposedContentVersion: nextContentVersion,
+            proposedScheduleVersion: nextScheduleVersion,
+            reason: conflictReason,
+            scheduleShape: input.schedule.shape,
+            startsAtUtc: input.schedule.startsAtUtc,
+            timeZone: input.schedule.timeZone,
+            title: input.title,
+            venueId: input.venueId,
+          },
+          now,
+        )
+      : await prepareNonReservingScheduleGuard(
+          database,
+          identity,
+          actor,
+          {
+            allDayEndDateExclusive:
+              input.schedule.allDayEndDateExclusive,
+            allDayStartDate: input.schedule.allDayStartDate,
+            bufferAfterMinutes: input.bufferAfterMinutes,
+            bufferBeforeMinutes: input.bufferBeforeMinutes,
+            clubId: input.clubId,
+            endsAtUtc: input.schedule.endsAtUtc,
+            eventId,
+            expectedContentVersion,
+            expectedScheduleVersion,
+            operation: "update",
+            organizerScope: organizerScope(input),
+            planningStatus: writablePlanningStatus(
+              input.planningStatus,
+            ),
+            primaryOrganizerProfileId:
+              input.primaryOrganizerProfileId,
+            proposedContentVersion: nextContentVersion,
+            proposedScheduleVersion: nextScheduleVersion,
+            scheduleShape: input.schedule.shape,
+            startsAtUtc: input.schedule.startsAtUtc,
+            timeZone: input.schedule.timeZone,
+            venueId: input.venueId,
+          },
+          now,
+        )
+    : null;
+  if (
+    scheduleGuard &&
+    "reviewRequestId" in scheduleGuard
+  ) {
+    return Object.freeze({
+      event: existing,
+      outcome: "pending_approval" as const,
+      reviewRequestId: scheduleGuard.reviewRequestId,
+    });
+  }
+  type ExecutableScheduleGuard =
+    | Awaited<ReturnType<typeof prepareNonReservingScheduleGuard>>
+    | Extract<
+        Awaited<ReturnType<typeof prepareOrganizerScheduleEditGuard>>,
+        Readonly<{ outcome: "apply" }>
+      >;
+  const executableScheduleGuard =
+    scheduleGuard as ExecutableScheduleGuard | null;
+  const reservingScheduleGuard =
+    reservingEdit && executableScheduleGuard
+      ? (executableScheduleGuard as Extract<
+          Awaited<ReturnType<typeof prepareOrganizerScheduleEditGuard>>,
+          Readonly<{ outcome: "apply" }>
+        >)
+      : null;
+  const mutation = database.prepare(UPDATE_EVENT_SQL).bind(
       input.clubId,
       input.programId,
       input.eventLaneId,
@@ -475,7 +687,31 @@ export async function updateOrganizerEvent(
       eventId,
       actor.organizationId,
       expectedContentVersion,
-    ),
+      existing.planningStatus,
+    );
+  const associationStatements = scheduleChanged
+    ? [
+        database
+          .prepare(
+            `DELETE FROM organizer_event_organizers
+             WHERE organization_id = ? AND organizer_event_id = ?`,
+          )
+          .bind(actor.organizationId, eventId),
+        ...coOrganizerInsertStatements(database, actor, eventId, input),
+      ]
+    : [];
+  const statements: D1PreparedStatementLike[] = [
+    ...(executableScheduleGuard
+      ? [
+          ...executableScheduleGuard.invalidationStatements,
+          executableScheduleGuard.intentStatement,
+          executableScheduleGuard.incidentStatement,
+          ...(reservingScheduleGuard
+            ? [reservingScheduleGuard.overrideStatement]
+            : []),
+        ]
+      : []),
+    mutation,
     database.prepare(INSERT_GUARDED_REVISION_SQL).bind(
       createId("organizer-event-revision"),
       actor.organizationId,
@@ -486,7 +722,7 @@ export async function updateOrganizerEvent(
       JSON.stringify(snapshot),
       actor.profileId,
     ),
-    ...coOrganizerInsertStatements(database, actor, eventId, input),
+    ...associationStatements,
     auditStatement(database, actor, eventId, "organizer_event.updated", {
       contentVersion: nextContentVersion,
       planningStatus: input.planningStatus,
@@ -503,9 +739,25 @@ export async function updateOrganizerEvent(
       scheduleChanged,
       now,
     ),
+    ...(reservingScheduleGuard
+      ? [reservingScheduleGuard.finalizationStatement]
+      : []),
+    ...(executableScheduleGuard
+      ? [executableScheduleGuard.completionStatement]
+      : []),
   ];
 
-  await runStaleGuardedBatch(database, statements, 1);
+  const mutationIndex = executableScheduleGuard
+    ? executableScheduleGuard.invalidationStatements.length +
+      (reservingEdit ? 3 : 2)
+    : 0;
+  await runStaleGuardedBatch(
+    database,
+    statements,
+    executableScheduleGuard
+      ? [mutationIndex, statements.length - 1]
+      : [mutationIndex],
+  );
   return requireManualEvent(database, actor, eventId, true);
 }
 
@@ -514,21 +766,40 @@ export async function duplicateOrganizerEvent(
   identity: TrustedServerIdentity,
   sourceEventIdValue: unknown,
   expectedContentVersionValue: unknown,
+  expectedScheduleVersionValue?: unknown,
 ): Promise<OrganizerEventDto> {
   const sourceEventId = parseIdentifier(sourceEventIdValue, "eventId");
   const expectedVersion = parseExpectedVersion(expectedContentVersionValue);
   const actor = await authorizeMembership(database, identity);
   const source = await requireManualEvent(database, actor, sourceEventId, true);
-  assertEditable(source);
+  assertDuplicable(source);
   await authorizeEventEdit(database, actor, source);
   if (source.contentVersion !== expectedVersion) {
+    throw new StaleOrganizerEventEditError();
+  }
+  const expectedScheduleVersion =
+    expectedScheduleVersionValue === undefined
+      ? source.scheduleVersion
+      : parseFiniteInteger(expectedScheduleVersionValue, {
+          path: "expectedScheduleVersion",
+          minimum: 1,
+        });
+  if (source.scheduleVersion !== expectedScheduleVersion) {
     throw new StaleOrganizerEventEditError();
   }
 
   const input = manualDtoToInput(source, actor);
   const id = createId("organizer-event");
   const title = `Copy of ${source.title}`.slice(0, 180);
-  const copiedInput = Object.freeze({ ...input, title });
+  const copiedInput = Object.freeze({
+    ...input,
+    meetupEventUrl: null,
+    planningStatus:
+      input.schedule.shape === "unscheduled"
+        ? ("idea" as const)
+        : ("draft" as const),
+    title,
+  });
   await validateEventReferences(database, actor, copiedInput, null);
   const slug = createStableSlug(title, id);
   const now = Date.now();
@@ -545,7 +816,36 @@ export async function duplicateOrganizerEvent(
     updatedAt: now,
     deletedAt: null,
   });
+  const scheduleGuard = await prepareNonReservingScheduleGuard(
+    database,
+    identity,
+    actor,
+    {
+      allDayEndDateExclusive: copiedInput.schedule.allDayEndDateExclusive,
+      allDayStartDate: copiedInput.schedule.allDayStartDate,
+      bufferAfterMinutes: copiedInput.bufferAfterMinutes,
+      bufferBeforeMinutes: copiedInput.bufferBeforeMinutes,
+      clubId: copiedInput.clubId,
+      endsAtUtc: copiedInput.schedule.endsAtUtc,
+      eventId: id,
+      expectedContentVersion: 0,
+      expectedScheduleVersion: 0,
+      operation: "duplicate",
+      organizerScope: organizerScope(copiedInput),
+      planningStatus: copiedInput.planningStatus,
+      primaryOrganizerProfileId: copiedInput.primaryOrganizerProfileId,
+      proposedContentVersion: 1,
+      proposedScheduleVersion: 1,
+      scheduleShape: copiedInput.schedule.shape,
+      startsAtUtc: copiedInput.schedule.startsAtUtc,
+      timeZone: copiedInput.schedule.timeZone,
+      venueId: copiedInput.venueId,
+    },
+    now,
+  );
   const statements: D1PreparedStatementLike[] = [
+    ...scheduleGuard.invalidationStatements,
+    scheduleGuard.intentStatement,
     database.prepare(INSERT_DUPLICATED_EVENT_SQL).bind(
       id,
       actor.organizationId,
@@ -592,6 +892,7 @@ export async function duplicateOrganizerEvent(
       actor.profileId,
     ),
     ...coOrganizerInsertStatements(database, actor, id, copiedInput),
+    scheduleGuard.incidentStatement,
     auditStatement(database, actor, id, "organizer_event.duplicated", {
       contentVersion: 1,
       planningStatus: copiedInput.planningStatus,
@@ -609,8 +910,14 @@ export async function duplicateOrganizerEvent(
       false,
       now,
     ),
+    scheduleGuard.completionStatement,
   ];
-  await runStaleGuardedBatch(database, statements);
+  const duplicateInsertIndex =
+    scheduleGuard.invalidationStatements.length + 1;
+  await runStaleGuardedBatch(database, statements, [
+    duplicateInsertIndex,
+    statements.length - 1,
+  ]);
   return requireManualEvent(database, actor, id, true);
 }
 
@@ -619,12 +926,14 @@ export async function softDeleteOrganizerEvent(
   identity: TrustedServerIdentity,
   eventIdValue: unknown,
   expectedContentVersionValue: unknown,
+  expectedScheduleVersionValue?: unknown,
 ): Promise<OrganizerEventDto> {
   return setOrganizerEventDeletedState(
     database,
     identity,
     eventIdValue,
     expectedContentVersionValue,
+    expectedScheduleVersionValue,
     true,
   );
 }
@@ -634,12 +943,14 @@ export async function restoreOrganizerEvent(
   identity: TrustedServerIdentity,
   eventIdValue: unknown,
   expectedContentVersionValue: unknown,
+  expectedScheduleVersionValue?: unknown,
 ): Promise<OrganizerEventDto> {
   return setOrganizerEventDeletedState(
     database,
     identity,
     eventIdValue,
     expectedContentVersionValue,
+    expectedScheduleVersionValue,
     false,
   );
 }
@@ -867,15 +1178,29 @@ async function setOrganizerEventDeletedState(
   identity: TrustedServerIdentity,
   eventIdValue: unknown,
   expectedContentVersionValue: unknown,
+  expectedScheduleVersionValue: unknown,
   deleted: boolean,
 ): Promise<OrganizerEventDto> {
   const eventId = parseIdentifier(eventIdValue, "eventId");
   const expectedVersion = parseExpectedVersion(expectedContentVersionValue);
   const actor = await authorizeMembership(database, identity);
   const existing = await requireManualEvent(database, actor, eventId, true);
-  assertEditable(existing);
+  assertPrivateManual(existing);
   await authorizeEventEdit(database, actor, existing);
   if ((existing.deletedAt !== null) === deleted) {
+    throw new StaleOrganizerEventEditError();
+  }
+  const expectedScheduleVersion =
+    expectedScheduleVersionValue === undefined
+      ? existing.scheduleVersion
+      : parseFiniteInteger(expectedScheduleVersionValue, {
+          path: "expectedScheduleVersion",
+          minimum: 1,
+        });
+  if (
+    existing.contentVersion !== expectedVersion ||
+    existing.scheduleVersion !== expectedScheduleVersion
+  ) {
     throw new StaleOrganizerEventEditError();
   }
   if (!deleted) {
@@ -898,7 +1223,12 @@ async function setOrganizerEventDeletedState(
   }
   const now = Date.now();
   const nextContentVersion = expectedVersion + 1;
-  const nextScheduleVersion = existing.scheduleVersion;
+  const nextScheduleVersion = existing.scheduleVersion + 1;
+  const nextPlanningStatus: Phase4PlanningStatus = deleted
+    ? existing.planningStatus
+    : existing.schedule.shape === "unscheduled"
+      ? "idea"
+      : "draft";
   const snapshot = {
     ...eventDtoSnapshot(existing),
     contentVersion: nextContentVersion,
@@ -906,29 +1236,66 @@ async function setOrganizerEventDeletedState(
     updatedByProfileId: actor.profileId,
     updatedAt: now,
     deletedAt: deleted ? now : null,
+    planningStatus: nextPlanningStatus,
   };
+  const scheduleGuard = await prepareNonReservingScheduleGuard(
+    database,
+    identity,
+    actor,
+    {
+      allDayEndDateExclusive: existing.schedule.allDayEndDateExclusive,
+      allDayStartDate: existing.schedule.allDayStartDate,
+      bufferAfterMinutes: existing.bufferAfterMinutes,
+      bufferBeforeMinutes: existing.bufferBeforeMinutes,
+      clubId: existing.clubId,
+      endsAtUtc: existing.schedule.endsAtUtc,
+      eventId,
+      expectedContentVersion: expectedVersion,
+      expectedScheduleVersion,
+      operation: deleted ? "soft_delete" : "restore",
+      organizerScope: organizerScopeFromDto(existing),
+      planningStatus: nextPlanningStatus,
+      primaryOrganizerProfileId: existing.primaryOrganizerProfileId,
+      proposedContentVersion: nextContentVersion,
+      proposedScheduleVersion: nextScheduleVersion,
+      scheduleShape: existing.schedule.shape,
+      startsAtUtc: existing.schedule.startsAtUtc,
+      timeZone: existing.schedule.timeZone,
+      venueId: existing.venueId,
+    },
+    now,
+  );
   const statements = [
+    ...scheduleGuard.invalidationStatements,
+    scheduleGuard.intentStatement,
+    scheduleGuard.incidentStatement,
     database
       .prepare(
         `UPDATE organizer_events
          SET content_version = content_version + 1,
-             updated_by_profile_id = ?,
+              schedule_version = schedule_version + 1,
+              planning_status = ?,
+              updated_by_profile_id = ?,
              updated_at = ?,
              deleted_at = ?
          WHERE id = ?
            AND organization_id = ?
            AND content_version = ?
-           AND planning_status IN ('idea', 'draft')
+           AND schedule_version = ?
+           AND planning_status = ?
            AND publication_status = 'private'
            AND ${deleted ? "deleted_at IS NULL" : "deleted_at IS NOT NULL"}`,
       )
       .bind(
+        nextPlanningStatus,
         actor.profileId,
         now,
         deleted ? now : null,
         eventId,
         actor.organizationId,
         expectedVersion,
+        expectedScheduleVersion,
+        existing.planningStatus,
       ),
     database.prepare(INSERT_GUARDED_REVISION_SQL).bind(
       createId("organizer-event-revision"),
@@ -947,14 +1314,25 @@ async function setOrganizerEventDeletedState(
       deleted ? "organizer_event.deleted" : "organizer_event.restored",
       {
         contentVersion: nextContentVersion,
-        planningStatus: existing.planningStatus,
+        planningStatus: nextPlanningStatus,
         publicationStatus: "private",
         scheduleVersion: nextScheduleVersion,
       },
     ),
+    scheduleGuard.completionStatement,
   ];
   try {
-    await runStaleGuardedBatch(database, statements);
+    const results = await database.batch(statements);
+    const eventChanges =
+      results[scheduleGuard.invalidationStatements.length + 2]?.meta
+        ?.changes;
+    if (
+      typeof eventChanges !== "number" ||
+      eventChanges < 1 ||
+      results.at(-1)?.meta?.changes !== 1
+    ) {
+      throw new StaleOrganizerEventEditError();
+    }
   } catch (error) {
     if (
       !deleted &&
@@ -1037,7 +1415,7 @@ async function authorizeEventEdit(
 async function validateEventReferences(
   database: D1DatabaseLike,
   actor: AuthorizedMembership,
-  input: Phase3ManualEventInput,
+  input: OrganizerEditableEventInput,
   existing: OrganizerEventDto | null,
 ): Promise<void> {
   if (
@@ -1207,7 +1585,7 @@ function coOrganizerInsertStatements(
   database: D1DatabaseLike,
   actor: AuthorizedMembership,
   eventId: string,
-  input: Phase3ManualEventInput,
+  input: OrganizerEditableEventInput,
 ): D1PreparedStatementLike[] {
   return input.coOrganizerProfileIds.map((profileId) =>
     database
@@ -1275,7 +1653,7 @@ function assignmentNotificationStatements(
 }
 
 function organizerScope(
-  input: Phase3ManualEventInput,
+  input: OrganizerEditableEventInput,
 ): readonly string[] {
   return Object.freeze([
     input.primaryOrganizerProfileId,
@@ -1295,18 +1673,28 @@ function organizerScopeFromDto(
 async function runStaleGuardedBatch(
   database: D1DatabaseLike,
   statements: D1PreparedStatementLike[],
-  guardedMutationIndex = 0,
-): Promise<void> {
+  guardedMutationIndexes: readonly number[] = [0],
+): Promise<readonly D1ResultLike[]> {
   try {
     const results = await database.batch(statements);
-    if (results[guardedMutationIndex]?.meta?.changes !== 1) {
+    if (
+      guardedMutationIndexes.some((index) => {
+        const changed = results[index]?.meta?.changes;
+        // Production-compatible D1 includes rows changed by AFTER triggers in
+        // this metadata. The guarded statement itself is single-row keyed, so
+        // zero (or missing) is stale; a larger count records trigger-maintained
+        // reservation state and is still a successful authoritative write.
+        return typeof changed !== "number" || changed < 1;
+      })
+    ) {
       throw new StaleOrganizerEventEditError();
     }
+    return results;
   } catch (error) {
     if (
       error instanceof StaleOrganizerEventEditError ||
       (error instanceof Error &&
-        /organizer_event_revision_mismatch|NOT NULL constraint failed: organizer_event_revisions\.organizer_event_id/iu.test(
+        /organizer_event_revision_mismatch|NOT NULL constraint failed: organizer_event_revisions\.organizer_event_id|phase4_intent_version_mismatch|phase4_intent_finalization_mismatch|phase4_reservation_state_identity_immutable/iu.test(
           `${error.message} ${(error as Error & { cause?: unknown }).cause ?? ""}`,
         ))
     ) {
@@ -1318,7 +1706,17 @@ async function runStaleGuardedBatch(
 
 function readManualEventRow(row: Record<string, unknown>): OrganizerEventDto {
   const planningStatus = requiredString(row.planning_status);
-  if (planningStatus !== "idea" && planningStatus !== "draft") {
+  if (
+    ![
+      "idea",
+      "draft",
+      "tentative_hold",
+      "confirmed",
+      "cancelled",
+      "completed",
+      "archived",
+    ].includes(planningStatus)
+  ) {
     throw new SafeApplicationError(
       "service_unavailable",
       503,
@@ -1336,6 +1734,14 @@ function readManualEventRow(row: Record<string, unknown>): OrganizerEventDto {
   const parsedCoOrganizers = JSON.parse(
     requiredString(row.co_organizer_profile_ids_json),
   ) as unknown;
+  const holdExpiresAt = optionalInteger(row.hold_expires_at);
+  const d1Now = requiredInteger(row.d1_now_utc);
+  const holdState =
+    planningStatus !== "tentative_hold" || holdExpiresAt === null
+      ? null
+      : holdExpiresAt <= d1Now
+        ? ("expired" as const)
+        : ("active" as const);
   if (
     !Array.isArray(parsedCoOrganizers) ||
     !parsedCoOrganizers.every((value) => typeof value === "string")
@@ -1367,7 +1773,7 @@ function readManualEventRow(row: Record<string, unknown>): OrganizerEventDto {
     privateNotes: optionalString(row.private_notes),
     privateMeetingDetails: optionalString(row.private_meeting_details),
     meetupEventUrl: optionalString(row.meetup_event_url),
-    planningStatus,
+    planningStatus: planningStatus as EventPlanningStatus,
     publicationStatus: "private" as const,
     schedule,
     bufferBeforeMinutes: requiredInteger(row.buffer_before_minutes),
@@ -1379,6 +1785,10 @@ function readManualEventRow(row: Record<string, unknown>): OrganizerEventDto {
     createdAt: requiredInteger(row.created_at),
     updatedAt: requiredInteger(row.updated_at),
     deletedAt: optionalInteger(row.deleted_at),
+    holdExpiresAt,
+    holdState,
+    conflictCount: requiredInteger(row.conflict_count),
+    conflictState: optionalString(row.conflict_state),
   });
 }
 
@@ -1505,7 +1915,10 @@ function manualDtoToInput(
     venueId: source.venueId,
     primaryOrganizerProfileId,
     coOrganizerProfileIds,
-    planningStatus: source.planningStatus,
+    planningStatus:
+      source.schedule.shape === "unscheduled"
+        ? ("idea" as const)
+        : ("draft" as const),
     publicationStatus: "private" as const,
     schedule: source.schedule,
     summary: source.summary,
@@ -1530,7 +1943,10 @@ function existingEventInput(
     venueId: source.venueId,
     primaryOrganizerProfileId: source.primaryOrganizerProfileId,
     coOrganizerProfileIds: source.coOrganizerProfileIds,
-    planningStatus: source.planningStatus,
+    planningStatus:
+      source.schedule.shape === "unscheduled"
+        ? ("idea" as const)
+        : ("draft" as const),
     publicationStatus: "private" as const,
     schedule: source.schedule,
     summary: source.summary,
@@ -1553,7 +1969,7 @@ function eventRestoreBlocked(): SafeApplicationError {
 
 function scheduleAffectingFieldsChanged(
   existing: OrganizerEventDto,
-  input: Phase3ManualEventInput,
+  input: OrganizerEditableEventInput,
 ): boolean {
   return (
     existing.clubId !== input.clubId ||
@@ -1574,7 +1990,7 @@ function eventSnapshot(input: Readonly<{
   id: string;
   organizationId: string;
   slug: string;
-  input: Phase3ManualEventInput;
+  input: OrganizerEditableEventInput;
   contentVersion: number;
   scheduleVersion: number;
   createdByProfileId: string;
@@ -1724,11 +2140,73 @@ function sameStringSet(
   );
 }
 
+function writablePlanningStatus(
+  value: EventPlanningStatus,
+): Phase3WritablePlanningStatus {
+  if (value === "idea" || value === "draft") return value;
+  throw new OrganizerEventNotFoundError();
+}
+
+function parseOrganizerEventEditInput(
+  value: unknown,
+  existing: OrganizerEventDto,
+): OrganizerEditableEventInput {
+  if (
+    existing.planningStatus === "idea" ||
+    existing.planningStatus === "draft"
+  ) {
+    return parsePhase3ManualEventInput(value);
+  }
+  if (
+    existing.planningStatus !== "tentative_hold" &&
+    existing.planningStatus !== "confirmed"
+  ) {
+    throw new OrganizerEventNotFoundError();
+  }
+  const raw = parseObject(value, "event");
+  const submittedStatus = parseEnum(
+    raw.planningStatus,
+    ["tentative_hold", "confirmed"] as const,
+    "planningStatus",
+  );
+  if (submittedStatus !== existing.planningStatus) {
+    throw validationIssue(
+      "planningStatus",
+      "lifecycle_action_required",
+      "Use the explicit lifecycle actions to change reservation state.",
+    );
+  }
+  const parsed = parsePhase3ManualEventInput({
+    ...raw,
+    planningStatus: "draft",
+  });
+  return Object.freeze({
+    ...parsed,
+    planningStatus: submittedStatus,
+  });
+}
+
 function assertEditable(event: OrganizerEventDto): void {
   if (
     event.source !== "manual" ||
     event.readOnly ||
-    !["idea", "draft"].includes(event.planningStatus) ||
+    !["idea", "draft", "tentative_hold", "confirmed"].includes(
+      event.planningStatus,
+    ) ||
+    event.publicationStatus !== "private"
+  ) {
+    throw new OrganizerEventNotFoundError();
+  }
+}
+
+function assertDuplicable(event: OrganizerEventDto): void {
+  assertPrivateManual(event);
+}
+
+function assertPrivateManual(event: OrganizerEventDto): void {
+  if (
+    event.source !== "manual" ||
+    event.readOnly ||
     event.publicationStatus !== "private"
   ) {
     throw new OrganizerEventNotFoundError();
