@@ -7,8 +7,8 @@ Last updated: 2026-07-25 (America/Vancouver)
 - **Phase 3 — Organizer portal, non-reserving workflow.**
 - Phase 3 implementation is complete and verified in local, preview-D1,
   source-test, built-Worker, and browser test seams.
-- Saving one new **unpublished** ChatGPT Sites version is pending the final
-  source commit and exact-archive audit.
+- The exact verified source was committed, pushed, packaged, audited, and saved
+  once as unpublished ChatGPT Sites version 9.
 - Phase 4 conflict/reserving work is not authorized and has not started.
 - The existing owner-only live deployment remains version 8. No Phase 3 source
   has been deployed.
@@ -203,6 +203,16 @@ Commands ran from `C:\Users\user\Documents\Website` on 2026-07-25.
 - `git diff --check` — exit 0.
 - Built-output audit — `dist` contains 100 files / 4,865,389 bytes.
   Source and packaged migrations 0008–0012 are byte-identical.
+- Exact compressed upload archive — 115 entries / 100 regular files /
+  1,824,852 bytes; SHA-256
+  `de7a65fc8656b241f7e136bf0088b19437804a8cb7175ef538ad8d2a3de6cbc1`.
+  Every entry is rooted under `dist/`; required Worker, hosting, and all 11
+  Drizzle resources are present; no unsafe path or forbidden package artifact
+  was found.
+- Exact archive migration audit — all 11 source/package resources are
+  byte-identical. Migration `0012` and `meta/0012_snapshot.json` both contain
+  `workspace_display_name` and `public_attribution_consent_draft`; the packaged
+  migration contains no trigger body.
 - Source and built privacy scans — zero exact official private Meetup feed
   URLs; zero email-like values in `dist`; zero credentials, bearer tokens,
   local paths, private fixture sentinels, environment files, local databases,
@@ -302,8 +312,14 @@ Interim evidence retained honestly:
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
 - Access remains custom: exactly one allowed owner and zero groups.
 - Custom domains: none. Preview URL: none. Public/shared access: not enabled.
-- Phase 3 source commit: **Pending final verified commit.**
-- Phase 3 Sites version: **Pending one unpublished save.**
+- Phase 3 source commit:
+  `0071fbf1fb2fc11a2cdb68d19f71c0ac4a69886c`.
+- Unpublished Phase 3 Sites version 9:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_3b9448669e5c8191ba6dad4b9e7a6c31`.
+- Sites readback matches the exact source commit and reports 100 files,
+  4,945,920 stored bytes, and content hash
+  `sha256:0e070cf11a4af8e33e28aa4920055c51eb77378ffb95ca366cbe83b5bd4ff103`.
+- Version 9 is saved only; screenshot and preview URLs are null.
 - No Phase 3 deployment is authorized.
 
 ## Awaiting a future private deployment
