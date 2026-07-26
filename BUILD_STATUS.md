@@ -202,6 +202,12 @@ Commands ran from `C:\Users\user\Documents\Website` on 2026-07-25.
   zero email-like values in `dist`, zero credential/private-key/Bearer-token
   patterns, and zero environment, local-D1, test, fixture, work, or log files
   in `dist`.
+- Exact official-helper archive — 121 tar entries / 106 regular files /
+  5,759,354 uncompressed bytes / 1,932,497 compressed bytes; local SHA-256
+  `4f36669d322a970dd88f262a8e40bdfe18056e14461f0409a0846078804816a4`.
+  Every path is rooted under `dist/`; the archive has the Worker entrypoint,
+  hosting metadata, and 13 byte-identical Drizzle resources with zero unsafe
+  paths or forbidden/private artifacts.
 - `npm.cmd audit --omit=dev --json` — **Not run to a usable result**. The npm
   advisory endpoint returned malformed gzip bytes and npm exit 1.
 - `npm.cmd audit --json` — **Not run to a usable result** for the same external
@@ -324,8 +330,14 @@ Commands ran from `C:\Users\user\Documents\Website` on 2026-07-25.
   `0071fbf1fb2fc11a2cdb68d19f71c0ac4a69886c`.
 - Unpublished Phase 3 Sites version 9 remains preserved:
   `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_3b9448669e5c8191ba6dad4b9e7a6c31`.
-- Phase 4 source commit: **Pending final intentional commit.**
-- Phase 4 unpublished Sites version: **Pending final save and readback.**
+- Phase 4 source commit:
+  `61db32cbe42acfd3b6edbb288305066a2a377ba1`.
+- Unpublished Phase 4 Sites version 10:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_6356519315688191a6df7f457a116d2d`.
+- Sites readback matches the exact source commit and reports 106 files,
+  5,847,040 stored bytes, and content hash
+  `sha256:6fbd98dc802f7cced84dbeb2666cdfd7172dba75b97ed010bcefdffef9f5e746`.
+  Screenshot and preview URLs are null.
 - No Phase 4 deployment is authorized.
 
 ## Awaiting a future private deployment
