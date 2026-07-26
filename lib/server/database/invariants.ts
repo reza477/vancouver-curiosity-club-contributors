@@ -1,8 +1,13 @@
 import type { D1DatabaseLike } from "../auth";
 import { CONFLICT_GUARD_TRIGGER_STATEMENTS } from "../conflicts/guard-sql";
+import {
+  PHASE3_INVARIANT_COUNT_SQL,
+  PHASE3_INVARIANT_TRIGGER_STATEMENTS,
+} from "../organizer/invariant-sql";
 
 export const DATABASE_INVARIANT_MARKER_KEY = "database-guards";
-export const DATABASE_INVARIANT_VERSION = 1;
+export const DATABASE_INVARIANT_VERSION = 3;
+export const DATABASE_INVARIANT_STATEMENT_LIMIT = 50;
 
 const PUBLIC_INTEGRITY_TRIGGER_STATEMENTS = [
   String.raw`
@@ -144,36 +149,10 @@ WHERE NOT EXISTS (
   WHERE organization.id = detail.organization_id
 )`;
 
-const CLUB_PUBLIC_PROFILE_INTEGRITY_PROBE_SQL = String.raw`
-UPDATE club_public_profiles
-SET organization_id = organization_id
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM organizations AS organization
-  INNER JOIN clubs AS club
-    ON club.id = club_public_profiles.club_id
-   AND club.organization_id = organization.id
-  INNER JOIN event_lanes AS lane
-    ON lane.id = club_public_profiles.primary_event_lane_id
-   AND lane.organization_id = organization.id
-  WHERE organization.id = club_public_profiles.organization_id
-)`;
-
-const EVENT_PUBLIC_DETAILS_INTEGRITY_PROBE_SQL = String.raw`
-UPDATE event_public_details
-SET organization_id = organization_id
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM organizations AS organization
-  INNER JOIN events AS event
-    ON event.id = event_public_details.event_id
-   AND event.organization_id = organization.id
-  WHERE organization.id = event_public_details.organization_id
-)`;
-
 export const DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
   ...CONFLICT_GUARD_TRIGGER_STATEMENTS,
   ...PUBLIC_INTEGRITY_TRIGGER_STATEMENTS,
+  ...PHASE3_INVARIANT_TRIGGER_STATEMENTS,
 ]);
 
 export const DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
@@ -184,10 +163,44 @@ const EXPECTED_TRIGGER_NAME_SQL = DATABASE_INVARIANT_TRIGGER_NAMES.map(
   () => "?",
 ).join(", ");
 
+const INTEGRITY_COUNT_SQL = Object.freeze([
+  CLUB_PUBLIC_PROFILE_INTEGRITY_COUNT_SQL,
+  EVENT_PUBLIC_DETAILS_INTEGRITY_COUNT_SQL,
+  ...PHASE3_INVARIANT_COUNT_SQL,
+]);
+
+const COMBINED_INTEGRITY_COUNT_SQL = String.raw`
+SELECT ${
+  INTEGRITY_COUNT_SQL.map((query) => `(${query.trim()})`).join("\n     + ")
+} AS violation_count`;
+
+/**
+ * `database_invariant_state` rejects version zero and an empty fingerprint.
+ * If any violation appears after the preflight read but before this statement,
+ * the one conditional insert aborts the complete D1 batch and rolls back every
+ * trigger change.
+ */
+const ABORTING_INTEGRITY_PROBE_SQL = String.raw`
+INSERT INTO database_invariant_state (
+  singleton_key, version, trigger_fingerprint, verified_at
+)
+SELECT 'integrity-probe', 0, '', 0
+WHERE (${COMBINED_INTEGRITY_COUNT_SQL}) > 0`;
+
+// Three preflight reads, one aborting probe, one marker write, three read-back
+// checks, and (only after a failed read-back) one marker invalidation must all
+// fit in one Worker invocation.
+const MAX_ATOMIC_REPAIR_MUTATIONS =
+  DATABASE_INVARIANT_STATEMENT_LIMIT - 3 - 2 - 3 - 1;
+const MAX_FAIL_CLOSED_DROP_COUNT =
+  DATABASE_INVARIANT_STATEMENT_LIMIT - 3 - 1;
+
 const initializationByDatabase = new WeakMap<
   D1DatabaseLike,
-  Promise<void>
+  Promise<DatabaseInvariantInitializationStatus>
 >();
+
+export type DatabaseInvariantInitializationStatus = "ready" | "repaired";
 
 export class DatabaseInvariantError extends Error {
   constructor() {
@@ -198,16 +211,24 @@ export class DatabaseInvariantError extends Error {
 
 /**
  * Installs and verifies every database-enforced guard before application code
- * can access D1. The in-isolate promise is only an optimization: the durable
- * marker and sqlite_master definitions are authoritative on each new isolate.
+ * can access D1. The in-isolate promise deduplicates concurrent calls only:
+ * every request revalidates the durable marker, sqlite_master definitions,
+ * and integrity counts so a repair initiated by another isolate fails closed.
  */
 export function ensureDatabaseInvariants(
   database: D1DatabaseLike,
-): Promise<void> {
+): Promise<DatabaseInvariantInitializationStatus> {
   const existing = initializationByDatabase.get(database);
   if (existing) return existing;
 
-  const initialization = initializeDatabaseInvariants(database).catch(
+  const initialization = initializeDatabaseInvariants(database).then(
+    (status) => {
+      // This map deduplicates only concurrent work. Never cache a resolved
+      // result across requests: another Worker isolate may have invalidated
+      // the durable marker while repairing a corrupted trigger set.
+      initializationByDatabase.delete(database);
+      return status;
+    },
     (error: unknown) => {
       initializationByDatabase.delete(database);
       throw error instanceof DatabaseInvariantError
@@ -246,59 +267,91 @@ export function normalizeTriggerDefinition(sql: string): string {
 
 async function initializeDatabaseInvariants(
   database: D1DatabaseLike,
-): Promise<void> {
+): Promise<DatabaseInvariantInitializationStatus> {
   const fingerprint = await getExpectedDatabaseInvariantFingerprint();
-  if (await databaseInvariantsAreReady(database, fingerprint)) return;
+  const inspection = await inspectDatabaseInvariants(database, fingerprint);
+  if (inspection.ready) return "ready";
+
+  if (inspection.violationCount !== 0) {
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+
+  const expectedDefinitions = expectedNormalizedTriggerDefinitions();
+  const expectedByName = new Map(
+    expectedDefinitions.map((definition) => [definition.name, definition.sql]),
+  );
+  const actualByName = new Map(
+    inspection.actualDefinitions.map((definition) => [
+      definition.name,
+      definition.sql,
+    ]),
+  );
+  const dropNames = inspection.actualDefinitions
+    .filter(
+      (definition) =>
+        expectedByName.get(definition.name) !== definition.sql,
+    )
+    .map((definition) => definition.name);
+  const createStatements = DATABASE_INVARIANT_TRIGGER_STATEMENTS.filter(
+    (sql) => {
+      const name = readTriggerName(sql);
+      return actualByName.get(name) !== normalizeTriggerDefinition(sql);
+    },
+  );
+
+  /**
+   * Replacing every one of the 30 exact trigger definitions would require 60
+   * mutations, which cannot fit D1's 50-statement invocation cap. That
+   * pathological corruption enters a bounded fail-closed repair state:
+   *
+   * 1. atomically invalidate readiness and remove at most 46 bad definitions;
+   * 2. reject this request, so no application code can observe the gap;
+   * 3. the next request atomically installs the complete missing set, probes
+   *    it, writes the marker, and read-verifies it before dispatch.
+   *
+   * Normal cold, missing-trigger, and ordinary mismatch repairs stay in one
+   * atomic request. Every intermediate state has no readiness marker.
+   */
+  if (
+    dropNames.length + createStatements.length >
+    MAX_ATOMIC_REPAIR_MUTATIONS
+  ) {
+    const cleanupStatements = [
+      database
+        .prepare(
+          `DELETE FROM database_invariant_state
+           WHERE singleton_key = ?`,
+        )
+        .bind(DATABASE_INVARIANT_MARKER_KEY),
+      ...dropNames
+        .slice(0, MAX_FAIL_CLOSED_DROP_COUNT)
+        .map((name) =>
+          database.prepare(
+            `DROP TRIGGER IF EXISTS ${quoteSqliteIdentifier(name)}`,
+          ),
+        ),
+    ];
+    await runInvariantBatch(database, cleanupStatements);
+    throw new DatabaseInvariantError();
+  }
 
   const triggerNames = [...DATABASE_INVARIANT_TRIGGER_NAMES];
   const installationStatements = [
-    database
-      .prepare(
-        `DELETE FROM database_invariant_state
-         WHERE singleton_key = ?`,
-      )
-      .bind(DATABASE_INVARIANT_MARKER_KEY),
-    ...triggerNames.map((name) =>
-      database.prepare(`DROP TRIGGER IF EXISTS "${name}"`),
+    ...dropNames.map((name) =>
+      database.prepare(
+        `DROP TRIGGER IF EXISTS ${quoteSqliteIdentifier(name)}`,
+      ),
     ),
-    ...DATABASE_INVARIANT_TRIGGER_STATEMENTS.map((sql) =>
-      database.prepare(sql),
-    ),
-    database.prepare(CLUB_PUBLIC_PROFILE_INTEGRITY_PROBE_SQL),
-    database.prepare(EVENT_PUBLIC_DETAILS_INTEGRITY_PROBE_SQL),
+    ...createStatements.map((sql) => database.prepare(sql)),
+    database.prepare(ABORTING_INTEGRITY_PROBE_SQL),
     database
       .prepare(
         `INSERT INTO database_invariant_state (
            singleton_key, version, trigger_fingerprint, verified_at
          )
          SELECT ?, ?, ?, ?
-         WHERE NOT EXISTS (
-           SELECT 1
-           FROM club_public_profiles AS profile
-           WHERE NOT EXISTS (
-             SELECT 1
-             FROM organizations AS organization
-             INNER JOIN clubs AS club
-               ON club.id = profile.club_id
-              AND club.organization_id = organization.id
-             INNER JOIN event_lanes AS lane
-               ON lane.id = profile.primary_event_lane_id
-              AND lane.organization_id = organization.id
-             WHERE organization.id = profile.organization_id
-           )
-         )
-           AND NOT EXISTS (
-             SELECT 1
-             FROM event_public_details AS detail
-             WHERE NOT EXISTS (
-               SELECT 1
-               FROM organizations AS organization
-               INNER JOIN events AS event
-                 ON event.id = detail.event_id
-                AND event.organization_id = organization.id
-               WHERE organization.id = detail.organization_id
-             )
-           )
+         WHERE (${COMBINED_INTEGRITY_COUNT_SQL}) = 0
            AND (
              SELECT count(*)
              FROM sqlite_master
@@ -326,75 +379,110 @@ async function initializeDatabaseInvariants(
       ),
   ];
 
-  const results = await database.batch(installationStatements);
-  if (
-    results.length !== installationStatements.length ||
-    results.some((result) => result.success === false)
-  ) {
+  let results: Awaited<ReturnType<D1DatabaseLike["batch"]>>;
+  try {
+    results = await runInvariantBatch(database, installationStatements);
+  } catch {
+    await invalidateReadinessMarker(database);
     throw new DatabaseInvariantError();
   }
   const markerResult = results.at(-1);
   if (markerResult?.meta?.changes !== 1) {
+    await invalidateReadinessMarker(database);
     throw new DatabaseInvariantError();
   }
-  if (!(await databaseInvariantsAreReady(database, fingerprint))) {
+  if (!(await inspectDatabaseInvariants(database, fingerprint)).ready) {
+    await invalidateReadinessMarker(database);
     throw new DatabaseInvariantError();
   }
+  return "repaired";
 }
 
-async function databaseInvariantsAreReady(
+async function inspectDatabaseInvariants(
   database: D1DatabaseLike,
   fingerprint: string,
-): Promise<boolean> {
-  const marker = await database
-    .prepare(
-      `SELECT version, trigger_fingerprint
-       FROM database_invariant_state
-       WHERE singleton_key = ?
-       LIMIT 1`,
-    )
-    .bind(DATABASE_INVARIANT_MARKER_KEY)
-    .first<Record<string, unknown>>();
-  if (
-    marker?.version !== DATABASE_INVARIANT_VERSION ||
-    marker.trigger_fingerprint !== fingerprint
-  ) {
-    return false;
-  }
-
-  const triggerResult = await database
-    .prepare(
-      `SELECT name, sql
-       FROM sqlite_master
-       WHERE type = 'trigger'
-       ORDER BY name`,
-    )
-    .all<Record<string, unknown>>();
+): Promise<{
+  actualDefinitions: ReadonlyArray<{ name: string; sql: string }>;
+  ready: boolean;
+  violationCount: number;
+}> {
+  const [marker, triggerResult, integrityResult] = await Promise.all([
+    database
+      .prepare(
+        `SELECT version, trigger_fingerprint
+         FROM database_invariant_state
+         WHERE singleton_key = ?
+         LIMIT 1`,
+      )
+      .bind(DATABASE_INVARIANT_MARKER_KEY)
+      .first<Record<string, unknown>>(),
+    database
+      .prepare(
+        `SELECT name, sql
+         FROM sqlite_master
+         WHERE type = 'trigger'
+         ORDER BY name`,
+      )
+      .all<Record<string, unknown>>(),
+    database
+      .prepare(COMBINED_INTEGRITY_COUNT_SQL)
+      .first<Record<string, unknown>>(),
+  ]);
   const actualDefinitions = (triggerResult.results ?? []).map((row) => ({
     name: typeof row.name === "string" ? row.name : "",
     sql: typeof row.sql === "string" ? normalizeTriggerDefinition(row.sql) : "",
   }));
   const expectedDefinitions = expectedNormalizedTriggerDefinitions();
-  if (
+  const definitionsMismatch =
     actualDefinitions.length !== expectedDefinitions.length ||
     actualDefinitions.some(
       (actual, index) =>
         actual.name !== expectedDefinitions[index]?.name ||
         actual.sql !== expectedDefinitions[index]?.sql,
-    )
-  ) {
-    return false;
-  }
+    );
+  const violationCount = readViolationCount(integrityResult);
+  return {
+    actualDefinitions,
+    ready:
+      marker?.version === DATABASE_INVARIANT_VERSION &&
+      marker.trigger_fingerprint === fingerprint &&
+      !definitionsMismatch &&
+      violationCount === 0,
+    violationCount,
+  };
+}
 
-  const [clubProbe, eventProbe] = await Promise.all([
-    database
-      .prepare(CLUB_PUBLIC_PROFILE_INTEGRITY_COUNT_SQL)
-      .first<Record<string, unknown>>(),
-    database
-      .prepare(EVENT_PUBLIC_DETAILS_INTEGRITY_COUNT_SQL)
-      .first<Record<string, unknown>>(),
-  ]);
-  return readViolationCount(clubProbe) === 0 && readViolationCount(eventProbe) === 0;
+async function runInvariantBatch(
+  database: D1DatabaseLike,
+  statements: Parameters<D1DatabaseLike["batch"]>[0],
+): Promise<Awaited<ReturnType<D1DatabaseLike["batch"]>>> {
+  if (statements.length > DATABASE_INVARIANT_STATEMENT_LIMIT) {
+    throw new DatabaseInvariantError();
+  }
+  const results = await database.batch(statements);
+  if (
+    results.length !== statements.length ||
+    results.some((result) => result.success === false)
+  ) {
+    throw new DatabaseInvariantError();
+  }
+  return results;
+}
+
+async function invalidateReadinessMarker(
+  database: D1DatabaseLike,
+): Promise<void> {
+  await database
+    .prepare(
+      `DELETE FROM database_invariant_state
+       WHERE singleton_key = ?`,
+    )
+    .bind(DATABASE_INVARIANT_MARKER_KEY)
+    .run();
+}
+
+function quoteSqliteIdentifier(value: string): string {
+  return `"${value.replace(/"/gu, '""')}"`;
 }
 
 function expectedNormalizedTriggerDefinitions(): ReadonlyArray<{

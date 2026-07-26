@@ -6,7 +6,9 @@ export type SafeErrorCode =
   | "conflict"
   | "internal_error"
   | "not_found"
+  | "rate_limited"
   | "service_unavailable"
+  | "stale_edit"
   | "validation_failed";
 
 export class SafeApplicationError extends Error {
@@ -96,7 +98,7 @@ export function classifySafeError(error: unknown): Readonly<{
     return {
       code: "validation_failed",
       message: "The request could not be validated.",
-      status: 400,
+      status: 422,
     };
   }
   return {

@@ -1,16 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
-  chatGPTSignOutPath,
-  requireChatGPTUser,
-} from "@/app/chatgpt-auth";
-import {
-  AuthConfigurationError,
-  OrganizerAccessDeniedError,
-  authorizeOrganizerAccess,
-  trustedIdentityFromSites,
-} from "@/lib/server/auth";
-import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
+  enforceOrganizerPageAccess,
+  loadOrganizerPageContext,
+} from "@/app/_organizer/access";
+import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
+import { PageHeader } from "@/app/_organizer/PageHeader";
 import {
   ensureMeetupProgramClubs,
   getMeetupConnectionState,
@@ -33,106 +27,79 @@ export const metadata: Metadata = {
 };
 
 export default async function OrganizerMeetupPage() {
-  const user = await requireChatGPTUser("/organizer/meetup");
-  const identity = trustedIdentityFromSites(user);
-  let loaded:
-    | Readonly<{
-        canConfigure: boolean;
-        clubs: readonly Readonly<{ id: string; name: string }>[];
-        role: "administrator" | "organizer" | "owner";
-        state: Awaited<ReturnType<typeof getMeetupConnectionState>>;
-      }>
-    | Readonly<{
-        denied: boolean;
-        error: true;
-      }>;
-
-  try {
-    const { database, initialOwnerEmail } = getRuntimeAuthConfiguration();
-    const membership = await authorizeOrganizerAccess(database, identity, {
-      initialOwnerEmail,
-    });
-    const state = await getMeetupConnectionState(database, identity);
-    const canConfigure =
-      membership.role === "owner" ||
-      membership.role === "administrator";
-    const clubs = canConfigure
-      ? await ensureMeetupProgramClubs(database, identity)
-      : Object.freeze([]);
-    loaded = {
-      canConfigure,
-      clubs,
-      role: membership.role,
-      state,
-    };
-  } catch (error) {
-    const denied = error instanceof OrganizerAccessDeniedError;
-    const unconfigured = error instanceof AuthConfigurationError;
-    writeSafeLog(denied || unconfigured ? "warn" : "error", "meetup_ui_failed", {
-      code: denied
-        ? "authorization_denied"
-        : unconfigured
-          ? "service_unavailable"
-          : "internal_error",
-      operation: "read_meetup_connection",
-      route: "/organizer/meetup",
-      status: denied ? 403 : 503,
-    });
-    loaded = { denied, error: true };
-  }
-
-  if ("error" in loaded) {
+  const loaded = await loadOrganizerPageContext("/organizer/meetup");
+  enforceOrganizerPageAccess(loaded);
+  if (loaded.kind !== "granted") {
     return (
-      <main
-        className="organizer-shell meetup-organizer-page"
-        aria-labelledby="meetup-organizer-heading"
-      >
-        <p className="organizer-shell__eyebrow">Vancouver Curiosity Club</p>
-        <h1 id="meetup-organizer-heading">
-          Meetup connection unavailable
-        </h1>
-        <p>
-          {loaded.denied
-            ? "This identity has no active organizer access."
-            : "The connection controls could not be loaded. No source or refresh state is being claimed."}
-        </p>
-        <Link href="/organizer">Return to organizer portal</Link>
-      </main>
+      <OrganizerPageState
+        detail="Your active membership could not be revalidated for this request."
+        heading="Organizer access changed."
+        tone="error"
+      />
     );
   }
-
+  let data:
+    | Readonly<{
+        canConfigure: boolean;
+        clubs: Awaited<ReturnType<typeof ensureMeetupProgramClubs>>;
+        state: Awaited<ReturnType<typeof getMeetupConnectionState>>;
+      }>
+    | null = null;
+  try {
+    const canConfigure =
+      loaded.context.membership.role === "owner" ||
+      loaded.context.membership.role === "administrator";
+    const state = await getMeetupConnectionState(
+      loaded.context.database,
+      loaded.context.identity,
+    );
+    const clubs = canConfigure
+      ? await ensureMeetupProgramClubs(
+          loaded.context.database,
+          loaded.context.identity,
+        )
+      : Object.freeze([]);
+    data = { canConfigure, clubs, state };
+  } catch {
+    writeSafeLog("error", "meetup_ui_failed", {
+      code: "internal_error",
+      operation: "read_meetup_connection",
+      route: "/organizer/meetup",
+      status: 503,
+    });
+  }
+  if (data === null) {
+    return (
+      <>
+        <PageHeader
+          eyebrow="Official source connection"
+          introduction="No source address, refresh result, or feed state is being guessed."
+          title="Meetup calendar feeds"
+        />
+        <OrganizerPageState
+          detail="The connection controls could not be loaded. Refresh to try again."
+          heading="Meetup connection temporarily unavailable."
+          tone="error"
+        />
+      </>
+    );
+  }
   return (
-    <main
-      className="organizer-shell meetup-organizer-page"
-      aria-labelledby="meetup-organizer-heading"
-    >
-      <header className="organizer-shell__header">
-        <Link className="organizer-back-link" href="/organizer">
-          <span aria-hidden="true">←</span> Organizer portal
-        </Link>
-        <p className="organizer-shell__eyebrow">
-          Vancouver Curiosity Club · {roleLabel(loaded.role)}
-        </p>
-        <h1 id="meetup-organizer-heading">Meetup calendar feeds</h1>
-        <p>
-          {loaded.canConfigure
+    <>
+      <PageHeader
+        eyebrow="Official source connection"
+        introduction={
+          data.canConfigure
             ? "Manage official feed coverage and inspect aggregate status without exposing saved addresses or claiming a refresh that did not happen."
-            : "Inspect aggregate feed status. Saved addresses and mutation controls remain restricted to an Owner or Administrator."}
-        </p>
-        <a href={chatGPTSignOutPath("/")}>Sign out</a>
-      </header>
-
-      <MeetupControls
-        canConfigure={loaded.canConfigure}
-        clubOptions={loaded.clubs}
-        initialState={toMeetupUiState(loaded.state)}
+            : "Inspect aggregate feed status. Saved addresses and mutation controls remain restricted to an Owner or Administrator."
+        }
+        title="Meetup calendar feeds"
       />
-    </main>
+      <MeetupControls
+        canConfigure={data.canConfigure}
+        clubOptions={data.clubs}
+        initialState={toMeetupUiState(data.state)}
+      />
+    </>
   );
-}
-
-function roleLabel(role: "administrator" | "organizer" | "owner") {
-  if (role === "owner") return "Owner";
-  if (role === "administrator") return "Administrator";
-  return "Organizer";
 }

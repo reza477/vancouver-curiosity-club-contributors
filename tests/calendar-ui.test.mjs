@@ -91,8 +91,13 @@ test("Events renders honest source states through the safe unified projection", 
 });
 
 test("organizer connection UI is noindex, server-authorized, and read-only for Organizer", async () => {
-  const [portal, page, controls, model] = await Promise.all([
+  const [portal, layout, shell, page, controls, model] = await Promise.all([
     readFile(new URL("app/organizer/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/organizer/layout.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_organizer/WorkspaceShell.tsx", projectRoot),
+      "utf8",
+    ),
     readFile(new URL("app/organizer/meetup/page.tsx", projectRoot), "utf8"),
     readFile(
       new URL("app/organizer/meetup/MeetupControls.tsx", projectRoot),
@@ -101,24 +106,26 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
     readFile(new URL("app/organizer/meetup/model.ts", projectRoot), "utf8"),
   ]);
 
-  assert.match(portal, /href="\/organizer\/meetup"/);
-  assert.match(portal, /Open connection workspace/);
-  assert.match(portal, /does not[\s\S]*expose schedule-reserving event tools/);
+  assert.match(shell, /href:\s*"\/organizer\/meetup"/);
+  assert.match(shell, /Meetup connection/);
+  assert.match(
+    portal,
+    /without reserving time or publishing to the website/u,
+  );
   assert.doesNotMatch(portal, /private Phase 1 surface/i);
-  assert.match(page, /requireChatGPTUser\("\/organizer\/meetup"\)/);
-  assert.match(page, /authorizeOrganizerAccess/);
-  assert.match(page, /index:\s*false/);
-  assert.match(page, /follow:\s*false/);
+  assert.match(page, /loadOrganizerPageContext\("\/organizer\/meetup"\)/);
+  assert.match(layout, /loadOrganizerPageContext\(returnTo\)/);
+  assert.match(layout, /index:\s*false/);
+  assert.match(layout, /follow:\s*false/);
   assert.match(
     page,
-    /membership\.role === "owner"[\s\S]*membership\.role === "administrator"/,
+    /loaded\.context\.membership\.role === "owner"[\s\S]*loaded\.context\.membership\.role === "administrator"/,
   );
-  assert.match(page, /ensureMeetupProgramClubs\(database, identity\)/);
-  assert.match(page, /clubOptions=\{loaded\.clubs\}/);
   assert.match(
     page,
-    /clubs:\s*readonly Readonly<\{\s*id:\s*string;\s*name:\s*string\s*\}>\[\]/,
+    /ensureMeetupProgramClubs\([\s\S]*loaded\.context\.database,[\s\S]*loaded\.context\.identity/,
   );
+  assert.match(page, /clubOptions=\{data\.clubs\}/);
   assert.doesNotMatch(page, /sourceUrl|source_url|feedUrl/);
   assert.match(controls, /canConfigure\s*\?\s*\(/);
   assert.match(controls, /Organizer access is read-only/);

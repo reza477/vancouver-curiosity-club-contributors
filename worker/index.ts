@@ -2,6 +2,11 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { ensureDatabaseInvariants } from "../lib/server/database/invariants";
+import {
+  clearInvitationTokenCookie,
+  invitationTokenCookie,
+  isInvitationToken,
+} from "../lib/server/organizer/invitation-token-cookie";
 
 interface Env {
   ASSETS: Fetcher;
@@ -123,13 +128,20 @@ function secureResponse(
 ): Response {
   const requestUrl = new URL(request.url);
   const headers = new Headers(response.headers);
+  const isPrivateRequest = isPrivateOrIdentityPath(requestUrl.pathname);
 
   headers.set("Content-Security-Policy", contentSecurityPolicyValue);
   headers.delete("Content-Security-Policy-Report-Only");
   headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   headers.set("Cross-Origin-Resource-Policy", "same-origin");
   headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
-  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set(
+    "Referrer-Policy",
+    requestUrl.pathname === "/accept-invitation" ||
+      requestUrl.pathname.startsWith("/accept-invitation/")
+      ? "no-referrer"
+      : "strict-origin-when-cross-origin",
+  );
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("X-Frame-Options", "DENY");
 
@@ -141,7 +153,7 @@ function secureResponse(
   }
 
   if (
-    isPrivateOrIdentityPath(requestUrl.pathname) ||
+    isPrivateRequest ||
     requestUrl.pathname === "/calendar" ||
     response.status >= 400
   ) {
@@ -149,8 +161,9 @@ function secureResponse(
   } else if (requestUrl.search.length > 0) {
     headers.set("X-Robots-Tag", "noindex, follow, noarchive");
   }
-  if (response.status >= 500) {
-    headers.set("Cache-Control", "no-store");
+  if (isPrivateRequest || response.status >= 500) {
+    headers.set("Cache-Control", "private, no-store, max-age=0");
+    headers.set("Pragma", "no-cache");
   }
 
   return new Response(response.body, {
@@ -160,7 +173,9 @@ function secureResponse(
   });
 }
 
-function databaseInvariantUnavailableResponse(): Response {
+function databaseInvariantUnavailableResponse(
+  detail = "The database safety checks could not be completed. Please try again shortly.",
+): Response {
   return new Response(
     `<!doctype html>
 <html lang="en">
@@ -173,7 +188,7 @@ function databaseInvariantUnavailableResponse(): Response {
   <body>
     <main>
       <h1>The site is temporarily unavailable.</h1>
-      <p>The database safety checks could not be completed. Please try again shortly.</p>
+      <p>${detail}</p>
     </main>
   </body>
 </html>`,
@@ -188,6 +203,36 @@ function databaseInvariantUnavailableResponse(): Response {
   );
 }
 
+function captureInvitationToken(
+  request: Request,
+  requestUrl: URL,
+): Response | null {
+  if (
+    request.method !== "GET" ||
+    requestUrl.pathname !== "/accept-invitation" ||
+    !requestUrl.searchParams.has("token")
+  ) {
+    return null;
+  }
+
+  const token = requestUrl.searchParams.get("token");
+  const isLocal = isLocalRequest(requestUrl);
+  const cleanUrl = new URL("/accept-invitation", requestUrl.origin);
+  const headers = new Headers({
+    "Cache-Control": "private, no-store, max-age=0",
+    Location: cleanUrl.toString(),
+    Pragma: "no-cache",
+  });
+  headers.append(
+    "Set-Cookie",
+    isInvitationToken(token)
+      ? invitationTokenCookie(token, isLocal)
+      : clearInvitationTokenCookie(isLocal),
+  );
+
+  return new Response(null, { headers, status: 303 });
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -199,6 +244,10 @@ const worker = {
     const url = new URL(request.url);
     const nonce = isLocalRequest(url) ? null : createCspNonce();
     const policy = contentSecurityPolicy(url, nonce);
+    const invitationCapture = captureInvitationToken(request, url);
+    if (invitationCapture) {
+      return secureResponse(request, invitationCapture, policy);
+    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
@@ -214,7 +263,23 @@ const worker = {
     }
 
     try {
-      await ensureDatabaseInvariants(env.DB);
+      const invariantStatus = await ensureDatabaseInvariants(env.DB);
+      if (invariantStatus === "repaired") {
+        console.info(
+          JSON.stringify({
+            code: "database_invariants_repaired",
+            event: "database_invariant_retry_required",
+            level: "info",
+          }),
+        );
+        return secureResponse(
+          request,
+          databaseInvariantUnavailableResponse(
+            "The database safety checks were updated. Please try again shortly so the fresh state can be verified.",
+          ),
+          policy,
+        );
+      }
     } catch {
       console.error(
         JSON.stringify({

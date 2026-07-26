@@ -6,9 +6,14 @@ data.
 ## Identity and bootstrap
 
 - `INITIAL_OWNER_EMAIL`: **Configured in Sites runtime settings as a secret**
-  from the existing owner identity in Sites access metadata. The value is not
-  copied into this file or source. It will become active only with a future
-  owner-authorized deployment.
+  from the existing owner identity in Sites access metadata. Runtime revision
+  1 is active on the current owner-only version-8 deployment; the value is
+  never copied into this file, source, logs, or build artifacts.
+- Second invited test identity: **Not available under the current Sites access
+  policy**, which permits exactly the owner account and zero groups. Phase 3
+  invitation acceptance is verified through isolated local and built-Worker
+  seams; hosted second-identity verification requires a separate explicit
+  access-policy authorization.
 
 ## Meetup connection
 
@@ -61,8 +66,10 @@ society-registration, tax, or charity claim.
 
 - Confirmed public contact email address: **Missing**. Phase 2 uses only the
   confirmed Meetup group destinations and renders no fake form.
-- Stable production Sites origin: **Missing until a future owner-authorized
-  deployment**. Downloadable QR codes remain blocked.
+- Owner-only Sites origin: **Available for the deployed Phase 2 version 8**.
+  Public/shared access is not authorized, and the unpublished Phase 3
+  workspace must not be represented as live there. QR downloads remain a
+  later-phase feature and require a separately authorized stable destination.
 - Custom domain: **Not requested and not required**
 
 ## Photography and consent

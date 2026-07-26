@@ -1,0 +1,2672 @@
+.workspace {
+  --ow-ink: #101b2f;
+  --ow-ink-soft: #52605f;
+  --ow-paper: #f3f0e8;
+  --ow-paper-deep: #e8e3d7;
+  --ow-line: #c9c2b3;
+  --ow-forest: #0a554f;
+  --ow-cobalt: #164cb5;
+  --ow-coral: #e36855;
+  --ow-amber: #bd7624;
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  min-height: 100svh;
+  background:
+    radial-gradient(circle at 20% 0%, rgb(255 255 255 / 45%), transparent 28rem),
+    var(--ow-paper);
+  color: var(--ow-ink);
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  padding: 1.25rem;
+  border-right: 1px solid #253249;
+  background:
+    linear-gradient(rgb(255 255 255 / 3%), transparent 20rem),
+    var(--ow-ink);
+  color: #f7f2e7;
+}
+
+.brand,
+.mobileBrand {
+  color: inherit;
+  text-decoration: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 3.75rem;
+  margin-bottom: 2rem;
+}
+
+.brand img {
+  border: 1px solid rgb(255 255 255 / 32%);
+  border-radius: 0.6rem;
+}
+
+.brand span,
+.mobileBrand span,
+.accountMenu summary > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+
+.brand strong {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.brand small {
+  overflow: hidden;
+  color: #b9c4ce;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktopNavigation,
+.utilityNavigation {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.desktopNavigation a,
+.utilityNavigation a {
+  display: flex;
+  align-items: center;
+  min-height: 2.85rem;
+  padding: 0.65rem 0.8rem;
+  border-left: 0.22rem solid transparent;
+  color: #dce4ea;
+  font-size: 0.9rem;
+  font-weight: 680;
+  text-decoration: none;
+}
+
+.desktopNavigation a:hover,
+.utilityNavigation a:hover {
+  background: rgb(255 255 255 / 7%);
+  color: white;
+}
+
+.desktopNavigation .activeLink,
+.utilityNavigation .activeLink {
+  border-left-color: var(--ow-coral);
+  background: rgb(255 255 255 / 10%);
+  color: white;
+}
+
+.utilityNavigation {
+  margin-top: 1.35rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid rgb(255 255 255 / 15%);
+}
+
+.phaseNote {
+  margin: auto 0 1.25rem;
+  padding: 0.9rem;
+  border-left: 0.25rem solid #df9c45;
+  background: rgb(255 255 255 / 6%);
+  color: #ccd4da;
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.accountMenu {
+  position: relative;
+  border-top: 1px solid rgb(255 255 255 / 15%);
+  padding-top: 0.9rem;
+}
+
+.accountMenu summary {
+  display: grid;
+  grid-template-columns: 2.45rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 3rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.accountMenu summary::-webkit-details-marker,
+.mobileMore summary::-webkit-details-marker {
+  display: none;
+}
+
+.accountMenu summary::after {
+  position: absolute;
+  right: 0.15rem;
+  content: "+";
+  color: #9eabb6;
+}
+
+.accountMenu[open] summary::after {
+  content: "−";
+}
+
+.accountMenu strong {
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountMenu small {
+  color: #9eabb6;
+  font-size: 0.7rem;
+}
+
+.accountMenu > div {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.65rem 0 0 3.1rem;
+}
+
+.accountMenu a {
+  min-height: 2.75rem;
+  padding: 0.65rem 0;
+  color: #e6edf1;
+  font-size: 0.78rem;
+}
+
+.avatar {
+  display: grid;
+  width: 2.45rem;
+  height: 2.45rem;
+  place-items: center;
+  border: 1px solid #62877f;
+  border-radius: 50%;
+  background: #173f43;
+  color: white;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+.workArea {
+  min-width: 0;
+}
+
+.desktopTopbar,
+.mobileHeader {
+  align-items: center;
+  justify-content: space-between;
+  min-height: 4.25rem;
+  border-bottom: 1px solid var(--ow-line);
+}
+
+.desktopTopbar {
+  display: flex;
+  padding: 0.65rem clamp(1.25rem, 4vw, 3.5rem);
+}
+
+.desktopTopbar p {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0;
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.desktopTopbar p strong {
+  padding-left: 0.7rem;
+  border-left: 1px solid var(--ow-line);
+  color: var(--ow-forest);
+}
+
+.mobileHeader {
+  display: none;
+}
+
+.notificationLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  color: var(--ow-ink);
+  font-size: 0.78rem;
+  font-weight: 720;
+  text-decoration: none;
+}
+
+.notificationLink strong {
+  display: grid;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  border-radius: 1rem;
+  background: var(--ow-coral);
+  color: var(--ow-ink);
+  font-family: var(--mono);
+  font-size: 0.65rem;
+}
+
+.main {
+  width: min(100%, 96rem);
+  min-height: calc(100svh - 4.25rem);
+  padding: clamp(1.25rem, 4vw, 3.5rem);
+}
+
+.pageHeader {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: clamp(2rem, 5vw, 4rem);
+  padding-bottom: clamp(1.5rem, 3vw, 2.25rem);
+  border-bottom: 1px solid var(--ow-line);
+}
+
+.pageHeader h1,
+.accessState h1 {
+  max-width: 14ch;
+  margin: 0.25rem 0 0.8rem;
+  font-family: var(--display);
+  font-size: clamp(2.7rem, 6vw, 5.8rem);
+  font-weight: 430;
+  letter-spacing: -0.055em;
+  line-height: 0.91;
+}
+
+.pageHeader > div > p:last-child,
+.accessState > p {
+  max-width: 47rem;
+  margin: 0;
+  color: var(--ow-ink-soft);
+  font-size: clamp(1rem, 1.4vw, 1.14rem);
+}
+
+.kicker {
+  margin: 0;
+  color: var(--ow-forest);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.primaryAction,
+.secondaryAction,
+.textAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0.68rem 0.95rem;
+  border: 1px solid var(--ow-ink);
+  font-size: 0.82rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.primaryAction {
+  flex: none;
+  background: var(--ow-ink);
+  color: var(--ow-paper);
+}
+
+.primaryAction:hover {
+  background: var(--ow-coral);
+  color: var(--ow-ink);
+}
+
+.secondaryAction {
+  background: transparent;
+  color: var(--ow-ink);
+}
+
+.textAction {
+  border-color: transparent;
+  color: var(--ow-forest);
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+}
+
+.accessState {
+  width: min(100% - 2rem, 58rem);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: clamp(4rem, 12vw, 9rem) 0;
+}
+
+.accessState > p + p {
+  margin-top: 1rem;
+}
+
+.pageState {
+  max-width: 56rem;
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border: 1px solid var(--ow-line);
+  border-left: 0.45rem solid var(--ow-cobalt);
+  background: rgb(255 255 255 / 34%);
+}
+
+.pageStateError {
+  border-left-color: #b94538;
+}
+
+.pageState h2 {
+  margin: 0.3rem 0 0.75rem;
+  font-family: var(--display);
+  font-size: clamp(2rem, 4vw, 3.7rem);
+  font-weight: 430;
+  letter-spacing: -0.045em;
+  line-height: 0.96;
+}
+
+.pageState > p:not(.kicker) {
+  max-width: 44rem;
+  color: var(--ow-ink-soft);
+}
+
+.pageState .primaryAction {
+  margin-top: 1rem;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 1.65rem;
+  padding: 0.2rem 0.48rem;
+  border: 1px solid currentColor;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  font-weight: 740;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.statusPillNeutral {
+  color: #586461;
+}
+
+.statusPillAmber {
+  color: #8c4e0c;
+}
+
+.statusPillBlue {
+  color: #1445a3;
+}
+
+.statusPillGreen {
+  color: #07584d;
+}
+
+.dashboardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: -1.5rem 0 2.5rem;
+}
+
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--ow-line);
+  border-left: 1px solid var(--ow-line);
+}
+
+.dashboardPanel {
+  min-height: 21rem;
+  padding: clamp(1.35rem, 3vw, 2.35rem);
+  border-right: 1px solid var(--ow-line);
+  border-bottom: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 18%);
+}
+
+.dashboardPanel:nth-child(2),
+.dashboardPanel:nth-child(3) {
+  background: rgb(232 227 215 / 58%);
+}
+
+.dashboardPanel h2,
+.infoPanel h2 {
+  margin: 0.35rem 0 1rem;
+  font-family: var(--display);
+  font-size: clamp(1.8rem, 3vw, 3rem);
+  font-weight: 430;
+  letter-spacing: -0.045em;
+  line-height: 0.97;
+}
+
+.panelEmpty {
+  max-width: 31rem;
+  color: var(--ow-ink-soft);
+}
+
+.recordList {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--ow-line);
+}
+
+.recordList a {
+  display: grid;
+  gap: 0.18rem;
+  min-height: 4.6rem;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--ow-line);
+  color: var(--ow-ink);
+  text-decoration: none;
+}
+
+.recordList a:hover strong {
+  color: var(--ow-cobalt);
+}
+
+.recordList strong {
+  font-size: 0.93rem;
+}
+
+.recordList span,
+.recordList small {
+  color: var(--ow-ink-soft);
+  font-size: 0.74rem;
+}
+
+.dashboardLowerGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.infoPanel {
+  padding: clamp(1.35rem, 3vw, 2.35rem);
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 28%);
+}
+
+.infoPanel > p:not(.kicker) {
+  color: var(--ow-ink-soft);
+}
+
+.panelHeading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.plainList {
+  display: grid;
+  gap: 0.4rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plainList li {
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--ow-line);
+  font-weight: 680;
+}
+
+.calendarWorkspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.calendarToolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 28%);
+}
+
+.calendarRangeControls,
+.viewSwitcher {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.calendarRangeControls strong {
+  min-width: 0;
+  margin-left: 0.45rem;
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 540;
+  letter-spacing: -0.025em;
+}
+
+.calendarToolbar button,
+.calendarFilters button,
+.calendarFilters input,
+.calendarFilters select {
+  min-height: 2.8rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0;
+  background: var(--ow-paper);
+  color: var(--ow-ink);
+  font: inherit;
+}
+
+.calendarToolbar button,
+.calendarFilters button {
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 720;
+}
+
+.viewSwitcher {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.viewSwitcher button[aria-pressed="true"] {
+  border-color: var(--ow-ink);
+  background: var(--ow-ink);
+  color: var(--ow-paper);
+}
+
+.refreshButton {
+  color: var(--ow-forest) !important;
+}
+
+.calendarFilters {
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper-deep);
+}
+
+.calendarFilters summary {
+  display: flex;
+  align-items: center;
+  min-height: 3.2rem;
+  padding: 0.65rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 760;
+}
+
+.calendarFilters > div {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(8.5rem, 1fr));
+  gap: 0.8rem;
+  padding: 1rem;
+  border-top: 1px solid var(--ow-line);
+}
+
+.calendarFilters label {
+  display: grid;
+  gap: 0.32rem;
+  min-width: 0;
+  color: var(--ow-ink-soft);
+  font-size: 0.7rem;
+  font-weight: 720;
+}
+
+.calendarFilters input,
+.calendarFilters select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.calendarFilters .fieldWide {
+  grid-column: span 2;
+}
+
+.calendarFilters .clearButton {
+  align-self: end;
+  background: transparent;
+  color: var(--ow-forest);
+}
+
+.calendarResultBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2rem;
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+
+.calendarResultBar p {
+  margin: 0;
+}
+
+.calendarLoadMore,
+.indexClearLink,
+.indexPagination a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+  color: var(--ow-forest);
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  font-weight: 740;
+  text-decoration: none;
+}
+
+.agenda {
+  display: grid;
+  gap: 2rem;
+}
+
+.agenda > section,
+.dayView {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.27fr) minmax(0, 1fr);
+  gap: clamp(1rem, 3vw, 3rem);
+  padding-top: 1rem;
+  border-top: 1px solid var(--ow-ink);
+}
+
+.agenda h2,
+.dayView > h2,
+.weekView h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.45rem, 2.6vw, 2.3rem);
+  font-weight: 480;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.calendarEventList,
+.compactEventList,
+.ideaList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendarEventList {
+  border-top: 1px solid var(--ow-line);
+}
+
+.calendarEventList a {
+  display: grid;
+  grid-template-columns: 0.35rem 7rem minmax(11rem, 1fr) minmax(10rem, auto);
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 5.3rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--ow-line);
+  color: var(--ow-ink);
+  text-decoration: none;
+}
+
+.organizerStripe {
+  width: 0.35rem;
+  height: 3rem;
+}
+
+.eventTime {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 720;
+}
+
+.eventIdentity {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.eventIdentity strong {
+  overflow-wrap: anywhere;
+}
+
+.eventIdentity small {
+  color: var(--ow-ink-soft);
+  font-size: 0.72rem;
+}
+
+.eventBadges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.weekView {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-top: 1px solid var(--ow-line);
+  border-left: 1px solid var(--ow-line);
+}
+
+.weekView > section {
+  min-height: 26rem;
+  padding: 0.75rem;
+  border-right: 1px solid var(--ow-line);
+  border-bottom: 1px solid var(--ow-line);
+}
+
+.weekView h2 {
+  margin-bottom: 0.8rem;
+  font-size: 1.25rem;
+}
+
+.compactEventList {
+  gap: 0.45rem;
+}
+
+.compactEventList a {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem;
+  border-left: 0.25rem solid var(--ow-cobalt);
+  background: rgb(255 255 255 / 35%);
+  color: var(--ow-ink);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.compactEventList .organizerStripe {
+  display: none;
+}
+
+.compactEventList .eventTime {
+  font-size: 0.62rem;
+}
+
+.compactEventList .eventBadges {
+  justify-content: start;
+}
+
+.compactEventList .eventBadges > span:not(:first-child) {
+  display: none;
+}
+
+.dayEmpty {
+  color: var(--ow-ink-soft);
+  font-size: 0.72rem;
+}
+
+.monthWrapper {
+  border: 1px solid var(--ow-line);
+}
+
+.monthWeekdays,
+.monthView {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.monthWeekdays {
+  border-bottom: 1px solid var(--ow-line);
+  background: var(--ow-paper-deep);
+}
+
+.monthWeekdays span {
+  padding: 0.55rem;
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.monthView button {
+  display: grid;
+  align-content: space-between;
+  min-width: 0;
+  min-height: 7rem;
+  padding: 0.6rem;
+  border: 0;
+  border-right: 1px solid var(--ow-line);
+  border-bottom: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 20%);
+  color: var(--ow-ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.monthView button:nth-child(7n) {
+  border-right: 0;
+}
+
+.monthView button:nth-last-child(-n + 7) {
+  border-bottom: 0;
+}
+
+.monthView button:hover {
+  background: #e1e6dd;
+}
+
+.monthView button > span {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+.monthView button > strong {
+  color: var(--ow-cobalt);
+  font-size: 0.72rem;
+}
+
+.monthView .outsideMonth {
+  color: #888b87;
+  background: var(--ow-paper-deep);
+}
+
+.ideasArea {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.65fr) minmax(0, 1.35fr);
+  gap: clamp(1rem, 4vw, 4rem);
+  margin-top: 2rem;
+  padding: clamp(1.3rem, 3vw, 2.6rem);
+  border-top: 0.45rem solid var(--ow-amber);
+  background: #ede2ca;
+}
+
+.ideasArea h2 {
+  margin: 0.35rem 0 0.65rem;
+  font-family: var(--display);
+  font-size: clamp(2rem, 4vw, 3.8rem);
+  font-weight: 430;
+  letter-spacing: -0.05em;
+  line-height: 0.96;
+}
+
+.ideasArea > div > p:last-child {
+  color: var(--ow-ink-soft);
+}
+
+.ideaList {
+  border-top: 1px solid #c9ad7e;
+}
+
+.ideaList a {
+  display: grid;
+  gap: 0.2rem;
+  min-height: 4.2rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid #c9ad7e;
+  color: var(--ow-ink);
+  text-decoration: none;
+}
+
+.ideaList span {
+  color: var(--ow-ink-soft);
+  font-size: 0.72rem;
+}
+
+.calendarEmpty {
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border: 1px dashed var(--ow-line);
+}
+
+.calendarEmpty h2 {
+  margin: 0.3rem 0 0.6rem;
+  font-family: var(--display);
+  font-size: clamp(1.8rem, 4vw, 3.4rem);
+  font-weight: 430;
+  letter-spacing: -0.045em;
+}
+
+.calendarEmpty > p:last-child {
+  color: var(--ow-ink-soft);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.eventForm {
+  display: grid;
+  gap: 1rem;
+}
+
+.errorSummary {
+  padding: 1.2rem;
+  border: 2px solid #a63831;
+  background: #f1dcd7;
+  color: #641d1a;
+}
+
+.errorSummary h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.errorSummary ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.formSection {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.48fr) minmax(0, 1.52fr);
+  gap: clamp(1.5rem, 4vw, 4rem);
+  padding: clamp(1.3rem, 3vw, 2.7rem);
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 24%);
+}
+
+.formSection > header {
+  align-self: start;
+}
+
+.formSection > header h2 {
+  margin: 0.35rem 0 0.8rem;
+  font-family: var(--display);
+  font-size: clamp(1.8rem, 3.5vw, 3.25rem);
+  font-weight: 430;
+  letter-spacing: -0.045em;
+  line-height: 0.96;
+}
+
+.formSection > header > p:last-child {
+  color: var(--ow-ink-soft);
+  font-size: 0.82rem;
+}
+
+.formFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.formFields > label,
+.fixedField {
+  display: grid;
+  align-content: start;
+  gap: 0.38rem;
+  min-width: 0;
+}
+
+.formFields label > span:first-child,
+.fixedField > span:first-child,
+.checkboxGroup legend,
+.segmentedFieldset legend {
+  color: var(--ow-ink);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.formFields label > span strong {
+  color: #9e302c;
+}
+
+.formFields input,
+.formFields select,
+.formFields textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.68rem 0.75rem;
+  border: 1px solid #6e766f;
+  border-radius: 0;
+  background: #faf7ef;
+  color: var(--ow-ink);
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.formFields textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.formFields input:disabled,
+.formFields select:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.formFields small,
+.fixedField small {
+  color: var(--ow-ink-soft);
+  font-size: 0.68rem;
+}
+
+.fieldFull {
+  grid-column: 1 / -1;
+}
+
+.fixedField {
+  padding: 0.75rem;
+  border-left: 0.25rem solid var(--ow-forest);
+  background: #dce7df;
+}
+
+.fixedField strong {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.segmentedFieldset {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.segmentedFieldset legend {
+  width: 100%;
+  margin-bottom: 0.25rem;
+}
+
+.segmentedFieldset label {
+  position: relative;
+}
+
+.segmentedFieldset input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.segmentedFieldset span {
+  display: grid;
+  min-height: 2.9rem;
+  place-items: center;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 720;
+}
+
+.segmentedFieldset input:checked + span {
+  border-color: var(--ow-ink);
+  background: var(--ow-ink);
+  color: var(--ow-paper);
+}
+
+.segmentedFieldset input:focus-visible + span {
+  outline: 0.2rem solid var(--ow-coral);
+  outline-offset: 0.18rem;
+}
+
+.checkboxGroup {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.checkboxGroup legend {
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.checkboxGroup label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.85rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--ow-line);
+}
+
+.checkboxGroup input {
+  width: 1.15rem;
+  min-height: 1.15rem;
+}
+
+.checkboxGroup p {
+  grid-column: 1 / -1;
+  color: var(--ow-ink-soft);
+  font-size: 0.78rem;
+}
+
+.formNotice {
+  margin: 0;
+  padding: 0.8rem;
+  border-left: 0.25rem solid var(--ow-amber);
+  background: #ede2ca;
+  color: var(--ow-ink-soft);
+  font-size: 0.75rem;
+}
+
+.formFooter {
+  position: sticky;
+  z-index: 10;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  min-height: 4.5rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--ow-line);
+  background: rgb(243 240 232 / 96%);
+  backdrop-filter: blur(0.5rem);
+}
+
+.formFooter button,
+.primaryButton,
+.secondaryButton {
+  min-height: 3rem;
+  padding: 0.65rem 0.95rem;
+  border: 1px solid var(--ow-ink);
+  border-radius: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.primaryButton {
+  background: var(--ow-ink);
+  color: var(--ow-paper);
+}
+
+.secondaryButton {
+  background: transparent;
+  color: var(--ow-ink);
+}
+
+.formFooter button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.formFooter p {
+  flex: 1;
+  min-width: 12rem;
+  margin: 0;
+  color: var(--ow-forest);
+  font-size: 0.75rem;
+  font-weight: 680;
+  text-align: right;
+}
+
+.eventIndex {
+  display: grid;
+  gap: 1rem;
+}
+
+.indexFilters {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) minmax(10rem, 0.4fr) auto auto;
+  align-items: end;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper-deep);
+}
+
+.indexFilters label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--ow-ink-soft);
+  font-size: 0.7rem;
+  font-weight: 720;
+}
+
+.indexFilters input,
+.indexFilters select,
+.indexFilters button,
+.eventActions button {
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0;
+  background: var(--ow-paper);
+  color: var(--ow-ink);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.indexFilters button,
+.eventActions button {
+  cursor: pointer;
+  font-weight: 740;
+}
+
+.indexClearLink {
+  min-height: 3rem;
+}
+
+.indexCount {
+  margin: 0;
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+.eventIndexList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--ow-line);
+  border-left: 1px solid var(--ow-line);
+}
+
+.eventIndexList li {
+  border-right: 1px solid var(--ow-line);
+  border-bottom: 1px solid var(--ow-line);
+}
+
+.eventIndexList a {
+  display: grid;
+  align-content: end;
+  gap: 0.65rem;
+  min-height: 16rem;
+  padding: clamp(1.2rem, 3vw, 2.2rem);
+  background: rgb(255 255 255 / 22%);
+  color: var(--ow-ink);
+  text-decoration: none;
+}
+
+.eventIndexList a:hover {
+  background: #e7e9df;
+}
+
+.eventIndexList a > span:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: auto;
+}
+
+.eventIndexList a > strong {
+  font-family: var(--display);
+  font-size: clamp(1.7rem, 3vw, 2.8rem);
+  font-weight: 450;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+
+.eventIndexList a > span:not(:first-child),
+.eventIndexList a > small {
+  color: var(--ow-ink-soft);
+  font-size: 0.75rem;
+}
+
+.indexPagination {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto minmax(8rem, 1fr);
+  align-items: center;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ow-line);
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.indexPagination a:first-child {
+  justify-self: start;
+}
+
+.indexPagination a:last-child {
+  justify-self: end;
+}
+
+.eventActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 1rem 0;
+  padding: 0.8rem;
+  border: 1px solid var(--ow-line);
+}
+
+.eventActions button:hover {
+  border-color: var(--ow-ink);
+}
+
+.eventActions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.eventActions p {
+  flex: 1;
+  min-width: 12rem;
+  margin: 0;
+  color: var(--ow-forest);
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.eventDetailSummary,
+.readOnlyEventDetail,
+.eventRevisionHistory {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--ow-line);
+  background: rgba(255, 253, 247, 0.82);
+  padding: clamp(1rem, 2vw, 1.5rem);
+  box-shadow: 0 14px 36px rgba(16, 27, 47, 0.05);
+}
+
+.eventDetailSummary > span,
+.readOnlyEventDetail > div > span {
+  margin-right: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+
+.eventDetailSummary p,
+.readOnlyEventDetail p {
+  margin: 0.55rem 0 0;
+  color: var(--ow-ink-soft);
+  line-height: 1.55;
+}
+
+.readOnlyEventDetail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1.2rem 0;
+}
+
+.readOnlyEventDetail dl > div {
+  border-left: 3px solid var(--ow-forest);
+  padding-left: 0.75rem;
+}
+
+.readOnlyEventDetail dt {
+  color: var(--ow-ink-soft);
+  font-size: 0.72rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.readOnlyEventDetail dd {
+  margin: 0.25rem 0 0;
+  line-height: 1.45;
+}
+
+.readOnlyEventDetail > a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--ow-cobalt);
+  font-weight: 750;
+}
+
+.eventRevisionHistory ol {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.eventRevisionHistory li {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.6fr) 1fr 1.2fr;
+  gap: 0.75rem;
+  border-top: 1px solid var(--ow-line);
+  padding-top: 0.75rem;
+}
+
+.eventRevisionHistory li > span {
+  color: var(--ow-ink-soft);
+  line-height: 1.4;
+}
+
+.teamWorkspace {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.workspaceNotice {
+  min-height: 1.3rem;
+  margin: 0;
+  color: var(--ow-forest);
+  font-size: 0.78rem;
+  font-weight: 690;
+}
+
+.blockingList {
+  border: 1px solid rgba(166, 70, 55, 0.5);
+  background: rgba(166, 70, 55, 0.08);
+  padding: 1rem 1.1rem;
+}
+
+.blockingList h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.45rem;
+  font-weight: 520;
+}
+
+.blockingList p {
+  margin: 0.45rem 0;
+  color: var(--ow-ink-soft);
+  line-height: 1.5;
+}
+
+.blockingList ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.8rem 0;
+  padding-left: 1.2rem;
+}
+
+.blockingList li span {
+  display: block;
+  color: var(--ow-ink-soft);
+  font-size: 0.72rem;
+}
+
+.blockingList a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--ow-cobalt);
+  font-weight: 740;
+}
+
+.roleNote {
+  margin: 0;
+  padding: 1rem;
+  border-left: 0.35rem solid var(--ow-cobalt);
+  background: #dce4ef;
+  color: var(--ow-ink-soft);
+}
+
+.invitationComposer {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.55fr) minmax(0, 1.1fr);
+  gap: clamp(1.5rem, 4vw, 4rem);
+  min-width: 0;
+  padding: clamp(1.3rem, 3vw, 2.7rem);
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper-deep);
+}
+
+.invitationComposer > header h2,
+.sectionHeading h2 {
+  margin: 0.35rem 0 0.7rem;
+  font-family: var(--display);
+  font-size: clamp(2rem, 3.8vw, 3.6rem);
+  font-weight: 430;
+  letter-spacing: -0.05em;
+  line-height: 0.96;
+}
+
+.invitationComposer > header > p:last-child {
+  color: var(--ow-ink-soft);
+  font-size: 0.82rem;
+}
+
+.invitationForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.invitationForm label {
+  display: grid;
+  align-content: start;
+  gap: 0.32rem;
+  min-width: 0;
+  color: var(--ow-ink-soft);
+  font-size: 0.7rem;
+  font-weight: 720;
+}
+
+.invitationForm input,
+.invitationForm select,
+.invitationForm button,
+.createdInvitation button,
+.invitationList button,
+.memberManagement button,
+.memberManagement select {
+  min-height: 3rem;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0;
+  background: var(--ow-paper);
+  color: var(--ow-ink);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.invitationForm > button {
+  align-self: end;
+}
+
+.createdInvitation {
+  display: grid;
+  grid-column: 2;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 2px solid var(--ow-forest);
+  background: #dce8df;
+}
+
+.createdInvitation code {
+  max-width: 100%;
+  padding: 0.7rem;
+  overflow-wrap: anywhere;
+  border: 1px solid #9ab0a3;
+  background: #f4f8f3;
+  font-size: 0.7rem;
+}
+
+.createdInvitation button,
+.invitationList button,
+.memberManagement button {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 740;
+}
+
+.createdInvitation small {
+  color: var(--ow-ink-soft);
+}
+
+.teamSection {
+  min-width: 0;
+  padding: clamp(1.3rem, 3vw, 2.7rem);
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 23%);
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.3rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--ow-line);
+}
+
+.sectionHeading > span {
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+
+.memberList,
+.invitationList {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.memberCard {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+}
+
+.memberCard > header {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.memberCard h3,
+.invitationList h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.memberCard header p,
+.memberCard > p,
+.invitationList p {
+  margin: 0.22rem 0 0;
+  color: var(--ow-ink-soft);
+  font-size: 0.73rem;
+  overflow-wrap: anywhere;
+}
+
+.memberCard > p {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--ow-line);
+}
+
+.memberAvatar {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  border: 1px solid var(--ow-ink);
+  border-radius: 50%;
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.colorForest { background: #0a554f; }
+.colorCobalt { background: #164cb5; }
+.colorCoral { background: #a64637; }
+.colorAmber { background: #8b560f; }
+.colorPlum { background: #704a78; }
+.colorTeal { background: #19726d; }
+
+.memberStates {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 0.35rem;
+}
+
+.memberManagement {
+  margin-top: 0.8rem;
+  border-top: 1px solid var(--ow-line);
+}
+
+.memberManagement > summary {
+  display: flex;
+  align-items: center;
+  min-height: 3rem;
+  cursor: pointer;
+  color: var(--ow-forest);
+  font-size: 0.75rem;
+  font-weight: 740;
+}
+
+.memberManagement > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  padding: 0.8rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper-deep);
+}
+
+.memberManagement label,
+.memberManagement fieldset {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 0.72rem;
+}
+
+.memberManagement fieldset {
+  grid-column: 1 / -1;
+}
+
+.memberManagement fieldset label {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+}
+
+.memberManagement fieldset input {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.ownershipTransfer {
+  grid-column: 1 / -1;
+  padding: 0.8rem;
+  border-left: 0.35rem solid #a63831;
+  background: #f0dbd5;
+}
+
+.ownershipTransfer summary {
+  cursor: pointer;
+  color: #721f1b;
+  font-weight: 750;
+}
+
+.ownershipTransfer p {
+  color: #6e3b38;
+  font-size: 0.75rem;
+}
+
+.invitationList article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+}
+
+.invitationList article > div {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.invitationList small {
+  color: var(--ow-ink-soft);
+  font-size: 0.68rem;
+}
+
+.clubsWorkspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.clubComposer {
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper-deep);
+}
+
+.clubComposer > summary {
+  display: flex;
+  align-items: center;
+  min-height: 3.5rem;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  color: var(--ow-forest);
+  font-weight: 750;
+}
+
+.clubComposer > form,
+.clubList article > form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  padding: 1rem;
+  border-top: 1px solid var(--ow-line);
+}
+
+.clubComposer label,
+.clubList form label {
+  display: grid;
+  gap: 0.32rem;
+  color: var(--ow-ink-soft);
+  font-size: 0.7rem;
+  font-weight: 720;
+}
+
+.clubComposer input,
+.clubComposer textarea,
+.clubList input,
+.clubList textarea {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0;
+  background: #faf7ef;
+  color: var(--ow-ink);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.clubComposer textarea,
+.clubList textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.clubDirectory {
+  padding: clamp(1.3rem, 3vw, 2.7rem);
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 23%);
+}
+
+.clubList {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.clubList article {
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+}
+
+.clubList article > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.clubList article h3 {
+  margin: 0.65rem 0 0.35rem;
+  font-family: var(--display);
+  font-size: clamp(1.6rem, 3vw, 2.7rem);
+  font-weight: 450;
+  letter-spacing: -0.045em;
+}
+
+.clubList article header p,
+.clubList article header small,
+.clubPlanningNote {
+  margin: 0;
+  color: var(--ow-ink-soft);
+  font-size: 0.75rem;
+}
+
+.clubList article header small {
+  font-family: var(--mono);
+}
+
+.clubPlanningNote {
+  padding: 0 1rem 1rem;
+}
+
+.notificationCenter {
+  display: grid;
+  gap: 1rem;
+}
+
+.notificationControls {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto;
+  align-items: center;
+  gap: 2rem;
+  padding: 1.2rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper-deep);
+}
+
+.notificationControls h2 {
+  margin: 0.35rem 0 0.4rem;
+  font-family: var(--display);
+  font-size: clamp(1.7rem, 3vw, 2.8rem);
+  font-weight: 440;
+  letter-spacing: -0.045em;
+}
+
+.notificationControls > div > p:last-child {
+  margin: 0;
+  color: var(--ow-ink-soft);
+  font-size: 0.75rem;
+}
+
+.notificationControls fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.notificationControls label {
+  position: relative;
+}
+
+.notificationControls input {
+  position: absolute;
+  opacity: 0;
+}
+
+.notificationControls label span {
+  display: grid;
+  min-height: 3rem;
+  place-items: center;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 720;
+}
+
+.notificationControls input:checked + span {
+  border-color: var(--ow-ink);
+  background: var(--ow-ink);
+  color: var(--ow-paper);
+}
+
+.notificationControls input:focus-visible + span {
+  outline: 0.2rem solid var(--ow-coral);
+  outline-offset: 0.18rem;
+}
+
+.notificationResultBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.notificationResultBar p {
+  margin: 0;
+  color: var(--ow-ink-soft);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+.notificationResultBar button,
+.notificationList button,
+.loadMoreButton {
+  min-height: 2.85rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0;
+  background: var(--ow-paper);
+  color: var(--ow-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 720;
+}
+
+.notificationList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--ow-line);
+}
+
+.notificationList li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-height: 8rem;
+  padding: 1rem;
+  border-right: 1px solid var(--ow-line);
+  border-bottom: 1px solid var(--ow-line);
+  border-left: 0.35rem solid var(--ow-cobalt);
+  background: rgb(255 255 255 / 33%);
+}
+
+.notificationList li.notificationRead {
+  border-left-color: var(--ow-line);
+  background: rgb(255 255 255 / 14%);
+}
+
+.notificationList li > div {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.notificationList h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.3rem, 2.4vw, 2rem);
+  font-weight: 480;
+  letter-spacing: -0.035em;
+}
+
+.notificationList p,
+.notificationList small {
+  margin: 0;
+  color: var(--ow-ink-soft);
+  font-size: 0.73rem;
+}
+
+.notificationList a {
+  width: fit-content;
+  margin-top: 0.25rem;
+  color: var(--ow-forest);
+  font-size: 0.75rem;
+  font-weight: 740;
+}
+
+.notificationState {
+  color: var(--ow-cobalt);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.notificationRead .notificationState {
+  color: var(--ow-ink-soft);
+}
+
+.loadMoreButton {
+  justify-self: center;
+}
+
+.profileForm {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.45fr) minmax(0, 1.2fr);
+  gap: 1rem;
+}
+
+.profileIdentity,
+.profileFields,
+.assignedClubPanel,
+.settingsForm {
+  padding: clamp(1.3rem, 3vw, 2.5rem);
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 23%);
+}
+
+.profileIdentity {
+  display: grid;
+  align-content: start;
+  grid-row: span 2;
+  gap: 1.2rem;
+}
+
+.profileAvatar {
+  display: grid;
+  width: 6.5rem;
+  height: 6.5rem;
+  place-items: center;
+  border: 1px solid var(--ow-ink);
+  border-radius: 50%;
+  color: white;
+  font-family: var(--display);
+  font-size: 2rem;
+}
+
+.profileIdentity h2,
+.assignedClubPanel h2,
+.settingsForm h2 {
+  margin: 0.35rem 0 0.5rem;
+  font-family: var(--display);
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  font-weight: 440;
+  letter-spacing: -0.05em;
+  line-height: 0.96;
+}
+
+.profileIdentity > div p:last-child,
+.assignedClubPanel > p:last-child,
+.settingsForm section > p:last-child {
+  color: var(--ow-ink-soft);
+}
+
+.profileFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.profileFields label,
+.settingsForm label {
+  display: grid;
+  align-content: start;
+  gap: 0.32rem;
+  color: var(--ow-ink-soft);
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.profileFields input,
+.profileFields select,
+.profileFields textarea,
+.settingsForm input {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0;
+  background: #faf7ef;
+  color: var(--ow-ink);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.profileFields textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.profileFields small,
+.settingsForm small {
+  color: var(--ow-ink-soft);
+  font-size: 0.68rem;
+}
+
+.consentField {
+  display: flex !important;
+  align-items: start;
+  gap: 0.7rem !important;
+  padding: 0.9rem;
+  border-left: 0.35rem solid var(--ow-cobalt);
+  background: #dce4ef;
+}
+
+.consentField input {
+  width: 1.2rem;
+  min-height: 1.2rem;
+}
+
+.consentField > span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.assignedClubPanel {
+  grid-column: 1;
+}
+
+.profileForm > .formFooter {
+  grid-column: 2;
+}
+
+.settingsForm {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.55fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 4rem);
+}
+
+.settingsForm > div {
+  display: grid;
+  gap: 1rem;
+}
+
+.settingsForm input:disabled {
+  opacity: 0.68;
+}
+
+.activityFeed {
+  margin-top: 1rem;
+  padding: clamp(1.3rem, 3vw, 2.5rem);
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 23%);
+}
+
+.activityFeed ol {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--ow-line);
+}
+
+.activityFeed li {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 0.5fr) auto;
+  gap: 1rem;
+  min-height: 3.7rem;
+  align-items: center;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--ow-line);
+}
+
+.activityFeed strong {
+  font-size: 0.8rem;
+}
+
+.activityFeed span,
+.activityFeed time {
+  color: var(--ow-ink-soft);
+  font-size: 0.7rem;
+}
+
+.invitationAcceptance {
+  width: min(100% - 2rem, 58rem);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: clamp(5rem, 15vw, 11rem) 0;
+}
+
+.invitationAcceptance h1 {
+  max-width: 12ch;
+  margin: 0.35rem 0 1rem;
+  font-family: var(--display);
+  font-size: clamp(3rem, 8vw, 7rem);
+  font-weight: 420;
+  letter-spacing: -0.06em;
+  line-height: 0.9;
+}
+
+.invitationAcceptance > p:not(.kicker) {
+  max-width: 42rem;
+  color: var(--ow-ink-soft);
+  font-size: 1.05rem;
+}
+
+.progressMark {
+  display: block;
+  width: 4rem;
+  height: 0.45rem;
+  margin-top: 2rem;
+  background: var(--ow-coral);
+  animation: invitation-progress 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes invitation-progress {
+  from { transform: scaleX(0.35); transform-origin: left; }
+  to { transform: scaleX(1); transform-origin: left; }
+}
+
+.mobileNavigation {
+  display: none;
+}
+
+@media (max-width: 68rem) {
+  .workspace {
+    display: block;
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+
+  .sidebar,
+  .desktopTopbar {
+    display: none;
+  }
+
+  .mobileHeader {
+    display: flex;
+    padding: 0.55rem 1rem;
+    background: var(--ow-paper);
+  }
+
+  .mobileBrand {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+    min-height: 2.75rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .mobileBrand span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileNavigation {
+    position: fixed;
+    z-index: 30;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-height: calc(4.25rem + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid #344255;
+    background: var(--ow-ink);
+    box-shadow: 0 -0.6rem 1.6rem rgb(16 27 47 / 18%);
+    color: #f6f0e5;
+  }
+
+  .mobileNavigation > a,
+  .mobileMore > summary {
+    display: grid;
+    min-width: 0;
+    min-height: 4.25rem;
+    place-items: center;
+    padding: 0.5rem 0.2rem;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-weight: 720;
+    line-height: 1.15;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .mobileNavigation .activeMobileLink {
+    box-shadow: inset 0 0.22rem var(--ow-coral);
+    color: white;
+  }
+
+  .mobileMore {
+    position: relative;
+  }
+
+  .mobileMore > summary {
+    list-style: none;
+  }
+
+  .mobileMore > div {
+    position: absolute;
+    right: 0.5rem;
+    bottom: calc(100% + 0.65rem);
+    display: grid;
+    width: min(15rem, calc(100vw - 1rem));
+    max-height: min(28rem, calc(100svh - 6rem));
+    overflow: auto;
+    border: 1px solid var(--ow-line);
+    background: var(--ow-paper);
+    box-shadow: 0 1rem 3rem rgb(16 27 47 / 25%);
+    color: var(--ow-ink);
+  }
+
+  .mobileMore > div a {
+    display: flex;
+    align-items: center;
+    min-height: 3rem;
+    padding: 0.65rem 0.9rem;
+    border-bottom: 1px solid var(--ow-line);
+    color: inherit;
+    font-size: 0.78rem;
+    text-decoration: none;
+  }
+
+  .main {
+    min-height: calc(100svh - 4.25rem);
+  }
+
+  .calendarToolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .calendarRangeControls {
+    grid-column: 1 / -1;
+  }
+
+  .calendarFilters > div {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .formSection {
+    grid-template-columns: 1fr;
+  }
+
+  .invitationComposer {
+    grid-template-columns: 1fr;
+  }
+
+  .createdInvitation {
+    grid-column: 1;
+  }
+
+  .weekView {
+    grid-template-columns: 1fr;
+    border-bottom: 0;
+  }
+
+  .weekView > section {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 38rem) {
+  .main {
+    padding: 1.1rem 1rem 2.5rem;
+  }
+
+  .pageHeader {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .pageHeader h1,
+  .accessState h1 {
+    font-size: clamp(2.65rem, 15vw, 4.6rem);
+  }
+
+  .pageHeader .primaryAction {
+    width: 100%;
+  }
+
+  .dashboardActions {
+    display: grid;
+    margin-top: -0.75rem;
+  }
+
+  .dashboardActions a {
+    width: 100%;
+  }
+
+  .dashboardGrid,
+  .dashboardLowerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboardPanel {
+    min-height: 0;
+  }
+
+  .calendarToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .calendarRangeControls {
+    display: grid;
+    grid-template-columns: repeat(3, auto) minmax(0, 1fr);
+  }
+
+  .calendarRangeControls strong {
+    grid-column: 1 / -1;
+    margin: 0.4rem 0 0;
+  }
+
+  .viewSwitcher {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .viewSwitcher button {
+    padding-inline: 0.3rem;
+  }
+
+  .refreshButton {
+    width: 100%;
+  }
+
+  .calendarFilters > div,
+  .agenda > section,
+  .dayView,
+  .ideasArea {
+    grid-template-columns: 1fr;
+  }
+
+  .calendarFilters .fieldWide {
+    grid-column: auto;
+  }
+
+  .calendarEventList a {
+    grid-template-columns: 0.3rem minmax(0, 1fr);
+    gap: 0.65rem;
+    padding: 0.85rem 0;
+  }
+
+  .calendarEventList .organizerStripe {
+    grid-row: 1 / span 3;
+    height: 100%;
+    min-height: 4rem;
+  }
+
+  .calendarEventList .eventTime,
+  .calendarEventList .eventIdentity,
+  .calendarEventList .eventBadges {
+    grid-column: 2;
+  }
+
+  .calendarEventList .eventBadges {
+    justify-content: start;
+  }
+
+  .monthWeekdays span {
+    padding-inline: 0.1rem;
+    font-size: 0.55rem;
+  }
+
+  .monthView button {
+    min-height: 4.4rem;
+    padding: 0.35rem;
+  }
+
+  .monthView button > strong {
+    font-size: 0.62rem;
+  }
+
+  .monthView button > strong span {
+    display: none;
+  }
+
+  .formFields,
+  .checkboxGroup {
+    grid-template-columns: 1fr;
+  }
+
+  .fieldFull,
+  .checkboxGroup p {
+    grid-column: auto;
+  }
+
+  .formFooter {
+    position: static;
+    display: grid;
+  }
+
+  .formFooter button {
+    width: 100%;
+  }
+
+  .formFooter p {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .indexFilters,
+  .eventIndexList {
+    grid-template-columns: 1fr;
+  }
+
+  .eventIndexList a {
+    min-height: 13rem;
+  }
+
+  .eventActions {
+    display: grid;
+  }
+
+  .eventActions button {
+    width: 100%;
+  }
+
+  .eventActions p {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .readOnlyEventDetail dl,
+  .eventRevisionHistory li {
+    grid-template-columns: 1fr;
+  }
+
+  .eventRevisionHistory li {
+    gap: 0.25rem;
+  }
+
+  .invitationForm,
+  .memberManagement > div,
+  .clubComposer > form,
+  .clubList article > form {
+    grid-template-columns: 1fr;
+  }
+
+  .memberManagement fieldset,
+  .ownershipTransfer {
+    grid-column: 1;
+  }
+
+  .memberCard > header {
+    grid-template-columns: 3rem minmax(0, 1fr);
+  }
+
+  .memberStates {
+    grid-column: 1 / -1;
+    justify-content: start;
+  }
+
+  .invitationList article {
+    display: grid;
+  }
+
+  .invitationList article button {
+    width: 100%;
+  }
+
+  .clubList article > header {
+    display: grid;
+  }
+
+  .notificationControls,
+  .notificationList li {
+    grid-template-columns: 1fr;
+  }
+
+  .notificationControls fieldset {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .notificationList button {
+    width: 100%;
+  }
+
+  .profileForm,
+  .profileFields,
+  .settingsForm {
+    grid-template-columns: 1fr;
+  }
+
+  .profileIdentity {
+    grid-row: auto;
+  }
+
+  .activityFeed li {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+    padding: 0.8rem 0;
+  }
+
+  .assignedClubPanel,
+  .profileForm > .formFooter {
+    grid-column: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace *,
+  .workspace *::before,
+  .workspace *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .progressMark {
+    animation: none;
+  }
+}

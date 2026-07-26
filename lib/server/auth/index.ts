@@ -107,11 +107,19 @@ export function trustedIdentityFromSites(
   input: Readonly<{ displayName?: unknown; email: unknown }>,
 ): TrustedServerIdentity {
   const email = normalizeEmail(input.email, "authenticatedEmail");
+  const suppliedDisplayName = parseOptionalBoundedString(input.displayName, {
+    path: "authenticatedDisplayName",
+    maxLength: 120,
+  });
+  // The Sites dispatcher may omit the full-name header. Never substitute the
+  // private account email into organizer-facing display fields or notification
+  // payloads in that case (the request adapter historically used email as its
+  // display-name fallback).
   const displayName =
-    parseOptionalBoundedString(input.displayName, {
-      path: "authenticatedDisplayName",
-      maxLength: 120,
-    }) ?? email;
+    suppliedDisplayName &&
+    suppliedDisplayName.toLocaleLowerCase("en-CA") !== email
+      ? suppliedDisplayName
+      : "Organizer";
   return Object.freeze({
     displayName,
     email,

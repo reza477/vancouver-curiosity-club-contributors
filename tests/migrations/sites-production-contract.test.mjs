@@ -10,14 +10,15 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0009_sites_compatible_baseline.sql",
   "0010_sites_compatible_indexes_a.sql",
   "0011_sites_compatible_indexes_b.sql",
+  "0012_phase3_organizer_foundation.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
-  checks: 40,
-  explicitIndexes: 75,
-  foreignKeys: 102,
-  tables: 37,
+  checks: 51,
+  explicitIndexes: 90,
+  foreignKeys: 125,
+  tables: 43,
   triggers: 0,
-  uniqueIndexes: 32,
+  uniqueIndexes: 38,
 });
 
 test("the normalized migration chain is safe for the Sites production tokenizer", () => {
@@ -33,10 +34,11 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 9, tag: "0009_sites_compatible_baseline" },
       { idx: 10, tag: "0010_sites_compatible_indexes_a" },
       { idx: 11, tag: "0011_sites_compatible_indexes_b" },
+      { idx: 12, tag: "0012_phase3_organizer_foundation" },
     ],
   );
   assert.deepEqual(
-    ["0008", "0009", "0010", "0011"].map((prefix) => {
+    ["0008", "0009", "0010", "0011", "0012"].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
           join(MIGRATION_DIRECTORY, "meta", `${prefix}_snapshot.json`),
@@ -49,7 +51,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75],
+    [0, 0, 38, 75, 90],
     "migration snapshots must match the cumulative packaged index state",
   );
 

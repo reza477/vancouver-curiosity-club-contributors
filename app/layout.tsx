@@ -19,6 +19,7 @@ const socialImageAlt =
 const exactApplicationPaths = new Set([
   "/",
   "/about",
+  "/accept-invitation",
   "/accessibility",
   "/calendar",
   "/clubs",
@@ -28,6 +29,7 @@ const exactApplicationPaths = new Set([
   "/events",
   "/get-involved",
   "/host-an-event",
+  "/organizer",
   "/privacy",
 ]);
 
@@ -46,17 +48,28 @@ function isKnownApplicationPath(pathname: string | null): boolean {
   ].some((prefix) => pathname.startsWith(prefix));
 }
 
+function isPrivateApplicationPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return (
+    pathname === "/accept-invitation" ||
+    pathname.startsWith("/accept-invitation/") ||
+    pathname === "/organizer" ||
+    pathname.startsWith("/organizer/")
+  );
+}
+
 export async function generateMetadata(): Promise<Metadata> {
   const [metadataBase, requestPathname] = await Promise.all([
     getTrustedRequestOrigin(),
     getTrustedRequestPathname(),
   ]);
   const isUnknownPath = !isKnownApplicationPath(requestPathname);
+  const isPrivatePath = isPrivateApplicationPath(requestPathname);
   const documentTitle = isUnknownPath ? `Page not found · ${title}` : title;
-  const canonicalUrl = metadataBase && !isUnknownPath
+  const canonicalUrl = metadataBase && !isUnknownPath && !isPrivatePath
     ? publicUrl("/", metadataBase)
     : undefined;
-  const socialImage = metadataBase
+  const socialImage = metadataBase && !isPrivatePath
     ? publicUrl("/og.png", metadataBase)
     : undefined;
 
@@ -88,38 +101,44 @@ export async function generateMetadata(): Promise<Metadata> {
         },
       ],
     },
-    openGraph: {
-      description,
-      images: socialImage
-        ? [
-            {
-              alt: socialImageAlt,
-              height: 630,
-              url: socialImage,
-              width: 1200,
-            },
-          ]
-        : undefined,
-      locale: "en_CA",
-      siteName: title,
-      title: documentTitle,
-      type: "website",
-      url: canonicalUrl,
-    },
-    twitter: {
-      card: "summary_large_image",
-      description,
-      images: socialImage
-        ? [{ alt: socialImageAlt, url: socialImage }]
-        : undefined,
-      title: documentTitle,
-    },
+    openGraph: isPrivatePath
+      ? null
+      : {
+          description,
+          images: socialImage
+            ? [
+                {
+                  alt: socialImageAlt,
+                  height: 630,
+                  url: socialImage,
+                  width: 1200,
+                },
+              ]
+            : undefined,
+          locale: "en_CA",
+          siteName: title,
+          title: documentTitle,
+          type: "website",
+          url: canonicalUrl,
+        },
+    twitter: isPrivatePath
+      ? null
+      : {
+          card: "summary_large_image",
+          description,
+          images: socialImage
+            ? [{ alt: socialImageAlt, url: socialImage }]
+            : undefined,
+          title: documentTitle,
+        },
     themeColor: "#061a3a",
-    robots: isUnknownPath
+    robots: isUnknownPath || isPrivatePath
       ? {
           index: false,
           follow: false,
           noarchive: true,
+          nocache: true,
+          noimageindex: true,
         }
       : undefined,
   };
@@ -130,6 +149,8 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const requestPathname = await getTrustedRequestPathname();
+  const isPrivatePath = isPrivateApplicationPath(requestPathname);
   let footer:
     | Readonly<{
         brandName: string;
@@ -138,36 +159,41 @@ export default async function RootLayout({
         mission: string;
       }>
     | undefined;
-  try {
-    const { database } = getRuntimeAuthConfiguration();
-    const catalog = await loadPublicCatalog(database);
-    if (catalog) {
-      footer = {
-        brandName: catalog.site.brandName,
-        location: catalog.site.locationLabel,
-        mission: catalog.site.mission,
-        externalLinks: catalog.communityLinks.map((link) => ({
-          href: link.url,
-          label: link.label,
-        })),
-      };
+  if (!isPrivatePath) {
+    try {
+      const { database } = getRuntimeAuthConfiguration();
+      const catalog = await loadPublicCatalog(database);
+      if (catalog) {
+        footer = {
+          brandName: catalog.site.brandName,
+          location: catalog.site.locationLabel,
+          mission: catalog.site.mission,
+          externalLinks: catalog.communityLinks.map((link) => ({
+            href: link.url,
+            label: link.label,
+          })),
+        };
+      }
+    } catch {
+      // The public shell remains navigable without inventing unavailable
+      // catalog content. Route-level states report D1 availability.
     }
-  } catch {
-    // The public shell remains navigable without inventing unavailable
-    // catalog content. Route-level states report D1 availability.
   }
 
   return (
     <html lang="en-CA">
-      <body>
-        <a className="skip-link" href="#page-content">
+      <body data-surface={isPrivatePath ? "organizer" : "public"}>
+        <a
+          className="skip-link"
+          href={isPrivatePath ? "#organizer-main" : "#page-content"}
+        >
           Skip to main content
         </a>
-        <SiteHeader />
+        {isPrivatePath ? null : <SiteHeader />}
         <div className="site-content" id="page-content" tabIndex={-1}>
           {children}
         </div>
-        <SiteFooter {...footer} />
+        {isPrivatePath ? null : <SiteFooter {...footer} />}
       </body>
     </html>
   );

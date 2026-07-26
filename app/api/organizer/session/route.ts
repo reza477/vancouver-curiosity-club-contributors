@@ -4,6 +4,7 @@ import {
   trustedIdentityFromSites,
 } from "@/lib/server/auth";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
+import { getOrganizerProfile } from "@/lib/server/organizer/profiles";
 import {
   SafeApplicationError,
   privateJsonHeaders,
@@ -31,11 +32,12 @@ export async function GET(): Promise<Response> {
     const membership = await authorizeOrganizerAccess(database, identity, {
       initialOwnerEmail,
     });
+    const profile = await getOrganizerProfile(database, identity);
 
     return new Response(
       JSON.stringify({
         session: {
-          displayName: identity.displayName,
+          displayName: profile.displayName,
           role: membership.role,
         },
       }),

@@ -140,6 +140,56 @@ export const organizationMemberships = sqliteTable(
   ],
 );
 
+/**
+ * Organizer-only presentation and notification preferences live in a retry-
+ * safe additive sidecar. Existing public attribution fields remain on
+ * `profiles`, so this table cannot change Phase 2 public host projection.
+ */
+export const organizerProfilePreferences = sqliteTable(
+  "organizer_profile_preferences",
+  {
+    profileId: text("profile_id")
+      .primaryKey()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    initials: text("initials"),
+    calendarColor: text("calendar_color"),
+    workspaceDisplayName: text("workspace_display_name"),
+    publicBiography: text("public_biography"),
+    publicAttributionConsentDraft: integer(
+      "public_attribution_consent_draft",
+      { mode: "boolean" },
+    ),
+    notificationPreferenceMode: text("notification_preference_mode", {
+      enum: ["all_relevant", "important_only"],
+    })
+      .notNull()
+      .default("all_relevant"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_profile_preferences_org_profile_unique").on(
+      table.organizationId,
+      table.profileId,
+    ),
+    index("organizer_profile_preferences_org_idx").on(
+      table.organizationId,
+      table.profileId,
+    ),
+    check(
+      "organizer_profile_preferences_mode_check",
+      sql`${table.notificationPreferenceMode} IN ('all_relevant', 'important_only')`,
+    ),
+    check(
+      "organizer_profile_preferences_consent_check",
+      sql`${table.publicAttributionConsentDraft} IS NULL OR ${table.publicAttributionConsentDraft} IN (0, 1)`,
+    ),
+  ],
+);
+
 export const clubs = sqliteTable(
   "clubs",
   {
@@ -206,6 +256,78 @@ export const clubMemberships = sqliteTable(
       table.clubId,
       table.status,
       table.deletedAt,
+    ),
+  ],
+);
+
+/**
+ * A transfer lock exists only inside the atomic ownership-transfer batch. Its
+ * runtime-installed guards allow the batch's temporary zero-owner state and
+ * refuse deletion until the target is the sole active Owner.
+ */
+export const ownershipTransferLocks = sqliteTable(
+  "ownership_transfer_locks",
+  {
+    organizationId: text("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    targetMembershipId: text("target_membership_id")
+      .notNull()
+      .references(() => organizationMemberships.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("ownership_transfer_locks_target_unique").on(
+      table.targetMembershipId,
+    ),
+  ],
+);
+
+/**
+ * Durable rate-limit counters. A SHA-256 token digest may be used as scope_key
+ * before an invitation has a profile or membership; raw tokens and emails are
+ * never stored here.
+ */
+export const organizerRateLimits = sqliteTable(
+  "organizer_rate_limits",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").references(
+      () => organizations.id,
+      { onDelete: "cascade" },
+    ),
+    profileId: text("profile_id").references(() => profiles.id, {
+      onDelete: "cascade",
+    }),
+    action: text("action").notNull(),
+    scopeKey: text("scope_key").notNull(),
+    windowStartedAt: integer("window_started_at").notNull(),
+    windowExpiresAt: integer("window_expires_at").notNull(),
+    requestCount: integer("request_count").notNull().default(1),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_rate_limits_scope_window_unique").on(
+      table.action,
+      table.scopeKey,
+      table.windowStartedAt,
+    ),
+    index("organizer_rate_limits_active_window_idx").on(
+      table.action,
+      table.scopeKey,
+      table.windowExpiresAt,
+    ),
+    check(
+      "organizer_rate_limits_request_count_check",
+      sql`${table.requestCount} >= 1`,
+    ),
+    check(
+      "organizer_rate_limits_window_check",
+      sql`${table.windowExpiresAt} > ${table.windowStartedAt}`,
     ),
   ],
 );
@@ -538,6 +660,11 @@ export const events = sqliteTable(
       table.startsAtUtc,
       table.endsAtUtc,
     ),
+    index("events_org_club_archive_idx").on(
+      table.organizationId,
+      table.clubId,
+      table.deletedAt,
+    ),
     check(
       "events_nonnegative_buffers_check",
       sql`${table.bufferBeforeMinutes} >= 0 AND ${table.bufferAfterMinutes} >= 0`,
@@ -679,6 +806,239 @@ export const eventRevisions = sqliteTable(
     ),
     check(
       "event_revisions_snapshot_json_check",
+      sql`json_valid(${table.snapshotJson})`,
+    ),
+  ],
+);
+
+/**
+ * Canonical writable store for Phase 3 source-free planning records.
+ *
+ * The legacy `events` table remains the immutable compatibility source for
+ * already reserving, published, and Meetup-controlled rows. The organizer
+ * domain maps both stores into one service model, but only this table accepts
+ * Phase 3 manual writes. Runtime guards currently restrict those writes to
+ * private Ideas and Drafts.
+ */
+export const organizerEvents = sqliteTable(
+  "organizer_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "restrict" }),
+    programId: text("program_id").references(() => programs.id, {
+      onDelete: "set null",
+    }),
+    eventLaneId: text("event_lane_id").references(() => eventLanes.id, {
+      onDelete: "set null",
+    }),
+    categoryId: text("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
+    venueId: text("venue_id").references(() => venues.id, {
+      onDelete: "set null",
+    }),
+    primaryOrganizerProfileId: text("primary_organizer_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    slug: text("slug").notNull(),
+    summary: text("summary"),
+    description: text("description"),
+    privateNotes: text("private_notes"),
+    privateMeetingDetails: text("private_meeting_details"),
+    meetupEventUrl: text("meetup_event_url"),
+    planningStatus: text("planning_status", {
+      enum: [
+        "idea",
+        "draft",
+        "tentative_hold",
+        "confirmed",
+        "cancelled",
+        "completed",
+        "archived",
+      ],
+    })
+      .notNull()
+      .default("idea"),
+    publicationStatus: text("publication_status", {
+      enum: ["private", "scheduled", "published", "unpublished"],
+    })
+      .notNull()
+      .default("private"),
+    scheduleShape: text("schedule_shape", {
+      enum: ["unscheduled", "timed", "all_day"],
+    })
+      .notNull()
+      .default("unscheduled"),
+    startsAtUtc: integer("starts_at_utc"),
+    endsAtUtc: integer("ends_at_utc"),
+    timezone: text("timezone").notNull().default("America/Vancouver"),
+    allDayStartDate: text("all_day_start_date"),
+    allDayEndDateExclusive: text("all_day_end_date_exclusive"),
+    bufferBeforeMinutes: integer("buffer_before_minutes").notNull().default(0),
+    bufferAfterMinutes: integer("buffer_after_minutes").notNull().default(0),
+    contentVersion: integer("content_version").notNull().default(1),
+    scheduleVersion: integer("schedule_version").notNull().default(1),
+    createdByProfileId: text("created_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    deletedAt: integer("deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("organizer_events_org_slug_unique").on(
+      table.organizationId,
+      table.slug,
+    ),
+    index("organizer_events_org_schedule_idx").on(
+      table.organizationId,
+      table.deletedAt,
+      table.scheduleShape,
+      table.startsAtUtc,
+      table.allDayStartDate,
+    ),
+    index("organizer_events_org_status_idx").on(
+      table.organizationId,
+      table.planningStatus,
+      table.publicationStatus,
+      table.deletedAt,
+      table.updatedAt,
+    ),
+    index("organizer_events_org_club_idx").on(
+      table.organizationId,
+      table.clubId,
+      table.deletedAt,
+      table.updatedAt,
+    ),
+    index("organizer_events_primary_organizer_idx").on(
+      table.organizationId,
+      table.primaryOrganizerProfileId,
+      table.deletedAt,
+      table.updatedAt,
+    ),
+    check(
+      "organizer_events_planning_status_check",
+      sql`${table.planningStatus} IN ('idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled', 'completed', 'archived')`,
+    ),
+    check(
+      "organizer_events_publication_status_check",
+      sql`${table.publicationStatus} IN ('private', 'scheduled', 'published', 'unpublished')`,
+    ),
+    check(
+      "organizer_events_schedule_shape_check",
+      sql`(
+        ${table.scheduleShape} = 'unscheduled'
+        AND ${table.planningStatus} = 'idea'
+        AND ${table.startsAtUtc} IS NULL
+        AND ${table.endsAtUtc} IS NULL
+        AND ${table.allDayStartDate} IS NULL
+        AND ${table.allDayEndDateExclusive} IS NULL
+      ) OR (
+        ${table.scheduleShape} = 'timed'
+        AND ${table.startsAtUtc} IS NOT NULL
+        AND ${table.endsAtUtc} IS NOT NULL
+        AND ${table.endsAtUtc} > ${table.startsAtUtc}
+        AND ${table.allDayStartDate} IS NULL
+        AND ${table.allDayEndDateExclusive} IS NULL
+      ) OR (
+        ${table.scheduleShape} = 'all_day'
+        AND ${table.startsAtUtc} IS NULL
+        AND ${table.endsAtUtc} IS NULL
+        AND ${table.allDayStartDate} IS NOT NULL
+        AND ${table.allDayEndDateExclusive} IS NOT NULL
+        AND ${table.allDayEndDateExclusive} > ${table.allDayStartDate}
+      )`,
+    ),
+    check(
+      "organizer_events_version_check",
+      sql`${table.contentVersion} >= 1 AND ${table.scheduleVersion} >= 1`,
+    ),
+    check(
+      "organizer_events_buffer_check",
+      sql`${table.bufferBeforeMinutes} >= 0 AND ${table.bufferAfterMinutes} >= 0`,
+    ),
+  ],
+);
+
+export const organizerEventOrganizers = sqliteTable(
+  "organizer_event_organizers",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdByProfileId: text("created_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    deletedAt: integer("deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("organizer_event_organizers_event_profile_unique").on(
+      table.organizerEventId,
+      table.profileId,
+    ),
+    index("organizer_event_organizers_profile_idx").on(
+      table.organizationId,
+      table.profileId,
+      table.deletedAt,
+      table.organizerEventId,
+    ),
+  ],
+);
+
+export const organizerEventRevisions = sqliteTable(
+  "organizer_event_revisions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    contentVersion: integer("content_version").notNull(),
+    scheduleVersion: integer("schedule_version").notNull(),
+    action: text("action", {
+      enum: ["created", "updated", "duplicated", "deleted", "restored"],
+    }).notNull(),
+    snapshotJson: text("snapshot_json").notNull(),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_event_revisions_event_content_version_unique").on(
+      table.organizerEventId,
+      table.contentVersion,
+    ),
+    index("organizer_event_revisions_org_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.createdAt,
+    ),
+    check(
+      "organizer_event_revisions_version_check",
+      sql`${table.contentVersion} >= 1 AND ${table.scheduleVersion} >= 1`,
+    ),
+    check(
+      "organizer_event_revisions_snapshot_json_check",
       sql`json_valid(${table.snapshotJson})`,
     ),
   ],

@@ -173,3 +173,68 @@ behavior when the public D1 service cannot be read.
 `BUILD_STATUS.md` is the authoritative evidence ledger,
 `OWNER_INPUTS.md` records missing factual approvals without inventing them, and
 `MASTER_BUILD_SPEC.md` remains the unchanged multi-phase reference.
+
+## Phase 3 private organizer workspace
+
+Phase 3 adds a separate, server-protected organizer application:
+
+- `/organizer` dashboard
+- `/organizer/calendar`
+- `/organizer/events`, `/organizer/events/new`, and private event details
+- `/organizer/team`
+- `/organizer/clubs`
+- `/organizer/notifications`
+- `/organizer/profile`
+- `/organizer/settings`
+- the existing `/organizer/meetup` workspace
+- `/accept-invitation`
+
+Sign in with ChatGPT supplies identity only. Every page and action revalidates
+the active D1 organization membership, role, and required club assignment.
+Organizer pages and APIs are private, no-store, noindex, and separate from the
+public header, footer, metadata, sitemap, and structured data.
+
+The Phase 3 manual-event service has separate planning, publication, and
+schedule fields. It can write only private Ideas and Drafts. An Idea can be
+unscheduled; a Draft must have a valid timed or all-day schedule. Timed records
+store UTC instants plus the original IANA timezone, while all-day records keep
+exclusive calendar-date bounds. Optimistic content versions are separate from
+future conflict schedule versions.
+
+Every successful event mutation writes an immutable revision and append-only
+audit record in the same bounded D1 batch. Source-controlled Meetup records,
+legacy reserving records, and published records are visible for coordination
+but remain read-only. Phase 3 has no hold, confirmation, cancellation,
+reservation, conflict, publication, CMS, media, import, export, email, or
+public-form action.
+
+Owners can create Administrator or Organizer invitations; Administrators can
+create Organizer invitations. Tokens are random, hashed at rest, email-bound,
+expiring, revocable, one-time, and accepted atomically with membership and
+required club assignment. The product never claims that an invitation email
+was sent. Persistent D1 rate limits apply to creation and acceptance.
+
+Workspace display-name, biography, and attribution-consent edits are staged in
+the private `organizer_profile_preferences` sidecar. Phase 2 continues reading
+only canonical public profile fields, so a Phase 3 profile save cannot rename,
+add, or remove a host on a published page.
+
+The private calendar reports the exact database match count, distinguishes the
+loaded bounded slice, and provides a validated cumulative load path. The
+private event index applies search and lifecycle filters in parameterized D1
+queries and exposes deterministic 200-record pages, including recoverable
+soft-deleted records.
+
+The runtime invariant initializer is version 3 and verifies/repairs the full
+set of 30 database guards before application dispatch. The Phase 3 migration
+is additive and tokenizer-safe after the immutable deployed version-8 chain.
+
+See:
+
+- `docs/architecture/0007-phase-3-organizer-workspace.md`
+- `docs/owner-guide-phase3.md`
+- `docs/organizer-guide-phase3.md`
+
+The existing owner-only live URL continues to serve the deployed Phase 2
+version 8. Phase 3 is not live unless a later turn explicitly authorizes its
+deployment.

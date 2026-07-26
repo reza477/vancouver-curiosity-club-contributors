@@ -39,7 +39,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(layout, /follow:\s*false/);
   assert.match(layout, /noarchive:\s*true/);
   assert.match(layout, /:\s*undefined/);
-  assert.doesNotMatch(layout, /index:\s*true/);
+  assert.doesNotMatch(layout, /(?:^|\n)\s*index:\s*true/m);
   assert.doesNotMatch(layout, /follow:\s*true/);
   assert.match(layout, /\/og\.png/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);

@@ -1,0 +1,12 @@
+body[data-surface="organizer"] {
+  background: #f3f0e8;
+  color: #101b2f;
+}
+
+body[data-surface="organizer"] .site-content {
+  min-height: 100svh;
+}
+
+body[data-surface="organizer"] .skip-link {
+  z-index: 1000;
+}

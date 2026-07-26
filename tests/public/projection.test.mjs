@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PUBLIC_EVENT_SELECT_SQL,
+  UNIFIED_PUBLIC_EVENT_CTE_SQL,
   listUpcomingPublicEvents,
   toPublicEventDto,
 } from "../../lib/server/public/events.ts";
@@ -216,6 +217,10 @@ test("uses an explicit public SQL allowlist and publication filters", () => {
   assert.match(
     PUBLIC_EVENT_SELECT_SQL,
     /profile\.public_attribution_consent = 1/u,
+  );
+  assert.doesNotMatch(
+    `${PUBLIC_EVENT_SELECT_SQL}\n${UNIFIED_PUBLIC_EVENT_CTE_SQL}`,
+    /organizer_profile_(?:drafts|preferences)/u,
   );
 
   for (const forbiddenColumn of [

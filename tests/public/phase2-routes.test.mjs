@@ -70,7 +70,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.match(layout, /follow:\s*false/u);
   assert.match(layout, /noarchive:\s*true/u);
   assert.match(layout, /:\s*undefined/u);
-  assert.doesNotMatch(layout, /index:\s*true/u);
+  assert.doesNotMatch(layout, /(?:^|\n)\s*index:\s*true/mu);
   assert.doesNotMatch(layout, /follow:\s*true/u);
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });

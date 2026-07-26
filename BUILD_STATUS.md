@@ -4,277 +4,330 @@ Last updated: 2026-07-25 (America/Vancouver)
 
 ## Active phase and authorized scope
 
-- **Phase 2 production-migration compatibility correction — Completed and
-  verified locally and on the owner-only Sites deployment.**
-- Phase 1 and Phase 2 product behavior is unchanged. This correction is
-  limited to the Sites/D1 migration boundary, durable database-guard
-  initialization, its tests, and release evidence.
-- **Phase 3 — Not started.**
-- Public/shared access remains prohibited. Version 8 was deployed only through
-  the Sites capability that verified the current owner is the sole viewer.
+- **Phase 3 — Organizer portal, non-reserving workflow.**
+- Phase 3 implementation is complete and verified in local, preview-D1,
+  source-test, built-Worker, and browser test seams.
+- Saving one new **unpublished** ChatGPT Sites version is pending the final
+  source commit and exact-archive audit.
+- Phase 4 conflict/reserving work is not authorized and has not started.
+- The existing owner-only live deployment remains version 8. No Phase 3 source
+  has been deployed.
 
 ## Completed and verified
 
-### Root cause and version-7 evidence
+### Private organizer workspace
 
-- Immutable Sites version 7 remains preserved and must not be retried or
-  deployed.
-- Its owner-only deployment
-  `appgdep_6a65376e5b3881918d5653d913c5d447` failed before publication with
-  `incomplete input: SQLITE_ERROR`; Sites returned no URL.
-- The exact version-7 archive was intact:
-  SHA-256
-  `d259059221780c65df4f0958c14a59a541b42c85c662c98724734eb64cdc9493`,
-  1,668,409 bytes, 87 archive entries, and 72 regular files.
-- All eight packaged SQL files and migration metadata matched source.
-  Applying each Drizzle breakpoint chunk as one prepared statement succeeded.
-- A semicolon tokenizer reproduced the exact first failure inside
-  `events_reservation_guard_before_insert` in packaged migration 0000.
-  Removing only the eleven historical `CREATE TRIGGER` chunks made every
-  remaining fragment across migrations 0000–0007 apply successfully.
-- The defect is therefore the Sites production tokenizer crossing SQLite
-  trigger-body semicolons, not corrupt packaging, table/index syntax, PRAGMA,
-  the 0007 validation updates, or SQLite trigger semantics.
-- Sites exposes no hosted D1 query, migration ledger, reset, or reprovision
-  capability. Version 7 never returned a Worker URL, so hosted user writes
-  were impossible. Its failed migration may still have left schema objects
-  before the first trigger.
+- Added the separate private organizer shell and routes:
 
-### Retry-safe pre-production migration normalization
+  - `/organizer`
+  - `/organizer/calendar`
+  - `/organizer/events`
+  - `/organizer/events/new`
+  - `/organizer/events/[id]`
+  - `/organizer/team`
+  - `/organizer/clubs`
+  - `/organizer/notifications`
+  - `/organizer/profile`
+  - `/organizer/settings`
+  - existing `/organizer/meetup`
+  - `/accept-invitation`
 
-- Historical migrations 0000–0007 remain preserved in Git and immutable Sites
-  versions but are absent from the corrected package.
-- The new monotonic chain uses:
+- Organizer pages do not use public header/footer chrome or emit public
+  canonical, Open Graph, JSON-LD, or sitemap data.
+- Organizer pages, invitation surfaces, and organizer APIs are server
+  protected, `no-store`, and `noindex, nofollow, noarchive`.
+- Desktop sidebar and compact mobile navigation expose only Phase 3 actions.
+  There is no dead Conflicts, publishing, media, export, email, or later-phase
+  control.
 
-  - `0008_preproduction_reset.sql` — 49 idempotent child-first drops for the
-    nine known triggers, three rebuild remnants, and 37 final tables.
-  - `0009_sites_compatible_baseline.sql` — 37 retry-safe table creates.
-  - `0010_sites_compatible_indexes_a.sql` — 38 retry-safe index creates.
-  - `0011_sites_compatible_indexes_b.sql` — 37 retry-safe index creates.
+### Authentication, invitations, team, and ownership
 
-- Every file contains at most 49 single statements. No packaged migration
-  contains `CREATE TRIGGER`, `ALTER TABLE`, `PRAGMA`, a rename/rebuild
-  sequence, or a trigger body.
-- The final generated schema has 37 application tables, 75 explicit indexes
-  including 32 unique indexes, 102 foreign keys, and 40 checks.
-- `npm.cmd run db:generate` reports those 37 tables, no schema drift, and no
-  new migration.
-- Exhaustive regression coverage retries every cut point in the reset and
-  baseline/index chains. It also recovers a representative failed-version-7
-  prefix and all three known `__new_*` rebuild remnants.
-- A malformed/truncated packaged statement fails with `incomplete input`
-  rather than being accepted.
-- This destructive reset is authorized only because no production Worker or
-  hosted user data ever existed. It must never be reused after the first
-  successful deployment.
+- Sign in with ChatGPT remains identity only. Every protected request derives
+  the actor and organization from trusted server context, then revalidates
+  active profile, active membership, role, and required club assignment.
+- Authenticated but uninvited identities are denied in source and rendered
+  Worker tests.
+- Owners can create Administrator or Organizer invitations. Administrators can
+  create Organizer invitations only. Organizer invitations require an active
+  same-organization club.
+- Invitation tokens are 256-bit random, stored only as hashes, email-bound,
+  organization-bound, one-time, expiring, revocable, and D1-rate-limited.
+  Copyable links are shown only on creation; no email-sent claim is made.
+- Acceptance captures the token into a short-lived path-scoped HttpOnly cookie,
+  cleans the browser URL, requires the matching ChatGPT email, and atomically
+  creates membership, club assignment, notification, and audit records.
+- Team reads restrict email to Owner/Administrator management views.
+  Organizer writes remain assigned-club and owned/co-organized-event scoped.
+- Membership changes recheck active and soft-deleted restorable event blockers
+  inside the committing batch.
+- Ownership transfer is atomic. Durable guards preserve exactly one active
+  Owner with an active, nondeleted profile under concurrent and crafted
+  attempts. Membership organization/profile/email identity is immutable.
 
-### Persistent database-enforced guard installation
+### Canonical lifecycle and private event workflow
 
-- `database_invariant_state` stores a persistent singleton version,
-  64-character trigger fingerprint, and verification time.
-- Before any application dispatch in each Worker isolate, the server-only D1
-  initializer verifies:
+- Additive migration `0012_phase3_organizer_foundation.sql` establishes one
+  authoritative private event model:
 
-  - marker version and fingerprint;
-  - the exact normalized `sqlite_master` definitions and names of all nine
-    expected triggers;
-  - zero cross-organization public-club-profile violations;
-  - zero cross-organization public-event-detail violations.
+  - planning: `idea`, `draft`, `tentative_hold`, `confirmed`, `cancelled`,
+    `completed`, `archived`;
+  - publication: `private`, `scheduled`, `published`, `unpublished`;
+  - schedule: `unscheduled`, `timed`, `all_day`.
 
-- A missing or mismatched state is repaired in one atomic prepared D1 batch:
-  marker delete, nine trigger drops, nine complete trigger creates, two
-  aborting integrity probes, and one guarded marker upsert.
-- Only successful per-binding promises are cached. Separate Worker isolates
-  still verify the persistent marker and database definitions.
-- Concurrent isolate-style initialization is idempotent and ends with one
-  marker and the exact nine-trigger set.
-- Malformed pre-existing public rows abort the entire batch, leaving no marker
-  and no partial trigger installation. After repair, initialization succeeds.
-- The two current organization-wide reservation triggers and seven
-  public-organization-integrity triggers remain database-enforced. Conflict
-  status, hold expiry, venue/organizer/buffer reasoning, organization-wide
-  overlap, public consent, and cross-organization integrity guarantees were
-  not weakened.
-- If initialization fails, the Worker does not call the application handler.
-  It logs only the allowlisted operational code and returns a no-store,
-  noindex 503 without SQL, identity, or private-content details.
+- Every Phase 3 manual mutation is service- and database-limited to private
+  Ideas or Drafts. Only Ideas may be unscheduled. Timed and all-day shape
+  rules are enforced without invented dates or UTC offsets.
+- Manual create, edit, duplicate, soft delete, and restore use optimistic
+  `content_version` compare-and-swap. `schedule_version` remains distinct for
+  future Phase 4 authorization.
+- Each successful mutation writes the current row, immutable revision, and
+  append-only audit entry in one bounded D1 batch. Stale edits return
+  `409 stale_edit` without partial residue.
+- Ordinary editor updates preserve adopted venue and private meeting details;
+  title-only edits do not spuriously increment `schedule_version`.
+- Moving a Draft between clubs removes stale organizer selections while
+  preserving any still-valid organization-wide assignment.
+- Duplicate records are source-free and private. Source-controlled, reserving,
+  public, or unsupported legacy records remain read-only.
+- Legacy publication mapping labels a record Published only when visibility is
+  public and `published_at` is present.
 
-### Verification evidence
+### Migration adoption and persistent D1 invariants
 
-Commands were run from `C:\Users\user\Documents\Website` on 2026-07-25.
+- Existing migrations `0008`–`0011` remain byte-for-byte unchanged.
+- Migration `0012` is additive, retry-safe, and Sites-tokenizer compatible:
+  24 complete statements, no packaged trigger body, `ALTER`, `PRAGMA`, rename,
+  reset, or destructive rebuild.
+- Legacy adoption is all-or-nothing. It requires:
 
-- `npm.cmd ci` — first attempt exited 1 because two completed local Miniflare
-  reproducer processes retained a Windows lock on the workspace
-  `workerd.exe`. The exact workspace processes were stopped. The unchanged
-  command then exited 0: 503 packages installed from `package-lock.json`.
-- `npm.cmd run db:generate` — exit 0; 37 tables; no drift and no generated
-  migration.
-- One non-operative command typo, `npm.cmd run db:migrate:local`, exited 1
-  because that script does not exist; it changed no state. The supported
-  `db:apply:local` and `db:apply:preview` commands below both passed.
-- First normalized `npm.cmd run db:apply:local` — exit 0; migrations applied as
-  49, 37, 38, and 37 statements.
-- Final `npm.cmd run db:apply:local` — exit 0; four migrations already applied;
-  37 application tables, nine exact invariant triggers, zero foreign-key
-  violations.
-- First and final `npm.cmd run db:apply:preview` — exit 0 with the same
-  statement counts and final 37-table/nine-trigger/zero-violation signature in
-  the Sites local preview D1.
+  - exact valid and unique equality between canonical
+    `organizer_scope_json` and normalized active primary/co-organizer rows;
+  - valid same-organization references and assignments;
+  - same-organization creator membership;
+  - valid updater and schedule/lifecycle shape.
+
+- Divergent records remain intact and read-only; no co-organizer is silently
+  discarded.
+- Phase 3 editable display name, biography, and attribution-consent values are
+  staged in `organizer_profile_preferences`. Migration and snapshot contain
+  nullable `workspace_display_name` and
+  `public_attribution_consent_draft`; migrated-column contract tests prepare
+  those exact fields.
+- Public Phase 2 host projection still reads canonical `profiles` fields only.
+  Private profile edits cannot rename, add, or remove a published host.
+- Runtime invariant state is version **3** with fingerprint
+  `0d89f16aa0a5a462b73a34c8ecb98cd011527bc50124697a90bffcbd095e5621`.
+- The initializer verifies and repairs **30 exact triggers** before
+  application dispatch while retaining the existing two reservation and seven
+  public-integrity guards.
+- The new guards cover private lifecycle/organization integrity, organizer
+  associations, immutable revisions/audits, rate limits, ownership transfer,
+  membership identity, and sole usable Owner profile state.
+- Concurrent isolate installation is idempotent. Invalid existing data leaves
+  no false durable marker or partial guard set.
+
+### Calendar, events index, clubs, profiles, notifications, and history
+
+- Private calendar combines private manual records, read-only legacy records,
+  and completed active Meetup snapshots only. Pending Meetup generation facts
+  remain invisible.
+- Agenda, Day, Week, Month, and unscheduled Ideas surfaces render timed,
+  all-day, overnight, multi-day, leap-date, and Vancouver DST cases.
+- Calendar returns the exact D1 match count, an explicit bounded loaded count,
+  and validated cumulative `take` links up to 5,000 records. Client-side filter
+  copy states that filters apply to the loaded records.
+- Events index applies search and lifecycle filters in parameterized D1
+  queries and provides deterministic 200-record pages. Older and soft-deleted
+  restorable records remain reachable.
+- Club update and archive repeat active Owner/Administrator authorization in
+  the committing batch.
+- Club archive is blocked by any organizer event including soft-deleted
+  records, any nondeleted legacy event, retained or active/pending Meetup
+  source, active program, pending invitation, active assignment, or public
+  profile. Blocker details are bounded and actionable.
+- Meetup source connection revalidates the actor and active same-organization
+  club in the commit, preventing archive/configuration races without returning
+  a saved feed address.
+- Profile drafts remain private/inert for public attribution. Settings change
+  only private workspace name and default IANA timezone.
+- Notifications use a server allowlist and minimum safe payloads. Read/unread,
+  mark-all, and preference modes are D1-backed. Activity history is append-only
+  and organization-scoped.
+
+### Phase 2 preservation
+
+- Public Home, Events, event details, clubs, metadata, sitemap, structured
+  data, and error behavior remain on explicit allowlisted projections.
+- New Phase 3 Ideas, Drafts, notes, invitations, notifications, audit data,
+  identities, and private Meetup configuration are absent from public list,
+  detail, guessed slug, metadata, JSON-LD, sitemap, and built-Worker surfaces.
+- Existing completed-generation Meetup publication isolation remains intact.
+- Owner/Administrator may still configure and manually refresh Meetup;
+  Organizer access remains read-only. Saved feed addresses never render.
+
+## Exact verification evidence
+
+Commands ran from `C:\Users\user\Documents\Website` on 2026-07-25.
+
+- `npm.cmd ci` — exit 0; 503 packages installed from `package-lock.json`, 504
+  packages audited.
+- `npm.cmd run db:generate` — exit 0; 43 tables; no schema changes and no
+  generated migration.
+- `npm.cmd run db:apply:local` — final exit 0; five migrations applied as 49,
+  37, 38, 37, and 24 statements; 43 tables, 30 exact runtime triggers, zero
+  foreign-key violations.
+- `npm.cmd run db:apply:preview` — final exit 0 with the same five-migration,
+  43-table, 30-trigger, zero-violation result against the Sites local preview
+  D1.
 - `npm.cmd run typecheck` — exit 0 under strict TypeScript.
-- Exact `npm.cmd run lint` before and after retained build/work artifacts —
-  exit 0; no lint rule was disabled.
-- `npm.cmd test` — exit 0; **103/103 passed**, 0 failed, 0 skipped.
-- `npm.cmd run build` — exit 0; vinext produced the complete Phase 2 Worker and
-  route set.
-- `npm.cmd run test:rendered` — exit 0; **13/13 passed**, 0 failed, 0 skipped.
-  It applies the exact `dist/.openai/drizzle` files through semicolon
-  tokenization, proves zero migration-installed triggers, initializes and
-  fingerprints all nine runtime guards, exercises conflict/public-integrity
-  rejection, checks 37 tables/75 indexes/zero FK violations, rejects truncated
-  packaged SQL, and reruns public/private/security/error behavior.
+- Exact `npm.cmd run lint` before build — exit 0.
+- `npm.cmd test` — final exit 0; **167/167 passed**, 0 failed, 0 skipped.
+- `npm.cmd run build` — exit 0; vinext produced the complete public and private
+  Worker route set.
+- Exact `npm.cmd run lint` after retained build artifacts — exit 0.
+- `npm.cmd run test:rendered` — final exit 0; **19/19 passed**, 0 failed, 0
+  skipped. The built Worker applies packaged migrations, verifies the exact
+  version-3/30-trigger fingerprint, enforces private/public boundaries, renders
+  authenticated owner flows, rejects uninvited access, validates organizer
+  filters, and exercises invitation and mutation safety.
+- Migration/invariant focused gate — 20/20 passed, including clean and
+  populated-version-8 adoption, every partial production-tokenizer prefix,
+  malformed SQL rejection, invariant repair/concurrency, identity, usable
+  Owner, and creator integrity.
+- Organizer correction gate — 43/43 passed, including event data
+  round-tripping, club reassignment, profile/public isolation, archive races,
+  pagination, lifecycle, ownership, and UI contracts.
+- Independent final read-only red-team — 71/71 focused migration, invariant,
+  Meetup, auth/team, event/calendar, and UI checks passed; no release blocker
+  found across the complete audit correction set.
 - `git diff --check` — exit 0.
-- Source and built privacy scan — zero exact official private feed URLs, Gmail
-  addresses, client iCalendar paths, `source_url`, `normalized_email`,
-  `INITIAL_OWNER_EMAIL`, private sentinels, Windows user paths, or packaged
-  master artwork.
+- Built-output audit — `dist` contains 100 files / 4,865,389 bytes.
+  Source and packaged migrations 0008–0012 are byte-identical.
+- Source and built privacy scans — zero exact official private Meetup feed
+  URLs; zero email-like values in `dist`; zero credentials, bearer tokens,
+  local paths, private fixture sentinels, environment files, local databases,
+  work artifacts, logs, or unoptimized design master in `dist`. Client assets
+  contain no source URL, token-hash, or identity-header names.
 - `npm.cmd audit --omit=dev --json` — exit 1 with 3 high, 0 critical
   production advisories.
 - `npm.cmd audit --json` — exit 1 with 18 advisories: 1 low, 4 moderate, 13
   high, 0 critical.
-- No forced dependency upgrade was applied to the pinned Sites runtime.
+- No forced upgrade was applied to the pinned Sites runtime.
 
-### Changed source
+Interim evidence retained honestly:
 
-- Schema/migrations: `db/schema.ts`, `drizzle/0008_*` through `0011_*`, and
-  aligned Drizzle journal/snapshots.
-- Runtime: `lib/server/database/invariants.ts`,
-  `lib/server/conflicts/guard-sql.ts`, and `worker/index.ts`.
-- Migration harness: `package.json`, local/preview migration scripts.
-- Regression coverage: database invariant, conflict, Meetup,
-  public-integrity, public catalog/projection, production-tokenizer,
-  partial-retry, and rendered-Worker tests.
-- Documentation: `README.md` and ADR
-  `docs/architecture/0006-sites-d1-trigger-compatibility.md`.
+- The first local migration replay rejected a recorded hash from an ignored
+  in-progress local `0012`. Both local D1 directories were preserved as
+  timestamped ignored backups, then fresh local and preview stores passed.
+  No hosted D1 or deployed version was changed.
+- One direct Node test invocation without the project `tsx` loader failed on
+  TypeScript ESM resolution; the supported loader invocation passed 16/16.
+- Initial full-suite and rendered-Worker runs exposed stale expected
+  schema/test contracts after the final audit corrections. Assertions were
+  updated to the real stronger schema and private-shell boundary; the complete
+  suites then passed without disabling a rule or weakening public leakage
+  checks.
 
-### Hosted release evidence
+### Browser and accessibility QA
 
-- Exact verified and pushed source commit:
-  `0bf8c52697bcd3a8352edcac22bf42479a37d33f`.
-- The official Sites package was built from that clean commit. Local archive
-  SHA-256:
-  `bbb2ba06d8bce26ccdf13bac4739a0fc9c10999109cd2e9a3a80e5613b1f2e0d`;
-  1,632,209 bytes, 79 archive entries, and 64 regular files.
-- Archive inspection found zero unsafe paths, missing required files,
-  source/package migration hash differences, email addresses, exact private
-  Meetup feed URLs, client private identifiers, Windows user paths, local
-  databases, environment files, or unoptimized master artwork.
-- Sites version 8,
-  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_eed88ec7d02c8191a865045cd32c940e`,
-  reads back the exact source commit above and 64 files. Sites storage reports
-  content hash
-  `sha256:9ea067b3116c8832a88d2069769196ed5a5552ee87308d1adbae13112cf3ad4d`
-  and 3,758,080 bytes.
-- Owner-only deployment
-  `appgdep_6a654533aee481918098af58b5a4f861` reached `succeeded` with runtime
-  revision 1. The production URL is
-  `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
-- Hosted Worker evidence after deployment shows authenticated Home and Events
-  requests completing with HTTP 200 and `outcome: ok`, with no migration,
-  SQLite, or invariant-initialization failure. Because every non-image app
-  request fails closed before dispatch unless the persistent marker, exact
-  nine-trigger set, and both integrity probes pass, these responses verify the
-  production runtime initializer completed. Sites does not expose direct
-  hosted `sqlite_master` or migration-ledger queries.
-- Hosted organizer evidence shows a non-member identity denied server-side
-  with the safe `authorization_denied` code; no private identity value was
-  emitted.
-- Browser verification reached the expected owner-only `Sign in required`
-  gate. The agent browser had no owner ChatGPT session, so interactive
-  post-login owner persistence remains for Reza's smoke test.
-- Post-deployment readback confirms version 8 is the only newly saved version,
-  the live URL points to it, preview URL remains null, access remains custom
-  with exactly one allowed account and zero groups, runtime revision remains 1
-  with only the redacted secret `INITIAL_OWNER_EMAIL`, and no custom domain
-  exists.
+- Authenticated local browser QA used an isolated synthetic `.invalid` owner
+  fixture and ignored local D1 only.
+- Public Home, Events, private-slug 404, dashboard, Calendar, Events, new/edit
+  event, Team, Clubs, Notifications, Profile, Settings, Meetup, and invitation
+  flows were exercised.
+- Widths checked: 320×800, 390×844, tablet 768px, 1280px, and 1440px. No page
+  overflow was observed.
+- Create/edit persistence, Agenda/Week/Month, filters, unscheduled Ideas,
+  invitation create/reset/revoke, noindex/private chrome, and mobile
+  navigation were verified.
+- Reduced-motion media produced near-zero transition/animation durations.
+  Skip-link/landmark structure and visible focus styles are present.
+- Browser console showed no application, hydration, or accessibility warning;
+  the only warning was the expected authorization-denied diagnostic.
 
 ## Implemented but not externally verified
 
-- Direct hosted D1 table/index/trigger counts cannot be queried through the
-  current Sites capability. Deployment success plus fail-closed HTTP 200
-  Worker evidence verifies migration/runtime compatibility; the exact
-  37-table/75-index/nine-trigger signature is directly verified in local,
-  preview, and packaged-Worker D1.
-- Interactive owner bootstrap/persistence, complete hosted visual QA, real
-  Meetup event rendering, and R2 behavior remain externally unverified until
-  the owner completes the smoke test or the corresponding later workflow is
-  authorized.
+- Phase 3 is not deployed. All Phase 3 hosted behavior remains unverified until
+  a later owner-authorized private deployment.
+- Hosted second-identity invitation acceptance cannot be tested while Sites
+  access remains exactly one allowed owner and zero groups.
+- Hosted D1 table/index/trigger counts are not directly queryable through the
+  current Sites capability. Local, preview, and built-Worker D1 verify 43
+  tables, 90 explicit indexes, 38 unique indexes, 125 foreign keys, 51 checks,
+  30 triggers, and zero foreign-key violations.
+- R2 remains bound as `MEDIA` and unchanged; Phase 3 has no authorized media
+  workflow.
 
 ## Not implemented
 
-- Phase 3 invitations/team/event-editor/settings/CMS/media workflows.
-- Conflict review/override UI, public submission forms, email, payments,
-  donations, internal RSVP, attendee accounts, comments, chat, forums, QR
-  downloads, or calendar export.
-- No Phase 3 code or dead controls were added.
+- Tentative holds, confirmed-event mutation, schedule reservation, conflict
+  preview/review/policies/overrides, public event preview, scheduled
+  publication, publish/unpublish, public CMS, community-link editing, R2
+  upload, CSV/ICS file import, export, public forms, email/digests, QR,
+  payments, donations, internal RSVP, attendee accounts, comments, messaging,
+  forums, or chat.
+- No disabled or dead control for those later phases is present.
 
 ## Not run
 
-- Post-login owner browser checks — not run because the available browser had
-  no owner ChatGPT session. The owner-only sign-in gate itself was verified.
-- Real interactive event smoke — not run because the review database has no
-  real published event and fake production events are prohibited.
-- A second human identity smoke test — not run because no second allowed test
-  identity is available. Hosted server logs do verify non-member denial.
-- R2 upload/read — not run because upload UI is outside Phase 2.
-- Lighthouse/Core Web Vitals and automated axe — not run; axe is not part of
-  the pinned starter and no performance claim is made.
+- Hosted Phase 3 owner smoke test — no Phase 3 version is deployed.
+- Hosted second human identity — current Sites policy permits one owner and
+  zero groups.
+- Automated axe and Lighthouse/Core Web Vitals — not available in the pinned
+  toolchain; no score or performance claim is made.
+- A complete keyboard-only create/edit browser flow and 200% zoom measurement
+  were not captured. Keyboard semantics, focus styling, responsive reflow,
+  source contracts, and rendered flows were checked, but are not represented
+  as those unrun measurements.
+- Real hosted Meetup import and R2 behavior — no Phase 3 deployment or
+  authorized media workflow exists.
 
 ## Blocked
 
-- Direct remote D1 inspection/reset remains unavailable in the Sites
-  capability. The corrected monotonic, retry-safe pre-production baseline
-  successfully recovered the deployment without claiming a direct hosted
-  schema dump.
+- Hosted second-identity testing is blocked by the unchanged one-owner Sites
+  access policy.
 - Remaining factual owner inputs: exact BC legal identity/status/footer and
   charity wording; exact Meetup discussion URL; approved final copy; approved
-  organizer names/biographies; real photos with rights/credit/consent;
-  event-specific venue/accessibility facts.
+  public organizer names/biographies; real photos with rights, credit, and
+  participant consent; event-specific venue/accessibility facts; a hosted
+  second invited test identity.
 
-## Sites version and deployment state
+## Sites project, version, bindings, and deployment state
 
-- Existing Sites versions 1–7 remain preserved; version 8 is the newest saved
-  version.
-- Version 7 is unpublished, failed before publication, and superseded for
-  deployment.
-- Version 8 is deployed and provenance-verified against source commit
-  `0bf8c52697bcd3a8352edcac22bf42479a37d33f` and the 64-file Sites archive.
-- Deployment `appgdep_6a654533aee481918098af58b5a4f861`: `succeeded`.
-- Access remains custom owner-only: one allowed account and zero groups.
-- Runtime revision remains 1 with only `INITIAL_OWNER_EMAIL` stored as a
-  redacted secret.
-- Custom domains: none.
-- Preview URL: none.
-- Owner-only live URL:
+- Sites project:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a`.
+- Logical bindings remain D1 `DB` and R2 `MEDIA`.
+- Runtime revision remains 1 with only redacted `INITIAL_OWNER_EMAIL`.
+- Existing live deployment remains owner-only version 8 at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
-- Public access: not enabled.
+- Access remains custom: exactly one allowed owner and zero groups.
+- Custom domains: none. Preview URL: none. Public/shared access: not enabled.
+- Phase 3 source commit: **Pending final verified commit.**
+- Phase 3 Sites version: **Pending one unpublished save.**
+- No Phase 3 deployment is authorized.
 
-## Awaiting owner smoke test
+## Awaiting a future private deployment
 
-Status: **Awaiting owner smoke test on the successful owner-only deployment.**
+Status: **Awaiting a future private deployment.**
 
-Five-minute owner card:
+Five-minute owner smoke card for a later explicitly authorized private
+deployment of this Phase 3-or-later source:
 
-1. Open `https://vancouver-curiosity-club.reza5777.chatgpt.site`, continue with
-   ChatGPT, then open Home and Events. Confirm both render without a
-   migration/database error and the event state is truthful.
-2. At phone width, confirm the mark, menu, four lanes, three featured clubs,
-   filters, and Clear Filters work without sideways scrolling.
-3. Open Organizer Login signed out; confirm Sites-owned Sign in with ChatGPT is
-   required and the route is noindex.
-4. Sign in as Reza; refresh and confirm owner access persists.
-5. If a second allowed test identity later exists, confirm an authenticated
-   but uninvited identity is denied.
+1. Sign in with the matching ChatGPT owner account.
+2. Create one unscheduled private Idea and one scheduled private Draft.
+3. Refresh, sign out, and sign back in; confirm both persist.
+4. Open Calendar and Ideas; confirm the Draft appears on its date and the
+   unscheduled Idea has no fake date.
+5. Confirm neither record appears on public Events, a guessed public slug, or
+   public search/filter results.
+6. Create a copyable Organizer invitation, confirm there is no email-sent
+   claim, then revoke it.
+7. If a second invited identity becomes allowed in a later authorized policy
+   change, confirm it can edit only its assigned-club owned/co-organized
+   records and cannot edit another organizer's Draft.
+8. Confirm Meetup remains Owner/Administrator configurable and Organizer
+   read-only.
 
-## Next phase
+## Exact next phase
 
-**Phase 3 — Not started. Stop after the owner-only deployment handoff.**
+**Phase 4 — Not started.**

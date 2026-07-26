@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -9,8 +10,10 @@ const FIXTURE_NOW = Date.UTC(2026, 6, 24, 19, 0, 0);
 const ORGANIZATION_ID = "phase2-org";
 const PROFILE_ID = "phase2-owner";
 const EXPECTED_DATABASE_INVARIANT_FINGERPRINT =
-  "c4145c188dc60b93166c80f14c13c5b88aeb00e1167c06735d72f8e4b3af0e99";
+  "0d89f16aa0a5a462b73a34c8ecb98cd011527bc50124697a90bffcbd095e5621";
 const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
+  "audit_logs_immutable_before_delete",
+  "audit_logs_immutable_before_update",
   "club_public_profiles_org_integrity_before_insert",
   "club_public_profiles_org_integrity_before_update",
   "clubs_public_profile_org_integrity_before_update",
@@ -20,6 +23,25 @@ const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
   "events_public_details_org_integrity_before_update",
   "events_reservation_guard_before_insert",
   "events_reservation_guard_before_update",
+  "organization_memberships_single_owner_before_delete",
+  "organization_memberships_single_owner_before_insert",
+  "organization_memberships_single_owner_before_update",
+  "organizer_event_organizers_integrity_before_insert",
+  "organizer_event_organizers_integrity_before_update",
+  "organizer_event_revisions_integrity_before_delete",
+  "organizer_event_revisions_integrity_before_insert",
+  "organizer_event_revisions_integrity_before_update",
+  "organizer_events_phase3_integrity_before_insert",
+  "organizer_events_phase3_integrity_before_update",
+  "organizer_profile_preferences_integrity_before_insert",
+  "organizer_profile_preferences_integrity_before_update",
+  "organizer_rate_limits_integrity_before_insert",
+  "organizer_rate_limits_integrity_before_update",
+  "ownership_transfer_locks_before_delete",
+  "ownership_transfer_locks_before_insert",
+  "ownership_transfer_locks_before_update",
+  "profiles_membership_identity_before_delete",
+  "profiles_membership_identity_before_update",
 ]);
 const PRIVATE_SENTINELS = [
   "PRIVATE_LEGAL_SENTINEL",
@@ -31,7 +53,20 @@ const PRIVATE_SENTINELS = [
   "PRIVATE_COMMUNITY_SENTINEL",
   "PRIVATE_EVENT_DETAIL_SENTINEL",
   "PRIVATE_VENUE_DETAIL_SENTINEL",
+  "PRIVATE_PHASE3_TITLE_SENTINEL",
+  "PRIVATE_PHASE3_NOTES_SENTINEL",
+  "PRIVATE_PHASE3_MEETING_SENTINEL",
+  "PRIVATE_NOTIFICATION_SENTINEL",
+  "PRIVATE_AUDIT_SENTINEL",
+  "PRIVATE_INVITATION_EMAIL_SENTINEL",
 ];
+const OWNER_AUTH_HEADERS = Object.freeze({
+  "oai-authenticated-user-email":
+    "private_owner_email_sentinel@example.invalid",
+  "oai-authenticated-user-full-name": "Rendered%20Owner",
+  "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+});
+const INVITATION_TOKEN = "R".repeat(43);
 const PUBLIC_PATHS = [
   "/",
   "/events",
@@ -77,6 +112,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0009_sites_compatible_baseline.sql",
     "0010_sites_compatible_indexes_a.sql",
     "0011_sites_compatible_indexes_b.sql",
+    "0012_phase3_organizer_foundation.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -119,7 +155,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     .first();
   assert.deepEqual({ ...marker }, {
     trigger_fingerprint: EXPECTED_DATABASE_INVARIANT_FINGERPRINT,
-    version: 1,
+    version: 3,
   });
   const triggerRows = await database
     .prepare(
@@ -143,7 +179,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    37,
+    43,
   );
   assert.equal(
     await database
@@ -154,7 +190,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    75,
+    90,
   );
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
@@ -650,6 +686,7 @@ test("unknown, guessed, and draft routes use the custom noindex 404", async () =
   for (const path of [
     "/nothing-at-this-address",
     "/events/guessed-private-event",
+    "/events/private-phase3-idea-sentinel",
     "/clubs/off-radar-eats",
     "/clubs/contemplative-meditation-journaling-circle",
   ]) {
@@ -722,6 +759,257 @@ test("signed-out organizer traffic is redirected to Sites-owned SIWC and noindex
   );
 });
 
+test("authenticated but uninvited organizer traffic receives a private rendered 403", async () => {
+  const response = await fetchPath("/organizer", {
+    headers: {
+      "oai-authenticated-user-email": "uninvited-rendered@example.invalid",
+      "oai-authenticated-user-full-name": "Uninvited%20Rendered",
+      "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    },
+  });
+
+  assert.equal(response.status, 403);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/u);
+  assert.equal(
+    response.headers.get("x-robots-tag"),
+    "noindex, nofollow, noarchive",
+  );
+  const html = await response.text();
+  assert.match(html, /Organizer access unavailable/u);
+  assert.match(html, /no active organizer membership/u);
+  for (const sentinel of PRIVATE_SENTINELS) {
+    assert.doesNotMatch(html, new RegExp(sentinel, "iu"));
+  }
+});
+
+test("the owner workspace renders private records without public chrome or caching", async () => {
+  for (const [path, expected] of [
+    ["/organizer", /Private organizer workspace/u],
+    ["/organizer/events", /PRIVATE_PHASE3_TITLE_SENTINEL/u],
+    ["/organizer/events/new", /Create private record/u],
+    ["/organizer/calendar", /PRIVATE_PHASE3_TITLE_SENTINEL/u],
+    [
+      "/organizer/events/phase3-private-idea",
+      /PRIVATE_PHASE3_NOTES_SENTINEL/u,
+    ],
+    ["/organizer/notifications", /PRIVATE_NOTIFICATION_SENTINEL/u],
+  ]) {
+    const response = await fetchPath(path, {
+      headers: OWNER_AUTH_HEADERS,
+    });
+    assert.equal(response.status, 200, `${path} status`);
+    assert.match(
+      response.headers.get("cache-control") ?? "",
+      /(?:^|,\s*)no-store(?:,|$)/u,
+      `${path} cache control`,
+    );
+    assert.equal(
+      response.headers.get("x-robots-tag"),
+      "noindex, nofollow, noarchive",
+      `${path} robots`,
+    );
+    const html = await response.text();
+    assert.match(html, expected, `${path} private content`);
+    assert.match(html, /aria-label="Organizer"/u);
+    assert.match(html, /aria-label="Organizer shortcuts"/u);
+    assert.doesNotMatch(html, /aria-label="Primary navigation"/u);
+    assert.doesNotMatch(html, /aria-label="Footer navigation"/u);
+    assert.doesNotMatch(html, /application\/ld\+json/iu);
+    assert.doesNotMatch(html, /rel="canonical"/iu);
+    assert.doesNotMatch(html, /_vinext\/image\?url=%2Ficon\.png/iu);
+    if (path === "/organizer/events") {
+      assert.match(html, /Showing[\s\S]*of[\s\S]*private record/iu);
+      assert.match(html, /method="get"/iu);
+      assert.match(html, /name="search"/iu);
+      assert.match(html, /name="status"/iu);
+    }
+    if (path === "/organizer/calendar") {
+      assert.match(html, /matching record[\s\S]*from[\s\S]*total/iu);
+    }
+  }
+});
+
+test("rendered organizer event filters are server-validated and truthful", async () => {
+  const filtered = await fetchPath(
+    "/organizer/events?status=deleted&search=no-such-private-record",
+    { headers: OWNER_AUTH_HEADERS },
+  );
+  assert.equal(filtered.status, 200);
+  assert.match(filtered.headers.get("cache-control") ?? "", /no-store/u);
+  assert.equal(
+    filtered.headers.get("x-robots-tag"),
+    "noindex, nofollow, noarchive",
+  );
+  const filteredHtml = await filtered.text();
+  assert.match(filteredHtml, /No private records match/u);
+  assert.doesNotMatch(filteredHtml, /PRIVATE_PHASE3_TITLE_SENTINEL/u);
+
+  for (const path of [
+    "/organizer/events?page=not-a-page",
+    `/organizer/events?search=${"x".repeat(121)}`,
+    "/organizer/calendar?take=5001",
+  ]) {
+    const response = await fetchPath(path, {
+      headers: OWNER_AUTH_HEADERS,
+    });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/u);
+    assert.equal(
+      response.headers.get("x-robots-tag"),
+      "noindex, nofollow, noarchive",
+    );
+    const html = await response.text();
+    assert.match(html, /temporarily unavailable/u);
+    assertNoPrivateSentinels(
+      html,
+      new Set(["PRIVATE_ORGANIZER_SENTINEL"]),
+    );
+  }
+});
+
+test("built organizer mutations enforce origin and bounded JSON before validation", async () => {
+  const noOrigin = await fetchPath("/api/organizer/events", {
+    body: "{}",
+    headers: {
+      ...OWNER_AUTH_HEADERS,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+  assert.equal(noOrigin.status, 403);
+  assertOrganizerPrivateResponse(noOrigin);
+  assert.deepEqual(await noOrigin.json(), {
+    error: {
+      code: "authorization_denied",
+      message: "This request is not permitted.",
+    },
+  });
+
+  const malformed = await fetchPath("/api/organizer/events", {
+    body: "{",
+    headers: {
+      ...OWNER_AUTH_HEADERS,
+      "content-type": "application/json",
+      origin: "https://preview.example",
+    },
+    method: "POST",
+  });
+  assert.equal(malformed.status, 422);
+  assertOrganizerPrivateResponse(malformed);
+  const malformedText = await malformed.text();
+  assert.match(malformedText, /validation_failed/u);
+  assertNoPrivateSentinels(malformedText);
+
+  const oversized = await fetchPath("/api/organizer/events", {
+    body: JSON.stringify({ title: "x".repeat(48_100) }),
+    headers: {
+      ...OWNER_AUTH_HEADERS,
+      "content-type": "application/json",
+      origin: "https://preview.example",
+    },
+    method: "POST",
+  });
+  assert.equal(oversized.status, 422);
+  assertOrganizerPrivateResponse(oversized);
+  const oversizedText = await oversized.text();
+  assert.match(oversizedText, /validation_failed/u);
+  assertNoPrivateSentinels(oversizedText);
+});
+
+test("the built invitation flow strips the token and clears it on success and reuse", async () => {
+  const capture = await fetchPath(
+    `/accept-invitation?token=${INVITATION_TOKEN}`,
+    { redirect: "manual" },
+  );
+  assert.equal(capture.status, 303);
+  assert.equal(
+    capture.headers.get("location"),
+    "https://preview.example/accept-invitation",
+  );
+  assert.equal(capture.headers.get("referrer-policy"), "no-referrer");
+  assertOrganizerPrivateResponse(capture);
+  const invitationCookie = capture.headers.get("set-cookie") ?? "";
+  assert.match(
+    invitationCookie,
+    new RegExp(
+      `^__Secure-vcc_invitation=${INVITATION_TOKEN}; HttpOnly; SameSite=Lax; Path=/accept-invitation; Max-Age=600; Secure$`,
+      "u",
+    ),
+  );
+  assert.equal(await capture.text(), "");
+
+  const cookiePair = invitationCookie.split(";", 1)[0];
+  const acceptanceHeaders = {
+    "content-type": "application/json",
+    cookie: cookiePair,
+    origin: "https://preview.example",
+    "oai-authenticated-user-email":
+      "private_invitation_email_sentinel@example.invalid",
+    "oai-authenticated-user-full-name": "Rendered%20Invitee",
+    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+  };
+  const accepted = await fetchPath("/accept-invitation/consume", {
+    body: "{}",
+    headers: acceptanceHeaders,
+    method: "POST",
+  });
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.headers.get("referrer-policy"), "no-referrer");
+  assertOrganizerPrivateResponse(accepted);
+  assert.match(
+    accepted.headers.get("set-cookie") ?? "",
+    /^__Secure-vcc_invitation=; HttpOnly; SameSite=Lax; Path=\/accept-invitation; Max-Age=0; Secure$/u,
+  );
+  const acceptedText = await accepted.text();
+  assert.deepEqual(JSON.parse(acceptedText), {
+    accepted: true,
+    role: "organizer",
+  });
+  assert.doesNotMatch(acceptedText, new RegExp(INVITATION_TOKEN, "u"));
+  assertNoPrivateSentinels(acceptedText);
+
+  const reused = await fetchPath("/accept-invitation/consume", {
+    body: "{}",
+    headers: acceptanceHeaders,
+    method: "POST",
+  });
+  assert.equal(reused.status, 403);
+  assert.equal(reused.headers.get("referrer-policy"), "no-referrer");
+  assertOrganizerPrivateResponse(reused);
+  const reusedText = await reused.text();
+  assert.match(reusedText, /authorization_denied/u);
+  assert.doesNotMatch(reusedText, new RegExp(INVITATION_TOKEN, "u"));
+  assertNoPrivateSentinels(reusedText);
+});
+
+test("the clean invitation page and failed consume remain no-referrer and token-free", async () => {
+  const cleanPage = await fetchPath("/accept-invitation", {
+    redirect: "manual",
+  });
+  assert.ok([302, 303, 307].includes(cleanPage.status));
+  assert.equal(cleanPage.headers.get("referrer-policy"), "no-referrer");
+  assertOrganizerPrivateResponse(cleanPage);
+  assert.doesNotMatch(
+    cleanPage.headers.get("location") ?? "",
+    /token|PRIVATE_/iu,
+  );
+
+  const failed = await fetchPath("/accept-invitation/consume", {
+    body: "{}",
+    headers: {
+      "content-type": "application/json",
+      origin: "https://preview.example",
+    },
+    method: "POST",
+  });
+  assert.equal(failed.status, 401);
+  assert.equal(failed.headers.get("referrer-policy"), "no-referrer");
+  assertOrganizerPrivateResponse(failed);
+  const failedText = await failed.text();
+  assert.match(failedText, /authentication_required/u);
+  assertNoPrivateSentinels(failedText);
+});
+
 test("signed-out private API responses are safe, private, and noindexed", async () => {
   const response = await fetchPath("/api/organizer/session", {
     headers: { accept: "application/json" },
@@ -765,11 +1053,20 @@ function assertSharedChrome(html) {
   assert.match(html, /Privacy/u);
 }
 
-function assertNoPrivateSentinels(value) {
+function assertNoPrivateSentinels(value, allowed = new Set()) {
   for (const sentinel of PRIVATE_SENTINELS) {
-    assert.doesNotMatch(value, new RegExp(sentinel, "u"), sentinel);
+    if (allowed.has(sentinel)) continue;
+    assert.doesNotMatch(value, new RegExp(sentinel, "iu"), sentinel);
   }
   assert.doesNotMatch(value, /events\/ical|source_url|sourceUrl/iu);
+}
+
+function assertOrganizerPrivateResponse(response) {
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/u);
+  assert.equal(
+    response.headers.get("x-robots-tag"),
+    "noindex, nofollow, noarchive",
+  );
 }
 
 function jsonLdDocuments(html) {
@@ -863,11 +1160,29 @@ function productionMigrationFragments(sql) {
 }
 
 async function initializePackagedDatabaseInvariants(targetRuntime) {
-  const response = await targetRuntime.dispatchFetch(
+  const repairResponse = await targetRuntime.dispatchFetch(
     new URL("/robots.txt", "https://preview.example"),
   );
-  assert.equal(response.status, 200);
-  await response.arrayBuffer();
+  assert.equal(repairResponse.status, 503);
+  assert.match(
+    repairResponse.headers.get("cache-control") ?? "",
+    /no-store/u,
+  );
+  assert.equal(repairResponse.headers.get("retry-after"), "30");
+  assert.equal(
+    repairResponse.headers.get("x-robots-tag"),
+    "noindex, nofollow, noarchive",
+  );
+  assert.match(
+    await repairResponse.text(),
+    /database safety checks were updated/u,
+  );
+
+  const verifiedResponse = await targetRuntime.dispatchFetch(
+    new URL("/robots.txt", "https://preview.example"),
+  );
+  assert.equal(verifiedResponse.status, 200);
+  await verifiedResponse.arrayBuffer();
 }
 
 async function seedPublicCatalog(targetRuntime) {
@@ -897,6 +1212,21 @@ async function seedPublicCatalog(targetRuntime) {
     "vancouver-curiosity-and-education-society",
     FIXTURE_NOW,
     PROFILE_ID,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO organization_memberships (
+       id, organization_id, profile_id, normalized_email,
+       role, status, created_by_profile_id,
+       created_at, updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, NULL)`,
+    "phase2-owner-membership",
+    ORGANIZATION_ID,
+    PROFILE_ID,
+    "private_owner_email_sentinel@example.invalid",
     PROFILE_ID,
     FIXTURE_NOW,
     FIXTURE_NOW,
@@ -1314,6 +1644,103 @@ async function seedPublicCatalog(targetRuntime) {
      ) VALUES (?, ?, 'in_person', ?, ?)`,
     "event-rendered-cancelled",
     ORGANIZATION_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+
+  await run(
+    database,
+    `INSERT INTO organizer_events (
+       id, organization_id, club_id, program_id, event_lane_id, category_id,
+       venue_id, primary_organizer_profile_id, title, slug, summary,
+       description, private_notes, private_meeting_details, meetup_event_url,
+       planning_status, publication_status, schedule_shape, starts_at_utc,
+       ends_at_utc, timezone, all_day_start_date,
+       all_day_end_date_exclusive, buffer_before_minutes,
+       buffer_after_minutes, content_version, schedule_version,
+       created_by_profile_id, updated_by_profile_id, created_at, updated_at,
+       deleted_at
+     ) VALUES (
+       ?, ?, ?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, NULL, 'idea',
+       'private', 'unscheduled', NULL, NULL, 'America/Vancouver', NULL, NULL,
+       0, 0, 1, 1, ?, ?, ?, ?, NULL
+     )`,
+    "phase3-private-idea",
+    ORGANIZATION_ID,
+    "club-curiosity",
+    "lane-think",
+    PROFILE_ID,
+    "PRIVATE_PHASE3_TITLE_SENTINEL",
+    "private-phase3-idea-sentinel",
+    "PRIVATE_PHASE3_TITLE_SENTINEL summary",
+    "PRIVATE_PHASE3_TITLE_SENTINEL description",
+    "PRIVATE_PHASE3_NOTES_SENTINEL",
+    "PRIVATE_PHASE3_MEETING_SENTINEL",
+    PROFILE_ID,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO organizer_event_revisions (
+       id, organization_id, organizer_event_id, content_version,
+       schedule_version, action, snapshot_json, actor_profile_id, created_at
+     ) VALUES (?, ?, ?, 1, 1, 'created', ?, ?, ?)`,
+    "phase3-private-idea-revision",
+    ORGANIZATION_ID,
+    "phase3-private-idea",
+    JSON.stringify({
+      title: "PRIVATE_PHASE3_TITLE_SENTINEL",
+      privateNotes: "PRIVATE_PHASE3_NOTES_SENTINEL",
+      privateMeetingDetails: "PRIVATE_PHASE3_MEETING_SENTINEL",
+    }),
+    PROFILE_ID,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO notifications (
+       id, organization_id, recipient_profile_id, type, payload_json,
+       read_at, created_at, deleted_at
+     ) VALUES (?, ?, ?, 'event_assignment', ?, NULL, ?, NULL)`,
+    "phase3-private-notification",
+    ORGANIZATION_ID,
+    PROFILE_ID,
+    JSON.stringify({
+      eventId: "phase3-private-idea",
+      title: "PRIVATE_NOTIFICATION_SENTINEL",
+      type: "event_assignment",
+    }),
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO audit_logs (
+       id, organization_id, actor_profile_id, action, entity_type, entity_id,
+       metadata_json, created_at
+     ) VALUES (?, ?, ?, 'event.created', 'organizer_event', ?, ?, ?)`,
+    "phase3-private-audit",
+    ORGANIZATION_ID,
+    PROFILE_ID,
+    "phase3-private-idea",
+    JSON.stringify({ detail: "PRIVATE_AUDIT_SENTINEL" }),
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO invitations (
+       id, organization_id, club_id, token_hash, target_normalized_email,
+       intended_role, created_by_profile_id, expires_at, revoked_at, used_at,
+       used_by_profile_id, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, 'organizer', ?, ?, NULL, NULL, NULL, ?, ?)`,
+    "phase3-private-invitation",
+    ORGANIZATION_ID,
+    "club-curiosity",
+    createHash("sha256").update(INVITATION_TOKEN).digest("hex"),
+    "private_invitation_email_sentinel@example.invalid",
+    PROFILE_ID,
+    Date.UTC(2030, 0, 1),
     FIXTURE_NOW,
     FIXTURE_NOW,
   );

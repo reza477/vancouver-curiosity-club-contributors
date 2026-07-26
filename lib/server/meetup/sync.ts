@@ -30,6 +30,26 @@ const SOURCE_TYPE = "meetup_ics";
 const REFRESH_INTERVAL_MS = 15 * 60_000;
 const STALE_AFTER_MS = 30 * 60_000;
 const LEASE_DURATION_MS = 2 * 60_000;
+const CONFIGURE_ACTOR_GUARD_SQL = `EXISTS (
+  SELECT 1
+  FROM organization_memberships AS actor_membership
+  JOIN profiles AS actor_profile
+    ON actor_profile.id = actor_membership.profile_id
+  JOIN organizations AS actor_organization
+    ON actor_organization.id = actor_membership.organization_id
+   AND actor_organization.deleted_at IS NULL
+  WHERE actor_membership.id = ?
+    AND actor_membership.organization_id = ?
+    AND actor_membership.profile_id = ?
+    AND actor_membership.normalized_email = ?
+    AND actor_membership.normalized_email =
+        actor_profile.normalized_email
+    AND actor_membership.role IN ('owner', 'administrator')
+    AND actor_membership.status = 'active'
+    AND actor_membership.deleted_at IS NULL
+    AND actor_profile.status = 'active'
+    AND actor_profile.deleted_at IS NULL
+)`;
 // Keeps the worst-case D1 query count below the documented 50-query Free
 // Worker invocation ceiling, including a conflict rollback plus rejection
 // record for every component in this slice.
@@ -180,10 +200,12 @@ export async function configureMeetupCalendarSource(
   }
   const sourceId = crypto.randomUUID();
 
-  await database.batch([
-    database
-      .prepare(
-        `INSERT INTO sync_sources (
+  let results: readonly D1ResultLike[];
+  try {
+    results = await database.batch([
+      database
+        .prepare(
+          `INSERT INTO sync_sources (
            id, organization_id, club_id, source_type, source_url, enabled,
            refresh_interval_minutes, next_refresh_at, lease_token,
             lease_expires_at, last_attempt_at, last_success_at, last_error_at,
@@ -192,42 +214,100 @@ export async function configureMeetupCalendarSource(
             pending_snapshot_hash, pending_cursor,
             created_by_profile_id, updated_by_profile_id,
             created_at, updated_at, deleted_at
-           ) VALUES (
-             ?, ?, ?, ?, ?, 1, 15, ?, NULL, NULL, NULL, NULL, NULL, NULL,
-             NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, NULL
-           )`,
-      )
-      .bind(
-        sourceId,
-        actor.organizationId,
-        clubId,
-        SOURCE_TYPE,
-        sourceUrl,
-        now,
-        actor.profileId,
-        actor.profileId,
-        now,
-        now,
-      ),
-    database
-      .prepare(
-        `INSERT INTO audit_logs (
+           )
+           SELECT
+             ?, ?, selected_club.id, ?, ?, 1, 15, ?,
+             NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+             NULL, NULL, NULL, NULL, ?, ?, ?, ?, NULL
+           FROM clubs AS selected_club
+           WHERE selected_club.id = ?
+             AND selected_club.organization_id = ?
+             AND selected_club.deleted_at IS NULL
+             AND ${CONFIGURE_ACTOR_GUARD_SQL}`,
+        )
+        .bind(
+          sourceId,
+          actor.organizationId,
+          SOURCE_TYPE,
+          sourceUrl,
+          now,
+          actor.profileId,
+          actor.profileId,
+          now,
+          now,
+          clubId,
+          actor.organizationId,
+          actor.membershipId,
+          actor.organizationId,
+          actor.profileId,
+          identity.email,
+        ),
+      database
+        .prepare(
+          `INSERT INTO audit_logs (
            id, organization_id, actor_profile_id, action,
            entity_type, entity_id, metadata_json, created_at
-         ) VALUES (?, ?, ?, ?, 'sync_source', ?, ?, ?)`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        actor.organizationId,
-        actor.profileId,
-        "meetup.connection_configured",
-         sourceId,
-         JSON.stringify({
-           sourceType: SOURCE_TYPE,
-         }),
-        now,
-      ),
-  ]);
+         ) VALUES (
+           ?, ?, ?,
+           CASE WHEN EXISTS (
+             SELECT 1
+             FROM sync_sources AS source
+             JOIN clubs AS source_club
+               ON source_club.id = source.club_id
+              AND source_club.organization_id = source.organization_id
+              AND source_club.deleted_at IS NULL
+             WHERE source.id = ?
+               AND source.organization_id = ?
+               AND source.club_id = ?
+               AND source.deleted_at IS NULL
+           ) AND ${CONFIGURE_ACTOR_GUARD_SQL}
+           THEN 'meetup.connection_configured' ELSE NULL END,
+           'sync_source', ?, ?, ?
+         )`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          actor.organizationId,
+          actor.profileId,
+          sourceId,
+          actor.organizationId,
+          clubId,
+          actor.membershipId,
+          actor.organizationId,
+          actor.profileId,
+          identity.email,
+          sourceId,
+          JSON.stringify({
+            sourceType: SOURCE_TYPE,
+          }),
+          now,
+        ),
+    ]);
+  } catch (error) {
+    if (isConfigureAuditSentinelFailure(error)) {
+      await authorizeMembership(database, identity, {
+        allowedRoles: ["owner", "administrator"],
+        clubId,
+      });
+      throw validationIssue(
+        "clubId",
+        "meetup_connection_changed",
+        "The selected Meetup connection changed before it could be saved.",
+      );
+    }
+    throw error;
+  }
+  if (changes(results[0]) !== 1 || changes(results[1]) !== 1) {
+    await authorizeMembership(database, identity, {
+      allowedRoles: ["owner", "administrator"],
+      clubId,
+    });
+    throw validationIssue(
+      "clubId",
+      "meetup_connection_changed",
+      "The selected Meetup connection changed before it could be saved.",
+    );
+  }
   return connectionStateForOrganization(
     database,
     actor.organizationId,
@@ -3031,6 +3111,12 @@ function isoOrNull(value: number | null): string | null {
 
 function changes(result: D1ResultLike): number {
   return Number(result.meta?.changes ?? 0);
+}
+
+function isConfigureAuditSentinelFailure(error: unknown): boolean {
+  return /NOT NULL constraint failed: audit_logs\.action/iu.test(
+    String(error),
+  );
 }
 
 function requiredRowString(

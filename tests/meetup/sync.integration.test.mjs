@@ -401,6 +401,125 @@ test("same-source configuration is idempotent", async (t) => {
   );
 });
 
+test("connection commit rejects an archived club without persisting a source, feed, or audit", async (t) => {
+  const database = createDatabase({ clubs: ["club_a"] });
+  t.after(() => database.close());
+  let raced = false;
+  const racingDatabase = {
+    prepare(sql) {
+      return database.prepare(sql);
+    },
+    async batch(statements) {
+      if (!raced) {
+        raced = true;
+        database.exec(
+          "UPDATE clubs SET deleted_at = 1500 WHERE id = 'club_a'",
+        );
+      }
+      return database.batch(statements);
+    },
+  };
+
+  await assert.rejects(
+    configureMeetupCalendarSource(
+      racingDatabase,
+      OWNER_IDENTITY,
+      { clubId: "club_a", feedUrl: FEED_A },
+      1_000,
+    ),
+    (error) => {
+      assert.equal(error instanceof OrganizerAccessDeniedError, true);
+      assert.equal(String(error).includes(FEED_A), false);
+      return true;
+    },
+  );
+  assert.equal(
+    await database
+      .prepare("SELECT count(*) AS count FROM sync_sources")
+      .first("count"),
+    0,
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM audit_logs
+         WHERE action = 'meetup.connection_configured'`,
+      )
+      .first("count"),
+    0,
+  );
+});
+
+test("connection commit revalidates an active Owner or Administrator actor", async (t) => {
+  const database = createDatabase({ clubs: ["club_a"] });
+  t.after(() => database.close());
+  database.exec(`
+    INSERT INTO profiles (
+      id, siwc_subject, normalized_email, display_name, status,
+      created_at, updated_at
+    ) VALUES (
+      'profile_admin', 'email:admin@example.com', 'admin@example.com',
+      'Administrator', 'active', 1, 1
+    );
+    INSERT INTO organization_memberships (
+      id, organization_id, profile_id, normalized_email, role, status,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'membership_admin', '${ORGANIZATION_ID}', 'profile_admin',
+      'admin@example.com', 'administrator', 'active',
+      'profile_owner', 1, 1
+    );
+  `);
+  const administrator = trustedIdentityFromSites({
+    email: "admin@example.com",
+    displayName: "Administrator",
+  });
+  let raced = false;
+  const racingDatabase = {
+    prepare(sql) {
+      return database.prepare(sql);
+    },
+    async batch(statements) {
+      if (!raced) {
+        raced = true;
+        database.exec(`
+          UPDATE organization_memberships
+          SET status = 'suspended'
+          WHERE id = 'membership_admin'
+        `);
+      }
+      return database.batch(statements);
+    },
+  };
+
+  await assert.rejects(
+    configureMeetupCalendarSource(
+      racingDatabase,
+      administrator,
+      { clubId: "club_a", feedUrl: FEED_A },
+      1_000,
+    ),
+    (error) => error instanceof OrganizerAccessDeniedError,
+  );
+  assert.equal(
+    await database
+      .prepare("SELECT count(*) AS count FROM sync_sources")
+      .first("count"),
+    0,
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM audit_logs
+         WHERE action = 'meetup.connection_configured'`,
+      )
+      .first("count"),
+    0,
+  );
+});
+
 test("resolves the exact safe Meetup program catalog from an empty organization", async (t) => {
   const database = createDatabase({ clubs: [] });
   t.after(() => database.close());
