@@ -84,10 +84,25 @@ const ACTIVE_RESERVATION_CONFLICT_SQL = String.raw`
 )`;
 
 /*
+ * Publication-only mutations keep the canonical reservation unchanged. They
+ * still use a Phase 4 intent for organization, actor, shape, and version CAS,
+ * but must not retroactively demand a new conflict decision merely to save
+ * private public-copy fields, cancel a pending job, or unpublish.
+ */
+const PUBLICATION_NON_RESERVATION_RECHECK_OPERATIONS_SQL = String.raw`
+  'update_public_details',
+  'cancel_scheduled_publication',
+  'invalidate_scheduled_publication',
+  'unpublish',
+  'update_scheduled',
+  'update_unpublished'
+`;
+
+/*
  * The intent insert is an authorization/preflight record, not permission by
  * itself. A reserving state is allowed only when every conflict that exists at
  * the committing mutation has an exact incident and active version-bound
- * override created earlier in the same D1 batch.
+ * override bound to the current D1 batch.
  */
 const MISSING_MANUAL_CONFLICT_AUTHORIZATION_SQL = String.raw`
 EXISTS (
@@ -436,6 +451,9 @@ const RESERVATION_POLICY_COMMIT_GUARD_SQL = String.raw`
     FROM organizer_schedule_write_intents AS intent
     WHERE intent.id = NEW.write_intent_id
       AND intent.policy_mode = 'block'
+      AND intent.operation NOT IN (
+        ${PUBLICATION_NON_RESERVATION_RECHECK_OPERATIONS_SQL}
+      )
   )
   AND ${ACTIVE_RESERVATION_CONFLICT_SQL}
 )
@@ -446,6 +464,9 @@ OR (
     WHERE intent.id = NEW.write_intent_id
       AND intent.policy_mode IN (
         'warn_reason', 'require_admin_approval'
+      )
+      AND intent.operation NOT IN (
+        ${PUBLICATION_NON_RESERVATION_RECHECK_OPERATIONS_SQL}
       )
   )
   AND (
@@ -463,7 +484,13 @@ BEGIN
       OR NEW.operation NOT IN (
         'create', 'update', 'place_hold', 'extend_hold', 'release_hold',
         'confirm', 'cancel', 'complete', 'archive', 'soft_delete',
-        'restore', 'duplicate', 'duplicate_reserving', 'phase4_backfill'
+        'restore', 'restore_cancelled', 'duplicate',
+        'duplicate_reserving', 'phase4_backfill',
+        'update_public_details', 'publish', 'schedule_publication',
+        'cancel_scheduled_publication', 'reconcile_publication',
+        'invalidate_scheduled_publication',
+        'unpublish', 'update_published', 'update_scheduled',
+        'update_unpublished'
       )
     THEN RAISE(ABORT, 'phase4_intent_reference_mismatch')
   END;
@@ -553,34 +580,38 @@ BEGIN
         SELECT count(DISTINCT CAST(scope.value AS TEXT))
         FROM json_each(NEW.organizer_scope_json) AS scope
       )
-      OR EXISTS (
-        SELECT 1
-        FROM json_each(NEW.organizer_scope_json) AS scope
-        WHERE NOT EXISTS (
+      OR (
+        NEW.operation <> 'invalidate_scheduled_publication'
+        AND EXISTS (
           SELECT 1
-          FROM profiles AS organizer
-          JOIN organization_memberships AS membership
-            ON membership.profile_id = organizer.id
-           AND membership.organization_id = NEW.organization_id
-           AND membership.status = 'active'
-           AND membership.deleted_at IS NULL
-          WHERE organizer.id = CAST(scope.value AS TEXT)
-            AND organizer.status = 'active'
-            AND organizer.deleted_at IS NULL
-            AND (
-              membership.role <> 'organizer'
-              OR EXISTS (
-                SELECT 1
-                FROM club_memberships AS club_membership
-                WHERE club_membership.organization_id = NEW.organization_id
-                  AND club_membership.club_id = NEW.club_id
-                  AND club_membership.organization_membership_id =
-                      membership.id
-                  AND club_membership.profile_id = organizer.id
-                  AND club_membership.status = 'active'
-                  AND club_membership.deleted_at IS NULL
+          FROM json_each(NEW.organizer_scope_json) AS scope
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM profiles AS organizer
+            JOIN organization_memberships AS membership
+              ON membership.profile_id = organizer.id
+             AND membership.organization_id = NEW.organization_id
+             AND membership.status = 'active'
+             AND membership.deleted_at IS NULL
+            WHERE organizer.id = CAST(scope.value AS TEXT)
+              AND organizer.status = 'active'
+              AND organizer.deleted_at IS NULL
+              AND (
+                membership.role <> 'organizer'
+                OR EXISTS (
+                  SELECT 1
+                  FROM club_memberships AS club_membership
+                  WHERE club_membership.organization_id =
+                        NEW.organization_id
+                    AND club_membership.club_id = NEW.club_id
+                    AND club_membership.organization_membership_id =
+                        membership.id
+                    AND club_membership.profile_id = organizer.id
+                    AND club_membership.status = 'active'
+                    AND club_membership.deleted_at IS NULL
+                )
               )
-            )
+          )
         )
       )
     THEN RAISE(ABORT, 'phase4_intent_reference_mismatch')
@@ -675,7 +706,30 @@ BEGIN
               )
             )
             OR (
-              NEW.operation <> 'phase4_backfill'
+              NEW.operation IN (
+                'update_public_details', 'publish',
+                'schedule_publication', 'cancel_scheduled_publication',
+                'reconcile_publication',
+                'invalidate_scheduled_publication', 'unpublish',
+                'update_published', 'update_scheduled',
+                'update_unpublished'
+              )
+              AND (
+                NEW.proposed_content_version <>
+                    NEW.expected_content_version + 1
+                OR NEW.proposed_schedule_version <>
+                    NEW.expected_schedule_version
+              )
+            )
+            OR (
+              NEW.operation NOT IN (
+                'phase4_backfill', 'update_public_details', 'publish',
+                'schedule_publication', 'cancel_scheduled_publication',
+                'reconcile_publication',
+                'invalidate_scheduled_publication', 'unpublish',
+                'update_published', 'update_scheduled',
+                'update_unpublished'
+              )
               AND (
                 NEW.proposed_content_version <>
                     NEW.expected_content_version + 1
@@ -711,7 +765,6 @@ BEGIN
           AND event.organization_id = NEW.organization_id
           AND event.club_id = NEW.club_id
           AND event.planning_status = NEW.planning_status
-          AND event.publication_status = 'private'
           AND event.schedule_shape = NEW.schedule_shape
           AND event.timezone = NEW.timezone
           AND event.all_day_start_date IS NEW.all_day_start_date
@@ -754,6 +807,9 @@ BEGIN
   SELECT CASE
     WHEN NEW.planning_status IN ('tentative_hold', 'confirmed')
       AND NEW.operation <> 'soft_delete'
+      AND NEW.operation NOT IN (
+        ${PUBLICATION_NON_RESERVATION_RECHECK_OPERATIONS_SQL}
+      )
       AND NEW.policy_mode = 'block'
       AND ${ACTIVE_RESERVATION_CONFLICT_SQL}
     THEN RAISE(ABORT, 'phase4_conflict_blocked')
@@ -762,6 +818,9 @@ BEGIN
   SELECT CASE
     WHEN NEW.planning_status IN ('tentative_hold', 'confirmed')
       AND NEW.operation <> 'soft_delete'
+      AND NEW.operation NOT IN (
+        ${PUBLICATION_NON_RESERVATION_RECHECK_OPERATIONS_SQL}
+      )
       AND NEW.policy_mode = 'warn_reason'
       AND ${ACTIVE_RESERVATION_CONFLICT_SQL}
       AND (NEW.reason IS NULL OR length(trim(NEW.reason)) = 0)
@@ -771,6 +830,9 @@ BEGIN
   SELECT CASE
     WHEN NEW.planning_status IN ('tentative_hold', 'confirmed')
       AND NEW.operation <> 'soft_delete'
+      AND NEW.operation NOT IN (
+        ${PUBLICATION_NON_RESERVATION_RECHECK_OPERATIONS_SQL}
+      )
       AND NEW.policy_mode = 'require_admin_approval'
       AND ${ACTIVE_RESERVATION_CONFLICT_SQL}
       AND NOT EXISTS (
@@ -843,7 +905,6 @@ BEGIN
         AND event.organization_id = NEW.organization_id
         AND event.club_id = NEW.club_id
         AND event.planning_status = NEW.planning_status
-        AND event.publication_status = 'private'
         AND event.schedule_shape = NEW.schedule_shape
         AND event.timezone = NEW.timezone
         AND event.all_day_start_date IS NEW.all_day_start_date
@@ -1001,7 +1062,6 @@ BEGIN
         AND intent.actor_profile_id = NEW.updated_by_profile_id
         AND event.club_id = NEW.club_id
         AND event.planning_status = NEW.planning_status
-        AND event.publication_status = 'private'
         AND event.schedule_shape = NEW.schedule_shape
         AND event.schedule_version = NEW.schedule_version
         AND event.all_day_start_date IS NEW.all_day_start_date
@@ -1068,7 +1128,6 @@ BEGIN
         AND intent.actor_profile_id = NEW.updated_by_profile_id
         AND event.club_id = NEW.club_id
         AND event.planning_status = NEW.planning_status
-        AND event.publication_status = 'private'
         AND event.schedule_shape = NEW.schedule_shape
         AND event.schedule_version = NEW.schedule_version
         AND event.all_day_start_date IS NEW.all_day_start_date
@@ -1219,7 +1278,6 @@ BEGIN
           AND event.organization_id = NEW.organization_id
           AND event.schedule_version + 1 =
               NEW.requested_schedule_version
-          AND event.publication_status = 'private'
           AND (
             requester_membership.role IN ('owner', 'administrator')
             OR event.primary_organizer_profile_id =
@@ -1306,7 +1364,6 @@ BEGIN
             AND event.organization_id = NEW.organization_id
              AND event.schedule_version + 1 =
                  NEW.requested_schedule_version
-            AND event.publication_status = 'private'
         )
       )
     THEN RAISE(ABORT, 'phase4_review_forbidden')
@@ -1504,7 +1561,7 @@ AND EXISTS (
   SELECT 1
   FROM database_invariant_state AS marker
   WHERE marker.singleton_key = 'database-guards'
-    AND marker.version = 4
+    AND marker.version = 5
 )
 BEGIN
   SELECT RAISE(ABORT, 'phase4_external_reservation_active');
@@ -2219,7 +2276,6 @@ WHERE NOT EXISTS (
     AND event.organization_id = state.organization_id
     AND event.club_id = state.club_id
     AND event.planning_status = state.planning_status
-    AND event.publication_status = 'private'
     AND event.deleted_at IS NULL
     AND event.schedule_shape = state.schedule_shape
     AND event.timezone = state.timezone
@@ -2270,7 +2326,6 @@ FROM organizer_events AS event
 JOIN organizer_conflict_policies AS policy
   ON policy.organization_id = event.organization_id
 WHERE event.schedule_shape IN ('timed', 'all_day')
-  AND event.publication_status = 'private'
   AND event.deleted_at IS NULL
   AND NOT EXISTS (
     SELECT 1

@@ -467,6 +467,44 @@ function invalidProjection(): never {
   );
 }
 
+function assertSinglePublicSlug(row: Record<string, unknown>): void {
+  const publicSlugCount = parseFiniteInteger(row.public_slug_count, {
+    path: "event.publicSlugCount",
+    minimum: 1,
+  });
+  if (publicSlugCount !== 1) invalidProjection();
+}
+
+function optionalPublicText(
+  value: unknown,
+  path: string,
+  maxLength: number,
+): string | null {
+  return parseOptionalBoundedString(value, { path, maxLength });
+}
+
+function optionalPublicHttpsUrl(value: unknown, path: string): string | null {
+  const input = parseOptionalBoundedString(value, {
+    path,
+    maxLength: 2_048,
+  });
+  if (input === null) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    return invalidProjection();
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== ""
+  ) {
+    return invalidProjection();
+  }
+  return parsed.toString();
+}
+
 function assertSuccessfulResult(
   result: D1ResultLike<Record<string, unknown>>,
 ): void {
@@ -485,7 +523,12 @@ export type PublicEventListView =
   (typeof PUBLIC_EVENT_LIST_VIEWS)[number];
 export type PublicEventAttendanceMode =
   (typeof PUBLIC_EVENT_ATTENDANCE_MODES)[number];
-export type PublicEventStatus = "cancelled" | "confirmed" | "tentative";
+export type PublicEventStatus =
+  | "cancelled"
+  | "completed"
+  | "confirmed"
+  | "tentative";
+export type PublicEventRsvpMode = "coming_soon" | "meetup" | null;
 
 export type PublicEventCardDto = Readonly<{
   attendanceMode: PublicEventAttendanceMode;
@@ -503,6 +546,7 @@ export type PublicEventCardDto = Readonly<{
     name: string;
     slug: string;
   }> | null;
+  rsvpMode: PublicEventRsvpMode;
   rsvpUrl: string | null;
   schedule: PublicEventDto["schedule"];
   slug: string;
@@ -517,8 +561,19 @@ export type PublicEventCardDto = Readonly<{
 
 export type PublicEventDetailDto = PublicEventCardDto &
   Readonly<{
+    arrivalInstructions: string | null;
+    availabilityState: "full" | "open" | "waitlist" | null;
+    capacity: number | null;
+    costText: string | null;
     description: string | null;
+    externalMapUrl: string | null;
     organizers: readonly Readonly<{ displayName: string }>[];
+    preparationInformation: string | null;
+    publicAccessNote: string | null;
+    publicOnlineUrl: string | null;
+    verifiedAccessibilityNotes: string | null;
+    weatherNote: string | null;
+    whatToBring: string | null;
   }>;
 
 export type QueryPublicEventsInput = Readonly<{
@@ -550,6 +605,11 @@ export type PublicEventPageDto = Readonly<{
 export type GetPublicEventInput = Readonly<{
   organizationId: unknown;
   slug: unknown;
+}>;
+
+export type GetAuthorizedOrganizerEventPublicPreviewInput = Readonly<{
+  organizationId: unknown;
+  organizerEventId: unknown;
 }>;
 
 export type ListRelatedPublicEventsInput = GetPublicEventInput &
@@ -598,16 +658,95 @@ type ParsedPublicEventQuery = Readonly<{
 /**
  * Shared production projection for every public event surface.
  *
- * The manual branch permanently excludes canonical rows that have Meetup
- * source-link history. The Meetup branch takes every mutable source fact from
- * a fully published active snapshot, uses `sync_sources.club_id` rather than a
- * pending import's mutable canonical club, and never selects the private feed
- * URL. The outer projection may use canonical rows only for owner-managed
- * enrichment that the importer does not mutate (summary, description, lane,
- * category, public venue, attribution consent, and attendance mode).
+ * The legacy-manual branch permanently excludes canonical rows that have
+ * Meetup source-link history. The Meetup branch takes every mutable source
+ * fact from a fully published active snapshot, uses `sync_sources.club_id`
+ * rather than a pending import's mutable canonical club, and never selects the
+ * private feed URL. Its enrichment remains limited to owner-managed facts that
+ * the importer does not mutate.
+ *
+ * The organizer branch reads the one canonical `organizer_events` row directly
+ * and joins only Phase 5 public sidecars, a valid publication-state row, and a
+ * published club. Source-qualified identities are deduplicated before slug
+ * collisions are counted; a collision fails public DTO construction rather
+ * than silently ranking one unrelated source above another.
  */
+const ORGANIZER_PUBLIC_HOSTS_CTE_SQL = `
+  organizer_public_host_candidates AS (
+    SELECT public_host.organization_id AS organization_id,
+           public_host.organizer_event_id AS organizer_event_id,
+           profile.display_name AS organizer_name,
+           row_number() OVER (
+             PARTITION BY public_host.organization_id,
+                          public_host.organizer_event_id
+             ORDER BY
+               CASE
+                 WHEN public_host.profile_id =
+                      host_event.primary_organizer_profile_id
+                 THEN 0
+                 ELSE 1
+               END,
+               profile.display_name COLLATE NOCASE,
+               profile.id
+           ) AS organizer_rank
+    FROM organizer_event_public_hosts AS public_host
+    JOIN organizer_events AS host_event
+      ON host_event.organization_id = public_host.organization_id
+     AND host_event.id = public_host.organizer_event_id
+    JOIN profiles AS profile
+      ON profile.id = public_host.profile_id
+    JOIN organization_memberships AS membership
+      ON membership.organization_id = public_host.organization_id
+     AND membership.profile_id = public_host.profile_id
+     AND membership.status = 'active'
+     AND membership.deleted_at IS NULL
+    WHERE profile.status = 'active'
+      AND profile.deleted_at IS NULL
+      AND profile.public_attribution_consent = 1
+      AND profile.display_name IS NOT NULL
+      AND length(trim(profile.display_name)) > 0
+      AND instr(profile.display_name, '@') = 0
+      AND lower(trim(profile.display_name)) <>
+          lower(profile.normalized_email)
+      AND (
+        public_host.profile_id =
+          host_event.primary_organizer_profile_id
+        OR EXISTS (
+          SELECT 1
+          FROM organizer_event_organizers AS co_organizer
+          WHERE co_organizer.organization_id =
+                public_host.organization_id
+            AND co_organizer.organizer_event_id =
+                public_host.organizer_event_id
+            AND co_organizer.profile_id = public_host.profile_id
+            AND co_organizer.deleted_at IS NULL
+        )
+      )
+  ),
+  organizer_public_host_names AS (
+    SELECT organization_id,
+           organizer_event_id,
+           organizer_names_json
+    FROM (
+      SELECT organization_id,
+             organizer_event_id,
+             organizer_rank,
+             json_group_array(organizer_name) OVER (
+               PARTITION BY organization_id, organizer_event_id
+               ORDER BY organizer_rank
+               ROWS BETWEEN UNBOUNDED PRECEDING
+                        AND UNBOUNDED FOLLOWING
+             ) AS organizer_names_json
+      FROM organizer_public_host_candidates
+      WHERE organizer_rank <= 24
+    )
+    WHERE organizer_rank = 1
+  )
+`;
+
 export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
-  WITH manual_public_candidates AS (
+  WITH ${ORGANIZER_PUBLIC_HOSTS_CTE_SQL},
+  manual_public_candidates AS (
     SELECT event.id AS event_id,
            event.organization_id AS organization_id,
            event.club_id AS public_club_id,
@@ -615,6 +754,7 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            event.title AS title,
            event.status AS event_status,
            NULL AS rsvp_url,
+           NULL AS rsvp_mode,
            event.time_kind AS time_kind,
            event.starts_at_utc AS starts_at_utc,
            event.ends_at_utc AS ends_at_utc,
@@ -623,7 +763,8 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            event.all_day_end_date_exclusive AS all_day_end_date_exclusive,
            event.updated_at AS public_updated_at,
            0 AS source_rank,
-           '' AS source_key
+           '' AS source_key,
+           'legacy:' || event.id AS source_identity_key
     FROM events AS event
     WHERE event.organization_id = ?
       AND event.visibility = 'public'
@@ -647,6 +788,7 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            snapshot.title AS title,
            snapshot.status AS event_status,
            snapshot.event_url AS rsvp_url,
+           'meetup' AS rsvp_mode,
            snapshot.time_kind AS time_kind,
            snapshot.starts_at_utc AS starts_at_utc,
            snapshot.ends_at_utc AS ends_at_utc,
@@ -658,7 +800,9 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
              generation.published_at
            ) AS public_updated_at,
            1 AS source_rank,
-           source.id AS source_key
+           source.id AS source_key,
+           'meetup:' || source.id || ':' || snapshot.external_id
+             AS source_identity_key
     FROM sync_sources AS source
     JOIN meetup_sync_generations AS generation
       ON generation.id = source.active_generation_id
@@ -711,7 +855,7 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
     UNION ALL
     SELECT * FROM meetup_public_candidates
   ),
-  enriched_public_candidates AS (
+  legacy_enriched_public_candidates AS (
     SELECT candidate.*,
            event.summary AS summary,
            event.description AS description,
@@ -731,9 +875,50 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
                 ELSE NULL
            END AS venue_public_name,
            CASE WHEN venue.is_public = 1
-                THEN venue.public_address
-                ELSE NULL
-           END AS venue_public_address
+                 THEN venue.public_address
+                 ELSE NULL
+           END AS venue_public_address,
+           COALESCE((
+             SELECT json_group_array(organizer_name)
+             FROM (
+               SELECT profile.display_name AS organizer_name
+               FROM event_organizers AS public_organizer
+               JOIN profiles AS profile
+                 ON profile.id = public_organizer.profile_id
+               WHERE public_organizer.organization_id =
+                     candidate.organization_id
+                 AND public_organizer.event_id = candidate.event_id
+                 AND public_organizer.is_publicly_listed = 1
+                 AND public_organizer.deleted_at IS NULL
+                 AND profile.status = 'active'
+                 AND profile.deleted_at IS NULL
+                 AND profile.public_attribution_consent = 1
+                 AND profile.display_name IS NOT NULL
+                 AND length(trim(profile.display_name)) > 0
+                 AND instr(profile.display_name, '@') = 0
+                 AND lower(trim(profile.display_name)) <>
+                     lower(profile.normalized_email)
+               ORDER BY
+                 CASE public_organizer.role
+                   WHEN 'primary' THEN 0
+                   ELSE 1
+                 END,
+                 profile.display_name COLLATE NOCASE,
+                 profile.id
+               LIMIT 24
+             )
+           ), '[]') AS organizer_names_json,
+           NULL AS public_access_note,
+           NULL AS public_online_url,
+           NULL AS external_map_url,
+           NULL AS cost_text,
+           NULL AS capacity,
+           NULL AS availability_state,
+           NULL AS preparation_information,
+           NULL AS what_to_bring,
+           NULL AS arrival_instructions,
+           NULL AS weather_note,
+           NULL AS verified_accessibility_notes
     FROM public_candidates AS candidate
     JOIN events AS event
       ON event.id = candidate.event_id
@@ -768,25 +953,162 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
      AND venue.id = event.venue_id
      AND venue.deleted_at IS NULL
   ),
+  organizer_enriched_public_candidates AS (
+    SELECT organizer_event.id AS event_id,
+           organizer_event.organization_id AS organization_id,
+           organizer_event.club_id AS public_club_id,
+           organizer_event.slug AS slug,
+           organizer_event.title AS title,
+           organizer_event.planning_status AS event_status,
+           CASE
+             WHEN public_detail.rsvp_mode = 'meetup'
+              AND public_detail.confirmed_meetup_event_url =
+                  organizer_event.meetup_event_url
+             THEN public_detail.confirmed_meetup_event_url
+             ELSE NULL
+           END AS rsvp_url,
+           public_detail.rsvp_mode AS rsvp_mode,
+           organizer_event.schedule_shape AS time_kind,
+           organizer_event.starts_at_utc AS starts_at_utc,
+           organizer_event.ends_at_utc AS ends_at_utc,
+           organizer_event.timezone AS timezone,
+           organizer_event.all_day_start_date AS all_day_start_date,
+           organizer_event.all_day_end_date_exclusive
+             AS all_day_end_date_exclusive,
+           max(
+             organizer_event.updated_at,
+             public_detail.updated_at,
+             publication_state.updated_at
+           ) AS public_updated_at,
+           2 AS source_rank,
+           '' AS source_key,
+           'organizer:' || organizer_event.id AS source_identity_key,
+           organizer_event.summary AS summary,
+           organizer_event.description AS description,
+           public_detail.attendance_mode AS attendance_mode,
+           club.slug AS club_slug,
+           club.name AS club_name,
+           lane.slug AS lane_slug,
+           lane.name AS lane_name,
+           category.slug AS category_slug,
+           category.name AS category_name,
+           category.color_token AS category_color_token,
+           public_detail.public_location_name AS venue_public_name,
+           public_detail.public_address AS venue_public_address,
+           CASE
+             WHEN public_detail.public_hosts_enabled = 1
+             THEN COALESCE(host_names.organizer_names_json, '[]')
+             ELSE '[]'
+           END AS organizer_names_json,
+           public_detail.public_access_note AS public_access_note,
+           public_detail.public_online_url AS public_online_url,
+           public_detail.external_map_url AS external_map_url,
+           public_detail.cost_text AS cost_text,
+           public_detail.capacity AS capacity,
+           public_detail.availability_state AS availability_state,
+           public_detail.preparation_information AS preparation_information,
+           public_detail.what_to_bring AS what_to_bring,
+           public_detail.arrival_instructions AS arrival_instructions,
+           public_detail.weather_note AS weather_note,
+           public_detail.verified_accessibility_notes
+             AS verified_accessibility_notes
+    FROM organizer_events AS organizer_event
+    JOIN organizer_event_public_details AS public_detail
+      ON public_detail.organization_id = organizer_event.organization_id
+     AND public_detail.organizer_event_id = organizer_event.id
+    JOIN organizer_event_publication_state AS publication_state
+      ON publication_state.organization_id = organizer_event.organization_id
+     AND publication_state.organizer_event_id = organizer_event.id
+     AND publication_state.first_published_at IS NOT NULL
+     AND publication_state.most_recent_published_at IS NOT NULL
+     AND (
+       publication_state.most_recent_unpublished_at IS NULL
+       OR publication_state.most_recent_published_at >=
+          publication_state.most_recent_unpublished_at
+     )
+    JOIN clubs AS club
+      ON club.id = organizer_event.club_id
+     AND club.organization_id = organizer_event.organization_id
+     AND club.deleted_at IS NULL
+    JOIN club_public_profiles AS club_public
+      ON club_public.organization_id = organizer_event.organization_id
+     AND club_public.club_id = organizer_event.club_id
+     AND club_public.publication_status = 'published'
+     AND club_public.published_at IS NOT NULL
+     AND club_public.deleted_at IS NULL
+    LEFT JOIN event_lanes AS lane
+      ON lane.organization_id = organizer_event.organization_id
+     AND lane.id = COALESCE(
+       organizer_event.event_lane_id,
+       club_public.primary_event_lane_id
+     )
+     AND lane.deleted_at IS NULL
+    LEFT JOIN categories AS category
+      ON category.organization_id = organizer_event.organization_id
+     AND category.id = organizer_event.category_id
+     AND category.deleted_at IS NULL
+    LEFT JOIN organizer_public_host_names AS host_names
+      ON host_names.organization_id = organizer_event.organization_id
+     AND host_names.organizer_event_id = organizer_event.id
+    WHERE organizer_event.organization_id = ?
+      AND organizer_event.publication_status = 'published'
+      AND organizer_event.planning_status IN (
+        'confirmed',
+        'cancelled',
+        'completed'
+      )
+      AND organizer_event.schedule_shape IN ('timed', 'all_day')
+      AND organizer_event.deleted_at IS NULL
+      AND length(trim(organizer_event.title)) > 0
+      AND length(trim(organizer_event.slug)) > 0
+      AND length(trim(organizer_event.summary)) > 0
+      AND length(trim(organizer_event.description)) > 0
+      AND (
+        organizer_event.planning_status <> 'cancelled'
+        OR publication_state.public_cancellation_at IS NOT NULL
+      )
+      AND (
+        public_detail.rsvp_mode = 'coming_soon'
+        OR (
+          public_detail.rsvp_mode = 'meetup'
+          AND public_detail.confirmed_meetup_event_url =
+              organizer_event.meetup_event_url
+        )
+      )
+  ),
+  enriched_public_candidates AS (
+    SELECT * FROM legacy_enriched_public_candidates
+    UNION ALL
+    SELECT * FROM organizer_enriched_public_candidates
+  ),
   ranked_public_events AS (
     SELECT enriched.*,
            row_number() OVER (
-             PARTITION BY enriched.event_id
-             ORDER BY
-               CASE enriched.event_status
-                 WHEN 'confirmed' THEN 0
-                 WHEN 'tentative' THEN 1
-                 ELSE 2
-               END,
-               enriched.source_rank,
-               enriched.source_key
-           ) AS duplicate_rank
+              PARTITION BY enriched.organization_id,
+                           enriched.source_identity_key
+              ORDER BY
+                CASE enriched.event_status
+                  WHEN 'confirmed' THEN 0
+                  WHEN 'tentative' THEN 1
+                  WHEN 'completed' THEN 2
+                  ELSE 3
+                END,
+                enriched.source_rank,
+                enriched.source_key
+            ) AS duplicate_rank
     FROM enriched_public_candidates AS enriched
   ),
-  public_events AS (
+  deduplicated_public_events AS (
     SELECT *
     FROM ranked_public_events
     WHERE duplicate_rank = 1
+  ),
+  public_events AS (
+    SELECT deduplicated.*,
+           count(*) OVER (
+             PARTITION BY deduplicated.organization_id, deduplicated.slug
+           ) AS public_slug_count
+    FROM deduplicated_public_events AS deduplicated
   )
 `;
 
@@ -796,6 +1118,7 @@ const PUBLIC_EVENT_CARD_COLUMNS_SQL = `
   public_event.summary AS summary,
   public_event.event_status AS event_status,
   public_event.rsvp_url AS rsvp_url,
+  public_event.rsvp_mode AS rsvp_mode,
   public_event.time_kind AS time_kind,
   public_event.starts_at_utc AS starts_at_utc,
   public_event.ends_at_utc AS ends_at_utc,
@@ -811,7 +1134,155 @@ const PUBLIC_EVENT_CARD_COLUMNS_SQL = `
   public_event.category_name AS category_name,
   public_event.category_color_token AS category_color_token,
   public_event.venue_public_name AS venue_public_name,
-  public_event.venue_public_address AS venue_public_address
+  public_event.venue_public_address AS venue_public_address,
+  public_event.public_slug_count AS public_slug_count
+`;
+
+const PUBLIC_EVENT_DETAIL_COLUMNS_SQL = `
+  public_event.description AS description,
+  public_event.organizer_names_json AS organizer_names_json,
+  public_event.public_access_note AS public_access_note,
+  public_event.public_online_url AS public_online_url,
+  public_event.external_map_url AS external_map_url,
+  public_event.cost_text AS cost_text,
+  public_event.capacity AS capacity,
+  public_event.availability_state AS availability_state,
+  public_event.preparation_information AS preparation_information,
+  public_event.what_to_bring AS what_to_bring,
+  public_event.arrival_instructions AS arrival_instructions,
+  public_event.weather_note AS weather_note,
+  public_event.verified_accessibility_notes AS verified_accessibility_notes
+`;
+
+/**
+ * This query is deliberately allowlisted and organization/id scoped. The
+ * caller must still complete trusted SIWC membership and event authorization
+ * before invoking it; the returned shape contains only facts that the live
+ * public detail renderer is permitted to receive.
+ */
+export const AUTHORIZED_ORGANIZER_EVENT_PUBLIC_PREVIEW_SQL = `
+  WITH ${ORGANIZER_PUBLIC_HOSTS_CTE_SQL},
+  public_event AS (
+    SELECT organizer_event.slug AS slug,
+           organizer_event.title AS title,
+           organizer_event.summary AS summary,
+           organizer_event.description AS description,
+           organizer_event.planning_status AS event_status,
+           CASE
+             WHEN public_detail.rsvp_mode = 'meetup'
+              AND public_detail.confirmed_meetup_event_url =
+                  organizer_event.meetup_event_url
+             THEN public_detail.confirmed_meetup_event_url
+             ELSE NULL
+           END AS rsvp_url,
+           public_detail.rsvp_mode AS rsvp_mode,
+           organizer_event.schedule_shape AS time_kind,
+           organizer_event.starts_at_utc AS starts_at_utc,
+           organizer_event.ends_at_utc AS ends_at_utc,
+           organizer_event.timezone AS timezone,
+           organizer_event.all_day_start_date AS all_day_start_date,
+           organizer_event.all_day_end_date_exclusive
+             AS all_day_end_date_exclusive,
+           public_detail.attendance_mode AS attendance_mode,
+           club.slug AS club_slug,
+           club.name AS club_name,
+           lane.slug AS lane_slug,
+           lane.name AS lane_name,
+           category.slug AS category_slug,
+           category.name AS category_name,
+           category.color_token AS category_color_token,
+           public_detail.public_location_name AS venue_public_name,
+           public_detail.public_address AS venue_public_address,
+           1 AS public_slug_count,
+           CASE
+             WHEN public_detail.public_hosts_enabled = 1
+             THEN COALESCE(host_names.organizer_names_json, '[]')
+             ELSE '[]'
+           END AS organizer_names_json,
+           public_detail.public_access_note AS public_access_note,
+           public_detail.public_online_url AS public_online_url,
+           public_detail.external_map_url AS external_map_url,
+           public_detail.cost_text AS cost_text,
+           public_detail.capacity AS capacity,
+           public_detail.availability_state AS availability_state,
+           public_detail.preparation_information AS preparation_information,
+           public_detail.what_to_bring AS what_to_bring,
+           public_detail.arrival_instructions AS arrival_instructions,
+           public_detail.weather_note AS weather_note,
+           public_detail.verified_accessibility_notes
+             AS verified_accessibility_notes,
+           public_detail.public_hosts_enabled
+             AS preview_public_hosts_enabled
+    FROM organizer_events AS organizer_event
+    JOIN organizer_event_public_details AS public_detail
+      ON public_detail.organization_id = organizer_event.organization_id
+     AND public_detail.organizer_event_id = organizer_event.id
+    JOIN clubs AS club
+      ON club.id = organizer_event.club_id
+     AND club.organization_id = organizer_event.organization_id
+     AND club.deleted_at IS NULL
+    JOIN club_public_profiles AS club_public
+      ON club_public.organization_id = organizer_event.organization_id
+     AND club_public.club_id = organizer_event.club_id
+     AND club_public.publication_status = 'published'
+     AND club_public.published_at IS NOT NULL
+     AND club_public.deleted_at IS NULL
+    LEFT JOIN event_lanes AS lane
+      ON lane.organization_id = organizer_event.organization_id
+     AND lane.id = COALESCE(
+       organizer_event.event_lane_id,
+       club_public.primary_event_lane_id
+     )
+     AND lane.deleted_at IS NULL
+    LEFT JOIN categories AS category
+      ON category.organization_id = organizer_event.organization_id
+     AND category.id = organizer_event.category_id
+     AND category.deleted_at IS NULL
+    LEFT JOIN organizer_public_host_names AS host_names
+      ON host_names.organization_id = organizer_event.organization_id
+     AND host_names.organizer_event_id = organizer_event.id
+    WHERE organizer_event.organization_id = ?
+      AND organizer_event.id = ?
+      AND organizer_event.planning_status IN (
+        'confirmed',
+        'cancelled',
+        'completed'
+      )
+      AND organizer_event.schedule_shape IN ('timed', 'all_day')
+      AND organizer_event.deleted_at IS NULL
+      AND length(trim(organizer_event.title)) > 0
+      AND length(trim(organizer_event.slug)) > 0
+      AND length(trim(organizer_event.summary)) > 0
+      AND length(trim(organizer_event.description)) > 0
+      AND (
+        public_detail.attendance_mode = 'location_undecided'
+        OR (
+          public_detail.attendance_mode = 'in_person'
+          AND length(trim(public_detail.public_location_name)) > 0
+        )
+        OR (
+          public_detail.attendance_mode = 'online'
+          AND length(trim(public_detail.public_online_url)) > 0
+        )
+        OR (
+          public_detail.attendance_mode = 'hybrid'
+          AND length(trim(public_detail.public_location_name)) > 0
+          AND length(trim(public_detail.public_online_url)) > 0
+        )
+      )
+      AND (
+        public_detail.rsvp_mode = 'coming_soon'
+        OR (
+          public_detail.rsvp_mode = 'meetup'
+          AND public_detail.confirmed_meetup_event_url =
+              organizer_event.meetup_event_url
+        )
+      )
+  )
+  SELECT ${PUBLIC_EVENT_CARD_COLUMNS_SQL},
+         ${PUBLIC_EVENT_DETAIL_COLUMNS_SQL}
+  FROM public_event
+  LIMIT 1
 `;
 
 /**
@@ -938,12 +1409,16 @@ export async function queryPublicEvents(
   const commonBindings: D1Value[] = [
     parsed.organizationId,
     parsed.organizationId,
+    parsed.organizationId,
     ...filter.bindings,
   ];
   const countRow = await database
     .prepare(
       `${UNIFIED_PUBLIC_EVENT_CTE_SQL}
-       SELECT count(*) AS total_count
+       SELECT count(*) AS total_count,
+              sum(
+                CASE WHEN public_event.public_slug_count > 1 THEN 1 ELSE 0 END
+              ) AS public_slug_collision_count
        FROM public_events AS public_event
        WHERE ${filter.sql}`,
     )
@@ -953,6 +1428,14 @@ export async function queryPublicEvents(
     path: "publicEvents.totalCount",
     minimum: 0,
   });
+  const publicSlugCollisionCount = parseFiniteInteger(
+    countRow?.public_slug_collision_count ?? 0,
+    {
+      path: "publicEvents.publicSlugCollisionCount",
+      minimum: 0,
+    },
+  );
+  if (publicSlugCollisionCount > 0) invalidProjection();
   const offset = (parsed.page - 1) * parsed.pageSize;
   const result = await database
     .prepare(
@@ -996,44 +1479,48 @@ export async function getPublicEventBySlug(
     .prepare(
       `${UNIFIED_PUBLIC_EVENT_CTE_SQL}
        SELECT ${PUBLIC_EVENT_CARD_COLUMNS_SQL},
-              public_event.description AS description,
-              COALESCE((
-                SELECT json_group_array(organizer_name)
-                FROM (
-                  SELECT profile.display_name AS organizer_name
-                  FROM event_organizers AS public_organizer
-                  JOIN profiles AS profile
-                    ON profile.id = public_organizer.profile_id
-                  WHERE public_organizer.organization_id =
-                        public_event.organization_id
-                    AND public_organizer.event_id = public_event.event_id
-                    AND public_organizer.is_publicly_listed = 1
-                    AND public_organizer.deleted_at IS NULL
-                    AND profile.status = 'active'
-                    AND profile.deleted_at IS NULL
-                    AND profile.public_attribution_consent = 1
-                    AND profile.display_name IS NOT NULL
-                    AND length(trim(profile.display_name)) > 0
-                    AND instr(profile.display_name, '@') = 0
-                    AND lower(trim(profile.display_name)) <>
-                        lower(profile.normalized_email)
-                  ORDER BY
-                    CASE public_organizer.role
-                      WHEN 'primary' THEN 0
-                      ELSE 1
-                    END,
-                    profile.display_name COLLATE NOCASE,
-                    profile.id
-                  LIMIT 24
-                )
-              ), '[]') AS organizer_names_json
+              ${PUBLIC_EVENT_DETAIL_COLUMNS_SQL}
        FROM public_events AS public_event
        WHERE public_event.slug = ?
        LIMIT 1`,
     )
-    .bind(organizationId, organizationId, slug)
+    .bind(organizationId, organizationId, organizationId, slug)
     .first<Record<string, unknown>>();
   return row ? toPublicEventDetailDto(row) : null;
+}
+
+export async function getAuthorizedOrganizerEventPublicPreview(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: GetAuthorizedOrganizerEventPublicPreviewInput,
+): Promise<PublicEventDetailDto | null> {
+  const organizationId = parseIdentifier(
+    input.organizationId,
+    "organizationId",
+  );
+  const organizerEventId = parseIdentifier(
+    input.organizerEventId,
+    "organizerEventId",
+  );
+  const row = await database
+    .prepare(AUTHORIZED_ORGANIZER_EVENT_PUBLIC_PREVIEW_SQL)
+    .bind(organizationId, organizerEventId)
+    .first<Record<string, unknown>>();
+  return row ? toPublicEventDetailDto(row) : null;
+}
+
+/**
+ * Uses the exact protected projection and mapper rather than maintaining a
+ * looser UI-only approximation. A true result therefore guarantees that the
+ * protected preview read can produce the allowlisted DTO for the same scoped
+ * organization/event pair at this database state.
+ */
+export async function hasAuthorizedOrganizerEventPublicPreview(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: GetAuthorizedOrganizerEventPublicPreviewInput,
+): Promise<boolean> {
+  return (
+    (await getAuthorizedOrganizerEventPublicPreview(database, input)) !== null
+  );
 }
 
 export async function listRelatedPublicEvents(
@@ -1100,6 +1587,7 @@ export async function listRelatedPublicEvents(
     .bind(
       organizationId,
       organizationId,
+      organizationId,
       slug,
       slug,
       nowUtcMs,
@@ -1133,16 +1621,18 @@ export async function listPublicEventSitemapEntries(
     .prepare(
       `${UNIFIED_PUBLIC_EVENT_CTE_SQL}
        SELECT public_event.slug AS slug,
-              public_event.public_updated_at AS public_updated_at
+               public_event.public_updated_at AS public_updated_at,
+               public_event.public_slug_count AS public_slug_count
        FROM public_events AS public_event
        ORDER BY public_event.slug ASC
        LIMIT ?`,
     )
-    .bind(organizationId, organizationId, limit)
+    .bind(organizationId, organizationId, organizationId, limit)
     .all<Record<string, unknown>>();
   assertSuccessfulResult(result);
   return Object.freeze(
     (result.results ?? []).map((row) => {
+      assertSinglePublicSlug(row);
       const updatedAt = parseFiniteInteger(row.public_updated_at, {
         path: "publicEvent.updatedAt",
         minimum: 0,
@@ -1184,7 +1674,7 @@ export async function listPublicEventCategoryOptions(
                 public_event.category_slug ASC
        LIMIT 100`,
     )
-    .bind(organizationId, organizationId)
+    .bind(organizationId, organizationId, organizationId)
     .all<Record<string, unknown>>();
   assertSuccessfulResult(result);
   return Object.freeze(
@@ -1203,14 +1693,33 @@ export async function listPublicEventCategoryOptions(
 export function toPublicEventCardDto(
   row: Record<string, unknown>,
 ): PublicEventCardDto {
+  assertSinglePublicSlug(row);
   const status = parseEnum(
     row.event_status,
-    ["confirmed", "tentative", "cancelled"] as const,
+    ["confirmed", "tentative", "cancelled", "completed"] as const,
     "event.status",
   );
   const attendanceMode = publicAttendanceMode(row.attendance_mode);
   const category = publicCategory(row);
   const venue = publicVenue(row);
+  const rsvpMode =
+    row.rsvp_mode === null || row.rsvp_mode === undefined
+      ? null
+      : parseEnum(
+          row.rsvp_mode,
+          ["meetup", "coming_soon"] as const,
+          "event.rsvpMode",
+        );
+  const rsvpUrl =
+    row.rsvp_url === null || row.rsvp_url === undefined
+      ? null
+      : parseOfficialMeetupEventUrl(row.rsvp_url, "event.rsvpUrl");
+  if (
+    (rsvpMode === "meetup" && rsvpUrl === null) ||
+    (rsvpMode !== "meetup" && rsvpUrl !== null)
+  ) {
+    return invalidProjection();
+  }
   return Object.freeze({
     slug: parseIdentifier(row.slug, "event.slug"),
     title: parseBoundedString(row.title, {
@@ -1223,10 +1732,8 @@ export function toPublicEventCardDto(
     }),
     status,
     isCancelled: status === "cancelled",
-    rsvpUrl:
-      row.rsvp_url === null || row.rsvp_url === undefined
-        ? null
-        : parseOfficialMeetupEventUrl(row.rsvp_url, "event.rsvpUrl"),
+    rsvpMode,
+    rsvpUrl,
     schedule:
       row.time_kind === "timed"
         ? timedSchedule(row)
@@ -1258,6 +1765,62 @@ export function toPublicEventDetailDto(
       maxLength: 20_000,
     }),
     organizers: parsePublicOrganizerNames(row.organizer_names_json),
+    publicAccessNote: optionalPublicText(
+      row.public_access_note,
+      "event.publicAccessNote",
+      2_000,
+    ),
+    publicOnlineUrl: optionalPublicHttpsUrl(
+      row.public_online_url,
+      "event.publicOnlineUrl",
+    ),
+    externalMapUrl: optionalPublicHttpsUrl(
+      row.external_map_url,
+      "event.externalMapUrl",
+    ),
+    costText: optionalPublicText(row.cost_text, "event.costText", 500),
+    capacity:
+      row.capacity === null || row.capacity === undefined
+        ? null
+        : parseFiniteInteger(row.capacity, {
+            path: "event.capacity",
+            minimum: 1,
+            maximum: 1_000_000,
+          }),
+    availabilityState:
+      row.availability_state === null ||
+      row.availability_state === undefined
+        ? null
+        : parseEnum(
+            row.availability_state,
+            ["open", "full", "waitlist"] as const,
+            "event.availabilityState",
+          ),
+    preparationInformation: optionalPublicText(
+      row.preparation_information,
+      "event.preparationInformation",
+      4_000,
+    ),
+    whatToBring: optionalPublicText(
+      row.what_to_bring,
+      "event.whatToBring",
+      4_000,
+    ),
+    arrivalInstructions: optionalPublicText(
+      row.arrival_instructions,
+      "event.arrivalInstructions",
+      4_000,
+    ),
+    weatherNote: optionalPublicText(
+      row.weather_note,
+      "event.weatherNote",
+      2_000,
+    ),
+    verifiedAccessibilityNotes: optionalPublicText(
+      row.verified_accessibility_notes,
+      "event.verifiedAccessibilityNotes",
+      4_000,
+    ),
   });
 }
 
@@ -1265,7 +1828,9 @@ function buildPublicEventFilter(
   input: ParsedPublicEventQuery,
 ): Readonly<{ bindings: readonly D1Value[]; sql: string }> {
   const clauses: string[] = [
-    "public_event.event_status IN ('confirmed', 'tentative')",
+    input.view === "upcoming"
+      ? "public_event.event_status IN ('confirmed', 'tentative')"
+      : "public_event.event_status IN ('confirmed', 'tentative', 'completed')",
   ];
   const bindings: D1Value[] = [];
 
@@ -1469,7 +2034,7 @@ function publicVenue(
 ): PublicEventCardDto["venue"] {
   const name = parseOptionalBoundedString(row.venue_public_name, {
     path: "event.venue.name",
-    maxLength: 200,
+    maxLength: 250,
   });
   return name
     ? Object.freeze({

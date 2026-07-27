@@ -2725,6 +2725,271 @@
   font-size: 0.75rem;
 }
 
+.publicationWorkspace {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  padding: clamp(1rem, 3vw, 2rem);
+  border: 1px solid var(--ow-ink);
+  background:
+    linear-gradient(90deg, rgb(27 82 79 / 7%) 1px, transparent 1px) 0 0 / 2rem
+      2rem,
+    rgb(255 255 255 / 38%);
+}
+
+.publicationHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.publicationHeader > div {
+  max-width: 52rem;
+}
+
+.publicationHeader h2,
+.publicationReadiness h3 {
+  margin: 0.25rem 0 0.65rem;
+  font-family: var(--display);
+  font-weight: 480;
+  letter-spacing: -0.035em;
+}
+
+.publicationHeader h2 {
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 0.96;
+}
+
+.publicationHeader p:last-child,
+.publicationReadiness > p,
+.publicationActions p,
+.publicationForm fieldset > p {
+  color: var(--ow-ink-soft);
+}
+
+.publicationState {
+  flex: none;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--ow-ink);
+  background: var(--ow-forest);
+  color: white;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.publicationNotice {
+  min-height: 1.5rem;
+  outline: none;
+}
+
+.publicationNotice:focus {
+  box-shadow: 0 0 0 3px var(--ow-cobalt);
+}
+
+.publicationNotice p {
+  margin: 0;
+  color: var(--ow-cobalt);
+  font-weight: 700;
+}
+
+.publicationColumns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(17rem, 0.65fr);
+  gap: clamp(1rem, 3vw, 2rem);
+  align-items: start;
+}
+
+.publicationForm,
+.publicationForm > fieldset,
+.publicationReadiness,
+.publicationActions,
+.schedulePublication {
+  display: grid;
+  gap: 1rem;
+}
+
+.publicationForm > fieldset,
+.publicationChoice {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.publicationForm legend,
+.publicationChoice legend {
+  margin-bottom: 0.75rem;
+  font-family: var(--display);
+  font-size: 1.55rem;
+  font-weight: 550;
+}
+
+.publicationFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.publicationFields label,
+.schedulePublication label {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-width: 0;
+  color: var(--ow-ink-soft);
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.publicationFields input,
+.publicationFields select,
+.publicationFields textarea,
+.schedulePublication input {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0;
+  background: #fffdf7;
+  color: var(--ow-ink);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.publicationFields textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.publicationChoice {
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ow-line);
+}
+
+.publicationChoice > label,
+.publicHostChoices label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: start;
+  min-height: 2.75rem;
+  padding: 0.7rem;
+  border: 1px solid var(--ow-line);
+  background: rgb(255 255 255 / 42%);
+}
+
+.publicationChoice > label > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.publicationChoice small {
+  color: var(--ow-ink-soft);
+}
+
+.publicHostChoices {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1rem;
+}
+
+.publicationReadiness {
+  position: sticky;
+  top: 1rem;
+  padding: 1rem;
+  border-top: 0.45rem solid var(--ow-cobalt);
+  background: var(--ow-paper);
+  box-shadow: 0 1rem 2.5rem rgb(16 27 47 / 8%);
+}
+
+.publicationReadiness h3 {
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+}
+
+.publicationReadiness ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.publicationReadiness li::marker {
+  color: var(--ow-coral);
+}
+
+.publicationReadiness .secondaryButton,
+.publicationActions .primaryButton,
+.publicationActions .secondaryButton,
+.dangerButton {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 0.95rem;
+  border: 1px solid var(--ow-ink);
+  font: inherit;
+  font-weight: 750;
+  text-align: center;
+  text-decoration: none;
+}
+
+.dangerButton {
+  background: var(--ow-coral);
+  color: var(--ow-ink);
+}
+
+.publicationActions {
+  padding-top: 1rem;
+  border-top: 1px solid var(--ow-line);
+}
+
+.schedulePublication {
+  padding: 0.85rem;
+  border: 1px solid var(--ow-line);
+}
+
+.schedulePublication h4 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.3rem;
+}
+
+.previewBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--ow-ink);
+  border-left: 0.5rem solid var(--ow-coral);
+  background: var(--ow-paper);
+}
+
+.previewBanner h1,
+.previewBanner p {
+  margin: 0.2rem 0;
+}
+
+.previewBanner h1 {
+  font-family: var(--display);
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.previewBanner a {
+  min-height: 2.75rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--ow-ink);
+  color: var(--ow-ink);
+  font-weight: 750;
+  text-decoration: none;
+}
+
 .venueWorkspace {
   grid-template-columns: 1fr;
 }
@@ -2770,6 +3035,14 @@
   .workspace {
     display: block;
     padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+
+  .publicationColumns {
+    grid-template-columns: 1fr;
+  }
+
+  .publicationReadiness {
+    position: static;
   }
 
   .sidebar,
@@ -2926,6 +3199,24 @@
 @media (max-width: 38rem) {
   .main {
     padding: 1.1rem 1rem 2.5rem;
+  }
+
+  .publicationHeader,
+  .previewBanner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .publicationFields {
+    grid-template-columns: 1fr;
+  }
+
+  .publicationWorkspace {
+    padding: 0.85rem;
+  }
+
+  .publicationState {
+    align-self: start;
   }
 
   .pageHeader {

@@ -259,8 +259,13 @@ function notificationContent(notification: NotificationDto): Readonly<{
     event_cancelled: "Private event cancelled",
     event_confirmed: "Private event confirmed",
     event_schedule_changed: "Draft schedule changed",
+    event_published: "Event published to the website",
     hold_expired: "Tentative hold expired",
     hold_nearing_expiry: "Tentative hold nearing expiry",
+    publication_failed: "Scheduled publication needs attention",
+    publication_scheduled: "Website publication scheduled",
+    public_event_cancelled: "Public event cancelled",
+    public_schedule_changed: "Public event schedule changed",
   } as const;
   return {
     detail: payload.title,

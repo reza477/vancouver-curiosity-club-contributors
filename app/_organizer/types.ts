@@ -82,7 +82,7 @@ export type OrganizerEventSummary = Readonly<{
     | "draft"
     | "idea"
     | "tentative_hold";
-  publicationStatus: "private";
+  publicationStatus: "private" | "published" | "scheduled" | "unpublished";
   scheduleLabel: string;
   title: string;
   updatedAtLabel: string;

@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  getAuthorizedOrganizerEventPublicPreview,
   getPublicEventBySlug,
   listPublicEventSitemapSlugs,
   listRelatedPublicEvents,
@@ -80,6 +81,25 @@ async function createFixture(t) {
       'synthetic-public-projection', 'America/Vancouver', 1,
       'profile_owner', 'profile_owner', 1, 1
     );
+
+    INSERT INTO organization_memberships (
+      id, organization_id, profile_id, normalized_email, role, status,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES
+      (
+        'membership_owner', '${ORGANIZATION_ID}', 'profile_owner',
+        'owner@synthetic.invalid', 'owner', 'active', 'profile_owner', 1, 1
+      ),
+      (
+        'membership_public_host', '${ORGANIZATION_ID}',
+        'profile_public_host', 'private-organizer@synthetic.invalid',
+        'organizer', 'active', 'profile_owner', 1, 1
+      ),
+      (
+        'membership_no_consent', '${ORGANIZATION_ID}',
+        'profile_no_consent', 'hidden@synthetic.invalid', 'organizer',
+        'active', 'profile_owner', 1, 1
+      );
 
     INSERT INTO event_lanes (
       id, organization_id, name, slug, description, sort_order,
@@ -521,6 +541,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "club",
     "isCancelled",
     "lane",
+    "rsvpMode",
     "rsvpUrl",
     "schedule",
     "slug",
@@ -529,6 +550,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "title",
     "venue",
   ]);
+  assert.equal(manual.rsvpMode, null);
   assert.deepEqual(Object.keys(manual.club).sort(), ["name", "slug"]);
   assert.deepEqual(Object.keys(manual.venue).sort(), ["address", "name"]);
   assert.equal(manual.attendanceMode, "in-person");
@@ -559,13 +581,22 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
   });
   assert.ok(detail);
   assert.deepEqual(Object.keys(detail).sort(), [
+    "arrivalInstructions",
     "attendanceMode",
+    "availabilityState",
+    "capacity",
     "category",
     "club",
+    "costText",
     "description",
+    "externalMapUrl",
     "isCancelled",
     "lane",
     "organizers",
+    "preparationInformation",
+    "publicAccessNote",
+    "publicOnlineUrl",
+    "rsvpMode",
     "rsvpUrl",
     "schedule",
     "slug",
@@ -573,6 +604,9 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "summary",
     "title",
     "venue",
+    "verifiedAccessibilityNotes",
+    "weatherNote",
+    "whatToBring",
   ]);
   assert.deepEqual(detail.organizers, [{ displayName: "Public Host" }]);
 
@@ -876,6 +910,373 @@ test("sitemap slugs include only accessible stable public detail routes", async 
   assert.equal(JSON.stringify(slugs).includes("PRIVATE_FEED"), false);
 });
 
+test("canonical organizer events publish from allowlisted sidecars only", async (t) => {
+  const database = await createFixture(t);
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_public",
+    slug: "organizer-public-event",
+    title: "Canonical Organizer Event",
+    meetupEventUrl:
+      "https://www.meetup.com/synthetic-public-group/events/9501/",
+    confirmedMeetupEventUrl:
+      "https://www.meetup.com/synthetic-public-group/events/9501/",
+    rsvpMode: "meetup",
+    publicHostsEnabled: true,
+  });
+  database.exec(`
+    INSERT INTO organizer_event_public_hosts (
+      id, organization_id, organizer_event_id, profile_id,
+      selected_by_profile_id, selected_at
+    ) VALUES
+      (
+        'public_host_selection', '${ORGANIZATION_ID}', 'organizer_public',
+        'profile_public_host', 'profile_owner', 10
+      ),
+      (
+        'hidden_host_selection', '${ORGANIZATION_ID}', 'organizer_public',
+        'profile_no_consent', 'profile_owner', 10
+      );
+    INSERT INTO organizer_event_organizers (
+      id, organization_id, organizer_event_id, profile_id,
+      created_by_profile_id, created_at
+    ) VALUES (
+      'hidden_host_association', '${ORGANIZATION_ID}', 'organizer_public',
+      'profile_no_consent', 'profile_owner', 10
+    );
+  `);
+
+  const page = await queryPublicEvents(database, upcomingInput());
+  const card = page.events.find(
+    (event) => event.slug === "organizer-public-event",
+  );
+  assert.ok(card);
+  assert.equal(card.rsvpMode, "meetup");
+  assert.equal(
+    card.rsvpUrl,
+    "https://www.meetup.com/synthetic-public-group/events/9501/",
+  );
+  assert.equal(card.attendanceMode, "hybrid");
+  assert.deepEqual(card.venue, {
+    address: "100 Approved Public Street",
+    name: "Approved Public Room",
+  });
+
+  const detail = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "organizer-public-event",
+  });
+  assert.ok(detail);
+  assert.deepEqual(detail.organizers, [{ displayName: "Public Host" }]);
+  assert.equal(detail.publicAccessNote, "Use the public east entrance.");
+  assert.equal(
+    detail.publicOnlineUrl,
+    "https://events.synthetic.invalid/join",
+  );
+  assert.equal(
+    detail.externalMapUrl,
+    "https://maps.synthetic.invalid/approved-room",
+  );
+  assert.equal(detail.availabilityState, "waitlist");
+  assert.equal(detail.capacity, 42);
+  assert.equal(detail.costText, "Pay what you can.");
+  assert.equal(detail.preparationInformation, "Read the public handout.");
+  assert.equal(detail.whatToBring, "A notebook.");
+  assert.equal(detail.arrivalInstructions, "Arrive ten minutes early.");
+  assert.equal(detail.weatherNote, "The courtyard portion is weather dependent.");
+  assert.equal(
+    detail.verifiedAccessibilityNotes,
+    "Step-free public entrance confirmed.",
+  );
+
+  const serialized = JSON.stringify({ page, detail });
+  for (const sentinel of [
+    "ORGANIZER_PRIVATE_NOTES_SENTINEL",
+    "ORGANIZER_PRIVATE_MEETING_SENTINEL",
+    "owner@synthetic.invalid",
+    "hidden@synthetic.invalid",
+  ]) {
+    assert.equal(serialized.includes(sentinel), false, sentinel);
+  }
+  for (const forbiddenKey of [
+    "organizationId",
+    "organizerEventId",
+    "primaryOrganizerProfileId",
+    "contentVersion",
+    "scheduleVersion",
+    "privateNotes",
+    "privateMeetingDetails",
+  ]) {
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(detail, forbiddenKey),
+      false,
+      forbiddenKey,
+    );
+  }
+});
+
+test("organizer publication states fail closed while cancellation and completed past remain truthful", async (t) => {
+  const database = await createFixture(t);
+  const hiddenFixtures = [
+    ["organizer_private", "private", "confirmed", null],
+    ["organizer_scheduled", "scheduled", "confirmed", null],
+    ["organizer_unpublished", "unpublished", "confirmed", null],
+    ["organizer_draft", "published", "draft", null],
+    ["organizer_hold", "published", "tentative_hold", null],
+    ["organizer_archived", "published", "archived", null],
+    ["organizer_deleted", "published", "confirmed", 20],
+  ];
+  for (const [id, publicationStatus, planningStatus, deletedAt] of hiddenFixtures) {
+    await insertOrganizerPublicEvent(database, {
+      id,
+      slug: `${id}-slug`,
+      title: `${id} title`,
+      planningStatus,
+      publicationStatus,
+      deletedAt,
+    });
+  }
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_cancelled",
+    slug: "organizer-cancelled",
+    title: "Cancelled Organizer Event",
+    planningStatus: "cancelled",
+    publicationStatus: "published",
+  });
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_completed",
+    slug: "organizer-completed",
+    title: "Completed Organizer Event",
+    planningStatus: "completed",
+    publicationStatus: "published",
+    startsAtUtcMs: Date.parse("2026-07-01T02:00:00.000Z"),
+    endsAtUtcMs: Date.parse("2026-07-01T04:00:00.000Z"),
+  });
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_preview",
+    slug: "organizer-preview",
+    title: "Authorized Preview Event",
+    publicationStatus: "scheduled",
+  });
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_stale_publication_state",
+    slug: "organizer-stale-publication-state",
+    title: "Stale Publication State",
+  });
+  database.exec(`
+    UPDATE organizer_event_publication_state
+    SET most_recent_unpublished_at = 20
+    WHERE organizer_event_id = 'organizer_stale_publication_state';
+  `);
+
+  const upcoming = await queryPublicEvents(database, upcomingInput());
+  const upcomingSlugs = new Set(upcoming.events.map((event) => event.slug));
+  for (const [id] of hiddenFixtures) {
+    assert.equal(upcomingSlugs.has(`${id}-slug`), false, id);
+  }
+  assert.equal(upcomingSlugs.has("organizer-cancelled"), false);
+  assert.equal(upcomingSlugs.has("organizer-completed"), false);
+  assert.equal(upcomingSlugs.has("organizer-stale-publication-state"), false);
+
+  const cancelled = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "organizer-cancelled",
+  });
+  assert.equal(cancelled?.isCancelled, true);
+  assert.equal(cancelled?.status, "cancelled");
+
+  const past = await queryPublicEvents(database, {
+    ...upcomingInput(),
+    view: "past",
+  });
+  assert.equal(
+    past.events.some(
+      (event) =>
+        event.slug === "organizer-completed" && event.status === "completed",
+    ),
+    true,
+  );
+
+  const preview = await getAuthorizedOrganizerEventPublicPreview(database, {
+    organizationId: ORGANIZATION_ID,
+    organizerEventId: "organizer_preview",
+  });
+  assert.equal(preview?.slug, "organizer-preview");
+  assert.equal(preview?.rsvpMode, "coming_soon");
+  assert.equal(preview?.rsvpUrl, null);
+  assert.equal(
+    JSON.stringify(preview).includes("ORGANIZER_PRIVATE"),
+    false,
+  );
+
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_preview_incomplete",
+    slug: "organizer-preview-incomplete",
+    title: "Incomplete Preview Event",
+    publicationStatus: "private",
+  });
+  database.exec(`
+    UPDATE organizer_events
+    SET summary = NULL
+    WHERE id = 'organizer_preview_incomplete';
+  `);
+  assert.equal(
+    await getAuthorizedOrganizerEventPublicPreview(database, {
+      organizationId: ORGANIZATION_ID,
+      organizerEventId: "organizer_preview_incomplete",
+    }),
+    null,
+  );
+  assert.equal(
+    await getAuthorizedOrganizerEventPublicPreview(database, {
+      organizationId: ORGANIZATION_ID,
+      organizerEventId: "organizer_draft",
+    }),
+    null,
+  );
+
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_preview_hostless",
+    slug: "organizer-preview-hostless",
+    title: "Hostless Preview Event",
+    publicHostsEnabled: true,
+    publicationStatus: "private",
+  });
+  const hostlessPreview =
+    await getAuthorizedOrganizerEventPublicPreview(database, {
+      organizationId: ORGANIZATION_ID,
+      organizerEventId: "organizer_preview_hostless",
+    });
+  assert.ok(hostlessPreview);
+  assert.deepEqual(hostlessPreview.organizers, []);
+});
+
+test("organizer public hosts require selection, event enablement, current assignment, membership, and canonical consent", async (t) => {
+  const database = await createFixture(t);
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_host_gates",
+    slug: "organizer-host-gates",
+    title: "Organizer Host Gates",
+    publicHostsEnabled: true,
+  });
+  database.exec(`
+    INSERT INTO organizer_event_public_hosts (
+      id, organization_id, organizer_event_id, profile_id,
+      selected_by_profile_id, selected_at
+    ) VALUES
+      (
+        'host_gate_public', '${ORGANIZATION_ID}', 'organizer_host_gates',
+        'profile_public_host', 'profile_owner', 10
+      ),
+      (
+        'host_gate_no_consent', '${ORGANIZATION_ID}',
+        'organizer_host_gates', 'profile_no_consent', 'profile_owner', 10
+      );
+  `);
+  let detail = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "organizer-host-gates",
+  });
+  assert.deepEqual(detail?.organizers, [{ displayName: "Public Host" }]);
+
+  database.exec(`
+    UPDATE organizer_event_public_details
+    SET public_hosts_enabled = 0
+    WHERE organizer_event_id = 'organizer_host_gates';
+  `);
+  detail = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "organizer-host-gates",
+  });
+  assert.deepEqual(detail?.organizers, []);
+
+  database.exec(`
+    UPDATE organizer_event_public_details
+    SET public_hosts_enabled = 1
+    WHERE organizer_event_id = 'organizer_host_gates';
+    UPDATE organization_memberships
+    SET status = 'suspended'
+    WHERE id = 'membership_public_host';
+  `);
+  detail = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "organizer-host-gates",
+  });
+  assert.deepEqual(detail?.organizers, []);
+});
+
+test("organizer Meetup confirmation must match the current canonical event URL", async (t) => {
+  const database = await createFixture(t);
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_rsvp_match",
+    slug: "organizer-rsvp-match",
+    title: "Matching RSVP Event",
+    meetupEventUrl:
+      "https://www.meetup.com/synthetic-public-group/events/9601/",
+    confirmedMeetupEventUrl:
+      "https://www.meetup.com/synthetic-public-group/events/9601/",
+    rsvpMode: "meetup",
+  });
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_rsvp_stale",
+    slug: "organizer-rsvp-stale",
+    title: "Stale RSVP Event",
+    meetupEventUrl:
+      "https://www.meetup.com/synthetic-public-group/events/9602/",
+    confirmedMeetupEventUrl:
+      "https://www.meetup.com/synthetic-public-group/events/9603/",
+    rsvpMode: "meetup",
+  });
+
+  const page = await queryPublicEvents(database, upcomingInput());
+  const matching = page.events.find(
+    (event) => event.slug === "organizer-rsvp-match",
+  );
+  assert.equal(
+    matching?.rsvpUrl,
+    "https://www.meetup.com/synthetic-public-group/events/9601/",
+  );
+  assert.equal(
+    page.events.some((event) => event.slug === "organizer-rsvp-stale"),
+    false,
+  );
+  assert.equal(
+    await getPublicEventBySlug(database, {
+      organizationId: ORGANIZATION_ID,
+      slug: "organizer-rsvp-stale",
+    }),
+    null,
+  );
+});
+
+test("cross-source public slug collisions fail closed instead of ranking away a candidate", async (t) => {
+  const database = await createFixture(t);
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_slug_collision",
+    slug: "manual-ideas-gathering",
+    title: "Organizer Collision Candidate",
+  });
+
+  await assert.rejects(
+    () => queryPublicEvents(database, upcomingInput()),
+    (error) => error?.code === "internal_error" && error?.status === 500,
+  );
+  await assert.rejects(
+    () =>
+      getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: "manual-ideas-gathering",
+      }),
+    (error) => error?.code === "internal_error" && error?.status === 500,
+  );
+  await assert.rejects(
+    () =>
+      listPublicEventSitemapSlugs(database, {
+        organizationId: ORGANIZATION_ID,
+      }),
+    (error) => error?.code === "internal_error" && error?.status === 500,
+  );
+});
+
 test("public event branches use their bounded projection indexes", async (t) => {
   const database = await createFixture(t);
   const { results: manualPlanRows } = await database
@@ -916,6 +1317,27 @@ test("public event branches use their bounded projection indexes", async (t) => 
     .map((row) => row.detail)
     .join("\n");
   assert.match(snapshotPlan, /meetup_event_snapshots_public_timed_idx/u);
+
+  const { results: organizerPlanRows } = await database
+    .prepare(
+      `EXPLAIN QUERY PLAN
+       SELECT organizer_event.id
+       FROM organizer_events AS organizer_event
+       WHERE organizer_event.organization_id = ?
+         AND organizer_event.planning_status IN (
+           'confirmed',
+           'cancelled',
+           'completed'
+         )
+         AND organizer_event.publication_status = 'published'
+         AND organizer_event.deleted_at IS NULL`,
+    )
+    .bind(ORGANIZATION_ID)
+    .all();
+  const organizerPlan = organizerPlanRows
+    .map((row) => row.detail)
+    .join("\n");
+  assert.match(organizerPlan, /organizer_events_org_status_idx/u);
 });
 
 function upcomingInput() {
@@ -1008,6 +1430,118 @@ async function insertTimedEvent(database, event) {
       event.publishedAt,
       event.updatedAt,
       event.deletedAt,
+    )
+    .run();
+}
+
+async function insertOrganizerPublicEvent(
+  database,
+  {
+    confirmedMeetupEventUrl = null,
+    deletedAt = null,
+    endsAtUtcMs = Date.parse("2026-09-10T04:00:00.000Z"),
+    id,
+    meetupEventUrl = null,
+    planningStatus = "confirmed",
+    publicHostsEnabled = false,
+    publicationStatus = "published",
+    rsvpMode = "coming_soon",
+    slug,
+    startsAtUtcMs = Date.parse("2026-09-10T02:00:00.000Z"),
+    title,
+  },
+) {
+  await database
+    .prepare(
+      `INSERT INTO organizer_events (
+         id, organization_id, club_id, program_id, event_lane_id, category_id,
+         venue_id, primary_organizer_profile_id, title, slug, summary,
+         description, private_notes, private_meeting_details, meetup_event_url,
+         planning_status, publication_status, schedule_shape, starts_at_utc,
+         ends_at_utc, timezone, all_day_start_date,
+         all_day_end_date_exclusive, buffer_before_minutes,
+         buffer_after_minutes, content_version, schedule_version,
+         created_by_profile_id, updated_by_profile_id, created_at, updated_at,
+         deleted_at
+       ) VALUES (
+         ?, ?, 'club_vcc', NULL, 'lane_think', 'category_ideas', NULL,
+         'profile_public_host', ?, ?,
+         'A complete public organizer summary.',
+         'A complete public organizer description.',
+         'ORGANIZER_PRIVATE_NOTES_SENTINEL',
+         'ORGANIZER_PRIVATE_MEETING_SENTINEL', ?, ?, ?, 'timed', ?, ?,
+         'America/Vancouver', NULL, NULL, 0, 0, 1, 1, 'profile_owner',
+         'profile_owner', 10, 10, ?
+       )`,
+    )
+    .bind(
+      id,
+      ORGANIZATION_ID,
+      title,
+      slug,
+      meetupEventUrl,
+      planningStatus,
+      publicationStatus,
+      startsAtUtcMs,
+      endsAtUtcMs,
+      deletedAt,
+    )
+    .run();
+
+  const confirmedBy =
+    rsvpMode === "meetup" ? "profile_owner" : null;
+  const confirmedAt = rsvpMode === "meetup" ? 10 : null;
+  await database
+    .prepare(
+      `INSERT INTO organizer_event_public_details (
+         organizer_event_id, organization_id, attendance_mode,
+         public_location_name, public_address, public_access_note,
+         public_online_url, external_map_url, cost_text, capacity,
+         availability_state, preparation_information, what_to_bring,
+         arrival_instructions, weather_note, verified_accessibility_notes,
+         public_hosts_enabled, rsvp_mode, confirmed_meetup_event_url,
+         meetup_url_confirmed_by_profile_id, meetup_url_confirmed_at,
+         created_by_profile_id, updated_by_profile_id, created_at, updated_at
+       ) VALUES (
+         ?, ?, 'hybrid', 'Approved Public Room',
+         '100 Approved Public Street', 'Use the public east entrance.',
+         'https://events.synthetic.invalid/join',
+         'https://maps.synthetic.invalid/approved-room',
+         'Pay what you can.', 42, 'waitlist', 'Read the public handout.',
+         'A notebook.', 'Arrive ten minutes early.',
+         'The courtyard portion is weather dependent.',
+         'Step-free public entrance confirmed.', ?, ?, ?, ?, ?,
+         'profile_owner', 'profile_owner', 10, 10
+       )`,
+    )
+    .bind(
+      id,
+      ORGANIZATION_ID,
+      publicHostsEnabled ? 1 : 0,
+      rsvpMode,
+      confirmedMeetupEventUrl,
+      confirmedBy,
+      confirmedAt,
+    )
+    .run();
+
+  const wasPublished = publicationStatus === "published";
+  const wasCancelled = wasPublished && planningStatus === "cancelled";
+  await database
+    .prepare(
+      `INSERT INTO organizer_event_publication_state (
+         organizer_event_id, organization_id, first_published_at,
+         most_recent_published_at, most_recent_unpublished_at,
+         public_cancellation_at, last_mutation_actor_profile_id,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, NULL, ?, 'profile_owner', 10, 10)`,
+    )
+    .bind(
+      id,
+      ORGANIZATION_ID,
+      wasPublished ? 10 : null,
+      wasPublished ? 10 : null,
+      wasCancelled ? 10 : null,
     )
     .run();
 }

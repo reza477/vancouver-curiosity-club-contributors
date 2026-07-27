@@ -792,7 +792,7 @@ test("runtime guards reject crafted lifecycle and cross-organization writes", as
         clubId: "club-main",
         organizationId: "org-main",
       }),
-    /phase4_event_lifecycle_forbidden/u,
+    /phase5_publication_intent_required/u,
   );
   assert.throws(
     () =>

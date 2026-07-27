@@ -1015,7 +1015,21 @@ export const organizerEventRevisions = sqliteTable(
     contentVersion: integer("content_version").notNull(),
     scheduleVersion: integer("schedule_version").notNull(),
     action: text("action", {
-      enum: ["created", "updated", "duplicated", "deleted", "restored"],
+      enum: [
+        "created",
+        "updated",
+        "duplicated",
+        "deleted",
+        "restored",
+        "public_details_updated",
+        "publication_scheduled",
+        "publication_executed",
+        "publication_cancelled",
+        "published",
+        "unpublished",
+        "publicly_cancelled",
+        "publication_restored",
+      ],
     }).notNull(),
     snapshotJson: text("snapshot_json").notNull(),
     actorProfileId: text("actor_profile_id")
@@ -1973,6 +1987,510 @@ export const organizerHoldNoticeReceipts = sqliteTable(
   ],
 );
 
+/**
+ * Phase 5 keeps public presentation and publication workflow state in
+ * organization-scoped sidecars. `organizer_events` remains the only writable
+ * manual event identity and schedule.
+ */
+export const organizationPublicationPolicies = sqliteTable(
+  "organization_publication_policies",
+  {
+    organizationId: text("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerSelfPublishEnabled: integer(
+      "organizer_self_publish_enabled",
+      { mode: "boolean" },
+    )
+      .notNull()
+      .default(false),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    check(
+      "organization_publication_policies_self_publish_check",
+      sql`${table.organizerSelfPublishEnabled} IN (0, 1)`,
+    ),
+  ],
+);
+
+export const organizerEventPublicDetails = sqliteTable(
+  "organizer_event_public_details",
+  {
+    organizerEventId: text("organizer_event_id")
+      .primaryKey()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    attendanceMode: text("attendance_mode", {
+      enum: [
+        "in_person",
+        "online",
+        "hybrid",
+        "location_undecided",
+      ],
+    })
+      .notNull()
+      .default("location_undecided"),
+    publicLocationName: text("public_location_name"),
+    publicAddress: text("public_address"),
+    publicAccessNote: text("public_access_note"),
+    publicOnlineUrl: text("public_online_url"),
+    externalMapUrl: text("external_map_url"),
+    costText: text("cost_text"),
+    capacity: integer("capacity"),
+    availabilityState: text("availability_state", {
+      enum: ["open", "full", "waitlist"],
+    })
+      .notNull()
+      .default("open"),
+    preparationInformation: text("preparation_information"),
+    whatToBring: text("what_to_bring"),
+    arrivalInstructions: text("arrival_instructions"),
+    weatherNote: text("weather_note"),
+    verifiedAccessibilityNotes: text("verified_accessibility_notes"),
+    publicHostsEnabled: integer("public_hosts_enabled", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    rsvpMode: text("rsvp_mode", {
+      enum: ["meetup", "coming_soon"],
+    })
+      .notNull()
+      .default("coming_soon"),
+    confirmedMeetupEventUrl: text("confirmed_meetup_event_url"),
+    meetupUrlConfirmedByProfileId: text(
+      "meetup_url_confirmed_by_profile_id",
+    ).references(() => profiles.id, { onDelete: "restrict" }),
+    meetupUrlConfirmedAt: integer("meetup_url_confirmed_at"),
+    createdByProfileId: text("created_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    index("organizer_event_public_details_org_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+    ),
+    index("organizer_event_public_details_org_mode_idx").on(
+      table.organizationId,
+      table.attendanceMode,
+      table.organizerEventId,
+    ),
+    check(
+      "organizer_event_public_details_attendance_mode_check",
+      sql`${table.attendanceMode} IN ('in_person', 'online', 'hybrid', 'location_undecided')`,
+    ),
+    check(
+      "organizer_event_public_details_availability_check",
+      sql`${table.availabilityState} IN ('open', 'full', 'waitlist')`,
+    ),
+    check(
+      "organizer_event_public_details_capacity_check",
+      sql`${table.capacity} IS NULL OR ${table.capacity} BETWEEN 1 AND 1000000`,
+    ),
+    check(
+      "organizer_event_public_details_hosts_check",
+      sql`${table.publicHostsEnabled} IN (0, 1)`,
+    ),
+    check(
+      "organizer_event_public_details_rsvp_shape_check",
+      sql`(
+        ${table.rsvpMode} = 'coming_soon'
+        AND ${table.confirmedMeetupEventUrl} IS NULL
+        AND ${table.meetupUrlConfirmedByProfileId} IS NULL
+        AND ${table.meetupUrlConfirmedAt} IS NULL
+      ) OR (
+        ${table.rsvpMode} = 'meetup'
+        AND length(trim(${table.confirmedMeetupEventUrl}))
+            BETWEEN 1 AND 2048
+        AND ${table.meetupUrlConfirmedByProfileId} IS NOT NULL
+        AND ${table.meetupUrlConfirmedAt} IS NOT NULL
+      )`,
+    ),
+  ],
+);
+
+export const organizerEventPublicHosts = sqliteTable(
+  "organizer_event_public_hosts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    selectedByProfileId: text("selected_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    selectedAt: integer("selected_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_event_public_hosts_event_profile_unique").on(
+      table.organizerEventId,
+      table.profileId,
+    ),
+    index("organizer_event_public_hosts_org_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.profileId,
+    ),
+    index("organizer_event_public_hosts_org_profile_idx").on(
+      table.organizationId,
+      table.profileId,
+      table.organizerEventId,
+    ),
+  ],
+);
+
+export const organizerEventPublicationState = sqliteTable(
+  "organizer_event_publication_state",
+  {
+    organizerEventId: text("organizer_event_id")
+      .primaryKey()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    firstPublishedAt: integer("first_published_at"),
+    mostRecentPublishedAt: integer("most_recent_published_at"),
+    mostRecentUnpublishedAt: integer("most_recent_unpublished_at"),
+    publicCancellationAt: integer("public_cancellation_at"),
+    lastMutationActorProfileId: text("last_mutation_actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    index("organizer_event_publication_state_org_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+    ),
+    check(
+      "organizer_event_publication_state_publish_shape_check",
+      sql`(
+        ${table.firstPublishedAt} IS NULL
+        AND ${table.mostRecentPublishedAt} IS NULL
+        AND ${table.publicCancellationAt} IS NULL
+      ) OR (
+        ${table.firstPublishedAt} IS NOT NULL
+        AND ${table.mostRecentPublishedAt} IS NOT NULL
+        AND ${table.mostRecentPublishedAt} >= ${table.firstPublishedAt}
+        AND (
+          ${table.publicCancellationAt} IS NULL
+          OR ${table.publicCancellationAt} >= ${table.firstPublishedAt}
+        )
+      )`,
+    ),
+    check(
+      "organizer_event_publication_state_unpublish_check",
+      sql`${table.mostRecentUnpublishedAt} IS NULL OR ${table.mostRecentUnpublishedAt} >= 0`,
+    ),
+  ],
+);
+
+export const organizerEventPublicationJobs = sqliteTable(
+  "organizer_event_publication_jobs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    requestedPublicationAtUtc: integer(
+      "requested_publication_at_utc",
+    ).notNull(),
+    originalTimezone: text("original_timezone").notNull(),
+    boundContentVersion: integer("bound_content_version").notNull(),
+    boundScheduleVersion: integer("bound_schedule_version").notNull(),
+    authorizingProfileId: text("authorizing_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    state: text("state", {
+      enum: [
+        "pending",
+        "executed",
+        "cancelled",
+        "invalidated",
+        "failed",
+      ],
+    })
+      .notNull()
+      .default("pending"),
+    attemptedAt: integer("attempted_at"),
+    terminalAt: integer("terminal_at"),
+    failureCode: text("failure_code"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_event_publication_jobs_one_pending_unique")
+      .on(table.organizerEventId)
+      .where(sql`${table.state} = 'pending'`),
+    index("organizer_event_publication_jobs_due_idx").on(
+      table.state,
+      table.requestedPublicationAtUtc,
+      table.organizationId,
+      table.id,
+    ),
+    index("organizer_event_publication_jobs_org_event_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.createdAt,
+    ),
+    check(
+      "organizer_event_publication_jobs_versions_check",
+      sql`${table.boundContentVersion} >= 1 AND ${table.boundScheduleVersion} >= 1`,
+    ),
+    check(
+      "organizer_event_publication_jobs_time_check",
+      sql`${table.requestedPublicationAtUtc} >= 0 AND length(trim(${table.originalTimezone})) BETWEEN 1 AND 255`,
+    ),
+    check(
+      "organizer_event_publication_jobs_state_shape_check",
+      sql`(
+        ${table.state} = 'pending'
+        AND ${table.terminalAt} IS NULL
+        AND ${table.failureCode} IS NULL
+      ) OR (
+        ${table.state} IN ('executed', 'cancelled')
+        AND ${table.terminalAt} IS NOT NULL
+        AND ${table.failureCode} IS NULL
+      ) OR (
+        ${table.state} IN ('invalidated', 'failed')
+        AND ${table.terminalAt} IS NOT NULL
+        AND length(trim(${table.failureCode})) BETWEEN 1 AND 64
+      )`,
+    ),
+    check(
+      "organizer_event_publication_jobs_terminal_time_check",
+      sql`${table.terminalAt} IS NULL OR ${table.terminalAt} >= ${table.createdAt}`,
+    ),
+  ],
+);
+
+/**
+ * A transaction-local publication envelope. It binds each public mutation to
+ * the same complete Phase 4 schedule intent used by the authoritative
+ * reservation guard, while adding only public-state/version facts.
+ */
+export const organizerEventPublicationWriteIntents = sqliteTable(
+  "organizer_event_publication_write_intents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizerEventId: text("organizer_event_id")
+      .notNull()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    scheduleWriteIntentId: text("schedule_write_intent_id")
+      .notNull()
+      .references(() => organizerScheduleWriteIntents.id, {
+        onDelete: "restrict",
+      }),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    operation: text("operation", {
+      enum: [
+        "update_public_details",
+        "publish",
+        "schedule_publication",
+        "cancel_scheduled_publication",
+        "reconcile_publication",
+        "invalidate_scheduled_publication",
+        "unpublish",
+        "public_cancel",
+        "restore_cancelled",
+        "update_published",
+        "update_scheduled",
+        "update_unpublished",
+      ],
+    }).notNull(),
+    expectedPublicationStatus: text("expected_publication_status", {
+      enum: ["private", "scheduled", "published", "unpublished"],
+    }).notNull(),
+    proposedPublicationStatus: text("proposed_publication_status", {
+      enum: ["private", "scheduled", "published", "unpublished"],
+    }).notNull(),
+    expectedContentVersion: integer("expected_content_version").notNull(),
+    expectedScheduleVersion: integer("expected_schedule_version").notNull(),
+    proposedContentVersion: integer("proposed_content_version").notNull(),
+    proposedScheduleVersion: integer("proposed_schedule_version").notNull(),
+    publicStateFingerprint: text("public_state_fingerprint").notNull(),
+    // The new job is created later in the same guarded batch. Runtime
+    // invariants enforce exact eventual parity; an immediate SQLite FK would
+    // make the transaction-safe intent-first ordering impossible.
+    publicationJobId: text("publication_job_id"),
+    previousPublicationJobId: text("previous_publication_job_id").references(
+      () => organizerEventPublicationJobs.id,
+      { onDelete: "restrict" },
+    ),
+    executionKind: text("execution_kind", {
+      enum: ["actor", "reconciliation"],
+    })
+      .notNull()
+      .default("actor"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    completedAt: integer("completed_at"),
+  },
+  (table) => [
+    uniqueIndex(
+      "organizer_event_publication_write_intents_schedule_unique",
+    ).on(table.scheduleWriteIntentId),
+    index("organizer_event_publication_write_intents_event_open_idx").on(
+      table.organizationId,
+      table.organizerEventId,
+      table.completedAt,
+      table.createdAt,
+    ),
+    index("organizer_event_publication_write_intents_job_idx").on(
+      table.organizationId,
+      table.publicationJobId,
+    ),
+    index("organizer_event_publication_write_intents_previous_job_idx").on(
+      table.organizationId,
+      table.previousPublicationJobId,
+    ),
+    check(
+      "organizer_event_publication_write_intents_operation_check",
+      sql`${table.operation} IN (
+        'update_public_details', 'publish', 'schedule_publication',
+        'cancel_scheduled_publication', 'reconcile_publication',
+        'invalidate_scheduled_publication',
+        'unpublish', 'public_cancel', 'restore_cancelled',
+        'update_published', 'update_scheduled', 'update_unpublished'
+      )`,
+    ),
+    check(
+      "organizer_event_publication_write_intents_status_check",
+      sql`${table.expectedPublicationStatus} IN (
+        'private', 'scheduled', 'published', 'unpublished'
+      ) AND ${table.proposedPublicationStatus} IN (
+        'private', 'scheduled', 'published', 'unpublished'
+      )`,
+    ),
+    check(
+      "organizer_event_publication_write_intents_versions_check",
+      sql`${table.expectedContentVersion} >= 1
+          AND ${table.expectedScheduleVersion} >= 1
+          AND ${table.proposedContentVersion} =
+              ${table.expectedContentVersion} + 1
+          AND ${table.proposedScheduleVersion} BETWEEN
+              ${table.expectedScheduleVersion}
+              AND ${table.expectedScheduleVersion} + 1`,
+    ),
+    check(
+      "organizer_event_publication_write_intents_fingerprint_check",
+      sql`length(${table.publicStateFingerprint}) = 64`,
+    ),
+    check(
+      "organizer_event_publication_write_intents_execution_check",
+      sql`${table.executionKind} IN ('actor', 'reconciliation')`,
+    ),
+    check(
+      "organizer_event_publication_write_intents_completion_check",
+      sql`${table.completedAt} IS NULL OR ${table.completedAt} >= ${table.createdAt}`,
+    ),
+    check(
+      "organizer_event_publication_write_intents_transition_check",
+      sql`(
+        ${table.operation} = 'update_public_details'
+        AND (
+          ${table.proposedPublicationStatus} =
+              ${table.expectedPublicationStatus}
+          OR (
+            ${table.expectedPublicationStatus} = 'scheduled'
+            AND ${table.proposedPublicationStatus}
+                IN ('private', 'unpublished')
+          )
+        )
+      ) OR (
+        ${table.operation} = 'publish'
+        AND ${table.expectedPublicationStatus}
+            IN ('private', 'scheduled', 'unpublished')
+        AND ${table.proposedPublicationStatus} = 'published'
+      ) OR (
+        ${table.operation} = 'schedule_publication'
+        AND ${table.expectedPublicationStatus}
+            IN ('private', 'scheduled', 'unpublished')
+        AND ${table.proposedPublicationStatus} = 'scheduled'
+      ) OR (
+        ${table.operation} = 'cancel_scheduled_publication'
+        AND ${table.expectedPublicationStatus} = 'scheduled'
+        AND ${table.proposedPublicationStatus}
+            IN ('private', 'unpublished')
+      ) OR (
+        ${table.operation} = 'reconcile_publication'
+        AND ${table.expectedPublicationStatus} = 'scheduled'
+        AND ${table.proposedPublicationStatus} = 'published'
+      ) OR (
+        ${table.operation} = 'invalidate_scheduled_publication'
+        AND ${table.expectedPublicationStatus} = 'scheduled'
+        AND ${table.proposedPublicationStatus} = 'unpublished'
+      ) OR (
+        ${table.operation} = 'unpublish'
+        AND ${table.expectedPublicationStatus} = 'published'
+        AND ${table.proposedPublicationStatus} = 'unpublished'
+      ) OR (
+        ${table.operation} = 'public_cancel'
+        AND (
+          (
+            ${table.expectedPublicationStatus} = 'published'
+            AND ${table.proposedPublicationStatus} = 'published'
+          )
+          OR (
+            ${table.expectedPublicationStatus} = 'scheduled'
+            AND ${table.proposedPublicationStatus} = 'unpublished'
+          )
+          OR (
+            ${table.expectedPublicationStatus}
+                IN ('private', 'unpublished')
+            AND ${table.proposedPublicationStatus} =
+                ${table.expectedPublicationStatus}
+          )
+        )
+      ) OR (
+        ${table.operation} = 'restore_cancelled'
+        AND ${table.expectedPublicationStatus}
+            IN ('private', 'published', 'unpublished')
+        AND ${table.proposedPublicationStatus} = 'unpublished'
+      ) OR (
+        ${table.operation} = 'update_published'
+        AND ${table.expectedPublicationStatus} = 'published'
+        AND ${table.proposedPublicationStatus} = 'published'
+      ) OR (
+        ${table.operation} = 'update_scheduled'
+        AND ${table.expectedPublicationStatus} = 'scheduled'
+        AND ${table.proposedPublicationStatus} = 'unpublished'
+      ) OR (
+        ${table.operation} = 'update_unpublished'
+        AND ${table.expectedPublicationStatus} = 'unpublished'
+        AND ${table.proposedPublicationStatus} = 'unpublished'
+      )`,
+    ),
+  ],
+);
+
 export const conflictPolicies = sqliteTable(
   "conflict_policies",
   {
@@ -2839,6 +3357,12 @@ export const meetupEventSnapshots = sqliteTable(
     index("meetup_event_snapshots_event_idx").on(
       table.organizationId,
       table.eventId,
+    ),
+    index("meetup_event_snapshots_org_slug_generation_idx").on(
+      table.organizationId,
+      table.eventSlug,
+      table.generationId,
+      table.status,
     ),
     check(
       "meetup_event_snapshots_ordinal_check",

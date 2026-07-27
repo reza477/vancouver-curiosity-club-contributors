@@ -2,6 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { ensureDatabaseInvariants } from "../lib/server/database/invariants";
+import { reconcileDueOrganizerPublications } from "../lib/server/organizer/publication";
 import {
   clearInvitationTokenCookie,
   invitationTokenCookie,
@@ -54,6 +55,22 @@ function isLocalRequest(requestUrl: URL): boolean {
     requestUrl.hostname === "localhost" ||
     requestUrl.hostname === "127.0.0.1" ||
     requestUrl.hostname === "::1"
+  );
+}
+
+function shouldReconcileScheduledPublication(
+  method: string,
+  pathname: string,
+): boolean {
+  if (method !== "GET" && method !== "HEAD") return false;
+  return (
+    pathname === "/" ||
+    pathname === "/events" ||
+    pathname.startsWith("/events/") ||
+    pathname.startsWith("/clubs/") ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/organizer" ||
+    pathname.startsWith("/organizer/events/")
   );
 }
 
@@ -293,6 +310,22 @@ const worker = {
         databaseInvariantUnavailableResponse(),
         policy,
       );
+    }
+
+    if (shouldReconcileScheduledPublication(request.method, url.pathname)) {
+      try {
+        await reconcileDueOrganizerPublications(env.DB, { limit: 1 });
+      } catch {
+        // Public requests retain the last committed publication state. The
+        // bounded code intentionally excludes event/job/identity facts.
+        console.error(
+          JSON.stringify({
+            code: "publication_reconciliation_deferred",
+            event: "scheduled_publication_reconciliation_failed",
+            level: "error",
+          }),
+        );
+      }
     }
 
     const securedRequest = requestWithSecurityContext(

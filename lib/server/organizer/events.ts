@@ -23,6 +23,7 @@ import {
   parsePhase3ManualEventInput,
   type CanonicalEventSchedule,
   type EventPlanningStatus,
+  type EventPublicationStatus,
   type Phase3ManualEventInput,
   type Phase3WritablePlanningStatus,
 } from "./lifecycle";
@@ -31,10 +32,13 @@ import {
   getOrganizerCalendarEvent,
   type OrganizerCalendarEventDto,
 } from "./calendar";
+import { currentD1Time } from "./conflicts";
 import {
   prepareOrganizerScheduleEditGuard,
   prepareNonReservingScheduleGuard,
+  prepareOrganizerPublicationScheduleGuard,
 } from "./scheduling";
+import { prepareCanonicalEventPublicationMutationGuard } from "./publication-bridge";
 import type { Phase4PlanningStatus } from "./conflict-domain";
 
 type OrganizerEditableEventInput = Omit<
@@ -63,7 +67,7 @@ export type OrganizerEventDto = Readonly<{
   privateMeetingDetails: string | null;
   meetupEventUrl: string | null;
   planningStatus: EventPlanningStatus;
-  publicationStatus: "private";
+  publicationStatus: EventPublicationStatus;
   schedule: CanonicalEventSchedule;
   bufferBeforeMinutes: number;
   bufferAfterMinutes: number;
@@ -316,7 +320,6 @@ WHERE source.id = ?
     'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
     'completed', 'archived'
   )
-  AND source.publication_status = 'private'
   AND source.deleted_at IS ?`;
 
 const UPDATE_EVENT_SQL = `
@@ -334,7 +337,6 @@ SET club_id = ?,
     private_meeting_details = ?,
     meetup_event_url = ?,
     planning_status = ?,
-    publication_status = 'private',
     schedule_shape = ?,
     starts_at_utc = ?,
     ends_at_utc = ?,
@@ -343,6 +345,7 @@ SET club_id = ?,
     all_day_end_date_exclusive = ?,
     buffer_before_minutes = ?,
     buffer_after_minutes = ?,
+    publication_status = ?,
     content_version = content_version + 1,
     schedule_version = schedule_version + ?,
     updated_by_profile_id = ?,
@@ -350,8 +353,9 @@ SET club_id = ?,
 WHERE id = ?
   AND organization_id = ?
   AND content_version = ?
+  AND schedule_version = ?
   AND planning_status = ?
-  AND publication_status = 'private'
+  AND publication_status = ?
   AND deleted_at IS NULL`;
 
 const INSERT_REVISION_SQL = `
@@ -373,8 +377,8 @@ INSERT INTO organizer_event_revisions (
 const INSERT_AUDIT_SQL = `
 INSERT INTO audit_logs (
   id, organization_id, actor_profile_id, action, entity_type, entity_id,
-  metadata_json
-) VALUES (?, ?, ?, ?, 'organizer_event', ?, ?)`;
+  metadata_json, created_at
+) VALUES (?, ?, ?, ?, 'organizer_event', ?, ?, ?)`;
 
 export async function createOrganizerEvent(
   database: D1DatabaseLike,
@@ -387,7 +391,7 @@ export async function createOrganizerEvent(
   });
   await validateEventReferences(database, actor, input, null);
 
-  const now = Date.now();
+  const now = await currentD1Time(database);
   const id = createId("organizer-event");
   const slug = createStableSlug(input.title, id);
   const snapshot = eventSnapshot({
@@ -480,7 +484,7 @@ export async function createOrganizerEvent(
       planningStatus: input.planningStatus,
       publicationStatus: "private",
       scheduleVersion: 1,
-    }),
+    }, now),
     ...assignmentNotificationStatements(
       database,
       actor,
@@ -551,20 +555,27 @@ export async function updateOrganizerEvent(
   const nextContentVersion = expectedContentVersion + 1;
   const nextScheduleVersion =
     existing.scheduleVersion + (scheduleChanged ? 1 : 0);
-  const now = Date.now();
-  const snapshot = eventSnapshot({
-    id: existing.id,
-    organizationId: existing.organizationId,
-    slug: existing.slug,
-    input,
-    contentVersion: nextContentVersion,
-    scheduleVersion: nextScheduleVersion,
-    createdByProfileId: existing.createdByProfileId,
-    updatedByProfileId: actor.profileId,
-    createdAt: existing.createdAt,
-    updatedAt: now,
-    deletedAt: null,
-  });
+  const nextPublicationStatus =
+    existing.publicationStatus === "scheduled"
+      ? ("unpublished" as const)
+      : existing.publicationStatus;
+  const now = await currentD1Time(database);
+  const snapshot = {
+    ...eventSnapshot({
+      id: existing.id,
+      organizationId: existing.organizationId,
+      slug: existing.slug,
+      input,
+      contentVersion: nextContentVersion,
+      scheduleVersion: nextScheduleVersion,
+      createdByProfileId: existing.createdByProfileId,
+      updatedByProfileId: actor.profileId,
+      createdAt: existing.createdAt,
+      updatedAt: now,
+      deletedAt: null,
+    }),
+    publicationStatus: nextPublicationStatus,
+  };
   const reservingEdit =
     scheduleChanged &&
     (existing.planningStatus === "tentative_hold" ||
@@ -659,6 +670,46 @@ export async function updateOrganizerEvent(
           Readonly<{ outcome: "apply" }>
         >)
       : null;
+  const publicationScheduleGuard =
+    !scheduleChanged &&
+    existing.publicationStatus !== "private"
+      ? await prepareOrganizerPublicationScheduleGuard(
+          database,
+          identity,
+          {
+            eventId,
+            expectedContentVersion,
+            expectedScheduleVersion,
+            operation:
+              existing.publicationStatus === "published"
+                ? "update_published"
+                : existing.publicationStatus === "scheduled"
+                  ? "update_scheduled"
+                  : "update_unpublished",
+            proposedContentVersion: nextContentVersion,
+          },
+          now,
+        )
+      : null;
+  const scheduleIntentId =
+    executableScheduleGuard?.intentId ??
+    publicationScheduleGuard?.intentId ??
+    null;
+  const publicationGuard = scheduleIntentId
+    ? await prepareCanonicalEventPublicationMutationGuard(
+        database,
+        actor,
+        existing,
+        {
+          authorizationExpectedChanges:
+            publicationScheduleGuard?.authorizationExpectedChanges ?? 0,
+          now,
+          proposedContentVersion: nextContentVersion,
+          proposedScheduleVersion: nextScheduleVersion,
+          scheduleWriteIntentId: scheduleIntentId,
+        },
+      )
+    : null;
   const mutation = database.prepare(UPDATE_EVENT_SQL).bind(
       input.clubId,
       input.programId,
@@ -681,13 +732,16 @@ export async function updateOrganizerEvent(
       input.schedule.allDayEndDateExclusive,
       input.bufferBeforeMinutes,
       input.bufferAfterMinutes,
+      nextPublicationStatus,
       scheduleChanged ? 1 : 0,
       actor.profileId,
       now,
       eventId,
       actor.organizationId,
       expectedContentVersion,
+      expectedScheduleVersion,
       existing.planningStatus,
+      existing.publicationStatus,
     );
   const associationStatements = scheduleChanged
     ? [
@@ -700,18 +754,35 @@ export async function updateOrganizerEvent(
         ...coOrganizerInsertStatements(database, actor, eventId, input),
       ]
     : [];
-  const statements: D1PreparedStatementLike[] = [
-    ...(executableScheduleGuard
-      ? [
-          ...executableScheduleGuard.invalidationStatements,
-          executableScheduleGuard.intentStatement,
-          executableScheduleGuard.incidentStatement,
-          ...(reservingScheduleGuard
-            ? [reservingScheduleGuard.overrideStatement]
-            : []),
-        ]
-      : []),
-    mutation,
+  const statements: D1PreparedStatementLike[] = [];
+  const publicationScheduleGuardIndexes: number[] = [];
+  if (executableScheduleGuard) {
+    statements.push(
+      ...executableScheduleGuard.invalidationStatements,
+      executableScheduleGuard.intentStatement,
+      executableScheduleGuard.incidentStatement,
+    );
+    if (reservingScheduleGuard) {
+      statements.push(reservingScheduleGuard.overrideStatement);
+    }
+  } else if (publicationScheduleGuard) {
+    publicationScheduleGuardIndexes.push(
+      statements.push(publicationScheduleGuard.intentStatement) - 1,
+    );
+    for (const statement of publicationScheduleGuard.authorizationStatements) {
+      publicationScheduleGuardIndexes.push(
+        statements.push(statement) - 1,
+      );
+    }
+  }
+  if (publicationGuard) {
+    statements.push(
+      publicationGuard.intentStatement,
+      ...publicationGuard.preMutationStatements,
+    );
+  }
+  const mutationIndex = statements.push(mutation) - 1;
+  statements.push(
     database.prepare(INSERT_GUARDED_REVISION_SQL).bind(
       createId("organizer-event-revision"),
       actor.organizationId,
@@ -726,9 +797,9 @@ export async function updateOrganizerEvent(
     auditStatement(database, actor, eventId, "organizer_event.updated", {
       contentVersion: nextContentVersion,
       planningStatus: input.planningStatus,
-      publicationStatus: "private",
+      publicationStatus: nextPublicationStatus,
       scheduleVersion: nextScheduleVersion,
-    }),
+    }, now),
     ...assignmentNotificationStatements(
       database,
       actor,
@@ -739,24 +810,59 @@ export async function updateOrganizerEvent(
       scheduleChanged,
       now,
     ),
-    ...(reservingScheduleGuard
-      ? [reservingScheduleGuard.finalizationStatement]
-      : []),
-    ...(executableScheduleGuard
-      ? [executableScheduleGuard.completionStatement]
-      : []),
+  );
+  if (reservingScheduleGuard) {
+    statements.push(reservingScheduleGuard.finalizationStatement);
+  }
+  const publicationConflictFinalizationIndex =
+    publicationScheduleGuard?.finalizationStatement
+      ? statements.push(
+          publicationScheduleGuard.finalizationStatement,
+        ) - 1
+      : null;
+  const guardedMutationIndexes = [
+    ...publicationScheduleGuardIndexes,
+    mutationIndex,
+    ...(publicationConflictFinalizationIndex === null
+      ? []
+      : [publicationConflictFinalizationIndex]),
   ];
-
-  const mutationIndex = executableScheduleGuard
-    ? executableScheduleGuard.invalidationStatements.length +
-      (reservingEdit ? 3 : 2)
-    : 0;
+  if (publicationGuard) {
+    guardedMutationIndexes.push(
+      statements.push(publicationGuard.completionStatement) - 1,
+    );
+  }
+  const scheduleCompletionStatement =
+    executableScheduleGuard?.completionStatement ??
+    publicationScheduleGuard?.completionStatement ??
+    null;
+  if (scheduleCompletionStatement) {
+    guardedMutationIndexes.push(
+      statements.push(scheduleCompletionStatement) - 1,
+    );
+  }
   await runStaleGuardedBatch(
     database,
     statements,
-    executableScheduleGuard
-      ? [mutationIndex, statements.length - 1]
-      : [mutationIndex],
+    guardedMutationIndexes,
+    publicationScheduleGuard
+      ? [
+          ...publicationScheduleGuardIndexes
+            .slice(1)
+            .map((index) => ({
+              expected:
+                publicationScheduleGuard.authorizationExpectedChanges,
+              index,
+            })),
+          ...(publicationConflictFinalizationIndex === null
+            ? []
+            : [{
+                expected:
+                  publicationScheduleGuard.authorizationExpectedChanges,
+                index: publicationConflictFinalizationIndex,
+              }]),
+        ]
+      : [],
   );
   return requireManualEvent(database, actor, eventId, true);
 }
@@ -802,7 +908,7 @@ export async function duplicateOrganizerEvent(
   });
   await validateEventReferences(database, actor, copiedInput, null);
   const slug = createStableSlug(title, id);
-  const now = Date.now();
+  const now = await currentD1Time(database);
   const snapshot = eventSnapshot({
     id,
     organizationId: actor.organizationId,
@@ -899,7 +1005,7 @@ export async function duplicateOrganizerEvent(
       publicationStatus: "private",
       scheduleVersion: 1,
       sourceEventId,
-    }),
+    }, now),
     ...assignmentNotificationStatements(
       database,
       actor,
@@ -965,6 +1071,37 @@ export async function getOrganizerEvent(
   const event = await requireManualEvent(database, actor, eventId, true);
   await authorizeEventEdit(database, actor, event);
   return event;
+}
+
+/**
+ * Internal durable-actor seam for server reconciliation. The actor must come
+ * from current D1 membership state, never a request body or identity header.
+ */
+export async function getOrganizerEventForAuthorizedActor(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  eventIdValue: unknown,
+): Promise<OrganizerEventDto> {
+  const eventId = parseIdentifier(eventIdValue, "eventId");
+  const event = await requireManualEvent(database, actor, eventId, true);
+  await authorizeEventEdit(database, actor, event);
+  return event;
+}
+
+/**
+ * Organization-scoped read seam for private workspace panels. Unlike the
+ * mutation-oriented readers above, this does not imply that the actor may
+ * edit the event; callers must compute and expose their own exact action
+ * permissions. The membership supplied here must already have been derived
+ * from trusted SIWC context.
+ */
+export async function getOrganizerEventForAuthorizedWorkspaceViewer(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  eventIdValue: unknown,
+): Promise<OrganizerEventDto> {
+  const eventId = parseIdentifier(eventIdValue, "eventId");
+  return requireManualEvent(database, actor, eventId, true);
 }
 
 /**
@@ -1185,7 +1322,7 @@ async function setOrganizerEventDeletedState(
   const expectedVersion = parseExpectedVersion(expectedContentVersionValue);
   const actor = await authorizeMembership(database, identity);
   const existing = await requireManualEvent(database, actor, eventId, true);
-  assertPrivateManual(existing);
+  assertManual(existing);
   await authorizeEventEdit(database, actor, existing);
   if ((existing.deletedAt !== null) === deleted) {
     throw new StaleOrganizerEventEditError();
@@ -1221,7 +1358,7 @@ async function setOrganizerEventDeletedState(
       throw error;
     }
   }
-  const now = Date.now();
+  const now = await currentD1Time(database);
   const nextContentVersion = expectedVersion + 1;
   const nextScheduleVersion = existing.scheduleVersion + 1;
   const nextPlanningStatus: Phase4PlanningStatus = deleted
@@ -1229,6 +1366,11 @@ async function setOrganizerEventDeletedState(
     : existing.schedule.shape === "unscheduled"
       ? "idea"
       : "draft";
+  const nextPublicationStatus =
+    existing.publicationStatus === "published" ||
+    existing.publicationStatus === "scheduled"
+      ? ("unpublished" as const)
+      : existing.publicationStatus;
   const snapshot = {
     ...eventDtoSnapshot(existing),
     contentVersion: nextContentVersion,
@@ -1237,6 +1379,7 @@ async function setOrganizerEventDeletedState(
     updatedAt: now,
     deletedAt: deleted ? now : null,
     planningStatus: nextPlanningStatus,
+    publicationStatus: nextPublicationStatus,
   };
   const scheduleGuard = await prepareNonReservingScheduleGuard(
     database,
@@ -1265,16 +1408,46 @@ async function setOrganizerEventDeletedState(
     },
     now,
   );
-  const statements = [
+  const publicationGuard =
+    existing.publicationStatus === "private"
+      ? null
+      : await prepareCanonicalEventPublicationMutationGuard(
+          database,
+          actor,
+          existing,
+          {
+            now,
+            operation:
+              existing.publicationStatus === "published"
+                ? "unpublish"
+                : existing.publicationStatus === "scheduled"
+                  ? "update_scheduled"
+                  : "update_unpublished",
+            nextPublicationStatus,
+            proposedContentVersion: nextContentVersion,
+            proposedScheduleVersion: nextScheduleVersion,
+            scheduleWriteIntentId: scheduleGuard.intentId,
+          },
+        );
+  const statements: D1PreparedStatementLike[] = [
     ...scheduleGuard.invalidationStatements,
     scheduleGuard.intentStatement,
     scheduleGuard.incidentStatement,
+    ...(publicationGuard
+      ? [
+          publicationGuard.intentStatement,
+          ...publicationGuard.preMutationStatements,
+        ]
+      : []),
+  ];
+  const mutationIndex = statements.push(
     database
       .prepare(
         `UPDATE organizer_events
          SET content_version = content_version + 1,
               schedule_version = schedule_version + 1,
               planning_status = ?,
+              publication_status = ?,
               updated_by_profile_id = ?,
              updated_at = ?,
              deleted_at = ?
@@ -1283,11 +1456,12 @@ async function setOrganizerEventDeletedState(
            AND content_version = ?
            AND schedule_version = ?
            AND planning_status = ?
-           AND publication_status = 'private'
+           AND publication_status = ?
            AND ${deleted ? "deleted_at IS NULL" : "deleted_at IS NOT NULL"}`,
       )
       .bind(
         nextPlanningStatus,
+        nextPublicationStatus,
         actor.profileId,
         now,
         deleted ? now : null,
@@ -1296,7 +1470,10 @@ async function setOrganizerEventDeletedState(
         expectedVersion,
         expectedScheduleVersion,
         existing.planningStatus,
+        existing.publicationStatus,
       ),
+  ) - 1;
+  statements.push(
     database.prepare(INSERT_GUARDED_REVISION_SQL).bind(
       createId("organizer-event-revision"),
       actor.organizationId,
@@ -1315,21 +1492,28 @@ async function setOrganizerEventDeletedState(
       {
         contentVersion: nextContentVersion,
         planningStatus: nextPlanningStatus,
-        publicationStatus: "private",
+        publicationStatus: nextPublicationStatus,
         scheduleVersion: nextScheduleVersion,
       },
+      now,
     ),
-    scheduleGuard.completionStatement,
-  ];
+  );
+  const guardedMutationIndexes = [mutationIndex];
+  if (publicationGuard) {
+    guardedMutationIndexes.push(
+      statements.push(publicationGuard.completionStatement) - 1,
+    );
+  }
+  guardedMutationIndexes.push(
+    statements.push(scheduleGuard.completionStatement) - 1,
+  );
   try {
     const results = await database.batch(statements);
-    const eventChanges =
-      results[scheduleGuard.invalidationStatements.length + 2]?.meta
-        ?.changes;
     if (
-      typeof eventChanges !== "number" ||
-      eventChanges < 1 ||
-      results.at(-1)?.meta?.changes !== 1
+      guardedMutationIndexes.some((index) => {
+        const changes = results[index]?.meta?.changes;
+        return typeof changes !== "number" || changes < 1;
+      })
     ) {
       throw new StaleOrganizerEventEditError();
     }
@@ -1611,6 +1795,7 @@ function auditStatement(
   eventId: string,
   action: string,
   metadata: Readonly<Record<string, number | string>>,
+  createdAt: number,
 ): D1PreparedStatementLike {
   return database.prepare(INSERT_AUDIT_SQL).bind(
     createId("audit"),
@@ -1619,6 +1804,7 @@ function auditStatement(
     action,
     eventId,
     JSON.stringify(metadata),
+    createdAt,
   );
 }
 
@@ -1674,6 +1860,10 @@ async function runStaleGuardedBatch(
   database: D1DatabaseLike,
   statements: D1PreparedStatementLike[],
   guardedMutationIndexes: readonly number[] = [0],
+  exactChanges: readonly Readonly<{
+    expected: number;
+    index: number;
+  }>[] = [],
 ): Promise<readonly D1ResultLike[]> {
   try {
     const results = await database.batch(statements);
@@ -1685,6 +1875,10 @@ async function runStaleGuardedBatch(
         // zero (or missing) is stale; a larger count records trigger-maintained
         // reservation state and is still a successful authoritative write.
         return typeof changed !== "number" || changed < 1;
+      })
+      || exactChanges.some(({ expected, index }) => {
+        const changed = results[index]?.meta?.changes;
+        return changed !== expected;
       })
     ) {
       throw new StaleOrganizerEventEditError();
@@ -1723,7 +1917,12 @@ function readManualEventRow(row: Record<string, unknown>): OrganizerEventDto {
       "The organizer event data is unavailable.",
     );
   }
-  if (row.publication_status !== "private") {
+  if (
+    row.publication_status !== "private" &&
+    row.publication_status !== "scheduled" &&
+    row.publication_status !== "published" &&
+    row.publication_status !== "unpublished"
+  ) {
     throw new SafeApplicationError(
       "service_unavailable",
       503,
@@ -1774,7 +1973,7 @@ function readManualEventRow(row: Record<string, unknown>): OrganizerEventDto {
     privateMeetingDetails: optionalString(row.private_meeting_details),
     meetupEventUrl: optionalString(row.meetup_event_url),
     planningStatus: planningStatus as EventPlanningStatus,
-    publicationStatus: "private" as const,
+    publicationStatus: row.publication_status,
     schedule,
     bufferBeforeMinutes: requiredInteger(row.buffer_before_minutes),
     bufferAfterMinutes: requiredInteger(row.buffer_after_minutes),
@@ -2192,22 +2391,20 @@ function assertEditable(event: OrganizerEventDto): void {
     event.readOnly ||
     !["idea", "draft", "tentative_hold", "confirmed"].includes(
       event.planningStatus,
-    ) ||
-    event.publicationStatus !== "private"
+    )
   ) {
     throw new OrganizerEventNotFoundError();
   }
 }
 
 function assertDuplicable(event: OrganizerEventDto): void {
-  assertPrivateManual(event);
+  assertManual(event);
 }
 
-function assertPrivateManual(event: OrganizerEventDto): void {
+function assertManual(event: OrganizerEventDto): void {
   if (
     event.source !== "manual" ||
-    event.readOnly ||
-    event.publicationStatus !== "private"
+    event.readOnly
   ) {
     throw new OrganizerEventNotFoundError();
   }

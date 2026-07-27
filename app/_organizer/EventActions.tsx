@@ -12,7 +12,8 @@ type LifecycleAction =
   | "confirm"
   | "extend_hold"
   | "place_hold"
-  | "release_hold";
+  | "release_hold"
+  | "restore_cancelled";
 
 export function EventActions({
   contentVersion,
@@ -275,7 +276,8 @@ function LifecycleDialog({
         ) : null}
         {action === "place_hold" ||
         action === "extend_hold" ||
-        action === "confirm" ? (
+        action === "confirm" ||
+        action === "restore_cancelled" ? (
           <label>
             <span>Coordination reason, when policy requires it</span>
             <textarea maxLength={1_000} name="reason" rows={4} />
@@ -318,7 +320,10 @@ function lifecycleActions(
   if (planningStatus === "confirmed") {
     return ["cancel", "complete", "archive"];
   }
-  if (planningStatus === "cancelled" || planningStatus === "completed") {
+  if (planningStatus === "cancelled") {
+    return ["restore_cancelled", "archive"];
+  }
+  if (planningStatus === "completed") {
     return ["archive"];
   }
   return [];
@@ -331,5 +336,6 @@ function actionLabel(action: LifecycleAction): string {
   if (action === "confirm") return "Confirm";
   if (action === "cancel") return "Cancel";
   if (action === "complete") return "Complete";
+  if (action === "restore_cancelled") return "Restore as confirmed";
   return "Archive";
 }

@@ -1,8 +1,6 @@
 import Link from "next/link";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 
-const DISPLAY_TIME_ZONE = "America/Vancouver";
-
 export function EventCard({
   event,
   compact = false,
@@ -107,34 +105,35 @@ export function formatEventSchedule(event: PublicEventCardDto): Readonly<{
 
   const start = new Date(event.schedule.startsAtUtc);
   const end = new Date(event.schedule.endsAtUtc);
+  const displayTimeZone = event.schedule.timeZone;
   const localDate = new Intl.DateTimeFormat("en-CA", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-    timeZone: DISPLAY_TIME_ZONE,
+    timeZone: displayTimeZone,
   }).format(start);
   const startTime = new Intl.DateTimeFormat("en-CA", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: DISPLAY_TIME_ZONE,
+    timeZone: displayTimeZone,
   }).format(start);
   const endTime = new Intl.DateTimeFormat("en-CA", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: DISPLAY_TIME_ZONE,
+    timeZone: displayTimeZone,
     timeZoneName: "short",
   }).format(end);
   return Object.freeze({
     month: new Intl.DateTimeFormat("en-CA", {
       month: "short",
-      timeZone: DISPLAY_TIME_ZONE,
+      timeZone: displayTimeZone,
     })
       .format(start)
       .toUpperCase(),
     day: new Intl.DateTimeFormat("en-CA", {
       day: "2-digit",
-      timeZone: DISPLAY_TIME_ZONE,
+      timeZone: displayTimeZone,
     }).format(start),
     label: `${localDate} · ${startTime}–${endTime}`,
   });

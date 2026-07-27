@@ -80,19 +80,20 @@ trigger bodies necessarily contain internal semicolons, so trigger DDL is not
 safe in that packaging path.
 
 The deployed Phase 2 pre-production chain is normalized into four retry-safe
-files, each with at most 49 single statements. Phase 3 and Phase 4 then add
+files, each with at most 49 single statements. Phases 3 through 5 then add
 tokenizer-safe, retryable migrations without trigger bodies, destructive
-rebuilds, `ALTER`, `PRAGMA`, or rename grammar. The current Phase 4 schema has
-52 tables and 117 explicit indexes.
+rebuilds, `ALTER`, `PRAGMA`, or rename grammar. The current Phase 5 schema has
+58 tables and 131 explicit indexes.
 
 Before the Worker dispatches any application request, a server-only D1
 initializer installs every reservation, public-integrity, membership,
-ownership, organizer, and Phase 4 conflict/source-activation guard as one
-complete prepared statement per trigger. A persistent version/fingerprint
-marker, exact `sqlite_master` comparison, and combined integrity probes must
-all pass before the request can proceed. Healthy, cold-install, ordinary
-repair, and bounded fail-closed repair paths stay within D1's 50-statement
-limit. Failure returns a private-detail-free, no-store/noindex 503.
+ownership, organizer, Phase 4 conflict/source-activation, and Phase 5
+publication guard as one complete prepared statement per trigger. A
+persistent version/fingerprint marker, exact `sqlite_master` comparison, and
+combined integrity probes must all pass before the request can proceed.
+Healthy, cold-install, ordinary repair, and bounded fail-closed repair paths
+stay within D1's 50-statement limit. Failure returns a private-detail-free,
+no-store/noindex 503.
 
 The destructive reset is a one-time pre-production recovery only: Sites
 version 7 failed before any Worker URL existed, so no hosted user writes were
@@ -301,3 +302,56 @@ See:
 The existing owner-only live URL continues to serve version 8. Phase 4 is saved
 only as an unpublished Sites version unless a later turn explicitly authorizes
 deployment.
+
+## Phase 5 private-to-public publication
+
+Phase 5 connects the canonical private organizer event to the existing public
+website without copying it into a legacy event table:
+
+- protected, no-store preview through the exact public DTO and renderer;
+- approved public presentation details and consented host selections;
+- immediate publication and unpublication;
+- version-bound scheduled publication;
+- published cancellation, completion, archive, soft-delete, and safe restore
+  behavior;
+- one narrow Organizer self-publish policy;
+- the existing Home, Events, event detail, club, metadata, structured-data,
+  and sitemap projection.
+
+Every publication mutation extends the same Phase 4 scheduling intent. The D1
+batch rechecks current identity, role, club/event scope, content and schedule
+versions, conflict policy and version-bound authorization, public readiness,
+RSVP confirmation, host eligibility, slug uniqueness, and pending-job state.
+There is no application-only conflict bypass and no second event lifecycle.
+
+The official Meetup event URL mode accepts only an HTTPS individual event
+destination. A group homepage is rejected. Changing the canonical URL clears
+its confirmation and returns the display to the honest coming-soon state; no
+unconfirmed URL can appear publicly. Website publication never writes back to
+Meetup.
+
+Scheduled publication is request-driven because Sites does not guarantee
+cron. A relevant public or organizer request processes at most one due job.
+Concurrent requests use compare-and-swap, so one job publishes at most once.
+A deterministic stale, authorization, readiness, slug, or conflict failure
+invalidates that exact job and keeps the event nonpublic. A transient runtime
+failure leaves it pending for a later request.
+
+Published cancellation retains the stable public detail page with a prominent
+notice while removing it from Upcoming. Cancelling a scheduled event,
+archiving, or soft-deleting terminalizes any pending job and leaves the event
+unpublished. Restore never silently republishes.
+
+Phase 5 does not add general CMS, Community editing, media upload, import,
+export, public forms, email, QR, payments, attendee accounts, comments,
+messaging, or Meetup publishing.
+
+See:
+
+- `docs/architecture/0009-phase-5-publication.md`
+- `docs/owner-guide-phase5.md`
+- `docs/organizer-guide-phase5.md`
+
+Phase 5 is intended to be saved as one unpublished Sites version. The existing
+owner-only live version 8 remains unchanged unless a separate turn explicitly
+authorizes deployment.

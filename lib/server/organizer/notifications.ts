@@ -29,6 +29,11 @@ export const NOTIFICATION_TYPES = [
   "hold_expired",
   "event_confirmed",
   "event_cancelled",
+  "publication_scheduled",
+  "event_published",
+  "publication_failed",
+  "public_event_cancelled",
+  "public_schedule_changed",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -75,7 +80,12 @@ export type SafeNotificationPayload =
         | "event_assignment"
         | "event_schedule_changed"
         | "hold_expired"
-        | "hold_nearing_expiry";
+        | "hold_nearing_expiry"
+        | "publication_scheduled"
+        | "event_published"
+        | "publication_failed"
+        | "public_event_cancelled"
+        | "public_schedule_changed";
     }>;
 
 export type NotificationDto = Readonly<{
@@ -105,6 +115,11 @@ const IMPORTANT_NOTIFICATION_TYPES = new Set<NotificationType>([
   "hold_expired",
   "event_confirmed",
   "event_cancelled",
+  "publication_scheduled",
+  "event_published",
+  "publication_failed",
+  "public_event_cancelled",
+  "public_schedule_changed",
 ]);
 
 export async function listNotifications(
@@ -420,9 +435,14 @@ export function normalizeNotificationPayload(
     type === "event_cancelled" ||
     type === "event_confirmed" ||
     type === "event_schedule_changed" ||
+    type === "event_published" ||
     type === "draft_coordination_changed" ||
     type === "hold_expired" ||
-    type === "hold_nearing_expiry"
+    type === "hold_nearing_expiry" ||
+    type === "publication_scheduled" ||
+    type === "publication_failed" ||
+    type === "public_event_cancelled" ||
+    type === "public_schedule_changed"
   ) {
     return Object.freeze({
       type,
@@ -589,8 +609,13 @@ function withoutType(
     payload.type === "event_confirmed" ||
     payload.type === "event_schedule_changed" ||
     payload.type === "draft_coordination_changed" ||
+    payload.type === "event_published" ||
     payload.type === "hold_expired" ||
-    payload.type === "hold_nearing_expiry"
+    payload.type === "hold_nearing_expiry" ||
+    payload.type === "publication_failed" ||
+    payload.type === "publication_scheduled" ||
+    payload.type === "public_event_cancelled" ||
+    payload.type === "public_schedule_changed"
   ) {
     return Object.freeze({
       eventId: payload.eventId,

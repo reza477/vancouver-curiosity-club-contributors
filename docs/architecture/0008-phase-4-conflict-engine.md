@@ -205,3 +205,17 @@ metadata, structured data, sitemap, logs, or client bundles.
 - Public preview and publication remain Phase 5 and are not implemented here.
 - The existing owner-only version-8 deployment remains unchanged; Phase 4 is
   saved only as a new unpublished Sites version.
+
+## Phase 5 extension
+
+Phase 5 does not replace this write path. Website publication creates a new
+Phase 4 schedule intent for the unchanged canonical reservation, recomputes
+the exact current conflict set, and materializes any required version-bound
+incidents and overrides for that new intent before the canonical publication
+mutation. The reservation-state trigger performs the same final overlap and
+policy recheck, the incidents are finalized only after the mutation passes,
+and both the publication and scheduling intents are sealed in the same bounded
+D1 batch.
+
+See `docs/architecture/0009-phase-5-publication.md` for public sidecars,
+scheduled reconciliation, cancellation, and private/public projection rules.

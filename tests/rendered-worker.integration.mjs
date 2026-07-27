@@ -10,7 +10,7 @@ const FIXTURE_NOW = Date.UTC(2026, 6, 24, 19, 0, 0);
 const ORGANIZATION_ID = "phase2-org";
 const PROFILE_ID = "phase2-owner";
 const EXPECTED_DATABASE_INVARIANT_FINGERPRINT =
-  "0cd660044b22630341bde84ef8d48951842797c2b48c8b60450abb2f66f86f49";
+  "f4d5e707058f628c1a0dcaf908bd7a4c918b3bb099c6dd4ff6183a0c4850f356";
 const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
   "audit_logs_immutable_before_delete",
   "audit_logs_immutable_before_update",
@@ -23,9 +23,14 @@ const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
   "events_public_details_org_integrity_before_update",
   "events_reservation_guard_before_insert",
   "events_reservation_guard_before_update",
+  "organization_memberships_phase5_host_cleanup_after_delete",
+  "organization_memberships_phase5_host_cleanup_after_update",
   "organization_memberships_single_owner_before_delete",
   "organization_memberships_single_owner_before_insert",
   "organization_memberships_single_owner_before_update",
+  "organization_publication_policies_phase5_before_delete",
+  "organization_publication_policies_phase5_before_insert",
+  "organization_publication_policies_phase5_before_update",
   "organizer_conflict_overrides_phase4_before_insert",
   "organizer_conflict_overrides_phase4_before_update",
   "organizer_conflict_policies_phase4_before_insert",
@@ -35,11 +40,31 @@ const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
   "organizer_event_organizers_integrity_before_insert",
   "organizer_event_organizers_integrity_before_update",
   "organizer_event_organizers_phase4_before_delete",
+  "organizer_event_organizers_phase5_host_cleanup_after_delete",
+  "organizer_event_organizers_phase5_host_cleanup_after_update",
+  "organizer_event_public_details_phase5_before_delete",
+  "organizer_event_public_details_phase5_before_insert",
+  "organizer_event_public_details_phase5_before_update",
+  "organizer_event_public_hosts_phase5_before_delete",
+  "organizer_event_public_hosts_phase5_before_insert",
+  "organizer_event_public_hosts_phase5_before_update",
+  "organizer_event_publication_jobs_phase5_before_delete",
+  "organizer_event_publication_jobs_phase5_before_insert",
+  "organizer_event_publication_jobs_phase5_before_update",
+  "organizer_event_publication_state_phase5_before_delete",
+  "organizer_event_publication_state_phase5_before_insert",
+  "organizer_event_publication_state_phase5_before_update",
+  "organizer_event_publication_write_intents_phase5_before_delete",
+  "organizer_event_publication_write_intents_phase5_before_insert",
+  "organizer_event_publication_write_intents_phase5_before_update",
   "organizer_event_revisions_integrity_before_delete",
   "organizer_event_revisions_integrity_before_insert",
   "organizer_event_revisions_integrity_before_update",
   "organizer_events_phase3_integrity_before_insert",
   "organizer_events_phase3_integrity_before_update",
+  "organizer_events_phase5_host_cleanup_after_update",
+  "organizer_events_phase5_publication_before_insert",
+  "organizer_events_phase5_publication_before_update",
   "organizer_external_reservations_phase4_before_delete",
   "organizer_external_reservations_phase4_before_insert",
   "organizer_external_reservations_phase4_before_update",
@@ -57,6 +82,7 @@ const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
   "ownership_transfer_locks_before_update",
   "profiles_membership_identity_before_delete",
   "profiles_membership_identity_before_update",
+  "profiles_phase5_host_cleanup_after_update",
   "sync_sources_phase4_activation_before_update",
   "sync_sources_phase4_deactivation_before_update",
   "sync_sources_phase4_identity_before_update",
@@ -77,6 +103,8 @@ const PRIVATE_SENTINELS = [
   "PRIVATE_NOTIFICATION_SENTINEL",
   "PRIVATE_AUDIT_SENTINEL",
   "PRIVATE_INVITATION_EMAIL_SENTINEL",
+  "RENDERED_PHASE5_PRIVATE_NOTES_SENTINEL",
+  "RENDERED_PHASE5_PRIVATE_MEETING_SENTINEL",
 ];
 const OWNER_AUTH_HEADERS = Object.freeze({
   "oai-authenticated-user-email":
@@ -134,8 +162,12 @@ async function organizerMutation(path, method, body) {
 
 async function createRenderedTimedDraft({
   clubId = "club-curiosity",
+  description,
   endLocal,
+  privateMeetingDetails,
+  privateNotes,
   startLocal,
+  summary,
   title,
   venueId = null,
 }) {
@@ -147,12 +179,16 @@ async function createRenderedTimedDraft({
       bufferBeforeMinutes: 0,
       clubId,
       coOrganizerProfileIds: [],
+      description,
       endLocal,
       planningStatus: "draft",
       primaryOrganizerProfileId: PROFILE_ID,
+      privateMeetingDetails,
+      privateNotes,
       publicationStatus: "private",
       scheduleShape: "timed",
       startLocal,
+      summary,
       timeZone: "America/Vancouver",
       title,
       venueId,
@@ -210,6 +246,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0011_sites_compatible_indexes_b.sql",
     "0012_phase3_organizer_foundation.sql",
     "0013_phase4_conflict_engine.sql",
+    "0014_phase5_publication.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -252,7 +289,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     .first();
   assert.deepEqual({ ...marker }, {
     trigger_fingerprint: EXPECTED_DATABASE_INVARIANT_FINGERPRINT,
-    version: 4,
+    version: 5,
   });
   const triggerRows = await database
     .prepare(
@@ -276,7 +313,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    52,
+    58,
   );
   assert.equal(
     await database
@@ -287,7 +324,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    117,
+    131,
   );
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
@@ -922,6 +959,14 @@ test("the owner workspace renders private records without public chrome or cachi
     assert.doesNotMatch(html, /application\/ld\+json/iu);
     assert.doesNotMatch(html, /rel="canonical"/iu);
     assert.doesNotMatch(html, /_vinext\/image\?url=%2Ficon\.png/iu);
+    assert.match(
+      html,
+      /website publication controls live here[\s\S]*protected preview[\s\S]*public page/iu,
+    );
+    assert.doesNotMatch(
+      html,
+      /Website publishing remains unavailable in this phase/iu,
+    );
     if (path === "/organizer/events") {
       assert.match(html, /Showing[\s\S]*of[\s\S]*private record/iu);
       assert.match(html, /method="get"/iu);
@@ -1168,6 +1213,484 @@ test("the built Worker commits a private hold, refuses an unreviewed conflict, a
       path,
     );
   }
+});
+
+test("the built Worker keeps one Phase 5 event private until explicit publication and preserves truthful lifecycle boundaries", async () => {
+  const publicTitle = "Rendered Phase 5 lifecycle";
+  const publicSummary = "RENDERED_PHASE5_PUBLIC_SUMMARY";
+  const publicDescription = "RENDERED_PHASE5_PUBLIC_DESCRIPTION";
+  const privateValues = [
+    "RENDERED_PHASE5_PRIVATE_NOTES_SENTINEL",
+    "RENDERED_PHASE5_PRIVATE_MEETING_SENTINEL",
+  ];
+  const draft = await createRenderedTimedDraft({
+    description: publicDescription,
+    endLocal: "2036-10-08T20:00",
+    privateMeetingDetails: privateValues[1],
+    privateNotes: privateValues[0],
+    startLocal: "2036-10-08T18:00",
+    summary: publicSummary,
+    title: publicTitle,
+  });
+  const confirmedResponse = await organizerMutation(
+    `/api/organizer/events/${encodeURIComponent(draft.id)}/actions`,
+    "POST",
+    {
+      action: "confirm",
+      expectedContentVersion: draft.contentVersion,
+      expectedScheduleVersion: draft.scheduleVersion,
+    },
+  );
+  assert.equal(
+    confirmedResponse.status,
+    200,
+    await confirmedResponse.clone().text(),
+  );
+  assertOrganizerPrivateResponse(confirmedResponse);
+  const confirmed = (await confirmedResponse.json()).event;
+  assert.equal(confirmed.planningStatus, "confirmed");
+  assert.equal(confirmed.publicationStatus, "private");
+  const detailPath = `/events/${encodeURIComponent(draft.slug)}`;
+  const previewPath =
+    `/organizer/events/${encodeURIComponent(draft.id)}/preview`;
+  const publicationApiPath =
+    `/api/organizer/events/${encodeURIComponent(draft.id)}/publication`;
+  const publicationActionsPath = `${publicationApiPath}/actions`;
+  const canonicalUrl = new URL(
+    detailPath,
+    "https://preview.example",
+  ).toString();
+
+  async function assertAbsentFromPublicSurfaces(label) {
+    for (const [path, status] of [
+      ["/", 200],
+      ["/events", 200],
+      ["/clubs/vancouver-curiosity-club", 200],
+      ["/sitemap.xml", 200],
+      [detailPath, 404],
+    ]) {
+      const response = await fetchPath(path);
+      assert.equal(response.status, status, `${label}: ${path} status`);
+      const body = await response.text();
+      assert.doesNotMatch(
+        body,
+        new RegExp(escapeRegex(publicTitle), "u"),
+        `${label}: ${path} title`,
+      );
+      if (path !== detailPath) {
+        assert.doesNotMatch(
+          body,
+          new RegExp(escapeRegex(draft.slug), "u"),
+          `${label}: ${path} slug`,
+        );
+      }
+      for (const value of privateValues) {
+        assert.doesNotMatch(body, new RegExp(value, "u"), `${label}: ${path}`);
+      }
+      assertNoPrivateSentinels(body);
+    }
+  }
+
+  await assertAbsentFromPublicSurfaces("private confirmed event");
+
+  const workspaceResponse = await fetchPath(publicationApiPath, {
+    headers: OWNER_AUTH_HEADERS,
+  });
+  assert.equal(workspaceResponse.status, 200);
+  assertOrganizerPrivateResponse(workspaceResponse);
+  let workspace = (await workspaceResponse.json()).workspace;
+  assert.equal(workspace.event.publicationStatus, "private");
+  assert.equal(workspace.permissions.canPreview, false);
+
+  const savedResponse = await organizerMutation(
+    publicationApiPath,
+    "PATCH",
+    {
+      arrivalInstructions: "Use the published entrance.",
+      attendanceMode: "in_person",
+      availabilityState: "open",
+      capacity: 24,
+      confirmMeetupEventUrl: false,
+      costText: "Free",
+      expectedContentVersion: workspace.event.contentVersion,
+      expectedScheduleVersion: workspace.event.scheduleVersion,
+      externalMapUrl: null,
+      meetupEventUrl: workspace.event.meetupEventUrl,
+      preparationInformation: "Bring curiosity.",
+      publicAccessNote: "The published room is step-free.",
+      publicAddress: "123 Published Street, Vancouver",
+      publicHostsEnabled: false,
+      publicLocationName: "Rendered public room",
+      publicOnlineUrl: null,
+      rsvpMode: "coming_soon",
+      selectedHostProfileIds: [],
+      verifiedAccessibilityNotes: "Step-free published entrance.",
+      weatherNote: null,
+      whatToBring: "A question.",
+    },
+  );
+  assert.equal(savedResponse.status, 200, await savedResponse.clone().text());
+  assertOrganizerPrivateResponse(savedResponse);
+  workspace = (await savedResponse.json()).workspace;
+  assert.equal(workspace.event.publicationStatus, "private");
+  assert.equal(workspace.readiness.ready, true);
+  assert.equal(workspace.permissions.canPreview, true);
+  assert.equal(workspace.permissions.canPublish, true);
+
+  const previewResponse = await fetchPath(previewPath, {
+    headers: OWNER_AUTH_HEADERS,
+  });
+  assert.equal(previewResponse.status, 200);
+  assertOrganizerPrivateResponse(previewResponse);
+  const previewHtml = await previewResponse.text();
+  assert.match(previewHtml, /Protected preview/u);
+  assert.match(previewHtml, /Not a public page/u);
+  assert.match(previewHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  assert.match(previewHtml, new RegExp(publicSummary, "u"));
+  assert.match(previewHtml, /Rendered public room/u);
+  assert.doesNotMatch(previewHtml, /rel="canonical"/iu);
+  assert.doesNotMatch(previewHtml, /application\/ld\+json/iu);
+  for (const value of privateValues) {
+    assert.doesNotMatch(previewHtml, new RegExp(value, "u"));
+  }
+
+  const deniedPreview = await fetchPath(previewPath, {
+    headers: {
+      "oai-authenticated-user-email": "phase5-uninvited@example.invalid",
+      "oai-authenticated-user-full-name": "Phase%205%20Uninvited",
+      "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    },
+  });
+  assert.equal(deniedPreview.status, 403);
+  assertOrganizerPrivateResponse(deniedPreview);
+  const deniedHtml = await deniedPreview.text();
+  assert.match(deniedHtml, /Organizer access unavailable/u);
+  assert.doesNotMatch(deniedHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  for (const value of privateValues) {
+    assert.doesNotMatch(deniedHtml, new RegExp(value, "u"));
+  }
+
+  const deniedPublish = await fetchPath(publicationActionsPath, {
+    body: JSON.stringify({
+      action: "publish",
+      expectedContentVersion: workspace.event.contentVersion,
+      expectedScheduleVersion: workspace.event.scheduleVersion,
+    }),
+    headers: {
+      "content-type": "application/json",
+      origin: "https://preview.example",
+      "oai-authenticated-user-email": "phase5-uninvited@example.invalid",
+      "oai-authenticated-user-full-name": "Phase%205%20Uninvited",
+      "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    },
+    method: "POST",
+  });
+  assert.equal(deniedPublish.status, 403);
+  assertOrganizerPrivateResponse(deniedPublish);
+  const deniedPublishBody = await deniedPublish.text();
+  assert.match(deniedPublishBody, /authorization_denied/u);
+  assert.doesNotMatch(
+    deniedPublishBody,
+    new RegExp(escapeRegex(publicTitle), "u"),
+  );
+  const stillPrivateResponse = await fetchPath(publicationApiPath, {
+    headers: OWNER_AUTH_HEADERS,
+  });
+  assert.equal(stillPrivateResponse.status, 200);
+  assertOrganizerPrivateResponse(stillPrivateResponse);
+  const stillPrivate = (await stillPrivateResponse.json()).workspace;
+  assert.equal(stillPrivate.event.publicationStatus, "private");
+  assert.equal(
+    stillPrivate.event.contentVersion,
+    workspace.event.contentVersion,
+  );
+
+  const publishedResponse = await organizerMutation(
+    publicationActionsPath,
+    "POST",
+    {
+      action: "publish",
+      expectedContentVersion: workspace.event.contentVersion,
+      expectedScheduleVersion: workspace.event.scheduleVersion,
+    },
+  );
+  assert.equal(
+    publishedResponse.status,
+    200,
+    await publishedResponse.clone().text(),
+  );
+  assertOrganizerPrivateResponse(publishedResponse);
+  const published = await publishedResponse.json();
+  assert.equal(published.outcome, "published");
+  workspace = published.workspace;
+  assert.equal(workspace.event.publicationStatus, "published");
+  assert.equal(workspace.publicPath, detailPath);
+
+  const homeResponse = await fetchPath("/");
+  assert.equal(homeResponse.status, 200);
+  const homeHtml = await homeResponse.text();
+  assert.match(homeHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  assert.match(
+    homeHtml,
+    new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
+  );
+
+  const eventsResponse = await fetchPath("/events");
+  assert.equal(eventsResponse.status, 200);
+  const eventsHtml = await eventsResponse.text();
+  assert.match(eventsHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  assert.match(
+    eventsHtml,
+    new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
+  );
+
+  const detailResponse = await fetchPath(detailPath);
+  assert.equal(detailResponse.status, 200);
+  assert.equal(detailResponse.headers.get("x-robots-tag"), null);
+  const detailHtml = await detailResponse.text();
+  assert.match(detailHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  assert.match(detailHtml, new RegExp(publicSummary, "u"));
+  assert.match(detailHtml, new RegExp(publicDescription, "u"));
+  assert.match(
+    detailHtml,
+    new RegExp(
+      `rel="canonical" href="${escapeRegex(canonicalUrl)}"`,
+      "u",
+    ),
+  );
+  assert.match(
+    detailHtml,
+    new RegExp(
+      `name="description" content="${escapeRegex(publicSummary)}"`,
+      "u",
+    ),
+  );
+  assert.match(
+    detailHtml,
+    new RegExp(`property="og:title" content="${escapeRegex(publicTitle)}`, "u"),
+  );
+  const eventDocument = jsonLdDocuments(detailHtml).find(
+    (document) => document["@type"] === "Event",
+  );
+  assert.ok(eventDocument);
+  assert.equal(eventDocument.name, publicTitle);
+  assert.equal(eventDocument.description, publicSummary);
+  assert.equal(eventDocument.url, canonicalUrl);
+  assert.equal(
+    eventDocument.eventStatus,
+    "https://schema.org/EventScheduled",
+  );
+
+  const clubResponse = await fetchPath(
+    "/clubs/vancouver-curiosity-club",
+  );
+  assert.equal(clubResponse.status, 200);
+  const clubHtml = await clubResponse.text();
+  assert.match(clubHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  assert.match(
+    clubHtml,
+    new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
+  );
+
+  const publishedSitemapResponse = await fetchPath("/sitemap.xml");
+  assert.equal(publishedSitemapResponse.status, 200);
+  const publishedSitemap = await publishedSitemapResponse.text();
+  assert.match(
+    publishedSitemap,
+    new RegExp(`<loc>${escapeRegex(canonicalUrl)}</loc>`, "u"),
+  );
+  for (const body of [
+    homeHtml,
+    eventsHtml,
+    detailHtml,
+    clubHtml,
+    publishedSitemap,
+  ]) {
+    assertNoPrivateSentinels(body);
+    for (const value of privateValues) {
+      assert.doesNotMatch(body, new RegExp(value, "u"));
+    }
+  }
+
+  const unpublishedResponse = await organizerMutation(
+    publicationActionsPath,
+    "POST",
+    {
+      action: "unpublish",
+      expectedContentVersion: workspace.event.contentVersion,
+      expectedScheduleVersion: workspace.event.scheduleVersion,
+    },
+  );
+  assert.equal(unpublishedResponse.status, 200);
+  assertOrganizerPrivateResponse(unpublishedResponse);
+  const unpublished = await unpublishedResponse.json();
+  assert.equal(unpublished.outcome, "unpublished");
+  workspace = unpublished.workspace;
+  assert.equal(workspace.event.publicationStatus, "unpublished");
+  await assertAbsentFromPublicSurfaces("explicitly unpublished event");
+
+  const requestedPublicationAt = Date.now() + 4_000;
+  const scheduledResponse = await organizerMutation(
+    publicationActionsPath,
+    "POST",
+    {
+      action: "schedule_publication",
+      expectedContentVersion: workspace.event.contentVersion,
+      expectedScheduleVersion: workspace.event.scheduleVersion,
+      originalTimezone: "UTC",
+      requestedPublicationLocal: new Date(requestedPublicationAt)
+        .toISOString()
+        .slice(0, 19),
+    },
+  );
+  assert.equal(
+    scheduledResponse.status,
+    200,
+    await scheduledResponse.clone().text(),
+  );
+  assertOrganizerPrivateResponse(scheduledResponse);
+  const scheduled = await scheduledResponse.json();
+  assert.equal(scheduled.outcome, "publication_scheduled");
+  workspace = scheduled.workspace;
+  assert.equal(workspace.event.publicationStatus, "scheduled");
+  assert.ok(workspace.pendingJob);
+  await assertAbsentFromPublicSurfaces("scheduled but not due event");
+
+  let reconciledDetail = null;
+  const reconciliationDeadline = Date.now() + 12_000;
+  while (Date.now() < reconciliationDeadline) {
+    const candidate = await fetchPath(detailPath);
+    if (candidate.status === 200) {
+      reconciledDetail = candidate;
+      break;
+    }
+    assert.equal(candidate.status, 404);
+    await candidate.arrayBuffer();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 200));
+  }
+  assert.ok(reconciledDetail, "the due publication did not reconcile");
+  const reconciledHtml = await reconciledDetail.text();
+  assert.match(reconciledHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  const postReconciliationEvents = await fetchPath("/events");
+  assert.equal(postReconciliationEvents.status, 200);
+  assert.match(
+    await postReconciliationEvents.text(),
+    new RegExp(escapeRegex(publicTitle), "u"),
+  );
+
+  const database = await runtime.getD1Database("DB");
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM organizer_event_publication_jobs
+         WHERE organizer_event_id = ?
+           AND state = 'executed'`,
+      )
+      .bind(draft.id)
+      .first("count"),
+    1,
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM audit_logs
+         WHERE entity_id = ?
+           AND action = 'organizer_event.publication_executed'`,
+      )
+      .bind(draft.id)
+      .first("count"),
+    1,
+  );
+
+  const reconciledWorkspaceResponse = await fetchPath(publicationApiPath, {
+    headers: OWNER_AUTH_HEADERS,
+  });
+  assert.equal(reconciledWorkspaceResponse.status, 200);
+  assertOrganizerPrivateResponse(reconciledWorkspaceResponse);
+  workspace = (await reconciledWorkspaceResponse.json()).workspace;
+  assert.equal(workspace.event.publicationStatus, "published");
+
+  const cancelledResponse = await organizerMutation(
+    `/api/organizer/events/${encodeURIComponent(draft.id)}/actions`,
+    "POST",
+    {
+      action: "cancel",
+      expectedContentVersion: workspace.event.contentVersion,
+      expectedScheduleVersion: workspace.event.scheduleVersion,
+    },
+  );
+  assert.equal(
+    cancelledResponse.status,
+    200,
+    await cancelledResponse.clone().text(),
+  );
+  assertOrganizerPrivateResponse(cancelledResponse);
+  const cancelled = (await cancelledResponse.json()).event;
+  assert.equal(cancelled.planningStatus, "cancelled");
+  assert.equal(cancelled.publicationStatus, "published");
+
+  const cancelledEventsResponse = await fetchPath("/events");
+  assert.equal(cancelledEventsResponse.status, 200);
+  const cancelledEventsHtml = await cancelledEventsResponse.text();
+  assert.doesNotMatch(
+    cancelledEventsHtml,
+    new RegExp(escapeRegex(publicTitle), "u"),
+  );
+  const cancelledHomeResponse = await fetchPath("/");
+  assert.equal(cancelledHomeResponse.status, 200);
+  assert.doesNotMatch(
+    await cancelledHomeResponse.text(),
+    new RegExp(escapeRegex(publicTitle), "u"),
+  );
+  const cancelledClubResponse = await fetchPath(
+    "/clubs/vancouver-curiosity-club",
+  );
+  assert.equal(cancelledClubResponse.status, 200);
+  assert.doesNotMatch(
+    await cancelledClubResponse.text(),
+    new RegExp(escapeRegex(publicTitle), "u"),
+  );
+  const cancelledDetailResponse = await fetchPath(detailPath);
+  assert.equal(cancelledDetailResponse.status, 200);
+  const cancelledDetailHtml = await cancelledDetailResponse.text();
+  assert.match(cancelledDetailHtml, /<strong>Cancelled<\/strong>/u);
+  assert.match(
+    cancelledDetailHtml,
+    /This previously published event is no longer going ahead/u,
+  );
+  const cancelledEventDocument = jsonLdDocuments(cancelledDetailHtml).find(
+    (document) => document["@type"] === "Event",
+  );
+  assert.equal(
+    cancelledEventDocument?.eventStatus,
+    "https://schema.org/EventCancelled",
+  );
+  assertNoPrivateSentinels(cancelledDetailHtml);
+
+  const finalUnpublishResponse = await organizerMutation(
+    publicationActionsPath,
+    "POST",
+    {
+      action: "unpublish",
+      expectedContentVersion: cancelled.contentVersion,
+      expectedScheduleVersion: cancelled.scheduleVersion,
+    },
+  );
+  assert.equal(
+    finalUnpublishResponse.status,
+    200,
+    await finalUnpublishResponse.clone().text(),
+  );
+  assertOrganizerPrivateResponse(finalUnpublishResponse);
+  const finalUnpublish = await finalUnpublishResponse.json();
+  assert.equal(finalUnpublish.outcome, "unpublished");
+  assert.equal(
+    finalUnpublish.workspace.event.publicationStatus,
+    "unpublished",
+  );
+  await assertAbsentFromPublicSurfaces("cancelled event after unpublish");
 });
 
 test("policy changes keep active historical reservation versions invariant-ready", async () => {

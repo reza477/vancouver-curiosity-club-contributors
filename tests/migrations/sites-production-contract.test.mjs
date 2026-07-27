@@ -12,14 +12,15 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0011_sites_compatible_indexes_b.sql",
   "0012_phase3_organizer_foundation.sql",
   "0013_phase4_conflict_engine.sql",
+  "0014_phase5_publication.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
-  checks: 91,
-  explicitIndexes: 117,
-  foreignKeys: 177,
-  tables: 52,
+  checks: 110,
+  explicitIndexes: 131,
+  foreignKeys: 199,
+  tables: 58,
   triggers: 0,
-  uniqueIndexes: 44,
+  uniqueIndexes: 47,
 });
 
 test("the normalized migration chain is safe for the Sites production tokenizer", () => {
@@ -35,9 +36,10 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0011_snapshot.json",
       "0012_snapshot.json",
       "0013_snapshot.json",
+      "0014_snapshot.json",
       "_journal.json",
     ],
-    "the normalized chain must end exactly at 0013 with no 0014 residue",
+    "the normalized chain must end exactly at 0014 with no 0015 residue",
   );
 
   const journal = JSON.parse(
@@ -52,10 +54,11 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 11, tag: "0011_sites_compatible_indexes_b" },
       { idx: 12, tag: "0012_phase3_organizer_foundation" },
       { idx: 13, tag: "0013_phase4_conflict_engine" },
+      { idx: 14, tag: "0014_phase5_publication" },
     ],
   );
   assert.deepEqual(
-    ["0008", "0009", "0010", "0011", "0012", "0013"].map((prefix) => {
+    ["0008", "0009", "0010", "0011", "0012", "0013", "0014"].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
           join(MIGRATION_DIRECTORY, "meta", `${prefix}_snapshot.json`),
@@ -68,7 +71,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117],
+    [0, 0, 38, 75, 90, 117, 131],
     "migration snapshots must match the cumulative packaged index state",
   );
 

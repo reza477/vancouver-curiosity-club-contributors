@@ -1,8 +1,6 @@
 import Link from "next/link";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 
-const DISPLAY_TIME_ZONE = "America/Vancouver";
-
 export function ClubEventList({
   emptyCopy,
   events,
@@ -67,6 +65,7 @@ function eventSchedule(event: PublicEventCardDto) {
   }
 
   const starts = new Date(event.schedule.startsAtUtc);
+  const displayTimeZone = event.schedule.timeZone;
   return (
     <time dateTime={event.schedule.startsAtUtc}>
       {new Intl.DateTimeFormat("en-CA", {
@@ -74,7 +73,7 @@ function eventSchedule(event: PublicEventCardDto) {
         hour: "numeric",
         minute: "2-digit",
         month: "long",
-        timeZone: DISPLAY_TIME_ZONE,
+        timeZone: displayTimeZone,
         timeZoneName: "short",
         weekday: "long",
         year: "numeric",

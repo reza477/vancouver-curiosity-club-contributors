@@ -13,6 +13,10 @@ import {
   normalizeTriggerDefinition,
 } from "../../lib/server/database/invariants.ts";
 import { normalizeAllDayConflictInterval } from "../../lib/server/organizer/conflict-domain.ts";
+import {
+  ORGANIZER_PUBLIC_SLUG_COLLISION_QUERY_SQL,
+  PHASE5_INVARIANT_COUNT_SQL,
+} from "../../lib/server/organizer/publication-invariant-sql.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
 function migrationSql() {
@@ -101,7 +105,7 @@ async function ensureInvariantReadiness(database, label = "invariant install") {
       return attempts;
     }
   }
-  assert.fail(`${label} did not reach the durable v4 readiness marker`);
+  assert.fail(`${label} did not reach the durable v5 readiness marker`);
 }
 
 async function assertEventuallyFailsClosed(database, label) {
@@ -133,8 +137,8 @@ test("concurrent isolate initialization installs one exact durable guard set", a
   t.after(() => database.close());
   assert.equal(
     DATABASE_INVARIANT_TRIGGER_NAMES.length,
-    48,
-    "the v4 contract retains every prior guard and adds the Phase 4 guards",
+    74,
+    "the v5 contract retains every prior guard and adds the Phase 5 guards",
   );
   const firstCounter = countedBinding(database);
   const secondCounter = countedBinding(database);
@@ -176,7 +180,22 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(cold.binding), "repaired");
   assertWithinD1StatementCap(cold, "cold installation");
   assert.deepEqual(cold.counts(), {
-    batchLengths: [38],
+    batchLengths: [37],
+    statementCount: 50,
+  });
+  assert.equal(await marker(database), null);
+
+  const stagedCompletion = countedBinding(database);
+  assert.equal(
+    await ensureDatabaseInvariants(stagedCompletion.binding),
+    "repaired",
+  );
+  assertWithinD1StatementCap(
+    stagedCompletion,
+    "cold installation staged completion",
+  );
+  assert.deepEqual(stagedCompletion.counts(), {
+    batchLengths: [37],
     statementCount: 50,
   });
   assert.equal(await marker(database), null);
@@ -188,8 +207,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   );
   assertWithinD1StatementCap(completion, "cold installation completion");
   assert.deepEqual(completion.counts(), {
-    batchLengths: [18],
-    statementCount: 38,
+    batchLengths: [10],
+    statementCount: 32,
   });
   assert.ok(await marker(database));
 
@@ -198,7 +217,7 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assertWithinD1StatementCap(healthy, "healthy verification");
   assert.deepEqual(healthy.counts(), {
     batchLengths: [],
-    statementCount: 9,
+    statementCount: 10,
   });
 
   database.exec(
@@ -208,8 +227,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(missing.binding), "repaired");
   assertWithinD1StatementCap(missing, "missing-trigger repair");
   assert.deepEqual(missing.counts(), {
-    batchLengths: [8],
-    statementCount: 25,
+    batchLengths: [9],
+    statementCount: 28,
   });
 
   database.exec(`
@@ -224,8 +243,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(mismatch.binding), "repaired");
   assertWithinD1StatementCap(mismatch, "single-mismatch repair");
   assert.deepEqual(mismatch.counts(), {
-    batchLengths: [9],
-    statementCount: 26,
+    batchLengths: [10],
+    statementCount: 29,
   });
   assert.deepEqual(
     await normalizedTriggerDefinitions(database),
@@ -253,7 +272,7 @@ test("repair requests terminate before app queries and a verified request retain
   await ensureInvariantReadiness(database, "repair request convergence");
   const verifiedRequest = countedBinding(database);
   assert.equal(await ensureDatabaseInvariants(verifiedRequest.binding), "ready");
-  for (let index = 0; index < 41; index += 1) {
+  for (let index = 0; index < 40; index += 1) {
     await verifiedRequest.binding.prepare("SELECT 1").first();
   }
   assert.equal(verifiedRequest.counts().statementCount, 50);
@@ -283,7 +302,7 @@ test("a resolved same-isolate result never masks another isolate's invalidation"
   assert.equal(await ensureDatabaseInvariants(firstIsolate.binding), "ready");
   assert.deepEqual(firstIsolate.counts(), {
     batchLengths: [],
-    statementCount: 9,
+    statementCount: 10,
   });
 
   database.exec(`
@@ -297,8 +316,8 @@ test("a resolved same-isolate result never masks another isolate's invalidation"
     "repaired",
   );
   assert.deepEqual(firstIsolate.counts(), {
-    batchLengths: [8],
-    statementCount: 28,
+    batchLengths: [9],
+    statementCount: 31,
   });
   assertWithinD1StatementCap(
     firstIsolate,
@@ -679,6 +698,130 @@ test("organizer-event creators require same-organization membership, including h
     "same-organization historical creator",
   );
   assert.ok(await marker(historical));
+});
+
+test("Phase 5 readiness fails closed for location-undecided public events", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  seedOwnerInvariantData(database);
+  database.exec(`
+    INSERT INTO event_lanes (
+      id, organization_id, name, slug, sort_order,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'lane-owner', 'org-owner', 'Think', 'think', 10,
+      'profile-owner', 1, 1
+    );
+    INSERT INTO club_public_profiles (
+      club_id, organization_id, primary_event_lane_id,
+      publication_status, is_featured, published_at,
+      created_at, updated_at
+    ) VALUES (
+      'club-owner', 'org-owner', 'lane-owner',
+      'published', 1, 1, 1, 1
+    );
+    INSERT INTO organizer_events (
+      id, organization_id, club_id, primary_organizer_profile_id,
+      title, slug, summary, description, planning_status,
+      publication_status, schedule_shape, starts_at_utc, ends_at_utc,
+      timezone, content_version, schedule_version,
+      created_by_profile_id, updated_by_profile_id,
+      created_at, updated_at
+    ) VALUES (
+      'event-location-undecided', 'org-owner', 'club-owner',
+      'profile-owner', 'Location undecided', 'location-undecided',
+      'A complete summary', 'A complete public description',
+      'confirmed', 'published', 'timed',
+      1960000000000, 1960003600000, 'America/Vancouver', 1, 1,
+      'profile-owner', 'profile-owner', 1, 1
+    );
+    INSERT INTO organizer_event_public_details (
+      organizer_event_id, organization_id, attendance_mode,
+      availability_state, public_hosts_enabled, rsvp_mode,
+      created_by_profile_id, updated_by_profile_id,
+      created_at, updated_at
+    ) VALUES (
+      'event-location-undecided', 'org-owner', 'location_undecided',
+      'open', 0, 'coming_soon', 'profile-owner', 'profile-owner', 1, 1
+    );
+    INSERT INTO organizer_event_publication_state (
+      organizer_event_id, organization_id, first_published_at,
+      most_recent_published_at, last_mutation_actor_profile_id,
+      created_at, updated_at
+    ) VALUES (
+      'event-location-undecided', 'org-owner', 1, 1,
+      'profile-owner', 1, 1
+    );
+  `);
+  assert.equal(
+    (
+      await database
+        .prepare(PHASE5_INVARIANT_COUNT_SQL[4])
+        .first()
+    ).violation_count,
+    1,
+    "the Phase 5 readiness scan must reject location-undecided events",
+  );
+
+  await assertEventuallyFailsClosed(
+    database,
+    "location-undecided public event",
+  );
+  assert.deepEqual(
+    await normalizedTriggerDefinitions(database),
+    [],
+    "a non-ready public event must not retain a partial guard set",
+  );
+});
+
+test("the shared public-slug guard includes tentative legacy candidates but excludes Meetup-owned canonical rows", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  seedOwnerInvariantData(database);
+  database.exec(`
+    INSERT INTO events (
+      id, organization_id, club_id, title, slug, status, visibility,
+      time_kind, starts_at_utc, ends_at_utc, timezone,
+      buffer_before_minutes, buffer_after_minutes, organizer_scope_json,
+      schedule_version, schedule_review_state, published_at,
+      created_by_profile_id, updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'legacy-tentative', 'org-owner', 'club-owner',
+      'Tentative legacy event', 'shared-public-slug', 'tentative', 'public',
+      'timed', 1960000000000, 1960003600000, 'America/Vancouver',
+      0, 0, '[]', 1, 'unreviewed', 1,
+      'profile-owner', 'profile-owner', 1, 1
+    );
+  `);
+  const collision = await database
+    .prepare(ORGANIZER_PUBLIC_SLUG_COLLISION_QUERY_SQL)
+    .bind("org-owner", "organizer-candidate", "shared-public-slug")
+    .first();
+  assert.equal(collision?.collision, 1);
+
+  database.exec(`
+    INSERT INTO sync_sources (
+      id, organization_id, club_id, source_type, source_url, enabled,
+      refresh_interval_minutes, created_by_profile_id,
+      updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'source-test-only', 'org-owner', 'club-owner', 'meetup_ics',
+      'https://example.invalid/test-only-calendar', 1, 15,
+      'profile-owner', 'profile-owner', 1, 1
+    );
+    INSERT INTO external_source_links (
+      id, organization_id, entity_type, entity_id, source_type,
+      sync_source_id, external_id, created_at, updated_at
+    ) VALUES (
+      'meetup-owned-link', 'org-owner', 'event', 'legacy-tentative',
+      'meetup_ics', 'source-test-only', 'meetup-owned-uid', 1, 1
+    );
+  `);
+  const excluded = await database
+    .prepare(ORGANIZER_PUBLIC_SLUG_COLLISION_QUERY_SQL)
+    .bind("org-owner", "organizer-candidate", "shared-public-slug")
+    .first();
+  assert.equal(excluded, null);
 });
 
 test("v4 adoption creates exact timed and all-day manual projections once", async (t) => {

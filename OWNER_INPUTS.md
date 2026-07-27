@@ -32,10 +32,11 @@ data.
   using only the three confirmed clean public group URLs above. Private
   calendar-feed configuration remains separate.
 - Exact public Meetup discussion URL: **Missing**
-- Owner-selected real event RSVP URLs for a hosted production smoke test:
-  **Missing**. The earlier isolated feed smoke test verified official RSVP
-  destinations without committing them as fixtures; the Phase 2 review
-  database intentionally contains no real event.
+- One owner-selected real confirmed event and its exact individual Meetup event
+  RSVP URL for the future Phase 5 hosted publication smoke test: **Missing**.
+  The earlier isolated feed smoke test verified official RSVP destinations
+  without committing them as fixtures; the local review database intentionally
+  contains no real event.
 
 Until the feeds are entered through an authenticated organizer workspace into
 Sites-managed D1, hosted imported event data remains empty. Feed URLs are
@@ -66,9 +67,10 @@ society-registration, tax, or charity claim.
 - Confirmed public contact email address: **Missing**. Phase 2 uses only the
   confirmed Meetup group destinations and renders no fake form.
 - Owner-only Sites origin: **Available for the deployed Phase 2 version 8**.
-  Public/shared access is not authorized, and unpublished Phase 3 or Phase 4
-  candidates must not be represented as live there. QR downloads remain a
-  later-phase feature and require a separately authorized stable destination.
+  Public/shared access is not authorized, and unpublished Phase 3, Phase 4, or
+  Phase 5 candidates must not be represented as live there. QR downloads
+  remain a later-phase feature and require a separately authorized stable
+  destination.
 - Custom domain: **Not requested and not required**
 
 ## Photography and consent

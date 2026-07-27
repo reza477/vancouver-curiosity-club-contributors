@@ -104,8 +104,8 @@ test("event editor follows the Phase 4 scheduling order and preserves rejected f
     assert.ok(index > previous, `${marker} must follow the Phase 4 form order`);
     previous = index;
   }
-  assert.match(editor, /<strong>Private<\/strong>/u);
-  assert.match(editor, /Website publication begins in a later authorized phase/u);
+  assert.match(editor, /<strong>Managed below<\/strong>/u);
+  assert.match(editor, /use Website publication on\s+the event page/u);
   assert.match(editor, /expectedContentVersion:\s*value\.expectedEditVersion/u);
   assert.match(editor, /expectedScheduleVersion:\s*value\.expectedScheduleVersion/u);
   assert.match(state, /privateMeetingDetails:\s*value\.privateMeetingDetails/u);

@@ -7,7 +7,9 @@ import { ActivityFeed } from "@/app/_organizer/ActivityFeed";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
 import { PageHeader } from "@/app/_organizer/PageHeader";
 import { Phase4SettingsPanels } from "@/app/_organizer/Phase4SettingsPanels";
+import { PublicationPolicyPanel } from "@/app/_organizer/PublicationPolicyPanel";
 import { SettingsForm } from "@/app/_organizer/SettingsForm";
+import styles from "@/app/_organizer/workspace.module.css";
 import { listActivityHistory } from "@/lib/server/organizer/activity";
 import { getWorkspaceSettings } from "@/lib/server/organizer/settings";
 import { writeSafeLog } from "@/lib/validation/server-observability";
@@ -67,6 +69,9 @@ export default async function OrganizerSettingsPage() {
         title="Settings"
       />
       <SettingsForm canManage={canManage} initialSettings={data.settings} />
+      <div className={styles.phase4Settings}>
+        <PublicationPolicyPanel canManage={canManage} />
+      </div>
       <Phase4SettingsPanels canManage={canManage} />
       <ActivityFeed items={data.activity} />
     </>

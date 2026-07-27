@@ -56,8 +56,9 @@ export function WorkspaceShell({
         </nav>
 
         <p className={styles.phaseNote}>
-          Private scheduling and conflict coordination live here. Website
-          publishing remains unavailable in this phase.
+          Private scheduling, conflict coordination, and website publication
+          controls live here. Open an event to manage its protected preview and
+          public page.
         </p>
 
         <details className={styles.accountMenu}>

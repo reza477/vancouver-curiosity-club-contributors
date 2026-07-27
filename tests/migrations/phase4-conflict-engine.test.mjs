@@ -106,13 +106,15 @@ const PHASE4_CHECKS = Object.freeze([
 
 test("Phase 4 is one additive production-tokenizer-safe migration", () => {
   const journal = json("meta/_journal.json");
-  const finalEntry = journal.entries.at(-1);
+  const phase4Entry = journal.entries.find(
+    (entry) => entry.tag === "0013_phase4_conflict_engine",
+  );
   assert.deepEqual(
-    finalEntry && {
-      breakpoints: finalEntry.breakpoints,
-      idx: finalEntry.idx,
-      tag: finalEntry.tag,
-      version: finalEntry.version,
+    phase4Entry && {
+      breakpoints: phase4Entry.breakpoints,
+      idx: phase4Entry.idx,
+      tag: phase4Entry.tag,
+      version: phase4Entry.version,
     },
     {
       breakpoints: true,
@@ -120,6 +122,16 @@ test("Phase 4 is one additive production-tokenizer-safe migration", () => {
       tag: "0013_phase4_conflict_engine",
       version: "6",
     },
+  );
+  assert.deepEqual(
+    journal.entries
+      .filter(({ idx }) => idx >= 13)
+      .map(({ idx, tag }) => ({ idx, tag })),
+    [
+      { idx: 13, tag: "0013_phase4_conflict_engine" },
+      { idx: 14, tag: "0014_phase5_publication" },
+    ],
+    "Phase 4 must remain immutable and be followed by exactly one Phase 5 migration",
   );
 
   const migration = sql(PHASE4_FILE);

@@ -10,6 +10,7 @@ import { EventActions } from "@/app/_organizer/EventActions";
 import { EventEditorForm } from "@/app/_organizer/EventEditorForm";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
 import { PageHeader, StatusPill } from "@/app/_organizer/PageHeader";
+import { WebsitePublicationPanel } from "@/app/_organizer/WebsitePublicationPanel";
 import styles from "@/app/_organizer/workspace.module.css";
 import type { OrganizerCalendarEventDto } from "@/lib/server/organizer/calendar";
 import {
@@ -22,6 +23,7 @@ import {
   type OrganizerEventDto,
   type OrganizerEventRevisionDto,
 } from "@/lib/server/organizer/events";
+import { readOrganizerPublicationWorkspace } from "@/lib/server/organizer/publication";
 import type { TeamMemberDto } from "@/lib/server/organizer/team";
 import { listTeamMembers } from "@/lib/server/organizer/team";
 import {
@@ -77,7 +79,7 @@ export default async function OrganizerEventDetailPage({
     return <ReadOnlyEvent record={data.record} names={data.names} />;
   }
 
-  const { conflicts, names, options, record, revisions } = data;
+  const { conflicts, names, options, publication, record, revisions } = data;
   const deleted = record.deletedAt !== null;
   return (
     <>
@@ -207,6 +209,10 @@ export default async function OrganizerEventDetailPage({
           options={options}
         />
       )}
+      <WebsitePublicationPanel
+        eventId={record.id}
+        initialWorkspace={publication}
+      />
       <section
         aria-labelledby="event-revisions-title"
         className={styles.eventRevisionHistory}
@@ -244,6 +250,9 @@ type EventDetailData =
       kind: "editable";
       names: ReadonlyMap<string, string>;
       options: Awaited<ReturnType<typeof loadEventFormOptions>>;
+      publication: Awaited<
+        ReturnType<typeof readOrganizerPublicationWorkspace>
+      >;
       record: OrganizerEventDto;
       revisions: readonly OrganizerEventRevisionDto[];
     }>
@@ -272,13 +281,14 @@ async function loadEventDetailData(
   if (!isEditableManualRecord(record)) {
     return Object.freeze({ kind: "read_only", names, record });
   }
-  const [conflicts, options, revisions] = await Promise.all([
+  const [conflicts, options, publication, revisions] = await Promise.all([
     listOrganizerEventConflictSummaries(
       context.database,
       context.identity,
       record.id,
     ),
     loadEventFormOptions(context),
+    readOrganizerPublicationWorkspace(context.database, context.identity, record.id),
     listOrganizerEventRevisions(
       context.database,
       context.identity,
@@ -291,6 +301,7 @@ async function loadEventDetailData(
     kind: "editable",
     names,
     options,
+    publication,
     record,
     revisions,
   });

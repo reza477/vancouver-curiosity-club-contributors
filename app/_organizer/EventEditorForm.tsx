@@ -521,8 +521,11 @@ export function EventEditorForm({
           )}
           <div className={styles.fixedField}>
             <span>Publication</span>
-            <strong>Private</strong>
-            <small>Website publication begins in a later authorized phase.</small>
+            <strong>Managed below</strong>
+            <small>
+              Save the canonical event here, then use Website publication on
+              the event page.
+            </small>
           </div>
           <div
             aria-busy={preview.kind === "checking"}
@@ -631,8 +634,9 @@ export function EventEditorForm({
           <p className={styles.kicker}>4 · Working details</p>
           <h2 id="event-details-title">Notes for the team</h2>
           <p>
-            Draft public-facing copy remains private. Private notes never enter
-            the public event projection.
+            Public-facing copy remains private until an explicit, authorized
+            website publication succeeds. Private notes never enter the public
+            event projection.
           </p>
         </header>
         <div className={styles.formFields}>
@@ -683,7 +687,7 @@ export function EventEditorForm({
             />
           </label>
           <label className={styles.fieldFull}>
-            <span>Draft public summary</span>
+            <span>Public summary</span>
             <textarea
               maxLength={500}
               onChange={(event) => update("publicSummary", event.target.value)}
@@ -692,7 +696,7 @@ export function EventEditorForm({
             />
           </label>
           <label className={styles.fieldFull}>
-            <span>Draft public description</span>
+            <span>Public description</span>
             <textarea
               maxLength={20_000}
               onChange={(event) => update("publicDescription", event.target.value)}

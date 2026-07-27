@@ -4,6 +4,7 @@ import {
 } from "../../lib/server/database/invariants.ts";
 import { PHASE4_INVARIANT_COUNT_SQL } from "../../lib/server/conflicts/organizer-invariant-sql.ts";
 import { PHASE3_INVARIANT_COUNT_SQL } from "../../lib/server/organizer/invariant-sql.ts";
+import { PHASE5_INVARIANT_COUNT_SQL } from "../../lib/server/organizer/publication-invariant-sql.ts";
 
 /**
  * Simulates successive fail-closed Worker requests until the durable marker
@@ -116,6 +117,7 @@ export async function ensureDatabaseInvariantsReady(
   for (const [group, queries] of [
     ["phase3", PHASE3_INVARIANT_COUNT_SQL],
     ["phase4", PHASE4_INVARIANT_COUNT_SQL],
+    ["phase5", PHASE5_INVARIANT_COUNT_SQL],
   ]) {
     for (let index = 0; index < queries.length; index += 1) {
       try {

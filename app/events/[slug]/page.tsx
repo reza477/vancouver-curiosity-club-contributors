@@ -2,11 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
-import {
-  EventCard,
-  formatEventSchedule,
-} from "@/app/_components/EventCard";
-import { ShareControls } from "@/app/_components/ShareControls";
+import { EventCard } from "@/app/_components/EventCard";
+import { PublicEventDetailRenderer } from "@/app/_components/PublicEventDetailRenderer";
 import { StructuredData } from "@/app/_components/StructuredData";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
@@ -68,7 +65,6 @@ export default async function EventDetailPage({
         todayDate: vancouverCalendarDate(nowUtcMs),
         limit: 3,
       });
-  const schedule = formatEventSchedule(event);
   const origin = await getTrustedRequestOrigin();
   const canonicalUrl = origin
     ? publicUrl(`/events/${event.slug}`, origin)
@@ -84,114 +80,7 @@ export default async function EventDetailPage({
         ]}
       />
 
-      {event.isCancelled ? (
-        <aside className="cancellation-banner" role="status">
-          <strong>Cancelled</strong>
-          <p>
-            This previously published event is no longer going ahead. The page
-            remains available so an old link does not become misleading.
-          </p>
-        </aside>
-      ) : null}
-
-      <article className="event-detail">
-        <header className="event-detail__header">
-          <div>
-            <p className="eyebrow">
-              {event.club.name}
-              {event.lane ? ` · ${event.lane.name}` : ""}
-            </p>
-            <h1>{event.title}</h1>
-            {event.summary ? (
-              <p className="event-detail__deck">{event.summary}</p>
-            ) : null}
-          </div>
-          <div className="event-detail__stamp" aria-hidden="true">
-            <span>{schedule.month}</span>
-            <strong>{schedule.day}</strong>
-          </div>
-        </header>
-
-        <div className="event-detail__grid">
-          <section className="event-detail__facts" aria-labelledby="facts-title">
-            <h2 id="facts-title">The essentials</h2>
-            <dl>
-              <div>
-                <dt>When</dt>
-                <dd>
-                  {schedule.label}
-                  {event.schedule.kind === "timed" ? (
-                    <span>Shown in Vancouver local time.</span>
-                  ) : null}
-                </dd>
-              </div>
-              <div>
-                <dt>Format</dt>
-                <dd>{attendanceLabel(event.attendanceMode)}</dd>
-              </div>
-              <div>
-                <dt>Location</dt>
-                <dd>
-                  {event.venue ? (
-                    <>
-                      {event.venue.name}
-                      {event.venue.address ? (
-                        <span>{event.venue.address}</span>
-                      ) : null}
-                    </>
-                  ) : event.attendanceMode === "online" && event.rsvpUrl ? (
-                    "Online details are available from the official RSVP destination."
-                  ) : event.attendanceMode === "online" ? (
-                    "Online details have not been published."
-                  ) : (
-                    "Location details have not been published."
-                  )}
-                </dd>
-              </div>
-              {event.status === "tentative" ? (
-                <div>
-                  <dt>Status</dt>
-                  <dd>Tentative — check the official listing before travel.</dd>
-                </div>
-              ) : null}
-            </dl>
-            {event.rsvpUrl && !event.isCancelled ? (
-              <a
-                className="primary-action"
-                href={event.rsvpUrl}
-                rel="noreferrer noopener"
-              >
-                RSVP on Meetup <span aria-hidden="true">↗</span>
-              </a>
-            ) : null}
-          </section>
-
-          <section className="event-detail__story" aria-labelledby="about-title">
-            <p className="section-kicker">Field note</p>
-            <h2 id="about-title">About this event</h2>
-            {event.description ? (
-              event.description
-                .split(/\n{2,}/u)
-                .filter(Boolean)
-                .map((paragraph) => <p key={paragraph}>{paragraph}</p>)
-            ) : event.summary ? (
-              <p>{event.summary}</p>
-            ) : (
-              <p>No additional public description has been supplied.</p>
-            )}
-            {event.organizers.length > 0 ? (
-              <p className="event-organizers">
-                Publicly listed{" "}
-                {event.organizers.length === 1 ? "organizer" : "organizers"}:{" "}
-                {event.organizers
-                  .map((organizer) => organizer.displayName)
-                  .join(", ")}
-              </p>
-            ) : null}
-            <ShareControls title={event.title} url={canonicalUrl} />
-          </section>
-        </div>
-      </article>
+      <PublicEventDetailRenderer canonicalUrl={canonicalUrl} event={event} />
 
       {related.length > 0 ? (
         <section className="related-events" aria-labelledby="related-title">
@@ -265,15 +154,6 @@ async function loadEvent(slug: string): Promise<{
     if (error instanceof InputValidationError) return null;
     throw error;
   }
-}
-
-function attendanceLabel(
-  value: PublicEventDetailDto["attendanceMode"],
-): string {
-  if (value === "in-person") return "In person";
-  if (value === "online") return "Online";
-  if (value === "hybrid") return "Hybrid";
-  return "Location undecided";
 }
 
 function eventJsonLd(

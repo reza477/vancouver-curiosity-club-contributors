@@ -9,6 +9,10 @@ import {
   PHASE3_INVARIANT_TRIGGER_STATEMENTS,
 } from "../organizer/invariant-sql";
 import {
+  PHASE5_INVARIANT_COUNT_SQL,
+  PHASE5_INVARIANT_TRIGGER_STATEMENTS,
+} from "../organizer/publication-invariant-sql";
+import {
   externalReservationSemanticFingerprint,
   externalReservationStateFingerprint,
   normalizeAllDayConflictInterval,
@@ -16,8 +20,13 @@ import {
 } from "../organizer/conflict-domain";
 
 export const DATABASE_INVARIANT_MARKER_KEY = "database-guards";
-export const DATABASE_INVARIANT_VERSION = 4;
+export const PRE_PHASE5_DATABASE_INVARIANT_VERSION = 4;
+export const DATABASE_INVARIANT_VERSION = 5;
 export const DATABASE_INVARIANT_STATEMENT_LIMIT = 50;
+
+export type DatabaseInvariantVersion =
+  | typeof PRE_PHASE5_DATABASE_INVARIANT_VERSION
+  | typeof DATABASE_INVARIANT_VERSION;
 
 const PUBLIC_INTEGRITY_TRIGGER_STATEMENTS = [
   String.raw`
@@ -159,52 +168,69 @@ WHERE NOT EXISTS (
   WHERE organization.id = detail.organization_id
 )`;
 
-export const DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
+const PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
   ...CONFLICT_GUARD_TRIGGER_STATEMENTS,
   ...PUBLIC_INTEGRITY_TRIGGER_STATEMENTS,
   ...PHASE3_INVARIANT_TRIGGER_STATEMENTS,
   ...PHASE4_INVARIANT_TRIGGER_STATEMENTS,
 ]);
 
+export const DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
+  ...PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_STATEMENTS,
+  ...PHASE5_INVARIANT_TRIGGER_STATEMENTS,
+]);
+
+export const PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
+  PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_STATEMENTS.map(readTriggerName).sort(),
+);
+
 export const DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
   DATABASE_INVARIANT_TRIGGER_STATEMENTS.map(readTriggerName).sort(),
 );
 
-const EXPECTED_TRIGGER_NAME_SQL = DATABASE_INVARIANT_TRIGGER_NAMES.map(
-  () => "?",
-).join(", ");
-
-const INTEGRITY_COUNT_SQL = Object.freeze([
+const PRE_PHASE5_INTEGRITY_COUNT_SQL = Object.freeze([
   CLUB_PUBLIC_PROFILE_INTEGRITY_COUNT_SQL,
   EVENT_PUBLIC_DETAILS_INTEGRITY_COUNT_SQL,
   ...PHASE3_INVARIANT_COUNT_SQL,
   ...PHASE4_INVARIANT_COUNT_SQL,
 ]);
 
+const INTEGRITY_COUNT_SQL = Object.freeze([
+  ...PRE_PHASE5_INTEGRITY_COUNT_SQL,
+  ...PHASE5_INVARIANT_COUNT_SQL,
+]);
+
 // Production D1 caps both expression depth and compound-SELECT terms below the
 // full invariant set. Keep each shallow UNION group deliberately small.
 const INTEGRITY_COUNT_CHUNK_SIZE = 4;
-const COMBINED_INTEGRITY_COUNT_SQL = Object.freeze(
-  Array.from(
-    {
-      length: Math.ceil(
-        INTEGRITY_COUNT_SQL.length / INTEGRITY_COUNT_CHUNK_SIZE,
-      ),
-    },
-    (_, index) => {
-      const checks = INTEGRITY_COUNT_SQL.slice(
-        index * INTEGRITY_COUNT_CHUNK_SIZE,
-        (index + 1) * INTEGRITY_COUNT_CHUNK_SIZE,
-      );
-      return String.raw`
+function combineIntegrityCountSql(
+  checks: readonly string[],
+): readonly string[] {
+  return Object.freeze(
+    Array.from(
+      {
+        length: Math.ceil(checks.length / INTEGRITY_COUNT_CHUNK_SIZE),
+      },
+      (_, index) => {
+        const chunk = checks.slice(
+          index * INTEGRITY_COUNT_CHUNK_SIZE,
+          (index + 1) * INTEGRITY_COUNT_CHUNK_SIZE,
+        );
+        return String.raw`
 SELECT COALESCE(sum(invariant_check.violation_count), 0)
        AS violation_count
 FROM (
-  ${checks.map((query) => query.trim()).join("\n  UNION ALL\n  ")}
+  ${chunk.map((query) => query.trim()).join("\n  UNION ALL\n  ")}
 ) AS invariant_check`;
-    },
-  ),
-);
+      },
+    ),
+  );
+}
+
+const PRE_PHASE5_COMBINED_INTEGRITY_COUNT_SQL =
+  combineIntegrityCountSql(PRE_PHASE5_INTEGRITY_COUNT_SQL);
+const COMBINED_INTEGRITY_COUNT_SQL =
+  combineIntegrityCountSql(INTEGRITY_COUNT_SQL);
 
 /**
  * `database_invariant_state` rejects version zero and an empty fingerprint.
@@ -212,36 +238,99 @@ FROM (
  * the one conditional insert aborts the complete D1 batch and rolls back every
  * trigger change.
  */
-const ABORTING_INTEGRITY_PROBE_SQL = COMBINED_INTEGRITY_COUNT_SQL.map(
-  (countSql) => String.raw`
+function abortingIntegrityProbeSql(
+  combinedIntegrityCountSql: readonly string[],
+): readonly string[] {
+  return Object.freeze(
+    combinedIntegrityCountSql.map(
+      (countSql) => String.raw`
 INSERT INTO database_invariant_state (
   singleton_key, version, trigger_fingerprint, verified_at
 )
 SELECT 'integrity-probe', 0, '', 0
 WHERE (${countSql}) > 0`,
-);
+    ),
+  );
+}
 
-// Marker/definition reads plus the bounded integrity chunks, matching atomic
-// aborting probes, one marker write, a complete read-back, and (only after a
-// failed read-back) one marker invalidation must fit in one Worker invocation.
-const INVARIANT_INSPECTION_STATEMENT_COUNT =
-  2 + COMBINED_INTEGRITY_COUNT_SQL.length;
+const PRE_PHASE5_ABORTING_INTEGRITY_PROBE_SQL =
+  abortingIntegrityProbeSql(PRE_PHASE5_COMBINED_INTEGRITY_COUNT_SQL);
+const ABORTING_INTEGRITY_PROBE_SQL =
+  abortingIntegrityProbeSql(COMBINED_INTEGRITY_COUNT_SQL);
+
 const PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT = 4;
-const MAX_ATOMIC_REPAIR_MUTATIONS =
-  DATABASE_INVARIANT_STATEMENT_LIMIT -
-  PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
-  INVARIANT_INSPECTION_STATEMENT_COUNT -
-  ABORTING_INTEGRITY_PROBE_SQL.length -
-  1 -
-  INVARIANT_INSPECTION_STATEMENT_COUNT -
-  1;
-// Adoption preflight can read marker, missing policies, manual projections,
-// external projections, plus the three invariant inspection statements.
-const MAX_FAIL_CLOSED_DROP_COUNT =
-  DATABASE_INVARIANT_STATEMENT_LIMIT -
-  PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
-  INVARIANT_INSPECTION_STATEMENT_COUNT -
-  1;
+
+type DatabaseInvariantContract = Readonly<{
+  abortingIntegrityProbeSql: readonly string[];
+  combinedIntegrityCountSql: readonly string[];
+  expectedTriggerNameSql: string;
+  maxAtomicRepairMutations: number;
+  maxFailClosedDropCount: number;
+  triggerNames: readonly string[];
+  triggerStatements: readonly string[];
+  version: DatabaseInvariantVersion;
+}>;
+
+function createDatabaseInvariantContract(input: Readonly<{
+  abortingIntegrityProbeSql: readonly string[];
+  combinedIntegrityCountSql: readonly string[];
+  triggerNames: readonly string[];
+  triggerStatements: readonly string[];
+  version: DatabaseInvariantVersion;
+}>): DatabaseInvariantContract {
+  // Marker/definition reads plus bounded integrity chunks, matching atomic
+  // probes, one marker write, a complete read-back, and an optional marker
+  // invalidation must all fit in one Worker invocation.
+  const inspectionStatementCount =
+    2 + input.combinedIntegrityCountSql.length;
+  return Object.freeze({
+    ...input,
+    expectedTriggerNameSql: input.triggerNames.map(() => "?").join(", "),
+    maxAtomicRepairMutations:
+      DATABASE_INVARIANT_STATEMENT_LIMIT -
+      PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
+      inspectionStatementCount -
+      input.abortingIntegrityProbeSql.length -
+      1 -
+      inspectionStatementCount -
+      1,
+    // Adoption preflight can read marker, missing policies, manual
+    // projections, external projections, and invariant inspection state.
+    maxFailClosedDropCount:
+      DATABASE_INVARIANT_STATEMENT_LIMIT -
+      PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
+      inspectionStatementCount -
+      1,
+  });
+}
+
+const PRE_PHASE5_DATABASE_INVARIANT_CONTRACT =
+  createDatabaseInvariantContract({
+    abortingIntegrityProbeSql:
+      PRE_PHASE5_ABORTING_INTEGRITY_PROBE_SQL,
+    combinedIntegrityCountSql:
+      PRE_PHASE5_COMBINED_INTEGRITY_COUNT_SQL,
+    triggerNames: PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_NAMES,
+    triggerStatements:
+      PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_STATEMENTS,
+    version: PRE_PHASE5_DATABASE_INVARIANT_VERSION,
+  });
+
+const DATABASE_INVARIANT_CONTRACT = createDatabaseInvariantContract({
+  abortingIntegrityProbeSql: ABORTING_INTEGRITY_PROBE_SQL,
+  combinedIntegrityCountSql: COMBINED_INTEGRITY_COUNT_SQL,
+  triggerNames: DATABASE_INVARIANT_TRIGGER_NAMES,
+  triggerStatements: DATABASE_INVARIANT_TRIGGER_STATEMENTS,
+  version: DATABASE_INVARIANT_VERSION,
+});
+
+function databaseInvariantContract(
+  version: DatabaseInvariantVersion,
+): DatabaseInvariantContract {
+  return version === PRE_PHASE5_DATABASE_INVARIANT_VERSION
+    ? PRE_PHASE5_DATABASE_INVARIANT_CONTRACT
+    : DATABASE_INVARIANT_CONTRACT;
+}
 const MAX_POLICY_ADOPTIONS_PER_REQUEST = 24;
 const MAX_MANUAL_ADOPTIONS_PER_REQUEST = 15;
 // A Meetup adoption emits two statements (normalization + projection). Keep
@@ -252,7 +341,7 @@ const MAX_EXTERNAL_SCAN = 5_000;
 
 const initializationByDatabase = new WeakMap<
   D1DatabaseLike,
-  Promise<DatabaseInvariantInitializationStatus>
+  Map<DatabaseInvariantVersion, Promise<DatabaseInvariantInitializationStatus>>
 >();
 
 export type DatabaseInvariantInitializationStatus = "ready" | "repaired";
@@ -272,31 +361,50 @@ export class DatabaseInvariantError extends Error {
  */
 export function ensureDatabaseInvariants(
   database: D1DatabaseLike,
+  expectedVersion: DatabaseInvariantVersion = DATABASE_INVARIANT_VERSION,
 ): Promise<DatabaseInvariantInitializationStatus> {
-  const existing = initializationByDatabase.get(database);
+  const byVersion =
+    initializationByDatabase.get(database) ??
+    new Map<
+      DatabaseInvariantVersion,
+      Promise<DatabaseInvariantInitializationStatus>
+    >();
+  if (!initializationByDatabase.has(database)) {
+    initializationByDatabase.set(database, byVersion);
+  }
+  const existing = byVersion.get(expectedVersion);
   if (existing) return existing;
 
-  const initialization = initializeDatabaseInvariants(database).then(
+  const contract = databaseInvariantContract(expectedVersion);
+  const clearInitialization = () => {
+    byVersion.delete(expectedVersion);
+    if (byVersion.size === 0) initializationByDatabase.delete(database);
+  };
+  const initialization = initializeDatabaseInvariants(database, contract).then(
     (status) => {
       // This map deduplicates only concurrent work. Never cache a resolved
       // result across requests: another Worker isolate may have invalidated
       // the durable marker while repairing a corrupted trigger set.
-      initializationByDatabase.delete(database);
+      clearInitialization();
       return status;
     },
     (error: unknown) => {
-      initializationByDatabase.delete(database);
+      clearInitialization();
       throw error instanceof DatabaseInvariantError
         ? error
         : new DatabaseInvariantError();
     },
   );
-  initializationByDatabase.set(database, initialization);
+  byVersion.set(expectedVersion, initialization);
   return initialization;
 }
 
-export async function getExpectedDatabaseInvariantFingerprint(): Promise<string> {
-  const definitions = expectedNormalizedTriggerDefinitions();
+export async function getExpectedDatabaseInvariantFingerprint(
+  expectedVersion: DatabaseInvariantVersion = DATABASE_INVARIANT_VERSION,
+): Promise<string> {
+  const definitions = expectedNormalizedTriggerDefinitions(
+    databaseInvariantContract(expectedVersion),
+  );
   const serialized = definitions
     .map(({ name, sql }) => `${name}\u0000${sql}`)
     .join("\u0001");
@@ -322,15 +430,22 @@ export function normalizeTriggerDefinition(sql: string): string {
 
 async function initializeDatabaseInvariants(
   database: D1DatabaseLike,
+  contract: DatabaseInvariantContract,
 ): Promise<DatabaseInvariantInitializationStatus> {
   if (
-    (await phase4AdoptionRequired(database)) &&
+    (await phase4AdoptionRequired(database, contract.version)) &&
     (await adoptMissingPhase4ConflictProjections(database))
   ) {
     return "repaired";
   }
-  const fingerprint = await getExpectedDatabaseInvariantFingerprint();
-  const inspection = await inspectDatabaseInvariants(database, fingerprint);
+  const fingerprint = await getExpectedDatabaseInvariantFingerprint(
+    contract.version,
+  );
+  const inspection = await inspectDatabaseInvariants(
+    database,
+    fingerprint,
+    contract,
+  );
   if (inspection.ready) return "ready";
 
   if (inspection.violationCount !== 0) {
@@ -338,7 +453,7 @@ async function initializeDatabaseInvariants(
     throw new DatabaseInvariantError();
   }
 
-  const expectedDefinitions = expectedNormalizedTriggerDefinitions();
+  const expectedDefinitions = expectedNormalizedTriggerDefinitions(contract);
   const expectedByName = new Map(
     expectedDefinitions.map((definition) => [definition.name, definition.sql]),
   );
@@ -354,7 +469,7 @@ async function initializeDatabaseInvariants(
         expectedByName.get(definition.name) !== definition.sql,
     )
     .map((definition) => definition.name);
-  const createStatements = DATABASE_INVARIANT_TRIGGER_STATEMENTS.filter(
+  const createStatements = contract.triggerStatements.filter(
     (sql) => {
       const name = readTriggerName(sql);
       return actualByName.get(name) !== normalizeTriggerDefinition(sql);
@@ -362,11 +477,11 @@ async function initializeDatabaseInvariants(
   );
 
   /**
-   * Replacing every one of the 30 exact trigger definitions would require 60
-   * mutations, which cannot fit D1's 50-statement invocation cap. That
+   * Replacing every exact trigger definition can require more mutations than
+   * D1's 50-statement invocation cap permits. That
    * pathological corruption enters a bounded fail-closed repair state:
    *
-   * 1. atomically invalidate readiness and remove at most 46 bad definitions;
+   * 1. atomically invalidate readiness and remove at most 36 bad definitions;
    * 2. reject this request, so no application code can observe the gap;
    * 3. the next request atomically installs the complete missing set, probes
    *    it, writes the marker, and read-verifies it before dispatch.
@@ -375,14 +490,14 @@ async function initializeDatabaseInvariants(
    * atomic request. Every intermediate state has no readiness marker.
    */
   if (dropNames.length + createStatements.length >
-      MAX_ATOMIC_REPAIR_MUTATIONS) {
+      contract.maxAtomicRepairMutations) {
     /*
      * More exact guards than a single install+probe+read-back request can
      * safely carry are staged while the durable readiness marker is absent.
      * The Worker returns its fail-closed repair response; the next request
      * completes the remaining definitions and only then writes the marker.
      */
-    const mutationBudget = MAX_FAIL_CLOSED_DROP_COUNT;
+    const mutationBudget = contract.maxFailClosedDropCount;
     const stagedDrops = dropNames.slice(0, mutationBudget);
     const remainingBudget = mutationBudget - stagedDrops.length;
     const stagedCreates = createStatements.slice(0, remainingBudget);
@@ -405,7 +520,7 @@ async function initializeDatabaseInvariants(
     return "repaired";
   }
 
-  const triggerNames = [...DATABASE_INVARIANT_TRIGGER_NAMES];
+  const triggerNames = [...contract.triggerNames];
   const installationStatements = [
     ...dropNames.map((name) =>
       database.prepare(
@@ -413,7 +528,7 @@ async function initializeDatabaseInvariants(
       ),
     ),
     ...createStatements.map((sql) => database.prepare(sql)),
-    ...ABORTING_INTEGRITY_PROBE_SQL.map((sql) =>
+    ...contract.abortingIntegrityProbeSql.map((sql) =>
       database.prepare(sql),
     ),
     database
@@ -422,7 +537,7 @@ async function initializeDatabaseInvariants(
            singleton_key, version, trigger_fingerprint, verified_at
          )
          SELECT ?, ?, ?, ?
-         WHERE ${COMBINED_INTEGRITY_COUNT_SQL.map(
+         WHERE ${contract.combinedIntegrityCountSql.map(
            (sql) => `(${sql}) = 0`,
          ).join("\n           AND ")}
            AND (
@@ -434,7 +549,7 @@ async function initializeDatabaseInvariants(
              SELECT count(*)
              FROM sqlite_master
              WHERE type = 'trigger'
-               AND name IN (${EXPECTED_TRIGGER_NAME_SQL})
+               AND name IN (${contract.expectedTriggerNameSql})
            ) = ?
          ON CONFLICT(singleton_key) DO UPDATE SET
            version = excluded.version,
@@ -443,7 +558,7 @@ async function initializeDatabaseInvariants(
       )
       .bind(
         DATABASE_INVARIANT_MARKER_KEY,
-        DATABASE_INVARIANT_VERSION,
+        contract.version,
         fingerprint,
         Date.now(),
         triggerNames.length,
@@ -464,7 +579,15 @@ async function initializeDatabaseInvariants(
     await invalidateReadinessMarker(database);
     throw new DatabaseInvariantError();
   }
-  if (!(await inspectDatabaseInvariants(database, fingerprint)).ready) {
+  if (
+    !(
+      await inspectDatabaseInvariants(
+        database,
+        fingerprint,
+        contract,
+      )
+    ).ready
+  ) {
     await invalidateReadinessMarker(database);
     throw new DatabaseInvariantError();
   }
@@ -473,6 +596,7 @@ async function initializeDatabaseInvariants(
 
 async function phase4AdoptionRequired(
   database: D1DatabaseLike,
+  expectedVersion: DatabaseInvariantVersion,
 ): Promise<boolean> {
   const marker = await database
     .prepare(
@@ -483,12 +607,13 @@ async function phase4AdoptionRequired(
     )
     .bind(DATABASE_INVARIANT_MARKER_KEY)
     .first<Record<string, unknown>>();
-  return marker?.version !== DATABASE_INVARIANT_VERSION;
+  return marker?.version !== expectedVersion;
 }
 
 async function inspectDatabaseInvariants(
   database: D1DatabaseLike,
   fingerprint: string,
+  contract: DatabaseInvariantContract,
 ): Promise<{
   actualDefinitions: ReadonlyArray<{ name: string; sql: string }>;
   ready: boolean;
@@ -512,7 +637,7 @@ async function inspectDatabaseInvariants(
       )
       .all<Record<string, unknown>>();
   const integrityPromise = Promise.all(
-    COMBINED_INTEGRITY_COUNT_SQL.map((sql) =>
+    contract.combinedIntegrityCountSql.map((sql) =>
       database.prepare(sql).first<Record<string, unknown>>(),
     ),
   );
@@ -525,7 +650,7 @@ async function inspectDatabaseInvariants(
     name: typeof row.name === "string" ? row.name : "",
     sql: typeof row.sql === "string" ? normalizeTriggerDefinition(row.sql) : "",
   }));
-  const expectedDefinitions = expectedNormalizedTriggerDefinitions();
+  const expectedDefinitions = expectedNormalizedTriggerDefinitions(contract);
   const definitionsMismatch =
     actualDefinitions.length !== expectedDefinitions.length ||
     actualDefinitions.some(
@@ -540,7 +665,7 @@ async function inspectDatabaseInvariants(
   return {
     actualDefinitions,
     ready:
-      marker?.version === DATABASE_INVARIANT_VERSION &&
+      marker?.version === contract.version &&
       marker.trigger_fingerprint === fingerprint &&
       !definitionsMismatch &&
       violationCount === 0,
@@ -622,7 +747,6 @@ LEFT JOIN organizer_reservation_states AS state
  AND state.organization_id = event.organization_id
 WHERE event.schedule_shape IN ('timed', 'all_day')
   AND event.planning_status IN ('idea', 'draft')
-  AND event.publication_status = 'private'
   AND event.deleted_at IS NULL
   AND (
     state.organizer_event_id IS NULL
@@ -1908,11 +2032,13 @@ function quoteSqliteIdentifier(value: string): string {
   return `"${value.replace(/"/gu, '""')}"`;
 }
 
-function expectedNormalizedTriggerDefinitions(): ReadonlyArray<{
+function expectedNormalizedTriggerDefinitions(
+  contract: DatabaseInvariantContract = DATABASE_INVARIANT_CONTRACT,
+): ReadonlyArray<{
   name: string;
   sql: string;
 }> {
-  return DATABASE_INVARIANT_TRIGGER_STATEMENTS.map((sql) => ({
+  return contract.triggerStatements.map((sql) => ({
     name: readTriggerName(sql),
     sql: normalizeTriggerDefinition(sql),
   })).sort((left, right) => left.name.localeCompare(right.name));

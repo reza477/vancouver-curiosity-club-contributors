@@ -339,7 +339,9 @@ CREATE TRIGGER IF NOT EXISTS organizer_events_phase3_integrity_before_insert
 AFTER INSERT ON organizer_events
 BEGIN
   SELECT CASE
-    WHEN NEW.publication_status <> 'private'
+    WHEN NEW.publication_status NOT IN (
+        'private', 'scheduled', 'published', 'unpublished'
+      )
       OR NEW.planning_status NOT IN (
         'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
         'completed', 'archived'
@@ -530,7 +532,9 @@ BEGIN
     THEN RAISE(ABORT, 'organizer_event_identity_immutable')
   END;
   SELECT CASE
-    WHEN NEW.publication_status <> 'private'
+    WHEN NEW.publication_status NOT IN (
+        'private', 'scheduled', 'published', 'unpublished'
+      )
       OR NEW.planning_status NOT IN (
         'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
         'completed', 'archived'
@@ -581,30 +585,66 @@ BEGIN
           AND venue.deleted_at IS NULL
       )
     )
-    OR NOT EXISTS (
-      SELECT 1
-      FROM profiles AS organizer
-      JOIN organization_memberships AS membership
-        ON membership.profile_id = organizer.id
-       AND membership.organization_id = NEW.organization_id
-       AND membership.status = 'active'
-       AND membership.deleted_at IS NULL
-      WHERE organizer.id = NEW.primary_organizer_profile_id
-        AND organizer.status = 'active'
-        AND organizer.deleted_at IS NULL
-        AND (
-          membership.role <> 'organizer'
-          OR EXISTS (
-            SELECT 1
-            FROM club_memberships AS club_membership
-            WHERE club_membership.organization_id = NEW.organization_id
-              AND club_membership.club_id = NEW.club_id
-              AND club_membership.organization_membership_id = membership.id
-              AND club_membership.profile_id = organizer.id
-              AND club_membership.status = 'active'
-              AND club_membership.deleted_at IS NULL
+    OR (
+      NOT EXISTS (
+        SELECT 1
+        FROM profiles AS organizer
+        JOIN organization_memberships AS membership
+          ON membership.profile_id = organizer.id
+         AND membership.organization_id = NEW.organization_id
+         AND membership.status = 'active'
+         AND membership.deleted_at IS NULL
+        WHERE organizer.id = NEW.primary_organizer_profile_id
+          AND organizer.status = 'active'
+          AND organizer.deleted_at IS NULL
+          AND (
+            membership.role <> 'organizer'
+            OR EXISTS (
+              SELECT 1
+              FROM club_memberships AS club_membership
+              WHERE club_membership.organization_id = NEW.organization_id
+                AND club_membership.club_id = NEW.club_id
+                AND club_membership.organization_membership_id =
+                    membership.id
+                AND club_membership.profile_id = organizer.id
+                AND club_membership.status = 'active'
+                AND club_membership.deleted_at IS NULL
+            )
           )
-        )
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM organizer_schedule_write_intents AS recovery_intent
+        JOIN organizer_event_publication_write_intents
+             AS publication_intent
+          ON publication_intent.schedule_write_intent_id =
+             recovery_intent.id
+         AND publication_intent.organization_id =
+             recovery_intent.organization_id
+         AND publication_intent.organizer_event_id =
+             recovery_intent.organizer_event_id
+         AND publication_intent.actor_profile_id =
+             recovery_intent.actor_profile_id
+         AND publication_intent.operation =
+             'invalidate_scheduled_publication'
+         AND publication_intent.execution_kind = 'reconciliation'
+         AND publication_intent.completed_at IS NULL
+        WHERE recovery_intent.organization_id = NEW.organization_id
+          AND recovery_intent.organizer_event_id = NEW.id
+          AND recovery_intent.actor_profile_id =
+              NEW.updated_by_profile_id
+          AND recovery_intent.operation =
+              'invalidate_scheduled_publication'
+          AND recovery_intent.expected_content_version =
+              OLD.content_version
+          AND recovery_intent.expected_schedule_version =
+              OLD.schedule_version
+          AND recovery_intent.proposed_content_version =
+              NEW.content_version
+          AND recovery_intent.proposed_schedule_version =
+              NEW.schedule_version
+          AND recovery_intent.completed_at IS NULL
+      )
     )
     OR NOT EXISTS (
       SELECT 1
@@ -1239,7 +1279,9 @@ OR (
       'idea', 'draft', 'tentative_hold', 'confirmed', 'cancelled',
       'completed', 'archived'
     )
-    OR event.publication_status <> 'private'
+    OR event.publication_status NOT IN (
+      'private', 'scheduled', 'published', 'unpublished'
+    )
     OR NOT EXISTS (
      SELECT 1 FROM clubs AS club
      WHERE club.id = event.club_id

@@ -273,6 +273,11 @@ test("populated-v8 adoption is all-or-nothing and leaves ineligible legacy organ
   )) {
     await database.prepare(fragment).run();
   }
+  for (const fragment of productionFragments(
+    sql("0014_phase5_publication.sql"),
+  )) {
+    await database.prepare(fragment).run();
+  }
 
   await ensureDatabaseInvariantsReady(database);
   assert.equal(

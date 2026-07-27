@@ -86,6 +86,7 @@ function loadGeneratedMigrations() {
       "0011_sites_compatible_indexes_b.sql",
       "0012_phase3_organizer_foundation.sql",
       "0013_phase4_conflict_engine.sql",
+      "0014_phase5_publication.sql",
     ],
     "the normalized Sites-compatible baseline must be authoritative",
   );

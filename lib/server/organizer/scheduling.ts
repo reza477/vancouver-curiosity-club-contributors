@@ -15,6 +15,7 @@ import {
 } from "../../validation";
 import { SafeApplicationError } from "../../validation/server-observability";
 import { parseIanaTimeZone } from "../../time";
+import type { EventPublicationStatus } from "./lifecycle";
 import {
   normalizeAllDayConflictInterval,
   normalizeConflictInterval,
@@ -30,6 +31,10 @@ import {
 } from "./conflicts";
 import { getOrganizerConflictPolicy } from "./conflict-policy";
 import { prepareNotificationInsert } from "./notifications";
+import {
+  prepareCanonicalEventPublicationMutationGuard,
+  type CanonicalPublicationMutationOperation,
+} from "./publication-bridge";
 
 export const ORGANIZER_LIFECYCLE_ACTIONS = [
   "archive",
@@ -39,6 +44,7 @@ export const ORGANIZER_LIFECYCLE_ACTIONS = [
   "extend_hold",
   "place_hold",
   "release_hold",
+  "restore_cancelled",
 ] as const;
 
 export type OrganizerLifecycleAction =
@@ -56,7 +62,7 @@ export type OrganizerScheduledEventDto = Readonly<{
   holdState: "active" | "expired" | "nearing_expiry" | null;
   id: string;
   planningStatus: Phase4PlanningStatus;
-  publicationStatus: "private";
+  publicationStatus: EventPublicationStatus;
   scheduleVersion: number;
   title: string;
 }>;
@@ -131,6 +137,48 @@ export type OrganizerScheduleEditGuardInput = Readonly<{
   venueId: string | null;
 }>;
 
+export const ORGANIZER_PUBLICATION_SCHEDULE_OPERATIONS = [
+  "cancel_scheduled_publication",
+  "publish",
+  "reconcile_publication",
+  "invalidate_scheduled_publication",
+  "schedule_publication",
+  "unpublish",
+  "update_public_details",
+  "update_published",
+  "update_scheduled",
+  "update_unpublished",
+] as const;
+
+export type OrganizerPublicationScheduleOperation =
+  (typeof ORGANIZER_PUBLICATION_SCHEDULE_OPERATIONS)[number];
+
+export type OrganizerPublicationSchedulingEvent = Readonly<{
+  actor: AuthorizedMembership;
+  clubId: string;
+  contentVersion: number;
+  eventId: string;
+  organizationId: string;
+  planningStatus: Phase4PlanningStatus;
+  primaryOrganizerProfileId: string;
+  publicationStatus: EventPublicationStatus;
+  scheduleVersion: number;
+  slug: string;
+  title: string;
+}>;
+
+export type OrganizerPublicationScheduleGuard = Readonly<{
+  authorizationExpectedChanges: number;
+  authorizationStatements: readonly D1PreparedStatementLike[];
+  completionStatement: D1PreparedStatementLike;
+  event: OrganizerPublicationSchedulingEvent;
+  finalizationStatement: D1PreparedStatementLike | null;
+  intentId: string;
+  intentStatement: D1PreparedStatementLike;
+  policyMode: "block" | "require_admin_approval" | "warn_reason";
+  stateFingerprint: string;
+}>;
+
 type SchedulingEvent = Readonly<{
   allDayEndDateExclusive: string | null;
   allDayStartDate: string | null;
@@ -148,7 +196,7 @@ type SchedulingEvent = Readonly<{
   organizationId: string;
   planningStatus: Phase4PlanningStatus;
   primaryOrganizerProfileId: string;
-  publicationStatus: "private";
+  publicationStatus: EventPublicationStatus;
   scheduleShape: "all_day" | "timed" | "unscheduled";
   scheduleVersion: number;
   slug: string;
@@ -172,6 +220,7 @@ type ProposedWrite = Readonly<{
   holdExpiresAt: number | null;
   interval: NormalizedConflictInterval | null;
   nextPlanningStatus: Phase4PlanningStatus;
+  nextPublicationStatus: EventPublicationStatus;
   nextContentVersion: number;
   nextScheduleVersion: number;
   organizerScope: readonly string[];
@@ -292,7 +341,8 @@ export async function performOrganizerLifecycleAction(
   ) {
     if (
       event.planningStatus !== "idea" &&
-      event.planningStatus !== "draft"
+      event.planningStatus !== "draft" &&
+      event.planningStatus !== "cancelled"
     ) {
       throw conflictRefused(
         "Release the current reservation before requesting approval for a new overlapping reservation.",
@@ -731,6 +781,308 @@ export async function prepareOrganizerScheduleEditGuard(
     intentStatement,
     outcome: "apply" as const,
     overrideStatement,
+  });
+}
+
+/**
+ * Creates the Phase 4 envelope used by every Phase 5 publication mutation.
+ * The proposed schedule is the canonical current schedule, so publication
+ * changes content_version while leaving schedule_version untouched. The D1
+ * intent trigger still evaluates the complete reservation and active policy.
+ */
+export async function prepareOrganizerPublicationScheduleGuard(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  input: Readonly<{
+    eventId: unknown;
+    expectedContentVersion: unknown;
+    expectedScheduleVersion: unknown;
+    operation: OrganizerPublicationScheduleOperation;
+    proposedContentVersion: unknown;
+  }>,
+  now: number,
+): Promise<OrganizerPublicationScheduleGuard> {
+  const actor = await authorizeMembership(database, identity);
+  return prepareOrganizerPublicationScheduleGuardForAuthorizedActor(
+    database,
+    actor,
+    input,
+    now,
+  );
+}
+
+/**
+ * Internal reconciliation seam. The caller must derive this membership from
+ * durable D1 state; it never accepts a browser identity, email, or role claim.
+ * Current profile, membership, club assignment, and event participation are
+ * revalidated below before an intent can be created.
+ */
+export async function prepareOrganizerPublicationScheduleGuardForAuthorizedActor(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  input: Readonly<{
+    eventId: unknown;
+    expectedContentVersion: unknown;
+    expectedScheduleVersion: unknown;
+    operation: OrganizerPublicationScheduleOperation;
+    proposedContentVersion: unknown;
+  }>,
+  now: number,
+): Promise<OrganizerPublicationScheduleGuard> {
+  const eventId = parseIdentifier(input.eventId, "eventId");
+  const expectedContentVersion = parseFiniteInteger(
+    input.expectedContentVersion,
+    { path: "expectedContentVersion", minimum: 1 },
+  );
+  const expectedScheduleVersion = parseFiniteInteger(
+    input.expectedScheduleVersion,
+    { path: "expectedScheduleVersion", minimum: 1 },
+  );
+  const proposedContentVersion = parseFiniteInteger(
+    input.proposedContentVersion,
+    { path: "proposedContentVersion", minimum: 2 },
+  );
+  if (proposedContentVersion !== expectedContentVersion + 1) {
+    throw staleSchedule();
+  }
+  const terminalRecovery =
+    input.operation === "invalidate_scheduled_publication";
+  const event = await requireSchedulingEvent(
+    database,
+    actor,
+    eventId,
+    terminalRecovery,
+  );
+  await authorizeSchedulingActorForEvent(database, actor, event);
+  if (
+    event.contentVersion !== expectedContentVersion ||
+    event.scheduleVersion !== expectedScheduleVersion
+  ) {
+    throw staleSchedule();
+  }
+  const publicationRequiresReservationAuthorization =
+    input.operation === "publish" ||
+    input.operation === "reconcile_publication" ||
+    input.operation === "schedule_publication" ||
+    input.operation === "update_published";
+  if (
+    (!terminalRecovery && event.deletedAt !== null) ||
+    (publicationRequiresReservationAuthorization &&
+      (event.planningStatus !== "confirmed" ||
+        event.scheduleShape === "unscheduled"))
+  ) {
+    throw new SafeApplicationError(
+      "validation_failed",
+      422,
+      "Website publication requires a confirmed timed or all-day event.",
+    );
+  }
+
+  const policy = await readOrganizerConflictPolicyForAuthorizedActor(
+    database,
+    actor,
+  );
+  const interval = conflictIntervalForEvent(event);
+  if (publicationRequiresReservationAuthorization && !interval) {
+    throw new SafeApplicationError(
+      "validation_failed",
+      422,
+      "Website publication requires a real schedule.",
+    );
+  }
+  const organizerScope = Object.freeze(
+    [...new Set([
+      event.primaryOrganizerProfileId,
+      ...event.coOrganizerProfileIds,
+    ])].sort(),
+  );
+  const conflicts =
+    publicationRequiresReservationAuthorization &&
+    interval !== null &&
+    event.planningStatus === "confirmed"
+      ? await loadAuthoritativeConflictFacts(
+          database,
+          actor.organizationId,
+          Object.freeze({
+            bufferAfterMinutes: event.bufferAfterMinutes,
+            bufferBeforeMinutes: event.bufferBeforeMinutes,
+            candidateKey: `manual:${event.id}`,
+            clubId: event.clubId,
+            eventId: event.id,
+            holdExpiresAt: null,
+            interval,
+            organizationId: event.organizationId,
+            organizerProfileIds: organizerScope,
+            planningStatus: "confirmed" as const,
+            primaryOrganizerProfileId: event.primaryOrganizerProfileId,
+            scheduleVersion: event.scheduleVersion,
+            source: "manual" as const,
+            title: event.title,
+            venueId: event.venueId,
+          }),
+          now,
+        )
+      : [];
+  if (conflicts.length > 0 && policy.mode === "block") {
+    throw conflictRefused(
+      "This event has an unresolved overlap under the current blocking policy.",
+    );
+  }
+
+  const stateFingerprint = await schedulingFingerprint({
+    allDayEndDateExclusive: event.allDayEndDateExclusive,
+    allDayStartDate: event.allDayStartDate,
+    bufferAfterMinutes: event.bufferAfterMinutes,
+    bufferBeforeMinutes: event.bufferBeforeMinutes,
+    clubId: event.clubId,
+    endsAtUtc: event.endsAtUtc,
+    eventId: event.id,
+    holdExpiresAt: null,
+    interval,
+    organizerScope,
+    planningStatus: event.planningStatus,
+    policyId: policy.id,
+    policyVersion: policy.version,
+    scheduleShape: event.scheduleShape,
+    scheduleVersion: event.scheduleVersion,
+    startsAtUtc: event.startsAtUtc,
+    timeZone: event.timeZone,
+    venueId: event.venueId,
+  });
+  const authorization = await requireExistingPublicationConflictAuthorization(
+    database,
+    actor,
+    event,
+    conflicts,
+    policy,
+    stateFingerprint,
+  );
+  const intentId = `schedule-intent:${crypto.randomUUID()}`;
+  const intentStatement = database
+    .prepare(
+      `INSERT INTO organizer_schedule_write_intents (
+         id, organization_id, organizer_event_id, actor_profile_id, club_id,
+         operation, planning_status, schedule_shape, actual_start_utc,
+         actual_end_utc, expanded_start_utc, expanded_end_utc, timezone,
+         all_day_start_date, all_day_end_date_exclusive,
+         buffer_before_minutes, buffer_after_minutes, venue_id,
+         primary_organizer_profile_id, organizer_scope_json,
+         hold_expires_at, expected_content_version,
+         expected_schedule_version, proposed_content_version,
+         proposed_schedule_version, policy_id, policy_version, policy_mode,
+         reason, review_request_id, state_fingerprint, created_at,
+         completed_at
+       ) VALUES (
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
+       )`,
+    )
+    .bind(
+      intentId,
+      actor.organizationId,
+      event.id,
+      actor.profileId,
+      event.clubId,
+      input.operation,
+      event.planningStatus,
+      event.scheduleShape,
+      interval?.actualStartUtc ?? null,
+      interval?.actualEndUtc ?? null,
+      interval?.expandedStartUtc ?? null,
+      interval?.expandedEndUtc ?? null,
+      event.timeZone,
+      event.allDayStartDate,
+      event.allDayEndDateExclusive,
+      event.bufferBeforeMinutes,
+      event.bufferAfterMinutes,
+      event.venueId,
+      event.primaryOrganizerProfileId,
+      JSON.stringify(organizerScope),
+      expectedContentVersion,
+      expectedScheduleVersion,
+      proposedContentVersion,
+      expectedScheduleVersion,
+      policy.id,
+      policy.version,
+      policy.mode,
+      authorization.reason,
+      authorization.reviewRequestId,
+      stateFingerprint,
+      now,
+    );
+  const authorizationStatements =
+    publicationRequiresReservationAuthorization && conflicts.length > 0
+      ? publicationConflictAuthorizationStatements(
+          database,
+          actor,
+          event,
+          conflicts,
+          intentId,
+          policy,
+          stateFingerprint,
+          authorization,
+          now,
+        )
+      : Object.freeze([]);
+  const finalizationStatement =
+    authorizationStatements.length > 0
+      ? database
+          .prepare(
+            `UPDATE organizer_conflict_incidents
+             SET state = 'approved',
+                 updated_at = ?
+             WHERE organization_id = ?
+               AND organizer_event_id = ?
+               AND write_intent_id = ?
+               AND proposed_schedule_version = ?
+               AND policy_id = ?
+               AND policy_version = ?
+               AND state_fingerprint = ?
+               AND state = 'open'`,
+          )
+          .bind(
+            now,
+            actor.organizationId,
+            event.id,
+            intentId,
+            event.scheduleVersion,
+            policy.id,
+            policy.version,
+            stateFingerprint,
+          )
+      : null;
+
+  return Object.freeze({
+    authorizationExpectedChanges: conflicts.length,
+    authorizationStatements,
+    completionStatement: database
+      .prepare(
+        `UPDATE organizer_schedule_write_intents
+         SET completed_at = ?
+         WHERE id = ?
+           AND organization_id = ?
+           AND organizer_event_id = ?
+           AND completed_at IS NULL`,
+      )
+      .bind(now, intentId, actor.organizationId, event.id),
+    event: Object.freeze({
+      actor,
+      clubId: event.clubId,
+      contentVersion: event.contentVersion,
+      eventId: event.id,
+      organizationId: event.organizationId,
+      planningStatus: event.planningStatus,
+      primaryOrganizerProfileId: event.primaryOrganizerProfileId,
+      publicationStatus: event.publicationStatus,
+      scheduleVersion: event.scheduleVersion,
+      slug: event.slug,
+      title: event.title,
+    }),
+    finalizationStatement,
+    intentId,
+    intentStatement,
+    policyMode: policy.mode,
+    stateFingerprint,
   });
 }
 
@@ -1393,7 +1745,6 @@ async function commitApprovedScheduleEdit(
            AND event.content_version = ?
            AND event.schedule_version = ?
            AND event.planning_status = ?
-           AND event.publication_status = 'private'
            AND event.deleted_at IS NULL
            AND EXISTS (
              SELECT 1
@@ -1480,7 +1831,7 @@ async function commitApprovedScheduleEdit(
           id: current.id,
           organizerScope: requested.organizerScope,
           planningStatus: requested.planningStatus,
-          publicationStatus: "private",
+          publicationStatus: current.publicationStatus,
           scheduleShape: requested.scheduleShape,
           scheduleVersion: requested.proposedScheduleVersion,
           timeZone: requested.timeZone,
@@ -1711,6 +2062,23 @@ async function commitProposedWrite(
     ),
   );
   const preIntentCount = statements.length;
+  const publicationOperation =
+    publicationOperationForLifecycle(proposed);
+  const publicationGuard = publicationOperation
+    ? await prepareCanonicalEventPublicationMutationGuard(
+        database,
+        actor,
+        event,
+        {
+          now,
+          operation: publicationOperation,
+          nextPublicationStatus: proposed.nextPublicationStatus,
+          proposedContentVersion: proposed.nextContentVersion,
+          proposedScheduleVersion: proposed.nextScheduleVersion,
+          scheduleWriteIntentId: intentId,
+        },
+      )
+    : null;
   statements.push(
     database
       .prepare(
@@ -1768,11 +2136,17 @@ async function commitProposedWrite(
         fingerprint,
         now,
       ),
+    ...(publicationGuard
+      ? [
+          publicationGuard.intentStatement,
+          ...publicationGuard.preMutationStatements,
+        ]
+      : []),
     database
       .prepare(
         `UPDATE organizer_events AS event
          SET planning_status = ?,
-             publication_status = 'private',
+             publication_status = ?,
              content_version = ?,
              schedule_version = ?,
              updated_by_profile_id = ?,
@@ -1781,7 +2155,7 @@ async function commitProposedWrite(
            AND event.organization_id = ?
            AND event.content_version = ?
            AND event.schedule_version = ?
-           AND event.publication_status = 'private'
+           AND event.publication_status = ?
            AND event.deleted_at IS NULL
            AND EXISTS (
              SELECT 1
@@ -1831,6 +2205,7 @@ async function commitProposedWrite(
       )
       .bind(
         proposed.nextPlanningStatus,
+        proposed.nextPublicationStatus,
         proposed.nextContentVersion,
         proposed.nextScheduleVersion,
         actor.profileId,
@@ -1839,6 +2214,7 @@ async function commitProposedWrite(
         actor.organizationId,
         event.contentVersion,
         event.scheduleVersion,
+        event.publicationStatus,
         actor.membershipId,
         actor.profileId,
       ),
@@ -1926,7 +2302,7 @@ async function commitProposedWrite(
           id: event.id,
           organizerScope: proposed.organizerScope,
           planningStatus: proposed.nextPlanningStatus,
-          publicationStatus: "private",
+          publicationStatus: proposed.nextPublicationStatus,
           scheduleShape: event.scheduleShape,
           scheduleVersion: proposed.nextScheduleVersion,
           timeZone: event.timeZone,
@@ -1992,12 +2368,21 @@ async function commitProposedWrite(
 
   // The database reservation-state trigger requires the complete canonical
   // incident and override evidence to exist before the event can enter a
-  // reserving state. Keep this explicit ordering inside the same atomic batch:
-  // intent -> incidents -> overrides -> event -> associations/history -> seal.
-  const [eventMutation] = statements.splice(preIntentCount + 1, 1);
-  statements.splice(preIntentCount + 3, 0, eventMutation);
+  // reserving state. Phase 5 additionally requires its intent plus any exact
+  // old-job/public-state transition before the canonical mutation:
+  // schedule intent -> publication intent/state -> incidents -> overrides ->
+  // event -> finalization -> history -> publication seal -> schedule seal.
+  const publicationPreludeCount = publicationGuard
+    ? 1 + publicationGuard.preMutationStatements.length
+    : 0;
+  const eventOriginalIndex =
+    preIntentCount + 1 + publicationPreludeCount;
+  const [eventMutation] = statements.splice(eventOriginalIndex, 1);
+  const eventIndex =
+    preIntentCount + 1 + publicationPreludeCount + 2;
+  statements.splice(eventIndex, 0, eventMutation);
   statements.splice(
-    preIntentCount + 4,
+    eventIndex + 1,
     0,
     reserving
       ? database
@@ -2018,16 +2403,26 @@ async function commitProposedWrite(
           )
       : database.prepare("SELECT 0 AS phase4_no_conflict_finalization"),
   );
+  let publicationCompletionIndex: number | null = null;
+  if (publicationGuard) {
+    publicationCompletionIndex = statements.length - 1;
+    statements.splice(
+      publicationCompletionIndex,
+      0,
+      publicationGuard.completionStatement,
+    );
+  }
 
   try {
     const results = await database.batch(statements);
     const intentIndex = preIntentCount;
-    const eventIndex = intentIndex + 3;
     const finalIndex = statements.length - 1;
     if (
       (approval && reviewRequestId && changes(results[0]) < 1) ||
       changes(results[intentIndex]) < 1 ||
       changes(results[eventIndex]) < 1 ||
+      (publicationCompletionIndex !== null &&
+        changes(results[publicationCompletionIndex]) < 1) ||
       changes(results[finalIndex]) < 1
     ) {
       throw staleSchedule();
@@ -2221,7 +2616,6 @@ async function createPendingScheduleEditReview(
            AND event.content_version = ?
            AND event.schedule_version = ?
            AND event.planning_status = ?
-           AND event.publication_status = 'private'
            AND event.deleted_at IS NULL
            AND (
              membership.role IN ('owner', 'administrator')
@@ -2407,7 +2801,7 @@ async function createPendingReview(
            AND event.content_version = ?
            AND event.schedule_version = ?
            AND event.planning_status IN ('idea', 'draft')
-           AND event.publication_status = 'private'
+           AND event.publication_status IN ('private', 'unpublished')
            AND event.deleted_at IS NULL
            AND (
              membership.role IN ('owner', 'administrator')
@@ -2631,6 +3025,123 @@ function adoptApprovedIncidentsStatement(
     );
 }
 
+function publicationConflictAuthorizationStatements(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  event: SchedulingEvent,
+  conflicts: readonly ConflictFact[],
+  intentId: string,
+  policy: Readonly<{ id: string; version: number }>,
+  fingerprint: string,
+  authorization: Readonly<{
+    reason: string | null;
+    reviewRequestId: string | null;
+  }>,
+  now: number,
+): readonly D1PreparedStatementLike[] {
+  const authorizedConflictKeys = conflictKeys(conflicts);
+  const conflictKeysJson = JSON.stringify(authorizedConflictKeys);
+  return Object.freeze([
+    database
+      .prepare(
+        `UPDATE organizer_conflict_overrides AS override
+         SET invalidated_at = ?,
+             invalidated_by_profile_id = ?
+         WHERE override.organization_id = ?
+           AND override.organizer_event_id = ?
+           AND override.invalidated_at IS NULL
+           AND EXISTS (
+             SELECT 1
+             FROM organizer_conflict_incidents AS incident,
+                  json_each(?) AS authorized_conflict
+             WHERE incident.id = override.incident_id
+               AND incident.organization_id =
+                   override.organization_id
+               AND incident.organizer_event_id =
+                   override.organizer_event_id
+               AND incident.proposed_schedule_version = ?
+               AND incident.policy_id = ?
+               AND incident.policy_version = ?
+               AND incident.state_fingerprint = ?
+               AND incident.state = 'approved'
+               AND authorized_conflict.type = 'text'
+               AND CAST(authorized_conflict.value AS TEXT) =
+                   incident.conflicting_candidate_key || ':' ||
+                   incident.conflicting_schedule_version || ':' ||
+                   incident.classification
+           )`,
+      )
+      .bind(
+        now,
+        actor.profileId,
+        actor.organizationId,
+        event.id,
+        conflictKeysJson,
+        event.scheduleVersion,
+        policy.id,
+        policy.version,
+        fingerprint,
+      ),
+    incidentInsertStatement(
+      database,
+      actor,
+      intentId,
+      authorization.reviewRequestId,
+      fingerprint,
+      policy.id,
+      policy.version,
+      event.scheduleVersion,
+      "open",
+      now,
+      authorizedConflictKeys,
+      true,
+      conflicts.length,
+    ),
+    database
+      .prepare(
+        `INSERT INTO organizer_conflict_overrides (
+           id, organization_id, incident_id, organizer_event_id,
+           conflicting_candidate_key, proposed_schedule_version,
+           conflicting_schedule_version, policy_id, policy_version,
+           state_fingerprint, reason, actor_profile_id, review_request_id,
+           created_at, invalidated_at, invalidated_by_profile_id
+         )
+         SELECT 'conflict-override:' || lower(hex(randomblob(16))),
+                incident.organization_id, incident.id,
+                incident.organizer_event_id,
+                incident.conflicting_candidate_key,
+                incident.proposed_schedule_version,
+                incident.conflicting_schedule_version,
+                incident.policy_id, incident.policy_version,
+                incident.state_fingerprint, ?, ?, ?, ?, NULL, NULL
+         FROM organizer_conflict_incidents AS incident
+         WHERE incident.organization_id = ?
+           AND incident.organizer_event_id = ?
+           AND incident.write_intent_id = ?
+           AND incident.proposed_schedule_version = ?
+           AND incident.policy_id = ?
+           AND incident.policy_version = ?
+           AND incident.state_fingerprint = ?
+           AND incident.state = 'open'
+           AND changes() = ?`,
+      )
+      .bind(
+        authorization.reason ?? "Approved version-bound conflict review",
+        actor.profileId,
+        authorization.reviewRequestId,
+        now,
+        actor.organizationId,
+        event.id,
+        intentId,
+        event.scheduleVersion,
+        policy.id,
+        policy.version,
+        fingerprint,
+        conflicts.length,
+      ),
+  ]);
+}
+
 function incidentInsertStatement(
   database: D1DatabaseLike,
   actor: AuthorizedMembership,
@@ -2642,7 +3153,30 @@ function incidentInsertStatement(
   proposedScheduleVersion: number,
   state: "informational" | "open",
   now: number,
+  authorizedConflictKeys: readonly string[] | null = null,
+  allowApprovedRebind = false,
+  requiredPreviousChanges: number | null = null,
 ): D1PreparedStatementLike {
+  const previousChangesFilter =
+    requiredPreviousChanges === null
+      ? ""
+      : "AND changes() = ?";
+  const authorizedConflictFilter =
+    authorizedConflictKeys === null
+      ? ""
+      : String.raw`
+       AND EXISTS (
+         SELECT 1
+         FROM json_each(?) AS authorized_conflict
+         WHERE authorized_conflict.type = 'text'
+           AND CAST(authorized_conflict.value AS TEXT) =
+               collision.candidate_key || ':' ||
+               collision.schedule_version || ':' ||
+               collision.classification
+       )`;
+  const approvedRebindState = allowApprovedRebind
+    ? ", 'approved'"
+    : "";
   return database
     .prepare(
       `WITH candidate AS (
@@ -2800,6 +3334,8 @@ function incidentInsertStatement(
               ?, ?, ?, ?, ?, ?, ?, NULL
        FROM collisions AS collision
        WHERE 1 = 1
+       ${previousChangesFilter}
+       ${authorizedConflictFilter}
        ON CONFLICT(
          organizer_event_id, proposed_schedule_version,
          conflicting_candidate_key, conflicting_schedule_version,
@@ -2823,7 +3359,7 @@ function incidentInsertStatement(
              excluded.organization_id
          AND organizer_conflict_incidents.state IN (
            'pending_approval', 'rejected', 'invalidated', 'resolved',
-           'informational'
+           'informational'${approvedRebindState}
          )`,
     )
     .bind(
@@ -2843,6 +3379,12 @@ function incidentInsertStatement(
       actor.profileId,
       now,
       now,
+      ...(requiredPreviousChanges === null
+        ? []
+        : [requiredPreviousChanges]),
+      ...(authorizedConflictKeys === null
+        ? []
+        : [JSON.stringify(authorizedConflictKeys)]),
     );
 }
 
@@ -2889,6 +3431,10 @@ function proposeLifecycleWrite(
     interval,
     nextContentVersion: event.contentVersion + 1,
     nextPlanningStatus,
+    nextPublicationStatus: publicationStatusForLifecycle(
+      event.publicationStatus,
+      input.action,
+    ),
     nextScheduleVersion: event.scheduleVersion + 1,
     organizerScope: Object.freeze(
       [...new Set([
@@ -2898,6 +3444,46 @@ function proposeLifecycleWrite(
     ),
     reason: input.reason,
   });
+}
+
+function publicationStatusForLifecycle(
+  current: EventPublicationStatus,
+  action: OrganizerLifecycleAction,
+): EventPublicationStatus {
+  if (action === "restore_cancelled") {
+    return "unpublished";
+  }
+  if (action === "cancel") {
+    return current === "scheduled" ? "unpublished" : current;
+  }
+  if (action === "archive" || action === "complete") {
+    return current === "scheduled" || current === "published"
+      ? action === "complete" && current === "published"
+        ? "published"
+        : "unpublished"
+      : current;
+  }
+  return current;
+}
+
+function publicationOperationForLifecycle(
+  proposed: ProposedWrite,
+): CanonicalPublicationMutationOperation | null {
+  const current = proposed.event.publicationStatus;
+  if (proposed.action === "restore_cancelled") {
+    return "restore_cancelled";
+  }
+  if (proposed.action === "cancel") {
+    return current === "private" ? null : "public_cancel";
+  }
+  if (current === "private") return null;
+  if (current === "scheduled") return "update_scheduled";
+  if (current === "published") {
+    return proposed.nextPublicationStatus === "unpublished"
+      ? "unpublish"
+      : "update_published";
+  }
+  return "update_unpublished";
 }
 
 function requestedStateFromReview(
@@ -2951,6 +3537,14 @@ function requestedStateFromReview(
     interval,
     nextContentVersion: current.contentVersion + 1,
     nextPlanningStatus: planningStatus,
+    nextPublicationStatus: publicationStatusForLifecycle(
+      current.publicationStatus,
+      parseEnum(
+        raw.action,
+        ORGANIZER_LIFECYCLE_ACTIONS,
+        "requestedState.action",
+      ),
+    ),
     nextScheduleVersion: review.requestedScheduleVersion,
     organizerScope: scope,
     reason: review.reason,
@@ -3038,6 +3632,7 @@ function transitionForAction(
     (action === "cancel" &&
       (current === "tentative_hold" || current === "confirmed")) ||
     (action === "complete" && current === "confirmed") ||
+    (action === "restore_cancelled" && current === "cancelled") ||
     (action === "archive" && current !== "archived");
   if (!allowed) {
     throw new SafeApplicationError(
@@ -3046,7 +3641,7 @@ function transitionForAction(
       "That lifecycle transition is not available from the current state.",
     );
   }
-  return next;
+  return action === "restore_cancelled" ? "confirmed" : next;
 }
 
 function parseActionInput(value: unknown): ActionInput {
@@ -3115,6 +3710,59 @@ async function authorizeSchedulingEdit(
   event: SchedulingEvent,
 ): Promise<void> {
   await authorizeMembership(database, identity, { clubId: event.clubId });
+  await authorizeSchedulingActorForEvent(database, actor, event);
+}
+
+async function authorizeSchedulingActorForEvent(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  event: SchedulingEvent,
+): Promise<void> {
+  const current = await database
+    .prepare(
+      `SELECT membership.role
+       FROM organization_memberships AS membership
+       JOIN profiles AS profile
+         ON profile.id = membership.profile_id
+        AND profile.status = 'active'
+        AND profile.deleted_at IS NULL
+       JOIN clubs AS club
+         ON club.id = ?
+        AND club.organization_id = membership.organization_id
+        AND club.deleted_at IS NULL
+       WHERE membership.id = ?
+         AND membership.organization_id = ?
+         AND membership.profile_id = ?
+         AND membership.role = ?
+         AND membership.status = 'active'
+         AND membership.deleted_at IS NULL
+         AND (
+           membership.role IN ('owner', 'administrator')
+           OR EXISTS (
+             SELECT 1
+             FROM club_memberships AS club_membership
+             WHERE club_membership.organization_id =
+                   membership.organization_id
+               AND club_membership.club_id = club.id
+               AND club_membership.organization_membership_id =
+                   membership.id
+               AND club_membership.profile_id = membership.profile_id
+               AND club_membership.role = 'organizer'
+               AND club_membership.status = 'active'
+               AND club_membership.deleted_at IS NULL
+           )
+         )
+       LIMIT 1`,
+    )
+    .bind(
+      event.clubId,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+    )
+    .first<Record<string, unknown>>();
+  if (!current) throw privateNotFound();
   if (actor.role !== "organizer") return;
   if (
     actor.profileId !== event.primaryOrganizerProfileId &&
@@ -3122,6 +3770,68 @@ async function authorizeSchedulingEdit(
   ) {
     throw privateNotFound();
   }
+}
+
+async function readOrganizerConflictPolicyForAuthorizedActor(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+): Promise<Readonly<{
+  id: string;
+  mode: "block" | "require_admin_approval" | "warn_reason";
+  version: number;
+}>> {
+  const row = await database
+    .prepare(
+      `SELECT policy.id, policy.mode, policy.policy_version
+       FROM organizer_conflict_policies AS policy
+       WHERE policy.organization_id = ?
+         AND EXISTS (
+           SELECT 1
+           FROM organization_memberships AS membership
+           JOIN profiles AS profile
+             ON profile.id = membership.profile_id
+            AND profile.status = 'active'
+            AND profile.deleted_at IS NULL
+           WHERE membership.id = ?
+             AND membership.organization_id = policy.organization_id
+             AND membership.profile_id = ?
+             AND membership.role = ?
+             AND membership.status = 'active'
+             AND membership.deleted_at IS NULL
+         )
+       LIMIT 1`,
+    )
+    .bind(
+      actor.organizationId,
+      actor.membershipId,
+      actor.profileId,
+      actor.role,
+    )
+    .first<Record<string, unknown>>();
+  if (!row) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The conflict policy is unavailable.",
+    );
+  }
+  const mode = requiredString(row.mode);
+  if (
+    mode !== "block" &&
+    mode !== "require_admin_approval" &&
+    mode !== "warn_reason"
+  ) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The conflict policy is unavailable.",
+    );
+  }
+  return Object.freeze({
+    id: requiredString(row.id),
+    mode,
+    version: requiredInteger(row.policy_version),
+  });
 }
 
 async function readScheduledEvent(
@@ -3160,7 +3870,7 @@ async function readScheduledEvent(
     holdState,
     id: event.id,
     planningStatus: event.planningStatus,
-    publicationStatus: "private",
+    publicationStatus: event.publicationStatus,
     scheduleVersion: event.scheduleVersion,
     title: event.title,
   });
@@ -3240,7 +3950,12 @@ function readSchedulingEvent(row: Record<string, unknown>): SchedulingEvent {
   if (
     !planningStatus ||
     !scheduleShape ||
-    row.publication_status !== "private"
+    !(
+      row.publication_status === "private" ||
+      row.publication_status === "scheduled" ||
+      row.publication_status === "published" ||
+      row.publication_status === "unpublished"
+    )
   ) {
     throw unavailable();
   }
@@ -3265,7 +3980,7 @@ function readSchedulingEvent(row: Record<string, unknown>): SchedulingEvent {
     primaryOrganizerProfileId: requiredString(
       row.primary_organizer_profile_id,
     ),
-    publicationStatus: "private",
+    publicationStatus: row.publication_status,
     scheduleShape,
     scheduleVersion: requiredInteger(row.schedule_version),
     slug: requiredString(row.slug),
@@ -3517,6 +4232,132 @@ function sameConflictSet(
   );
 }
 
+async function requireExistingPublicationConflictAuthorization(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  event: SchedulingEvent,
+  conflicts: readonly ConflictFact[],
+  policy: Readonly<{
+    id: string;
+    mode: "block" | "require_admin_approval" | "warn_reason";
+    version: number;
+  }>,
+  stateFingerprint: string,
+): Promise<Readonly<{
+  reason: string | null;
+  reviewRequestId: string | null;
+}>> {
+  if (conflicts.length === 0) {
+    return Object.freeze({ reason: null, reviewRequestId: null });
+  }
+  const result = await database
+    .prepare(
+      `SELECT incident.conflicting_candidate_key,
+              incident.conflicting_schedule_version,
+              incident.classification,
+              override.reason,
+              override.review_request_id,
+              review.state AS review_state
+       FROM organizer_conflict_incidents AS incident
+       JOIN organizer_conflict_overrides AS override
+         ON override.incident_id = incident.id
+        AND override.organization_id = incident.organization_id
+        AND override.invalidated_at IS NULL
+        AND override.proposed_schedule_version =
+            incident.proposed_schedule_version
+        AND override.conflicting_schedule_version =
+            incident.conflicting_schedule_version
+        AND override.policy_id = incident.policy_id
+        AND override.policy_version = incident.policy_version
+        AND override.state_fingerprint = incident.state_fingerprint
+       LEFT JOIN organizer_conflict_review_requests AS review
+         ON review.id = override.review_request_id
+        AND review.organization_id = override.organization_id
+       WHERE incident.organization_id = ?
+         AND incident.organizer_event_id = ?
+         AND incident.proposed_schedule_version = ?
+         AND incident.policy_id = ?
+         AND incident.policy_version = ?
+         AND incident.state_fingerprint = ?
+         AND incident.state = 'approved'
+       ORDER BY incident.conflicting_candidate_key,
+                incident.conflicting_schedule_version,
+                incident.classification
+       LIMIT 501`,
+    )
+    .bind(
+      actor.organizationId,
+      event.id,
+      event.scheduleVersion,
+      policy.id,
+      policy.version,
+      stateFingerprint,
+    )
+    .all<Record<string, unknown>>();
+  const rows = result.results ?? [];
+  if (rows.length > 500) {
+    throw conflictRefused(
+      "The conflict authorization set is too large to verify safely.",
+    );
+  }
+  const byKey = new Map<
+    string,
+    Readonly<{
+      reason: string;
+      reviewRequestId: string | null;
+      reviewState: string | null;
+    }>
+  >();
+  for (const row of rows) {
+    const key = `${requiredString(row.conflicting_candidate_key)}:${requiredInteger(
+      row.conflicting_schedule_version,
+    )}:${requiredString(row.classification)}`;
+    byKey.set(
+      key,
+      Object.freeze({
+        reason: requiredString(row.reason),
+        reviewRequestId: optionalString(row.review_request_id),
+        reviewState: optionalString(row.review_state),
+      }),
+    );
+  }
+  const requiredKeys = conflictKeys(conflicts);
+  if (!requiredKeys.every((key) => byKey.has(key))) {
+    throw conflictRefused(
+      "This event needs a current version-bound conflict review before it can be published.",
+    );
+  }
+  if (policy.mode === "warn_reason") {
+    const reason = byKey.get(requiredKeys[0])?.reason.trim();
+    if (!reason) {
+      throw conflictRefused(
+        "This event needs a current written conflict reason before it can be published.",
+      );
+    }
+    return Object.freeze({ reason, reviewRequestId: null });
+  }
+  const reviewIds = new Set(
+    requiredKeys.map((key) => {
+      const authorization = byKey.get(key);
+      return authorization?.reviewState === "approved"
+        ? authorization.reviewRequestId
+        : null;
+    }),
+  );
+  if (
+    reviewIds.size !== 1 ||
+    reviewIds.has(null)
+  ) {
+    throw conflictRefused(
+      "This event needs one current Administrator approval before it can be published.",
+    );
+  }
+  return Object.freeze({
+    reason: "Approved version-bound conflict review",
+    reviewRequestId: [...reviewIds][0] ?? null,
+  });
+}
+
 function sourceKindFromCandidateKey(
   key: string,
 ): "legacy" | "manual" | "meetup" {
@@ -3534,7 +4375,7 @@ function lifecycleRevisionAction(
   return "updated";
 }
 
-function mapSchedulingDatabaseError(error: unknown): Error {
+export function mapSchedulingDatabaseError(error: unknown): Error {
   const message =
     error instanceof Error
       ? `${error.message} ${String(

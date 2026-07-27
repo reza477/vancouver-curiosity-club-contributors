@@ -1,307 +1,322 @@
 # Vancouver Curiosity Club — Build Status
 
-Last updated: 2026-07-25 (America/Vancouver)
+Last updated: 2026-07-27 (America/Vancouver)
 
 ## Active phase and authorized scope
 
-- **Phase 4 — Authoritative conflict engine and reserving writes.**
-- Phase 4 application work is implemented and verified in isolated local,
-  preview-D1, source-test, built-Worker, and browser seams.
-- Phase 5 public preview/publication work is not authorized and has not
-  started.
+- **Phase 5 — Private-to-public publishing connection.**
+- Phase 5 is implemented and verified in local D1, preview D1, source tests,
+  production build, rendered Worker, and local browser seams.
+- Phase 6 has not started.
 - Authorized cuts: **none**.
-- The owner-only live deployment remains version 8. Phase 4 has not been
-  deployed.
+- No Phase 5 deployment is authorized. The owner-only live deployment remains
+  version 8.
 
 ## Completed and verified
 
-### Authoritative private scheduling
+### Canonical publishing workflow
 
-- `organizer_events` remains the only writable manual-event record.
-- Every schedule-affecting create, edit, lifecycle, duplicate, delete, and
-  restore path uses the same server-only scheduling protocol. The legacy
-  `events` conflict proof is not an organizer write path.
-- Timed and all-day Drafts, tentative holds, and confirmed private events use
-  separate content and schedule versions. Unscheduled Ideas retain no invented
-  date.
-- Tentative holds and confirmed records reserve. Drafts are informational.
-  Cancelled, completed, archived, deleted, and D1-time-expired holds do not
-  reserve.
-- Held and confirmed records can be rescheduled by an authorized actor. Time,
-  timezone, club, venue, buffer, primary organizer, and co-organizer changes
-  receive a complete atomic recheck.
-- Completion is rejected before the canonical event end and succeeds at the
-  exact D1-time boundary or later. Restore returns to a safe non-reserving
-  Draft.
-- Every successful mutation commits the canonical row, exact organizer set,
-  normalized reservation state, version-bound incident/review/override facts,
-  immutable revision, audit entry, and allowlisted notifications in one
-  bounded `DB.batch()` transaction.
-- Zero-row, stale-content, stale-schedule, conflict, expired-hold,
-  authorization, and invariant failures are treated as failure and roll back
-  all residue.
+- `organizer_events` remains the only writable canonical manual-event record.
+  Publication metadata lives in organization-scoped sidecars; no organizer
+  event is copied into legacy `events`, Meetup snapshots, static JSON, or page
+  content.
+- Protected organizer workflows now support:
 
-### Conflict semantics and policy
+  - saving explicitly public event details;
+  - eligible host selection with active membership, consent, organizer-scope,
+    and safe-name checks;
+  - protected preview through the same allowlisted public DTO and event-detail
+    renderer used by the public route;
+  - immediate website publication;
+  - future website publication scheduling;
+  - cancellation of a pending publication;
+  - bounded request-driven due-job reconciliation;
+  - unpublication;
+  - published cancellation, scheduled cancellation, completion, archive,
+    soft-delete, and restore behavior;
+  - a narrow Owner/Administrator policy for Organizer self-publication.
 
-- Direct overlap uses half-open intervals. A 6:00 PM end and 6:00 PM start do
-  not overlap when both buffers are zero.
-- Buffer-only overlap uses both records' setup and cleanup/travel expansion.
-  Direct overlap takes priority while every relevant organization, organizer,
-  co-organizer, and venue fact remains available for explanation.
-- Conflicts are organization-wide across clubs. All-day bounds are normalized
-  at local midnight in the original IANA timezone, including Vancouver
-  spring-forward and fall-back behavior.
-- One active D1 policy supports:
+- Every publication-affecting action revalidates trusted Sites identity,
+  active profile/membership, role, organization, club assignment, event scope,
+  content version, schedule version, current policy, public readiness, public
+  slug uniqueness, and the Phase 4 conflict contract inside the authoritative
+  committing path.
+- Publication uses the existing Phase 4 schedule-intent envelope. Exact current
+  conflict incidents and required reason/approved-review overrides are rebound
+  to the publication intent, checked by D1, finalized, and completed in the
+  same bounded batch. The database guard was not weakened.
+- Stale, unauthorized, unready, conflicting, or zero-row mutations fail
+  without partial event, job, sidecar, revision, audit, notification,
+  incident, or override residue.
+- Immediate and concurrent publication are idempotent at the canonical state:
+  one transition and one publication audit can commit.
 
-  - `warn_reason`;
-  - `require_admin_approval`;
-  - `block`.
+### Publication readiness and lifecycle
 
-- Default hold duration is 72 hours; nearing-expiry threshold is 24 hours.
-- Warn overlaps require an exact bounded reason stored atomically with both
-  event versions, policy version, and conflict facts.
-- Administrator-approval requests remain non-reserving Drafts. An
-  Administrator cannot self-approve but may reject or withdraw their own
-  request. An Owner may self-approve.
-- Policy or schedule/resource changes atomically close stale pending reviews,
-  overrides, and incident presentation state. Rejected or invalidated reviews
-  may be requested again without uniqueness collisions.
-- Authoritative candidate reads fail closed rather than authorize a truncated
-  set.
+- Publication requires a confirmed, scheduled, undeleted, unarchived event
+  with a stable title/slug, public summary and description, a published club,
+  an explicit in-person/online/hybrid attendance mode, matching approved public
+  location/online facts, and a valid RSVP choice.
+- `location_undecided` remains a private draft/preview value and blocks Publish
+  and Schedule publication.
+- `meetup` RSVP mode accepts only a canonical HTTPS
+  `www.meetup.com/<group>/events/<event-id>/` event destination. Group-home
+  URLs are rejected. Changing the saved URL clears confirmation and falls back
+  to honest “RSVP information coming soon” behavior until reconfirmed.
+- Public host display requires event-level enablement plus a selected current
+  organizer with active membership/profile, canonical consent, and a safe
+  canonical display name. Later consent, membership, or name ineligibility
+  suppresses attribution without making the whole site fail closed.
+- Immediate publication cancels any older pending job atomically.
+- Scheduled publication stores UTC plus the original IANA timezone, binds the
+  exact content/schedule versions, and remains absent from all public surfaces
+  until successful reconciliation.
+- At most one due job is processed per request, keeping all measured success,
+  deterministic invalidation, and transient paths below the Sites D1
+  50-statement limit. No cron, realtime, or exact-to-the-second promise is
+  made.
+- A stale/ineligible scheduled job is invalidated safely even if its original
+  authorizer is removed, suspended, demoted, reassigned, or no longer eligible
+  under the self-publish policy. Current Owner/Administrator recovery remains
+  organization/job/version bound.
+- Published cancellation retains the stable public detail page with a clear
+  cancellation state and removes the event from Upcoming. Scheduled
+  cancellation terminalizes the job and leaves the event unpublished.
+  Completion may remain in Past. Archive and soft-delete unpublish. Restore
+  never silently republishes.
+- Editing a scheduled event invalidates the stale job unless explicitly
+  rescheduled. Editing a published event updates the same canonical public
+  page and reports that truthfully in the organizer UI.
 
-### Read-only source coordination
+### Unified public projection and privacy
 
-- Active read-only legacy reservations and enabled completed active Meetup
-  generations participate in the same conflict model without becoming
-  writable.
-- Pending, failed, disabled, or deleted Meetup sources remain invisible.
-- Timed and IANA-normalized all-day Meetup facts stage with exact immutable
-  snapshot parity and normalized interval/resource parity.
-- A separate generation-independent reservation-semantic fingerprint permits
-  an identical or content-only refresh while detecting schedule, resource, or
-  reserving-state changes.
-- Changing `active_generation_id`, re-enabling a source with an active
-  generation, or restoring that source runs the same database activation
-  guard.
-- Changed external reservation semantics atomically close manual incidents,
-  pending reviews, and overrides bound to the old external facts. If
-  activation fails, those closures roll back with it.
-- A genuinely new source overlap fails closed. The prior completed generation
-  remains active, the staged generation is retained with a redacted actionable
-  schedule-conflict state, and the documented resolution is to move/release
-  the manual reservation and refresh again.
-- Saved feed addresses, tokens, raw feed bodies, descriptions, and private
-  locations remain absent from client DTOs, public output, logs, and artifacts.
+- The Phase 2 unified public projection now has an explicit, allowlisted
+  `organizer_events` branch in addition to the unchanged legacy-manual and
+  completed-active-Meetup branches.
+- Organizer events appear only when canonically `published`, attached to an
+  active published club, publication-ready, organization-consistent,
+  source-free, and in a supported planning state.
+- Scheduled, private, unpublished, draft, hold, archived, soft-deleted, and
+  guessed-slug records remain absent from Home, Events, club pages, event
+  detail, metadata, JSON-LD, sitemap, and public errors.
+- Pending, partial, failed, and older Meetup generations remain invisible.
+  Existing active-generation publication isolation is unchanged.
+- Public slug collision checks use one shared semantic contract across
+  service readiness and D1 enforcement, including organizer, eligible legacy,
+  and completed-active Meetup candidates without counting Meetup mirrors
+  twice.
+- Preview is authenticated, authorization-scoped, dynamic, `no-store`, and
+  `noindex, nofollow, noarchive`. It uses the exact public DTO without exposing
+  private notes, private meeting details, conflicts/reasons, overrides,
+  emails, memberships, invitations, revisions, audits, source configuration,
+  runtime values, or identity headers.
+- A D1 production-compatibility issue in the public-host aggregate was fixed by
+  using a ranked host CTE and joined JSON window aggregate. The primary-first,
+  maximum-24, consent/safe-name/privacy contract is unchanged.
 
-### Private organizer experience
+### Organizer experience
 
-- Added protected `/organizer/conflicts`, conflict preview and review APIs,
-  lifecycle-action API, private venue APIs, and conflict-policy settings.
-- Desktop and mobile organizer navigation expose Calendar, Add Event,
-  Conflicts, Team, and More/Settings without Phase 5 controls.
-- The event editor presents schedule, timezone, people, venue, buffers, and
-  lifecycle in one accessible workflow. The preview is debounced,
-  cancellable, stale-response-safe, and explicitly advisory.
-- Conflict Center groups Open, Pending approval, Approved, Rejected,
-  Invalidated, Resolved, and informational Draft warnings.
-- Conflict actions are emitted only for a manual side the actor can actually
-  edit. Legacy and Meetup sources use honest read-only destinations or labels.
-- Event detail loads a real organization-scoped conflict summary; unrelated
-  reasons and private source facts are not disclosed.
-- Calendar has a real Conflict-only filter, visible counts, Clear Filters,
-  bounded-load disclosure, and a distinct unscheduled Ideas area.
-- Owner/Administrator can manage private venues and policy. Organizer
-  permissions remain assigned-club and owned/co-organized-event scoped.
-- D1-time reconciliation creates at most one nearing-expiry and one expiry
-  notification per event schedule version and affected recipient.
-- Conflict, review, decision, hold, confirmation, cancellation, and material
-  schedule notifications use bounded allowlisted payloads and durable
-  deduplication. No email, digest, cron, scheduler, or realtime claim exists.
+- The existing Field Notes organizer shell now includes an accessible Website
+  publication panel, readiness checklist, public details editor, host
+  selection, protected Preview, immediate/scheduled publication actions,
+  cancellation, unpublication, and accurate success/error copy.
+- A fresh confirmed event can open the panel with safe default draft values;
+  Preview appears only when the exact server projection can render it.
+- Owner and Administrator may publish eligible events. Organizer publication
+  remains disabled by default and requires the narrow organization policy plus
+  existing assigned-club and owned/co-organized scope.
+- Viewer, unassigned Organizer, cross-organization, suspended, deleted, and
+  uninvited identities cannot gain edit, preview, schedule, or publish access.
+- Settings exposes only the narrow self-publish policy. No Phase 6 CMS,
+  Community, branding, legal, or media controls were added.
+- Notification and audit allowlists cover publication scheduled, published,
+  failed/invalidated, public cancellation, and material public time changes
+  without email, tokens, private notes, feed URLs, conflict reasons, or raw
+  identity data.
 
 ### Migration and persistent invariants
 
-- Existing migrations `0008` through `0012` remain unchanged.
-- Additive migration `0013_phase4_conflict_engine.sql` contains **37 complete
-  single statements**, including **9 tables** and **27 indexes**. It contains
-  no trigger body, destructive rebuild, `ALTER`, `DROP`, rename, reset, or
-  `PRAGMA` mutation.
-- Migration 0013 is retry-safe against clean, populated-version-8, repeated,
-  and every partial production-tokenizer prefix tested.
-- Current schema evidence:
+- Existing migrations `0008` through `0013` remain byte-for-byte preserved.
+- Exactly one additive migration was added:
+  `0014_phase5_publication.sql`.
+- Migration 0014 contains **20 complete tokenizer-safe statements** and adds
+  five tables plus bounded indexes. It contains no packaged trigger body,
+  `ALTER`, `DROP`, destructive rebuild, reset, rename, or `PRAGMA` mutation.
+- There is no migration 0015. Drizzle schema, migration, snapshot, and journal
+  are aligned, including `update_unpublished`.
+- Current verified D1 shape:
 
-  - 52 tables;
-  - 117 explicit indexes;
-  - 44 unique indexes;
-  - 177 foreign keys;
-  - 91 checks;
+  - 7 migrations (`0008` through `0014`);
+  - 58 tables;
+  - 131 explicit indexes;
+  - 74 exact runtime-installed triggers;
+  - runtime invariant version 5;
+  - invariant fingerprint
+    `f4d5e707058f628c1a0dcaf908bd7a4c918b3bb099c6dd4ff6183a0c4850f356`;
+  - durable status converges through bounded `repaired` requests to `ready`;
   - zero `PRAGMA foreign_key_check` violations.
 
-- Runtime invariant version is **4**, with **48 exact triggers** and fingerprint
-  `0cd660044b22630341bde84ef8d48951842797c2b48c8b60450abb2f66f86f49`.
-- The fail-closed initializer verifies normalized `sqlite_master` definitions,
-  exact trigger count, durable marker, and organization/policy/reservation/
-  incident/review/override/source integrity before application dispatch.
-- Cold, healthy, ordinary repair, bounded full-repair, manual adoption, and
-  external adoption paths remain within the 50-statement D1 invocation limit.
-- Concurrent-isolate initialization is idempotent. Malformed existing data
-  writes no false readiness marker or partial trusted guard set.
-
-### Public/private separation
-
-- Every Phase 4 manual record keeps `publication_status = 'private'`.
-- Phase 2 public projections do not read `organizer_events`.
-- Private holds, confirmations, reasons, notes, venues, organizer identity,
-  notifications, audit history, invitations, and source configuration remain
-  absent from Home, Events, event/club detail, metadata, JSON-LD, sitemap,
-  guessed public slugs, and public error surfaces.
-- Existing active-generation Meetup publication isolation remains unchanged.
-- Organizer routes and APIs remain trusted-context protected, `no-store`, and
-  `noindex, nofollow, noarchive`.
+- Runtime installation remains phase-aware during historical migration/adoption
+  tests and fail closed once the Phase 5 schema is expected.
+- Healthy, repair, repeat, partial-prefix, concurrent-isolate, malformed-data,
+  and populated upgrade paths were exercised. No invalid or partial
+  installation writes a false ready marker.
 
 ## Exact verification evidence
 
-Commands ran from `C:\Users\user\Documents\Website` on 2026-07-25.
+Commands ran from `C:\Users\user\Documents\Website` on 2026-07-27.
 
-- `npm.cmd ci` — exit 0; 503 packages installed from the existing lockfile.
-  Deprecation notices and seven packages with pending install scripts were
-  reported; the pinned Sites runtime was not force-upgraded.
-- `npm.cmd run db:generate` — exit 0; 52 tables; no schema drift and no new
-  migration generated.
-- Fresh local migration proof — exit 0 after preserving an ignored
-  in-progress local D1 backup; six migrations, 52 tables, 48/48 triggers,
-  bounded `repaired` then `ready`, zero foreign-key violations.
-- Fresh preview-D1 migration proof — exit 0 with the same six migrations, 52
-  tables, 48/48 triggers, bounded repair convergence, and zero violations.
-- Final `npm.cmd run db:apply:local` — exit 0; all six migrations recorded,
-  invariant status `ready`, 52 tables, 48/48 triggers, zero violations.
-- Final `npm.cmd run db:apply:preview` — exit 0 with the same result against the
-  Sites local preview D1.
+- `npm.cmd ci` — exit 0; 503 packages added and 504 audited from the preserved
+  lockfile.
+- `npm.cmd run db:generate` — exit 0; 58 tables; no schema drift and no
+  unexpected migration generated.
+- `npm.cmd run db:apply:local` — exit 0; 7 migrations, migration 0014 applied
+  in 20 statements, 58 tables, 74/74 triggers, bounded
+  `repaired`/`repaired`/`ready`, zero foreign-key violations.
+- `npm.cmd run db:apply:preview` — exit 0 with the same migration, table,
+  trigger, readiness, and foreign-key result.
 - `npm.cmd run typecheck` — exit 0 under strict TypeScript.
-- Exact `npm.cmd run lint` before build — exit 0.
-- `npm.cmd test` — exit 0; **246/246 passed**, 0 failed, 0 skipped.
-- `npm.cmd run build` — exit 0; vinext built the full public and protected
-  Worker route set.
-- Exact `npm.cmd run lint` after retained build artifacts — exit 0.
-- `npm.cmd run test:rendered` — exit 0; **21/21 passed**, 0 failed, 0 skipped.
-  The built Worker applies packaged migrations, installs the version-4 guard
-  set, renders protected flows, commits a real private hold and reviewed Warn
-  overlap, rejects unreviewed conflict, and preserves public isolation.
-- Focused migration/invariant/conflict/concurrency/security/public-leakage gate
-  — exit 0; **157/157 passed**, 0 failed, 0 skipped.
-- Administrator self-rejection with no notification recipient — exact D1
-  regression passed: review rejected, one audit, zero notices.
-- Source-activation regressions passed for timed/all-day staging, mapped
-  resources, identical generation refresh, content-only change, schedule
-  change, new conflict refusal, stale-artifact invalidation, rollback,
-  re-enable guard, deactivation, disappearance/reappearance, and statement
-  budget.
+- Exact `npm.cmd run lint` before build — exit 0 with **zero warnings**.
+- `npm.cmd test` — exit 0; **318/318 passed**, 0 failed, 0 skipped, 0 todo.
+- Focused migration/invariant/Phase 5/public gate — exit 0;
+  **119/119 passed**, 0 failed, 0 skipped.
+- Focused Phase 5/public/invariant audit subsets also reported **93/93
+  passed**.
+- `npm.cmd run build` — exit 0; vinext produced the complete public and
+  protected Worker route set.
+- Exact `npm.cmd run lint` after retained build artifacts — exit 0 with
+  **zero warnings**.
+- `npm.cmd run test:rendered` — exit 0; **22/22 passed**, 0 failed, 0 skipped.
+  The built Worker applies the packaged migration set, installs/verifies
+  invariant v5 and 74 triggers, denies unauthorized organizer access, executes
+  protected preview and immediate/scheduled publication, reconciles a due job,
+  renders Home/Events/detail/club/metadata/JSON-LD/sitemap, handles
+  cancellation/unpublication, and passes public/private sentinel scans.
+- Focused migration/snapshot/invariant contract — **28/28 passed**.
+- Measured conflict-publication D1 paths:
+
+  - Warn immediate publish: 42 statements, largest batch 12;
+  - Warn schedule: 43 statements, largest batch 13;
+  - Administrator-approved immediate publish: 42 statements, largest batch
+    12;
+  - Administrator-approved due reconciliation: 25 statements, largest batch
+    13.
+
 - `git diff --check` — exit 0; only expected Windows line-ending notices.
-- Built-output audit — `dist` contains **106 files / 5,759,354 bytes**.
-- Source/package Drizzle comparison — **13/13 resources byte-identical**.
-- Source and built privacy scans — zero concrete private Meetup feed URLs,
-  zero email-like values in `dist`, zero credential/private-key/Bearer-token
-  patterns, and zero environment, local-D1, test, fixture, work, or log files
-  in `dist`.
-- Exact official-helper archive — 121 tar entries / 106 regular files /
-  5,759,354 uncompressed bytes / 1,932,497 compressed bytes; local SHA-256
-  `4f36669d322a970dd88f262a8e40bdfe18056e14461f0409a0846078804816a4`.
-  Every path is rooted under `dist/`; the archive has the Worker entrypoint,
-  hosting metadata, and 13 byte-identical Drizzle resources with zero unsafe
-  paths or forbidden/private artifacts.
-- `npm.cmd audit --omit=dev --json` — **Not run to a usable result**. The npm
-  advisory endpoint returned malformed gzip bytes and npm exit 1.
-- `npm.cmd audit --json` — **Not run to a usable result** for the same external
-  registry response. The last reproducible version-9 baseline remains 3 high /
-  0 critical production advisories and 18 total advisories (1 low, 4 moderate,
-  13 high, 0 critical); it is retained as historical evidence, not claimed as
-  a current rerun.
+- Current `dist` audit before source freeze — 112 files / 6,433,186 bytes;
+  hosting metadata present; 15 Drizzle resources byte-identical to source; no
+  environment file, local D1, log, test/fixture/work artifact, unoptimized
+  design master, email-like value, private sentinel, supplied private Meetup
+  feed URL, credential, private key, or Bearer-token pattern.
+- Generic `events/ical/` parser text exists as required to recognize official
+  operator input; no owner feed address is embedded.
+- Exact commit archive hash, compressed size, entry count, and Sites v11
+  provenance are pending the source freeze and will be added in the
+  provenance-only ledger commit.
+
+### Dependency audit
+
+- `npm.cmd audit --omit=dev --json` ran and exited 1 because findings exist:
+  **3 high, 0 critical** production advisories.
+- `npm.cmd audit --json` ran and exited 1 because findings exist:
+  **18 total** — 1 low, 4 moderate, 13 high, 0 critical.
+- Seven packages report pending install scripts. No unsafe forced upgrade was
+  applied to the pinned Sites runtime.
 
 ### Failures encountered and resolved
 
-- An ignored local D1 recorded an earlier hash of the in-progress migration
-  0013. It was preserved as a timestamped ignored backup; only disposable
-  local/preview stores were re-created. Hosted D1 was never reset or changed.
-- The local migration harness initially stopped after one bounded invariant
-  repair request. Both supported local and preview harnesses now continue
-  bounded repair calls until the durable status is `ready`.
-- One direct Node test command omitted the project `tsx` loader and failed ESM
-  resolution. The supported loader command and the complete project runner
-  passed.
-- Final red-team reproduction found that an Administrator self-rejection with
-  no other notification recipient could abort after the successful review
-  mutation. Audit/sentinel gating now follows the review/incident mutation
-  rather than optional notification count; the regression and full suite pass.
-- Notification-page starter copy described only Phase 3 categories. It now
-  truthfully includes schedule, conflict-review, and hold changes.
+- Phase 5 trigger and publication-intent ordering, historical-intent
+  validation, stale-authorizer invalidation, scheduled lifecycle bridging,
+  notification recipients, host eligibility, preview permission parity, RSVP
+  confirmation, slug parity, conflict authorization, D1 statement budget,
+  migration snapshot, and rendered-harness drift were each reproduced and
+  fixed with executed regression coverage.
+- Rendered production D1 rejected a nested correlated public-host aggregate
+  even though local SQLite accepted it. The D1-compatible ranked CTE/window
+  implementation now passes the complete rendered Worker suite.
+- The final stabilized source gate is green; no failing test was suppressed,
+  weakened, skipped, or cast away.
 
 ## Browser and accessibility evidence
 
-- Authenticated browser QA used an isolated synthetic `.invalid` identity,
-  ignored local D1, and a local trusted-header proxy. No production auth seam
-  or hosted data was changed; the local secret file was removed afterward.
-- A private unscheduled Idea was created through the UI and retained no date.
-  Scheduled Draft fixtures were created through the protected local API
-  because browser automation could not reliably set the native date control.
-- A real 4:00–6:00 PM hold was placed through the UI. A 5:00–7:00 PM
-  overlapping Draft showed the exact 5:00–6:00 PM organization/organizer
-  conflict. Confirm with a bounded Warn reason succeeded, persisted as
-  `confirmed`, and appeared in Conflict Center as Approved with the exact
-  private reason.
-- Conflict-only filtering returned zero matching records from two total, and
-  Clear Filters restored both. The unscheduled Idea remained in the Ideas area.
-- Widths checked: 320×800, 390×844, 768×1024, 1280×800, and 1440×900. No
-  essential horizontal overflow was observed; mobile body text remained 16px.
-- A 720px viewport provided a 1440-at-200%-equivalent reflow check with no
-  horizontal overflow. Exact browser zoom measurement was not run.
-- Visible keyboard focus was verified on the editor. Skip link, landmarks,
-  headings, text-plus-color states, and mobile navigation were inspected.
-- Public Home and Events contained none of the isolated private fixture titles,
-  identity, or source values. Events rendered a truthful empty review state.
-- Completed-flow console logs contained no application, hydration, or
-  accessibility warning. An earlier expected 403 diagnostic occurred while
-  establishing the isolated authentication seam.
-- Browser reduced-motion emulation was blocked by the browser security policy
-  and was not retried. Reduced-motion CSS and source-contract tests pass.
+- Local browser QA used the normal localhost preview with the fresh isolated
+  review D1. No production auth, runtime value, access policy, or hosted data
+  was changed.
+- Widths checked:
+
+  - 320×800 Home;
+  - 390×844 Events;
+  - 768×1024 About route;
+  - 1280×800 Home;
+  - 1440×900 Events;
+  - 720×900 as a 1440-at-200%-equivalent reflow check.
+
+- Every measured page retained 16px body text, a main landmark, and no
+  essential horizontal overflow.
+- At 320px the mark, wordmark, compact navigation, hero, and footer remained
+  readable. Visible `:focus-visible` keyboard focus was verified on the mobile
+  navigation summary with a 3px outline; its six destinations were inspected.
+- Events filters were keyboard/focus inspectable, showed a truthful zero-result
+  state, produced a shareable validated query URL, and Clear Filters returned
+  to the canonical state.
+- The guessed public route rendered the custom “This trail ends here.” 404 at
+  390px without overflow.
+- Signed-out `/organizer` redirected to
+  `/signin-with-chatgpt?return_to=%2Forganizer`. The standalone local preview
+  does not provide the Sites dispatcher-owned sign-in UI, so that destination
+  rendered the local 404; rendered Worker authorization/header tests cover the
+  production contract.
+- The fresh local review D1 has no initialized public page catalog, so the
+  About route rendered the truthful custom 404 and no real organizer event was
+  available for an end-to-end browser publication smoke. The isolated built
+  Worker exercises that complete flow.
+- Browser console capture contained **0 errors and 0 warnings** during the
+  final checks.
+- Static reduced-motion, landmark, focus, target-size, no-overflow, private
+  route, and safe-error contracts pass automated tests.
 
 ## Implemented but not externally verified
 
-- Phase 4 is not deployed; hosted Phase 4 behavior remains unverified.
+- Phase 5 is not deployed. Hosted Phase 5 publication, scheduled
+  reconciliation, and preview behavior remain externally unverified.
 - Hosted D1 schema/table/index/trigger introspection is unavailable through the
-  current Sites capability. Local, preview, source, and built-Worker D1 provide
-  the evidence above.
-- Hosted second-identity invitation and role/club authorization cannot be
-  tested while Sites access remains exactly one owner and zero groups.
-- R2 remains bound as `MEDIA` and unchanged. Phase 4 has no media workflow.
-- Automatic background hold or Meetup work is not claimed. Reconciliation and
-  refresh are request-driven.
+  current Sites capability. Local, preview, source, and rendered Worker D1
+  provide the evidence above.
+- Hosted second-identity role and invitation checks remain unavailable while
+  access is one owner and zero groups.
+- Scheduled publication is request-driven: the first relevant public or
+  authenticated request at or after the due instant processes at most one job.
+  No background scheduler is claimed.
+- R2 remains bound as `MEDIA` and unchanged. Phase 5 adds no media workflow.
 
 ## Not implemented
 
-- Public event preview, scheduled publication, publish/unpublish, public CMS,
-  Community editing, R2 upload, CSV/ICS file import, export, public forms,
-  email/digests, QR downloads, payments, donations, internal RSVP, attendee
-  accounts, comments, messaging, forums, and chat.
-- No Phase 5 or later dead control is present.
+- General CMS/page editing, Community/navigation/footer/branding/legal
+  controls, R2 media library/upload, CSV/ICS import, export, public forms and
+  submissions inbox, QR downloads, email/digests, automatic Meetup write-back,
+  payments, donations, internal RSVP, attendee accounts, comments, messaging,
+  forums, and chat.
+- No Phase 6 or later dead control was added.
 
 ## Not run
 
-- Hosted Phase 4 owner smoke test — no Phase 4 version is deployed.
-- Hosted second human identity — current Sites policy permits one owner and
+- Hosted Phase 5 owner smoke test — no Phase 5 deployment is authorized.
+- Real-event local browser publication/cancellation/unpublication flow — the
+  fresh review D1 has no real confirmed event and no owner-approved event RSVP
+  input. The isolated rendered Worker flow passed.
+- Hosted second human identity — current Sites access permits one owner and
   zero groups.
-- Hosted D1 schema introspection — current Sites tools expose migration
-  application status but not direct SQL introspection.
-- Hosted real Meetup conflict/activation smoke — private production feed
-  configuration is not printed or copied into this review.
+- Hosted D1 direct SQL introspection — not exposed by current Sites tools.
 - Automated Axe, Lighthouse, and Core Web Vitals — unavailable in the pinned
-  toolchain; no score is claimed.
-- Exact 200% browser zoom and a complete keyboard-only scheduled-Draft flow —
-  browser automation limitations are recorded above.
-- Browser reduced-motion emulation — blocked by the browser security policy;
-  static behavior is covered instead.
-- R2 workflow — out of Phase 4 scope.
+  local toolchain; no score is claimed.
+- Exact browser zoom and reduced-motion emulation — the 720px reflow equivalent
+  and static reduced-motion tests passed, but native zoom/emulation was not
+  available.
 
 ## Blocked
 
+- Hosted Phase 5 smoke testing requires a later explicitly authorized private
+  deployment.
 - Hosted second-identity verification requires a separately authorized Sites
   access-policy change.
 - Remaining factual owner inputs:
@@ -309,11 +324,13 @@ Commands ran from `C:\Users\user\Documents\Website` on 2026-07-25.
   - exact BC legal name, legal form/status wording, registration number,
     effective date, approved legal footer, and charity status;
   - exact public Meetup discussion URL;
-  - owner-selected hosted RSVP URLs for a real-event smoke test;
-  - approved final copy and confirmed public contact;
+  - one real confirmed event and its exact individual Meetup event URL for the
+    future hosted publication smoke;
+  - event-specific approved public summary/description, attendance mode,
+    location/online facts, access notes, and verified accessibility facts;
+  - approved final public copy and confirmed public contact;
   - real photographs with rights, credit, and participant-consent state;
-  - approved public organizer names, biographies, and both consent gates;
-  - event-specific venue and accessibility facts.
+  - approved public organizer names/biographies and both host-consent gates.
 
 ## Sites project, bindings, version, and deployment state
 
@@ -326,41 +343,42 @@ Commands ran from `C:\Users\user\Documents\Website` on 2026-07-25.
 - Access remains custom: exactly one allowed owner and zero groups.
 - Custom domains: none. Preview deployment: none. Public/shared access: not
   enabled.
-- Phase 3 source commit:
-  `0071fbf1fb2fc11a2cdb68d19f71c0ac4a69886c`.
-- Unpublished Phase 3 Sites version 9 remains preserved:
-  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_3b9448669e5c8191ba6dad4b9e7a6c31`.
 - Phase 4 source commit:
   `61db32cbe42acfd3b6edbb288305066a2a377ba1`.
-- Unpublished Phase 4 Sites version 10:
+- Unpublished Phase 4 Sites version 10 remains preserved:
   `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_6356519315688191a6df7f457a116d2d`.
-- Sites readback matches the exact source commit and reports 106 files,
-  5,847,040 stored bytes, and content hash
-  `sha256:6fbd98dc802f7cced84dbeb2666cdfd7172dba75b97ed010bcefdffef9f5e746`.
-  Screenshot and preview URLs are null.
-- No Phase 4 deployment is authorized.
+- Phase 5 source commit: **Pending exact source freeze**.
+- Phase 5 Sites version 11: **Pending one unpublished save**.
+- No Phase 5 deployment is authorized.
 
 ## Awaiting a future private deployment
 
 Status: **Awaiting a future private deployment.**
 
-Five-minute owner smoke card for a later explicitly authorized private
-deployment of this Phase 4-or-later source:
+Five-minute owner smoke card for the next explicitly authorized private
+deployment of this Phase 5-or-later source:
 
-1. Sign in with the matching owner account.
-2. Create a private 4:00–6:00 PM tentative hold.
-3. Propose a 5:00–7:00 PM event and confirm the exact overlap appears.
-4. With zero buffers, confirm a second event starting at 6:00 PM does not
-   conflict.
-5. Add a 30-minute cleanup buffer and confirm a 6:15 PM start produces a buffer
-   warning.
-6. Under Block mode, confirm an unreviewed reserving save is refused.
-7. Return to Warn-and-require-reason, save one intentional overlap with a
-   written reason, and inspect it in Conflicts.
-8. Refresh and confirm the hold, review, and conflict state persist.
-9. Confirm both records remain absent from public Events, Home, club pages,
-   sitemap, metadata, structured data, and guessed public slugs.
+1. Sign in with the matching ChatGPT owner account.
+2. Open one real confirmed event with its exact Meetup event page.
+3. Confirm the event is absent from public Home, Events, club, and guessed slug
+   before publication.
+4. Complete public fields and confirm the Meetup link points to the individual
+   event, not the group home.
+5. Open protected Preview and confirm internal notes and conflict details are
+   absent.
+6. Publish to Website.
+7. Confirm it appears on Home, Events, its public detail page, and the correct
+   club.
+8. Open **RSVP on Meetup** and confirm the destination.
+9. Cancel the event; confirm its public detail page shows a prominent
+   cancellation banner and it disappears from Upcoming.
+10. Unpublish it; confirm its public page and discovery entries disappear.
+11. For scheduled publication, schedule a real eligible event shortly ahead,
+    open a relevant page after the due time, and confirm it publishes once
+    without pretending an exact background scheduler exists.
+
+Do not create or publish a fabricated production event for this test.
 
 ## Exact next phase
 
-**Phase 5 — Not started.**
+**Phase 6 — Not started.**
