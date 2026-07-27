@@ -210,9 +210,20 @@ Commands ran from `C:\Users\user\Documents\Website` on 2026-07-27.
   feed URL, credential, private key, or Bearer-token pattern.
 - Generic `events/ical/` parser text exists as required to recognize official
   operator input; no owner feed address is embedded.
-- Exact commit archive hash, compressed size, entry count, and Sites v11
-  provenance are pending the source freeze and will be added in the
-  provenance-only ledger commit.
+- Exact official-helper archive from source commit
+  `8d33f124d6e6b55a8eea5b6af64baa7982484b3f`:
+
+  - 127 tar entries;
+  - 112 regular files;
+  - 6,433,186 uncompressed bytes;
+  - 2,000,863 compressed bytes;
+  - local gzip SHA-256
+    `b023b335d0c9f26989190ad4119ed7cd77bff17c24da8bde56ce85c636ab6c37`;
+  - zero unsafe paths, missing required files, forbidden artifacts, private or
+    secret scan hits;
+  - 15/15 packaged Drizzle resources byte-identical to source;
+  - packaged hosting metadata byte-identical to
+    `.openai/hosting.json`.
 
 ### Dependency audit
 
@@ -347,8 +358,32 @@ Commands ran from `C:\Users\user\Documents\Website` on 2026-07-27.
   `61db32cbe42acfd3b6edbb288305066a2a377ba1`.
 - Unpublished Phase 4 Sites version 10 remains preserved:
   `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_6356519315688191a6df7f457a116d2d`.
-- Phase 5 source commit: **Pending exact source freeze**.
-- Phase 5 Sites version 11: **Pending one unpublished save**.
+- Phase 5 source commit:
+  `8d33f124d6e6b55a8eea5b6af64baa7982484b3f`.
+- Unpublished Phase 5 Sites version 11:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_c698ee1802e08191b7ac4cde79e6afe5`.
+- Sites readback matches the exact source commit and reports:
+
+  - version number 11;
+  - 112 files;
+  - 6,533,120 stored bytes;
+  - content hash
+    `sha256:fd1b49bd5439694e460f998c0562a4d25eca189d1b5c5518d7e7b3ebd76cda02`;
+  - screenshot URL: null.
+
+- Version history is newest-first as v11, v10, v9. Exactly one Phase 5 version
+  was saved.
+- Live deployment
+  `appgdep_6a654533aee481918098af58b5a4f861` remains `succeeded` on saved
+  version 8
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_eed88ec7d02c8191a865045cd32c940e`.
+- Current preview URL remains null. Current live URL remains
+  `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
+- Access remains custom with one allowed owner and zero groups at access
+  revision 1.
+- Runtime environment remains revision 1 with only redacted secret
+  `INITIAL_OWNER_EMAIL`.
+- Custom-domain count remains zero.
 - No Phase 5 deployment is authorized.
 
 ## Awaiting a future private deployment
