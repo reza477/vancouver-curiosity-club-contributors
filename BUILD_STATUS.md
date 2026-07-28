@@ -5,17 +5,17 @@ Last updated: 2026-07-27 (America/Vancouver)
 ## Active phase and release state
 
 - **Phase 6 — Structured content, media, taxonomy, and public attribution.**
-- The Phase 6 implementation is materially complete in the working tree, and
-  its migration, runtime-invariant, SQL-compatibility, CMS, catalog, media,
-  publication, and focused browser seams have verified evidence below.
-- Phase 6 is **not yet terminally complete**, but the first-run Meetup
-  Program/Club catalog request-budget blocker is closed. The catalog seed now
-  uses seven set-based statements and one live server authorization; the
-  largest measured whole-route invocation is 43 D1 statements, leaving seven
-  statements of headroom. The clean deterministic full suite is 592/592.
-  Fresh build, rendered Worker, browser, migration, package, and privacy gates
-  are green. The exact source commit and one authorized unpublished Sites save
-  remain pending.
+- Phase 6 is **terminally complete for the authorized scope**. Its migration,
+  runtime-invariant, SQL-compatibility, CMS, catalog, media, publication,
+  browser, package, and privacy gates are green.
+- The first-run Meetup Program/Club catalog seed uses seven set-based
+  statements and one live server authorization. The largest measured
+  whole-route invocation is 43 D1 statements, leaving seven statements of
+  headroom. The clean deterministic full suite is 592/592.
+- Exact source commit
+  `402880972fae5ed185a781888a6a5c6d9d167070` was pushed to the existing
+  short-lived Sites source repository and saved exactly once as unpublished
+  Sites version 12. It was not deployed.
 - **Phase 7 — Not started.**
 - Authorized cuts:
 
@@ -300,22 +300,25 @@ Last updated: 2026-07-27 (America/Vancouver)
 - The local Worker and its workerd child were stopped after the pass; port
   3000 is free and the temporary browser logs were removed.
 
-## Final Phase 6 release actions still pending
+## Final Phase 6 release actions completed
 
-All implementation, verification, build, rendered, browser, migration,
-package, and privacy gates are green. The remaining authorized release actions
-are:
+All authorized implementation, verification, build, rendered, browser,
+migration, package, privacy, source-provenance, and version-save gates are
+green:
 
-1. Commit the exact verified source, push that exact SHA to the temporary
-   Sites source repository, and archive the exact pushed state.
-2. Save exactly one new **unpublished** Sites version, expected version 12,
-    and verify its source SHA, content hash, file count, byte count, and null
-    preview state by readback.
-3. Verify the live owner-only version 8, access policy, bindings, runtime,
-   domains, and preview state remain unchanged.
+1. The exact verified source was committed and pushed at
+   `402880972fae5ed185a781888a6a5c6d9d167070`.
+2. The official Sites helper packaged the exact pushed state. Archive
+   inspection found 141 files, 8,711,691 uncompressed file bytes, zero unsafe
+   paths, zero forbidden artifacts, and exact hosting/migration/snapshot/
+   journal parity.
+3. Exactly one new **unpublished** Sites version 12 was saved and read back
+   with the exact source SHA, 141 files, 8,826,880 stored bytes, null
+   screenshot/preview state, and content hash recorded below.
+4. The live owner-only version 8, access policy, bindings, runtime, domains,
+   and preview state remain unchanged.
 
-If any release action or readback fails, stop without deployment or access
-changes and record the exact blocker.
+No deployment or access mutation was performed.
 
 ## Not implemented
 
@@ -360,14 +363,25 @@ changes and record the exact blocker.
   `8d33f124d6e6b55a8eea5b6af64baa7982484b3f`, content hash is
   `sha256:fd1b49bd5439694e460f998c0562a4d25eca189d1b5c5518d7e7b3ebd76cda02`,
   and preview state is null.
-- No Phase 6 version has been saved yet.
+- Unpublished Phase 6 version 12:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_09b2e58e86708191bad24f520ea2d21e`.
+  Its exact readback reports:
+
+  - version number 12
+  - source commit `402880972fae5ed185a781888a6a5c6d9d167070`
+  - content hash
+    `sha256:93b7fac9a7646b0a0943fb41cdba1ea7c7f845562b2478a5403faae2927b3e65`
+  - 141 files
+  - 8,826,880 stored bytes
+  - screenshot URL null
+
+- Current preview URL remains null. Version 12 was saved but not deployed.
 - No Phase 6 deployment, preview deployment, access-policy change,
   custom-domain change, binding change, or runtime change has occurred.
 
 ## Exact next action and next phase
 
-Commit and archive the exact verified source, save one unpublished Sites
-version 12, verify exact readback and unchanged live state, then stop for
-independent coordinator audit. Do not deploy.
+Stop for independent coordinator audit. Do not deploy or begin Phase 7 without
+new authorization.
 
 **Phase 7 — Not started.**
