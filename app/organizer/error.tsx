@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import styles from "@/app/_organizer/workspace.module.css";
 
 export default function OrganizerError({
@@ -20,9 +21,9 @@ export default function OrganizerError({
         <button className={styles.primaryAction} onClick={reset} type="button">
           Try again
         </button>
-        <a className={styles.textAction} href="/organizer">
+        <Link className={styles.textAction} href="/organizer">
           Organizer dashboard
-        </a>
+        </Link>
       </div>
     </section>
   );

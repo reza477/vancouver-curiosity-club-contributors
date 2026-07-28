@@ -89,6 +89,7 @@ export type OrganizerEventSummary = Readonly<{
 }>;
 
 export type OrganizerOption = Readonly<{
+  archived?: boolean;
   id: string;
   label: string;
 }>;

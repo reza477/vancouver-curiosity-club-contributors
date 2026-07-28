@@ -10,8 +10,8 @@ import {
 } from "../../lib/server/organizer/calendar.ts";
 import { updateOrganizerEvent } from "../../lib/server/organizer/events.ts";
 import {
-  DATABASE_INVARIANT_TRIGGER_NAMES,
-  DATABASE_INVARIANT_VERSION,
+  PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES,
+  PRE_PHASE6_DATABASE_INVARIANT_VERSION,
 } from "../../lib/server/database/invariants.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
@@ -279,7 +279,11 @@ test("populated-v8 adoption is all-or-nothing and leaves ineligible legacy organ
     await database.prepare(fragment).run();
   }
 
-  await ensureDatabaseInvariantsReady(database);
+  await ensureDatabaseInvariantsReady(
+    database,
+    8,
+    PRE_PHASE6_DATABASE_INVARIANT_VERSION,
+  );
   assert.equal(
     (
       await database
@@ -290,7 +294,7 @@ test("populated-v8 adoption is all-or-nothing and leaves ineligible legacy organ
         )
         .first()
     ).version,
-    DATABASE_INVARIANT_VERSION,
+    PRE_PHASE6_DATABASE_INVARIANT_VERSION,
   );
   assert.equal(
     (
@@ -302,7 +306,7 @@ test("populated-v8 adoption is all-or-nothing and leaves ineligible legacy organ
         )
         .first()
     ).count,
-    DATABASE_INVARIANT_TRIGGER_NAMES.length,
+    PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES.length,
   );
 
   const calendar = await listOrganizerCalendarEvents(

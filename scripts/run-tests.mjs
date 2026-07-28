@@ -37,7 +37,13 @@ if (testFiles.length === 0) {
 
 const child = spawn(
   process.execPath,
-  ["--import", "tsx", "--test", ...testFiles],
+  [
+    "--import",
+    "tsx",
+    "--test",
+    "--test-concurrency=1",
+    ...testFiles,
+  ],
   {
     cwd: projectRoot,
     env: process.env,
@@ -58,4 +64,3 @@ child.on("exit", (code, signal) => {
   }
   process.exitCode = code ?? 1;
 });
-

@@ -1,0 +1,440 @@
+.dashboardGrid,
+.mediaGrid,
+.revisionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+}
+
+.panel,
+.entityCard,
+.mediaCard,
+.editorPanel,
+.previewBanner {
+  border: 1px solid rgba(7, 27, 49, 0.24);
+  background: #fffdf7;
+  box-shadow: 0 0.7rem 2rem rgba(7, 27, 49, 0.07);
+}
+
+.previewSeoSummary {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(7, 27, 49, 0.28);
+}
+
+.previewSeoSummary h2 {
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.previewSeoSummary dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  margin: 0.45rem 0 0;
+}
+
+.previewSeoSummary dt {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.previewSeoSummary dd {
+  max-width: 48ch;
+  margin: 0.1rem 0 0;
+}
+
+.panel,
+.editorPanel {
+  padding: clamp(1rem, 3vw, 1.75rem);
+}
+
+.entityCard,
+.mediaCard {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+}
+
+.entityCard > div,
+.mediaCard > div {
+  padding: 1rem;
+}
+
+.entityCard h2,
+.entityCard h3,
+.mediaCard h2,
+.mediaCard h3 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.entityCard p,
+.mediaCard p {
+  margin: 0.45rem 0 0;
+}
+
+.mediaCard img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-bottom: 1px solid rgba(7, 27, 49, 0.24);
+  background: #e8e0cf;
+  object-fit: cover;
+}
+
+.kicker,
+.stateLabel {
+  color: #145e59;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.stateLine,
+.metaLine,
+.actionRow,
+.toolbar,
+.splitHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.9rem;
+}
+
+.splitHeader {
+  justify-content: space-between;
+}
+
+.stateBadge {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  padding: 0.22rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: #145e59;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.actionRow {
+  margin-top: 1rem;
+}
+
+.actionRow a,
+.actionRow button,
+.toolbar a,
+.toolbar button,
+.button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #071b31;
+  border-radius: 0;
+  padding: 0.58rem 0.85rem;
+  background: transparent;
+  color: #071b31;
+  cursor: pointer;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.actionRow button[data-primary="true"],
+.toolbar button[data-primary="true"],
+.buttonPrimary {
+  background: #071b31;
+  color: #f3efe4;
+}
+
+.actionRow button:disabled,
+.toolbar button:disabled,
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.form,
+.fieldGrid,
+.blockList,
+.noticeStack {
+  display: grid;
+  gap: 1rem;
+}
+
+.fieldGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.field,
+.checkboxField {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.field > span:first-child {
+  font-weight: 750;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid rgba(7, 27, 49, 0.55);
+  border-radius: 0;
+  padding: 0.65rem 0.75rem;
+  background: white;
+  color: #071b31;
+}
+
+.field textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.checkboxField {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+}
+
+.checkboxField input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.1rem;
+}
+
+.helpText,
+.muted {
+  color: #536270;
+  font-size: 0.9rem;
+}
+
+.notice,
+.errorNotice,
+.successNotice {
+  padding: 0.8rem 0.95rem;
+  border-left: 0.3rem solid #1747d1;
+  background: #edf2ff;
+}
+
+.errorNotice {
+  border-left-color: #a93c31;
+  background: #fff1ee;
+}
+
+.successNotice {
+  border-left-color: #145e59;
+  background: #eef8f4;
+}
+
+.uploadDrop {
+  padding: 1.25rem;
+  border: 1px dashed rgba(7, 27, 49, 0.55);
+  background: #f7f2e7;
+}
+
+.previewBanner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-color: #d79123;
+  background: #fff2cf;
+  color: #071b31;
+}
+
+.blockCard {
+  padding: 1rem;
+  border: 1px solid rgba(7, 27, 49, 0.24);
+  background: #f7f2e7;
+}
+
+.blockCard header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.blockCard header h3 {
+  margin: 0;
+}
+
+.emptyState {
+  padding: clamp(1.25rem, 5vw, 3rem);
+  border: 1px dashed rgba(7, 27, 49, 0.4);
+  text-align: center;
+}
+
+.usageList {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1.3rem;
+}
+
+.selectionList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.6rem;
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0.25rem;
+}
+
+.taxonomyWorkspace {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.taxonomyCreate,
+.taxonomyList,
+.taxonomyItem,
+.taxonomyItemForm,
+.taxonomyBlockers {
+  display: grid;
+  min-width: 0;
+  gap: 0.8rem;
+}
+
+.taxonomyCreate,
+.taxonomyList {
+  align-content: start;
+  padding: 1rem;
+  border: 1px solid rgba(7, 27, 49, 0.24);
+  background: #f7f2e7;
+}
+
+.taxonomyCreate h3,
+.taxonomyList h3 {
+  margin: 0;
+}
+
+.taxonomyList {
+  grid-column: 1 / -1;
+}
+
+.taxonomyList > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.taxonomyList > ol {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.taxonomyItem {
+  padding: 1rem;
+  border: 1px solid rgba(7, 27, 49, 0.3);
+  background: #fffdf7;
+}
+
+.taxonomyItem code {
+  overflow-wrap: anywhere;
+}
+
+.taxonomyItemForm {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.taxonomyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.taxonomyBlockers {
+  padding: 0.8rem 0.95rem;
+  border-left: 0.3rem solid #d79123;
+  background: #fff2cf;
+}
+
+.taxonomyBlockers p,
+.taxonomyBlockers ul {
+  margin: 0;
+}
+
+.taxonomyBlockers ul {
+  padding-left: 1.2rem;
+}
+
+@media (max-width: 48rem) {
+  .fieldGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .fieldWide {
+    grid-column: auto;
+  }
+
+  .previewBanner,
+  .splitHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .taxonomyWorkspace,
+  .taxonomyItemForm {
+    grid-template-columns: 1fr;
+  }
+}
+.publicPreviewShell {
+  background: var(--cms-background, var(--paper));
+  color: var(--cms-foreground, var(--ink));
+  min-height: 100dvh;
+  width: 100%;
+}
+
+.publicPreviewShell > :global(.site-header),
+.publicPreviewShell > :global(.site-footer),
+.publicPreviewShell > :global(.site-content) {
+  width: 100%;
+}
+
+.publicPreviewShell[data-typography="humanist"] {
+  --display: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", Arial,
+    sans-serif;
+}
+
+.publicPreviewShell[data-typography="system"] {
+  --display: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}

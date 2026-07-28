@@ -62,8 +62,8 @@ test("private shell has no public chrome, canonical, Open Graph, or structured d
   assert.match(rootLayout, /isPrivateApplicationPath/u);
   assert.match(rootLayout, /"\/accept-invitation"/u);
   assert.match(rootLayout, /"\/organizer"/u);
-  assert.match(rootLayout, /isPrivatePath \? null : <SiteHeader/u);
-  assert.match(rootLayout, /isPrivatePath \? null : <SiteFooter/u);
+  assert.match(rootLayout, /isPrivatePath \? null : \(\s*<SiteHeader/u);
+  assert.match(rootLayout, /isPrivatePath \? null : \(\s*<SiteFooter/u);
   assert.match(organizerLayout, /openGraph:\s*null/u);
   assert.match(organizerLayout, /twitter:\s*null/u);
   assert.match(organizerLayout, /index:\s*false/u);

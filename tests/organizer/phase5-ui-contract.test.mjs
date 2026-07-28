@@ -195,7 +195,7 @@ test("protected preview uses the exact allowlisted public renderer without disco
   );
   assert.match(
     publicationService,
-    /canPreview:\s*canEditPublicDetails && hasPreviewProjection/u,
+    /canPreview:\s*finalCanEditPublicDetails &&\s*hasPreviewProjection/u,
   );
   assert.doesNotMatch(
     publicationService,
@@ -248,7 +248,7 @@ test("organizer shell gives current website publication guidance", () => {
   const shell = source("app", "_organizer", "WorkspaceShell.tsx");
   assert.match(
     shell,
-    /website publication\s+controls live here[\s\S]*protected preview[\s\S]*public page/u,
+    /Private scheduling and event publishing live alongside the structured\s+website editor\.[\s\S]*Approved media and published content remain separate\s+from drafts\./u,
   );
   assert.doesNotMatch(
     shell,

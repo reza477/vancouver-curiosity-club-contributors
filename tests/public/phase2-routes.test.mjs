@@ -59,9 +59,12 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "/accessibility",
     "/privacy",
   ]) {
-    assert.match(footer, new RegExp(`href="${href}"`));
+    assert.match(
+      footer,
+      new RegExp(`href[:=]\\s*["']${href}["']|href:\\s*["']${href}["']`),
+    );
   }
-  assert.match(layout, /<SiteHeader\s*\/>/u);
+  assert.match(layout, /<SiteHeader[\s\S]*brandName=\{shell\?\.brandName\}/u);
   assert.match(layout, /<SiteFooter/u);
   assert.match(layout, /Skip to main content/u);
   assert.match(layout, /const isUnknownPath = !isKnownApplicationPath/u);
@@ -88,7 +91,7 @@ test("Events is canonical and filtered views are non-indexable", async () => {
   assert.match(calendar, /permanentRedirect\("\/events"\)/u);
   assert.match(calendar, /index:\s*false/u);
   assert.match(events, /Object\.keys\(params\)\.length === 0/u);
-  assert.match(events, /pathname:\s*"\/events"/u);
+  assert.match(events, /path:\s*"\/events"/u);
   assert.match(filters, /method="get"/u);
   assert.match(filters, /key=\{filterFormKey\(values\)\}/u);
   assert.match(filters, /href=\{`\/events\?state=\$\{values\.state\}`\}/u);
@@ -134,14 +137,38 @@ test("public editorial surfaces use D1 readers without dead forms or discussion 
 });
 
 test("robots, sitemap, and structured data stay public-only", async () => {
-  const [robots, sitemap, structuredData, eventDetail] = await Promise.all([
+  const [
+    robots,
+    sitemap,
+    catalogSitemap,
+    structuredData,
+    eventDetail,
+    eventStructuredData,
+    eventRenderer,
+  ] =
+    await Promise.all([
     readFile(new URL("app/robots.ts", projectRoot), "utf8"),
     readFile(new URL("app/sitemap.ts", projectRoot), "utf8"),
+    readFile(
+      new URL("lib/server/public/sitemap.ts", projectRoot),
+      "utf8",
+    ),
     readFile(
       new URL("app/_components/StructuredData.tsx", projectRoot),
       "utf8",
     ),
     readFile(new URL("app/events/[slug]/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL(
+        "lib/server/public/event-structured-data.ts",
+        projectRoot,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL("app/_components/PublicEventDetailRenderer.tsx", projectRoot),
+      "utf8",
+    ),
   ]);
 
   for (const privatePath of [
@@ -155,17 +182,36 @@ test("robots, sitemap, and structured data stay public-only", async () => {
   ]) {
     assert.match(robots, new RegExp(escapeRegex(privatePath)));
   }
-  assert.match(sitemap, /status = 'published'/u);
-  assert.match(sitemap, /visibility = 'public'/u);
-  assert.match(sitemap, /publication_status = 'published'/u);
-  assert.doesNotMatch(sitemap, /source_url|normalized_email|private_notes/iu);
+  assert.match(sitemap, /listPublicCatalogSitemapEntries/u);
+  assert.match(catalogSitemap, /page\.status = 'published'/u);
+  assert.match(catalogSitemap, /page\.visibility = 'public'/u);
+  assert.match(
+    catalogSitemap,
+    /(?:profile|detail)\.publication_status = 'published'/u,
+  );
+  assert.match(catalogSitemap, /cms_public_materialization_receipts/u);
+  assert.doesNotMatch(
+    `${sitemap}\n${catalogSitemap}`,
+    /source_url|normalized_email|private_notes/iu,
+  );
   assert.match(structuredData, /replaceAll\("<", "\\\\u003c"\)/u);
   assert.match(structuredData, /getTrustedCspNonce/u);
-  assert.match(eventDetail, /eventJsonLd/u);
-  assert.match(eventDetail, /event\.venue\s*\?/u);
-  assert.match(eventDetail, /event\.rsvpUrl \?\? undefined/u);
+  assert.match(eventDetail, /buildPublicEventJsonLd/u);
+  assert.match(eventDetail, /"@type": "BreadcrumbList"/u);
+  assert.match(eventStructuredData, /location:\s*eventLocation\(event\)/u);
+  assert.match(eventStructuredData, /"@type":\s*"Place"/u);
+  assert.match(eventStructuredData, /"@type":\s*"VirtualLocation"/u);
+  assert.match(eventStructuredData, /event\.publicOnlineUrl/u);
+  assert.match(eventStructuredData, /event\.venue/u);
+  assert.match(eventStructuredData, /sameAs:\s*event\.rsvpUrl/u);
+  assert.match(eventStructuredData, /event\.organizers\.map/u);
+  assert.match(eventStructuredData, /"@type":\s*"Person"/u);
+  assert.doesNotMatch(eventStructuredData, /\bperformer\s*:/u);
+  assert.doesNotMatch(eventStructuredData, /event\.club/u);
+  assert.match(eventRenderer, /event\.venue\s*\?/u);
+  assert.match(eventRenderer, /event\.rsvpUrl && !event\.isCancelled/u);
   assert.doesNotMatch(
-    `${structuredData}\n${eventDetail}`,
+    `${structuredData}\n${eventDetail}\n${eventStructuredData}\n${eventRenderer}`,
     /source_url|private_notes|private_meeting_details|normalized_email/iu,
   );
 });

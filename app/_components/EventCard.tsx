@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { FieldArtwork, type FieldArtworkTone } from "./FieldArtwork";
+import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 
 export function EventCard({
@@ -30,8 +32,60 @@ export function EventCard({
         <strong>{schedule.day}</strong>
       </div>
       <div className="event-card__body">
+        {!compact ? (
+          event.artwork ? (
+            <figure className="event-card__artwork">
+              {/* The gated media route revalidates rights and published usage on every
+                  request. Next/Image's optimizer cache would bypass that revocation
+                  boundary, so this responsive image must load the controlled URLs
+                  directly. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt={event.artwork.altText ?? ""}
+                height={event.artwork.dimensions.large.height}
+                loading="lazy"
+                sizes="(max-width: 640px) 100vw, (max-width: 1100px) 72vw, 900px"
+                src={event.artwork.url}
+                srcSet={responsiveImageSrcSet([
+                  {
+                    url: event.artwork.srcSet.small,
+                    width: event.artwork.dimensions.small.width,
+                  },
+                  {
+                    url: event.artwork.srcSet.medium,
+                    width: event.artwork.dimensions.medium.width,
+                  },
+                  {
+                    url: event.artwork.srcSet.large,
+                    width: event.artwork.dimensions.large.width,
+                  },
+                ])}
+                style={{
+                  objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+                }}
+                width={event.artwork.dimensions.large.width}
+              />
+              <figcaption>Artwork: {event.artwork.credit}</figcaption>
+            </figure>
+          ) : (
+            <div
+              aria-label="Field Notes category artwork"
+              className="event-card__artwork event-card__artwork--fallback"
+              role="img"
+            >
+              <FieldArtwork tone={eventArtworkTone(event.lane?.slug)} />
+            </div>
+          )
+        ) : null}
         <div className="event-card__meta">
           <span>{event.club.name}</span>
+          {event.program ? (
+            <Link
+              href={`/clubs/${event.club.slug}/programs/${event.program.slug}`}
+            >
+              {event.program.name}
+            </Link>
+          ) : null}
           {event.lane ? <span>{event.lane.name}</span> : null}
           {event.status === "tentative" ? (
             <span className="status-chip status-chip--tentative">
@@ -59,6 +113,13 @@ export function EventCard({
       </span>
     </article>
   );
+}
+
+function eventArtworkTone(slug: string | undefined): FieldArtworkTone {
+  if (slug === "reset-and-make") return "reset-make";
+  if (slug === "explore") return "explore";
+  if (slug === "eat-and-play") return "eat-play";
+  return "think";
 }
 
 export function formatEventSchedule(event: PublicEventCardDto): Readonly<{

@@ -8,7 +8,11 @@ import {
   getMeetupConnectionState,
   listPublicMeetupCalendar,
   refreshMeetupCalendarSource,
+  refreshMeetupCalendarSourceIfDue,
 } from "../../lib/server/meetup/index.ts";
+import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
+import { runRequestMaintenance } from "../../lib/server/database/request-maintenance.ts";
+import { reconcileDueOrganizerPublications } from "../../lib/server/organizer/publication.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { normalizeAllDayConflictInterval } from "../../lib/server/organizer/conflict-domain.ts";
 import {
@@ -140,6 +144,35 @@ function createDatabase({
         },
       )
       .join("\n")}
+    INSERT INTO event_lanes (
+      id, organization_id, name, slug, description, sort_order,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'lane_think', '${ORGANIZATION_ID}', 'Think', 'think',
+      'A confirmed public fixture lane.', 10,
+      'profile_owner', 1, 1
+    );
+    ${clubs
+      .map(
+        (clubId) => {
+          const club = CLUB_BY_ID.get(clubId);
+          assert.ok(club, `unknown catalog club fixture: ${clubId}`);
+          return `
+          INSERT INTO club_public_profiles (
+            club_id, organization_id, primary_event_lane_id,
+            publication_status, is_featured, description,
+            public_group_url, published_at, created_at, updated_at
+          ) VALUES (
+            '${club.id}', '${ORGANIZATION_ID}', 'lane_think',
+            'published', 1,
+            'A confirmed public fixture for ${club.name.replaceAll("'", "''")}.',
+            'https://www.meetup.com/${club.feedGroupSlug}/',
+            1, 1, 1
+          );
+        `;
+        },
+      )
+      .join("\n")}
   `);
   return database;
 }
@@ -249,6 +282,51 @@ function countingDatabase(database) {
   };
 }
 
+function exactCountingDatabase(database) {
+  let statementCount = 0;
+  const batchLengths = [];
+  function wrap(statement) {
+    return {
+      inner: statement,
+      bind(...values) {
+        return wrap(statement.bind(...values));
+      },
+      async first(...arguments_) {
+        statementCount += 1;
+        return statement.first(...arguments_);
+      },
+      async all(...arguments_) {
+        statementCount += 1;
+        return statement.all(...arguments_);
+      },
+      async run(...arguments_) {
+        statementCount += 1;
+        return statement.run(...arguments_);
+      },
+    };
+  }
+  return {
+    binding: {
+      async batch(statements) {
+        statementCount += statements.length;
+        batchLengths.push(statements.length);
+        return database.batch(
+          statements.map((statement) => statement.inner),
+        );
+      },
+      prepare(sql) {
+        return wrap(database.prepare(sql));
+      },
+    },
+    counts() {
+      return {
+        batchLengths: [...batchLengths],
+        statementCount,
+      };
+    },
+  };
+}
+
 async function configure(database, clubId, feedUrl = FEED_A, now = 1_000) {
   return configureMeetupCalendarSource(
     database,
@@ -272,6 +350,29 @@ async function refresh(
     clock: () => nowUtcMs,
     ...extra,
   });
+}
+
+async function runEventsMaintenance(
+  database,
+  refreshOptions,
+) {
+  let refreshResult = null;
+  const maintenance = await runRequestMaintenance(
+    database,
+    { method: "GET", pathname: "/events" },
+    {
+      reconcilePublication: (binding) =>
+        reconcileDueOrganizerPublications(binding, { limit: 1 }),
+      async refreshMeetup(binding) {
+        refreshResult = await refreshMeetupCalendarSourceIfDue(
+          binding,
+          refreshOptions,
+        );
+        return refreshResult;
+      },
+    },
+  );
+  return { maintenance, refreshResult };
 }
 
 function sourceOverlapDraftInput(title) {
@@ -1066,6 +1167,198 @@ test("a three-event refresh stays within the per-invocation D1 query budget", as
     database.count() <= 50,
     `refresh prepared ${database.count()} D1 statements; expected <= 50`,
   );
+});
+
+test("Worker refresh-on-view preflight plus a due bounded two-row slice stays within the D1 statement cap", async (t) => {
+  const innerDatabase = createDatabase();
+  t.after(() => innerDatabase.close());
+  await ensureDatabaseInvariantsReady(innerDatabase);
+  await configure(innerDatabase, "club_a", FEED_A, 1_000);
+  const database = exactCountingDatabase(innerDatabase);
+  const body = calendar(
+    meetupEvent({
+      uid: "worker-budget-1@meetup.com",
+      eventId: "worker-budget-1",
+      title: "Worker Budget One",
+      start: "20280311T030000Z",
+      end: "20280311T040000Z",
+    }),
+    meetupEvent({
+      uid: "worker-budget-2@meetup.com",
+      eventId: "worker-budget-2",
+      title: "Worker Budget Two",
+      start: "20280312T030000Z",
+      end: "20280312T040000Z",
+    }),
+    meetupEvent({
+      uid: "worker-budget-3@meetup.com",
+      eventId: "worker-budget-3",
+      title: "Worker Budget Three",
+      start: "20280313T030000Z",
+      end: "20280313T040000Z",
+    }),
+  );
+
+  assert.equal(await ensureDatabaseInvariants(database.binding), "ready");
+  const firstMaintenance = await runEventsMaintenance(
+    database.binding,
+    {
+      clock: () => 2_000,
+      fetcher: sequenceFetcher([body]),
+      nowUtcMs: 2_000,
+      organizationId: ORGANIZATION_ID,
+    },
+  );
+  const refreshed = firstMaintenance.refreshResult;
+  assert.deepEqual(firstMaintenance.maintenance, {
+    kind: "redirect",
+    source: "meetup",
+  });
+  assert.equal(refreshed.outcome, "partial");
+  assert.equal(refreshed.counts.created, 2);
+  assert.deepEqual(database.counts(), {
+    batchLengths: [2, 9, 9, 4],
+    statementCount: 36,
+  });
+  assert.ok(
+    database.counts().statementCount <= 50,
+    `Worker refresh-on-view used ${database.counts().statementCount} D1 statements`,
+  );
+
+  const finalSliceRequest = exactCountingDatabase(innerDatabase);
+  assert.equal(
+    await ensureDatabaseInvariants(finalSliceRequest.binding),
+    "ready",
+  );
+  const resumedMaintenance = await runEventsMaintenance(
+    finalSliceRequest.binding,
+    {
+      clock: () => 2_001,
+      fetcher: sequenceFetcher([body]),
+      nowUtcMs: 2_001,
+      organizationId: ORGANIZATION_ID,
+    },
+  );
+  const completed = resumedMaintenance.refreshResult;
+  assert.deepEqual(resumedMaintenance.maintenance, {
+    kind: "redirect",
+    source: "meetup",
+  });
+  assert.equal(completed.outcome, "completed");
+  assert.equal(completed.counts.created, 1);
+  assert.deepEqual(finalSliceRequest.counts(), {
+    batchLengths: [9, 7],
+    statementCount: 27,
+  });
+
+  const idleRequest = exactCountingDatabase(innerDatabase);
+  assert.equal(await ensureDatabaseInvariants(idleRequest.binding), "ready");
+  const idleMaintenance = await runEventsMaintenance(
+    idleRequest.binding,
+    {
+      fetcher: async () => {
+        throw new Error("A not-due refresh must not fetch the feed.");
+      },
+      nowUtcMs: 2_001,
+      organizationId: ORGANIZATION_ID,
+    },
+  );
+  const notDue = idleMaintenance.refreshResult;
+  assert.deepEqual(idleMaintenance.maintenance, {
+    kind: "continue",
+  });
+  assert.equal(notDue.outcome, "not_due");
+  assert.deepEqual(idleRequest.counts(), {
+    batchLengths: [],
+    statementCount: 5,
+  });
+});
+
+test("Worker refresh-on-view conflict and failure paths redirect within the D1 statement cap", async (t) => {
+  await t.test("two rejected conflicts complete without route rendering", async (t) => {
+    const innerDatabase = createDatabase();
+    t.after(() => innerDatabase.close());
+    await ensureDatabaseInvariantsReady(innerDatabase);
+    await configure(innerDatabase, "club_a", FEED_A, 1_000);
+    innerDatabase.exec(`
+      INSERT INTO events (
+        id, organization_id, club_id, title, slug, status, visibility,
+        time_kind, starts_at_utc, ends_at_utc, timezone,
+        organizer_scope_json, schedule_version, schedule_review_state,
+        created_by_profile_id, updated_by_profile_id, created_at, updated_at
+      ) VALUES (
+        'worker_budget_blocker', '${ORGANIZATION_ID}', 'club_a',
+        'Worker budget blocker', 'worker-budget-blocker',
+        'confirmed', 'private', 'timed',
+        1835319600000, 1835326800000, 'America/Vancouver',
+        '[]', 1, 'unreviewed',
+        'profile_owner', 'profile_owner', 1, 1
+      )
+    `);
+    const database = exactCountingDatabase(innerDatabase);
+    const body = calendar(
+      ...[1, 2].map((number) =>
+        meetupEvent({
+          uid: `worker-conflict-${number}@meetup.com`,
+          eventId: `worker-conflict-${number}`,
+          title: `Worker Conflict ${number}`,
+          start: "20280228T030000Z",
+          end: "20280228T050000Z",
+        }),
+      ),
+    );
+
+    assert.equal(await ensureDatabaseInvariants(database.binding), "ready");
+    const result = await runEventsMaintenance(database.binding, {
+      clock: () => 2_000,
+      fetcher: sequenceFetcher([body]),
+      nowUtcMs: 2_000,
+      organizationId: ORGANIZATION_ID,
+    });
+    assert.deepEqual(result.maintenance, {
+      kind: "redirect",
+      source: "meetup",
+    });
+    assert.equal(result.refreshResult.outcome, "completed");
+    assert.equal(result.refreshResult.counts.rejected, 2);
+    assert.deepEqual(database.counts(), {
+      batchLengths: [2, 3, 3, 7],
+      statementCount: 27,
+    });
+    assert.ok(
+      database.counts().statementCount < 50,
+      `Worker conflict refresh used ${database.counts().statementCount} D1 statements`,
+    );
+  });
+
+  await t.test("failed fetch redirects to the durable failure state", async (t) => {
+    const innerDatabase = createDatabase();
+    t.after(() => innerDatabase.close());
+    await ensureDatabaseInvariantsReady(innerDatabase);
+    await configure(innerDatabase, "club_a", FEED_A, 1_000);
+    const database = exactCountingDatabase(innerDatabase);
+
+    assert.equal(await ensureDatabaseInvariants(database.binding), "ready");
+    const result = await runEventsMaintenance(database.binding, {
+      clock: () => 2_000,
+      fetcher: async () => new Response("", { status: 503 }),
+      nowUtcMs: 2_000,
+      organizationId: ORGANIZATION_ID,
+    });
+    assert.deepEqual(result.maintenance, {
+      kind: "redirect",
+      source: "meetup",
+    });
+    assert.equal(result.refreshResult.outcome, "failed");
+    assert.deepEqual(database.counts(), {
+      batchLengths: [2],
+      statementCount: 9,
+    });
+    assert.ok(
+      database.counts().statementCount < 50,
+      `Worker failed refresh used ${database.counts().statementCount} D1 statements`,
+    );
+  });
 });
 
 test("three conflict rejections stay within the per-invocation D1 query budget", async (t) => {

@@ -5,88 +5,32 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { Log, LogLevel, Miniflare } from "miniflare";
+import { trustedIdentityFromSites } from "../lib/server/auth/index.ts";
+import {
+  DATABASE_INVARIANT_TRIGGER_NAMES,
+  DATABASE_INVARIANT_VERSION,
+  getExpectedDatabaseInvariantFingerprint,
+} from "../lib/server/database/invariants.ts";
+import { ensurePublicCatalog } from "../lib/server/public/catalog.ts";
+import {
+  applyD1MigrationBatches,
+  MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
+  migrationStatementBatches,
+  productionMigrationFragments,
+} from "../scripts/d1-migration-batches.mjs";
+import { MAX_DATABASE_INVARIANT_READY_ATTEMPTS } from "./database/invariant-ready.mjs";
 
 const FIXTURE_NOW = Date.UTC(2026, 6, 24, 19, 0, 0);
 const ORGANIZATION_ID = "phase2-org";
 const PROFILE_ID = "phase2-owner";
+const OWNER_IDENTITY = trustedIdentityFromSites({
+  displayName: "Rendered Owner",
+  email: "private_owner_email_sentinel@example.invalid",
+});
 const EXPECTED_DATABASE_INVARIANT_FINGERPRINT =
-  "f4d5e707058f628c1a0dcaf908bd7a4c918b3bb099c6dd4ff6183a0c4850f356";
-const EXPECTED_DATABASE_INVARIANT_TRIGGERS = Object.freeze([
-  "audit_logs_immutable_before_delete",
-  "audit_logs_immutable_before_update",
-  "club_public_profiles_org_integrity_before_insert",
-  "club_public_profiles_org_integrity_before_update",
-  "clubs_public_profile_org_integrity_before_update",
-  "event_lanes_public_profile_org_integrity_before_update",
-  "event_public_details_org_integrity_before_insert",
-  "event_public_details_org_integrity_before_update",
-  "events_public_details_org_integrity_before_update",
-  "events_reservation_guard_before_insert",
-  "events_reservation_guard_before_update",
-  "organization_memberships_phase5_host_cleanup_after_delete",
-  "organization_memberships_phase5_host_cleanup_after_update",
-  "organization_memberships_single_owner_before_delete",
-  "organization_memberships_single_owner_before_insert",
-  "organization_memberships_single_owner_before_update",
-  "organization_publication_policies_phase5_before_delete",
-  "organization_publication_policies_phase5_before_insert",
-  "organization_publication_policies_phase5_before_update",
-  "organizer_conflict_overrides_phase4_before_insert",
-  "organizer_conflict_overrides_phase4_before_update",
-  "organizer_conflict_policies_phase4_before_insert",
-  "organizer_conflict_policies_phase4_before_update",
-  "organizer_conflict_reviews_phase4_before_insert",
-  "organizer_conflict_reviews_phase4_before_update",
-  "organizer_event_organizers_integrity_before_insert",
-  "organizer_event_organizers_integrity_before_update",
-  "organizer_event_organizers_phase4_before_delete",
-  "organizer_event_organizers_phase5_host_cleanup_after_delete",
-  "organizer_event_organizers_phase5_host_cleanup_after_update",
-  "organizer_event_public_details_phase5_before_delete",
-  "organizer_event_public_details_phase5_before_insert",
-  "organizer_event_public_details_phase5_before_update",
-  "organizer_event_public_hosts_phase5_before_delete",
-  "organizer_event_public_hosts_phase5_before_insert",
-  "organizer_event_public_hosts_phase5_before_update",
-  "organizer_event_publication_jobs_phase5_before_delete",
-  "organizer_event_publication_jobs_phase5_before_insert",
-  "organizer_event_publication_jobs_phase5_before_update",
-  "organizer_event_publication_state_phase5_before_delete",
-  "organizer_event_publication_state_phase5_before_insert",
-  "organizer_event_publication_state_phase5_before_update",
-  "organizer_event_publication_write_intents_phase5_before_delete",
-  "organizer_event_publication_write_intents_phase5_before_insert",
-  "organizer_event_publication_write_intents_phase5_before_update",
-  "organizer_event_revisions_integrity_before_delete",
-  "organizer_event_revisions_integrity_before_insert",
-  "organizer_event_revisions_integrity_before_update",
-  "organizer_events_phase3_integrity_before_insert",
-  "organizer_events_phase3_integrity_before_update",
-  "organizer_events_phase5_host_cleanup_after_update",
-  "organizer_events_phase5_publication_before_insert",
-  "organizer_events_phase5_publication_before_update",
-  "organizer_external_reservations_phase4_before_delete",
-  "organizer_external_reservations_phase4_before_insert",
-  "organizer_external_reservations_phase4_before_update",
-  "organizer_profile_preferences_integrity_before_insert",
-  "organizer_profile_preferences_integrity_before_update",
-  "organizer_rate_limits_integrity_before_insert",
-  "organizer_rate_limits_integrity_before_update",
-  "organizer_reservation_states_phase4_before_delete",
-  "organizer_reservation_states_phase4_before_insert",
-  "organizer_reservation_states_phase4_before_update",
-  "organizer_schedule_write_intents_phase4_before_insert",
-  "organizer_schedule_write_intents_phase4_before_update",
-  "ownership_transfer_locks_before_delete",
-  "ownership_transfer_locks_before_insert",
-  "ownership_transfer_locks_before_update",
-  "profiles_membership_identity_before_delete",
-  "profiles_membership_identity_before_update",
-  "profiles_phase5_host_cleanup_after_update",
-  "sync_sources_phase4_activation_before_update",
-  "sync_sources_phase4_deactivation_before_update",
-  "sync_sources_phase4_identity_before_update",
-]);
+  await getExpectedDatabaseInvariantFingerprint();
+const EXPECTED_DATABASE_INVARIANT_TRIGGERS =
+  DATABASE_INVARIANT_TRIGGER_NAMES;
 const PRIVATE_SENTINELS = [
   "PRIVATE_LEGAL_SENTINEL",
   "PRIVATE_OWNER_EMAIL_SENTINEL",
@@ -135,6 +79,8 @@ const runtime = createBuiltRuntime();
 await applyPackagedProductionMigrations(runtime);
 await seedPublicCatalog(runtime);
 await initializePackagedDatabaseInvariants(runtime);
+await initializePackagedCmsAdoption(runtime);
+await initializePackagedDatabaseInvariants(runtime, false);
 
 test.after(async () => {
   await runtime.dispose();
@@ -146,6 +92,24 @@ async function fetchPath(path, init) {
     ...init,
     headers,
   });
+}
+
+async function readRenderedStyles(html) {
+  const hrefs = [...html.matchAll(/<link\b[^>]*>/giu)].flatMap(
+    ([linkTag]) => {
+      if (!/\brel="[^"]*\bstylesheet\b[^"]*"/iu.test(linkTag)) return [];
+      const href = /\bhref="([^"]+)"/iu.exec(linkTag)?.[1];
+      return href ? [href.replaceAll("&amp;", "&")] : [];
+    },
+  );
+  assert.ok(hrefs.length > 0, "the built page must link its rendered CSS");
+  const styles = [];
+  for (const href of hrefs) {
+    const response = await fetchPath(href);
+    assert.equal(response.status, 200, `unable to load rendered CSS ${href}`);
+    styles.push(await response.text());
+  }
+  return styles.join("\n");
 }
 
 async function organizerMutation(path, method, body) {
@@ -247,13 +211,19 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0012_phase3_organizer_foundation.sql",
     "0013_phase4_conflict_engine.sql",
     "0014_phase5_publication.sql",
+    "0015_phase6_cms_media.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
     assert.doesNotMatch(sql, /\bCREATE\s+TRIGGER\b/iu, file);
+    const fragments = productionMigrationFragments(sql);
+    const batches = migrationStatementBatches(fragments);
     assert.ok(
-      productionMigrationFragments(sql).length <= 49,
-      `${file} must remain bounded`,
+      batches.every(
+        (batch) =>
+          batch.length <= MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
+      ),
+      `${file} must apply through bounded D1 batches`,
     );
   }
   const packagedFirstTable = productionMigrationFragments(
@@ -289,7 +259,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     .first();
   assert.deepEqual({ ...marker }, {
     trigger_fingerprint: EXPECTED_DATABASE_INVARIANT_FINGERPRINT,
-    version: 5,
+    version: DATABASE_INVARIANT_VERSION,
   });
   const triggerRows = await database
     .prepare(
@@ -313,7 +283,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    58,
+    78,
   );
   assert.equal(
     await database
@@ -324,52 +294,13 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    131,
+    184,
   );
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
     [],
   );
 
-  await run(
-    database,
-    `INSERT INTO profiles (
-       id, siwc_subject, normalized_email, display_name, status,
-       created_at, updated_at
-     ) VALUES (?, ?, ?, ?, 'active', ?, ?)`,
-    "profile-other-org",
-    "subject-other-org",
-    "other-org@example.invalid",
-    "Other organization fixture",
-    FIXTURE_NOW,
-    FIXTURE_NOW,
-  );
-  await run(
-    database,
-    `INSERT INTO organizations (
-       id, name, slug, timezone, created_by_profile_id, created_at, updated_at
-     ) VALUES (?, ?, ?, 'America/Vancouver', ?, ?, ?)`,
-    "other-org",
-    "Other organization fixture",
-    "other-organization-fixture",
-    "profile-other-org",
-    FIXTURE_NOW,
-    FIXTURE_NOW,
-  );
-  await run(
-    database,
-    `INSERT INTO event_lanes (
-       id, organization_id, name, slug, sort_order, created_by_profile_id,
-       created_at, updated_at
-     ) VALUES (?, ?, ?, ?, 10, ?, ?, ?)`,
-    "other-lane",
-    "other-org",
-    "Other lane",
-    "other-lane",
-    "profile-other-org",
-    FIXTURE_NOW,
-    FIXTURE_NOW,
-  );
   await assert.rejects(
     database
       .prepare(
@@ -381,7 +312,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
       .bind(
         "club-curiosity",
         "other-org",
-        "other-lane",
+        "lane-think",
         FIXTURE_NOW,
         FIXTURE_NOW,
       )
@@ -490,8 +421,18 @@ test("the built public root is indexable and carries the production security con
 
   const html = await response.text();
   assert.match(html, /<title>Vancouver Curiosity Club<\/title>/iu);
+  assert.equal(
+    [...html.matchAll(/<title>Vancouver Curiosity Club<\/title>/giu)].length,
+    1,
+    "Home must emit one absolute title instead of applying the root template twice",
+  );
+  assert.match(
+    html,
+    /name="description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
+  );
   assert.match(html, /A social calendar with a brain\./u);
   assert.match(html, /Explore Upcoming Events/u);
+  assert.match(html, /\bclass="[^"]*\bhome-invitation\b[^"]*"/u);
   assert.ok(
     robotsMetaContents(html).every(
       (content) => !robotsTokens(content).includes("noindex"),
@@ -505,6 +446,18 @@ test("the built public root is indexable and carries the production security con
   assert.match(
     html,
     /property="og:image" content="https:\/\/preview\.example\/og\.png"/iu,
+  );
+  assert.match(
+    html,
+    /property="og:description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
+  );
+  assert.match(
+    html,
+    /name="twitter:description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
+  );
+  assert.match(
+    html,
+    /name="twitter:image" content="https:\/\/preview\.example\/og\.png"/iu,
   );
   assert.match(html, /name="twitter:image:alt"/iu);
   assertSharedChrome(html);
@@ -527,6 +480,54 @@ test("the built public root is indexable and carries the production security con
     );
   }
   assert.match(html, /self\.__VINEXT_RSC_DONE__=true/u);
+
+  const renderedCss = await readRenderedStyles(html);
+  assert.match(renderedCss, /--ink-soft:var\(--cms-foreground,#26394a\)/u);
+  assert.match(renderedCss, /--warm-surface-ink:#071b31/u);
+  assert.match(renderedCss, /--focus-ring-inner:#000(?:000)?/u);
+  assert.match(renderedCss, /--focus-ring-outer:#fff(?:fff)?/u);
+  assert.match(
+    renderedCss,
+    /\.home-invitation\{[^}]*color:var\(--warm-surface-ink\)/u,
+  );
+  assert.match(
+    renderedCss,
+    /\.cancellation-banner\{[^}]*background:var\(--paper-deep\)[^}]*color:var\(--ink\)/u,
+  );
+  assert.match(
+    renderedCss,
+    /\.status-chip--tentative\{[^}]*border:2px solid var\(--ink\)[^}]*color:var\(--warm-surface-ink\)/u,
+  );
+  assert.match(
+    renderedCss,
+    /\.event-card__artwork figcaption,[^{]*\{[^}]*background:var\(--ink\)[^}]*color:var\(--paper\)/u,
+  );
+  assert.match(
+    renderedCss,
+    /\.public-error-state\{[^}]*background:var\(--paper-deep\)[^}]*color:var\(--ink\)/u,
+  );
+  for (const selector of [
+    "\\.calendar-state-label span",
+    "\\.lane-dot",
+    "\\.source-mark",
+    "\\.source-status>span",
+  ]) {
+    assert.match(
+      renderedCss,
+      new RegExp(
+        `${selector}\\{[^}]*border:2px solid var\\(--(?:paper|ink)\\)`,
+        "u",
+      ),
+    );
+  }
+  assert.doesNotMatch(
+    renderedCss,
+    /color:#(?:68c4be|c8d0d6|91a0ad|9ba8b4|aeb8c0|d4dade|e1e6e8|78ccc5|92dfd9)/iu,
+  );
+  assert.doesNotMatch(
+    renderedCss,
+    /background:rgba\((?:232,91,72|22,34,32|255,255,255)/iu,
+  );
 
   const structuredData = jsonLdDocuments(html);
   assert.equal(structuredData.length, 1);
@@ -633,7 +634,7 @@ test("Events is canonical, empty honestly, and filter URLs are non-indexable", a
   const filteredHtml = await filtered.text();
   assert.match(
     filteredHtml,
-    /name="robots" content="noindex, follow"/iu,
+    /name="robots" content="noindex, follow, noarchive"/iu,
   );
   assert.match(
     filteredHtml,
@@ -721,6 +722,7 @@ test("a cancelled event detail renders only published facts and accurate structu
     /<title>Rendered cancelled reading · Vancouver Curiosity Club<\/title>/iu,
   );
   assert.match(html, /This previously published event is no longer going ahead/u);
+  assert.match(html, /\bclass="[^"]*\bcancellation-banner\b[^"]*"/u);
   assert.match(html, /Location details have not been published\./u);
   assert.doesNotMatch(html, /Online details are available/u);
   assert.doesNotMatch(html, /RSVP on Meetup/u);
@@ -736,11 +738,13 @@ test("a cancelled event detail renders only published facts and accurate structu
     eventDocument.eventStatus,
     "https://schema.org/EventCancelled",
   );
-  assert.deepEqual(eventDocument.organizer, {
-    "@type": "Organization",
-    name: "Vancouver Literature and Film",
-    url: "https://preview.example/clubs/vancouver-literature-and-film",
-  });
+  assert.deepEqual(eventDocument.organizer, [
+    {
+      "@type": "Organization",
+      name: "Vancouver Curiosity Club",
+      url: "https://preview.example/",
+    },
+  ]);
   assert.equal("location" in eventDocument, false);
   assert.equal(
     breadcrumbs.itemListElement.at(-1)?.item,
@@ -831,6 +835,7 @@ test("unknown, guessed, and draft routes use the custom noindex 404", async () =
     "/events/private-phase3-idea-sentinel",
     "/clubs/off-radar-eats",
     "/clubs/contemplative-meditation-journaling-circle",
+    "/resources",
   ]) {
     const response = await fetchPath(path);
     assert.equal(response.status, 404, `${path} status`);
@@ -854,6 +859,49 @@ test("unknown, guessed, and draft routes use the custom noindex 404", async () =
   }
 });
 
+test("missing event, missing club, and unpublished Resources never inherit Home discovery metadata", async () => {
+  for (const path of [
+    "/events/guessed-private-event",
+    "/clubs/off-radar-eats",
+    "/resources",
+  ]) {
+    const response = await fetchPath(path);
+    assert.equal(response.status, 404, `${path} status`);
+    assert.equal(
+      response.headers.get("x-robots-tag"),
+      "noindex, nofollow, noarchive",
+      `${path} robots header`,
+    );
+    const html = await response.text();
+    assert.match(
+      html,
+      /<meta(?=[^>]*\bname="robots")(?=[^>]*\bcontent="noindex(?:,[^"]*)?")[^>]*>/iu,
+      `${path} HTML robots`,
+    );
+    assert.doesNotMatch(
+      html,
+      /rel="canonical"/iu,
+      `${path} must not expose a canonical`,
+    );
+    assert.doesNotMatch(
+      html,
+      /\bproperty="og:/iu,
+      `${path} must not inherit Home Open Graph metadata`,
+    );
+    assert.doesNotMatch(
+      html,
+      /\bname="twitter:/iu,
+      `${path} must not inherit Home Twitter metadata`,
+    );
+    assert.doesNotMatch(
+      html,
+      /https:\/\/preview\.example\/og\.png/iu,
+      `${path} must not inherit the shipped Home social image`,
+    );
+    assertNoPrivateSentinels(html);
+  }
+});
+
 test("brand assets render and unoptimized source artwork stays out of the client", async () => {
   const iconResponse = await fetchPath("/icon.png");
   assert.equal(iconResponse.status, 200);
@@ -864,7 +912,7 @@ test("brand assets render and unoptimized source artwork stays out of the client
     [137, 80, 78, 71, 13, 10, 26, 10],
   );
 
-  const manifestResponse = await fetchPath("/site.webmanifest");
+  const manifestResponse = await fetchPath("/manifest.webmanifest");
   assert.equal(manifestResponse.status, 200);
   assert.match(
     manifestResponse.headers.get("content-type") ?? "",
@@ -961,7 +1009,7 @@ test("the owner workspace renders private records without public chrome or cachi
     assert.doesNotMatch(html, /_vinext\/image\?url=%2Ficon\.png/iu);
     assert.match(
       html,
-      /website publication controls live here[\s\S]*protected preview[\s\S]*public page/iu,
+      /Private scheduling and event publishing live alongside the structured[\s\S]*website editor\.[\s\S]*Approved media and published content remain separate[\s\S]*from drafts\./iu,
     );
     assert.doesNotMatch(
       html,
@@ -1985,20 +2033,12 @@ async function applyPackagedProductionMigrations(targetRuntime) {
   for (const file of migrationFiles) {
     const sql = await readFile(join(migrationDirectory, file), "utf8");
     const statements = productionMigrationFragments(sql);
-    const results = await database.batch(
-      statements.map((statement) => database.prepare(statement)),
-    );
-    if (results.some((result) => result.success === false)) {
-      throw new Error(`Packaged migration failed: ${file}`);
-    }
+    await applyD1MigrationBatches({
+      database,
+      statements,
+      failureMessage: `Packaged migration failed: ${file}`,
+    });
   }
-}
-
-function productionMigrationFragments(sql) {
-  return sql
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter(Boolean);
 }
 
 async function initializePackagedDatabaseInvariants(
@@ -2006,15 +2046,24 @@ async function initializePackagedDatabaseInvariants(
   requireRepair = true,
 ) {
   let repairResponses = 0;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  // The packaged upgrade adopts one legacy public-attribution record per
+  // fail-closed request. Keep this test setup bounded for the planned
+  // organizer count and return only after a real ready response dispatches.
+  for (
+    let attempt = 0;
+    attempt < MAX_DATABASE_INVARIANT_READY_ATTEMPTS;
+    attempt += 1
+  ) {
     const response = await targetRuntime.dispatchFetch(
       new URL("/robots.txt", "https://preview.example"),
     );
     if (response.status === 200) {
       if (requireRepair) {
-        assert.ok(
-          repairResponses >= 1,
-          "a cold packaged D1 must fail closed while its guards are installed",
+        assert.equal(
+          repairResponses,
+          9,
+          "the bounded populated path must fail closed for nine setup requests " +
+            "and dispatch only after the tenth request observes ready",
         );
       }
       await response.arrayBuffer();
@@ -2034,6 +2083,20 @@ async function initializePackagedDatabaseInvariants(
     );
   }
   assert.fail("packaged database invariants did not converge");
+}
+
+async function initializePackagedCmsAdoption(targetRuntime) {
+  const response = await targetRuntime.dispatchFetch(
+    new URL("/api/organizer/content", "https://preview.example"),
+    { headers: OWNER_AUTH_HEADERS },
+  );
+  const body = await response.text();
+  assert.equal(
+    response.status,
+    200,
+    `the authenticated CMS API must adopt the populated public baseline: ${body}`,
+  );
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/u);
 }
 
 async function seedPublicCatalog(targetRuntime) {
@@ -2223,165 +2286,8 @@ async function seedPublicCatalog(targetRuntime) {
     );
   }
 
-  const pages = [
-    [
-      "home",
-      "Vancouver Curiosity Club",
-      "A social calendar with a brain.",
-      "Thoughtful events for people who like learning in company.",
-    ],
-    [
-      "events",
-      "Events",
-      "Events",
-      "Browse the genuinely published gatherings on the calendar.",
-    ],
-    [
-      "clubs",
-      "Clubs",
-      "Clubs",
-      "Different doors into one curious Vancouver community.",
-    ],
-    [
-      "community",
-      "Community",
-      "Community",
-      "Find the club on its confirmed Meetup group pages.",
-    ],
-    [
-      "about",
-      "About",
-      "A community organized around curiosity",
-      "Vancouver Curiosity Club brings people together to learn, discuss, explore, make, and play.",
-    ],
-    [
-      "get-involved",
-      "Get Involved",
-      "Bring something to the club",
-      "Attend, share an idea, volunteer, host, or begin a conversation.",
-    ],
-    [
-      "host-an-event",
-      "Host an Event",
-      "Interested in hosting?",
-      "Event-hosting tools are not open yet.",
-    ],
-    [
-      "contact",
-      "Contact",
-      "Find us on Meetup",
-      "No public contact form or confirmed public email is available yet.",
-    ],
-    [
-      "conduct",
-      "Code of Conduct",
-      "Make curiosity generous",
-      "Treat people with respect and challenge ideas without demeaning people.",
-    ],
-    [
-      "accessibility",
-      "Accessibility",
-      "Website accessibility",
-      "This website is designed for keyboard use, readable zoom, clear focus, reduced motion, and responsive layouts.",
-    ],
-    [
-      "privacy",
-      "Privacy",
-      "Privacy, in plain language",
-      "Public pages can be browsed without an attendee account.",
-    ],
-  ];
-  for (const [slug, title, heading, text] of pages) {
-    const pageId = `page-${slug}`;
-    await insertPage(database, {
-      id: pageId,
-      slug,
-      title,
-      status: "published",
-      visibility: "public",
-      publishedAt: FIXTURE_NOW,
-    });
-    await insertSection(database, {
-      id: `section-${slug}-intro`,
-      pageId,
-      key: slug === "home" ? "hero" : "intro",
-      type: slug === "home" ? "hero" : "intro",
-      content: {
-        eyebrow: "Vancouver, British Columbia",
-        heading,
-        text,
-      },
-      sortOrder: 10,
-    });
-  }
-  for (const [key, content, sortOrder] of [
-    [
-      "attending",
-      {
-        heading: "Come curious",
-        paragraphs: [
-          "Expect a clear reason to gather and no requirement to arrive as an expert.",
-          "When a detail is undecided, the listing says so.",
-        ],
-      },
-      20,
-    ],
-    [
-      "invitation",
-      {
-        heading: "Help make the calendar",
-        text: "Bring an idea, volunteer, host, or explore a community partnership.",
-      },
-      30,
-    ],
-    [
-      "community",
-      {
-        heading: "Confirmed group destinations",
-        text: "Choose the public Meetup group that interests you.",
-      },
-      40,
-    ],
-  ]) {
-    await insertSection(database, {
-      id: `section-home-${key}`,
-      pageId: "page-home",
-      key,
-      type: key === "invitation" ? "callout" : "prose",
-      content,
-      sortOrder,
-    });
-  }
+  await ensurePublicCatalog(database, OWNER_IDENTITY, FIXTURE_NOW);
 
-  await insertPage(database, {
-    id: "page-draft-private",
-    slug: "draft-private",
-    title: "PRIVATE_DRAFT_PAGE_SENTINEL",
-    status: "draft",
-    visibility: "private",
-    publishedAt: null,
-  });
-
-  await run(
-    database,
-    `INSERT INTO site_settings (
-       id, organization_id, key, value_json, is_public, updated_by_profile_id,
-       created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    "setting-public-identity",
-    ORGANIZATION_ID,
-    "public_identity",
-    JSON.stringify({
-      brandName: "Vancouver Curiosity Club",
-      locationLabel: "Vancouver, British Columbia",
-      mission: "Thoughtful events for people who like learning in company.",
-      tagline: "A social calendar with a brain.",
-    }),
-    1,
-    PROFILE_ID,
-    FIXTURE_NOW,
-    FIXTURE_NOW,
-  );
   await run(
     database,
     `INSERT INTO site_settings (
@@ -2392,41 +2298,6 @@ async function seedPublicCatalog(targetRuntime) {
     ORGANIZATION_ID,
     "private_test_value",
     JSON.stringify({ value: "PRIVATE_SETTING_SENTINEL" }),
-    PROFILE_ID,
-    FIXTURE_NOW,
-    FIXTURE_NOW,
-  );
-
-  const publicLinks = clubs.filter(
-    (club) => club.status === "published" && club.url,
-  );
-  for (const [index, club] of publicLinks.entries()) {
-    await run(
-      database,
-      `INSERT INTO community_links (
-         id, organization_id, label, url, link_type, is_published, sort_order,
-         created_by_profile_id, created_at, updated_at, deleted_at
-       ) VALUES (?, ?, ?, ?, 'meetup_group', 1, ?, ?, ?, ?, NULL)`,
-      `community-${club.id}`,
-      ORGANIZATION_ID,
-      `${club.name} on Meetup`,
-      club.url,
-      (index + 1) * 10,
-      PROFILE_ID,
-      FIXTURE_NOW,
-      FIXTURE_NOW,
-    );
-  }
-  await run(
-    database,
-    `INSERT INTO community_links (
-       id, organization_id, label, url, link_type, is_published, sort_order,
-       created_by_profile_id, created_at, updated_at, deleted_at
-     ) VALUES (?, ?, ?, ?, 'private', 0, 999, ?, ?, ?, NULL)`,
-    "community-private-sentinel",
-    ORGANIZATION_ID,
-    "PRIVATE_COMMUNITY_SENTINEL",
-    "https://private.invalid/",
     PROFILE_ID,
     FIXTURE_NOW,
     FIXTURE_NOW,
@@ -2592,53 +2463,6 @@ async function seedPublicCatalog(targetRuntime) {
     "private_invitation_email_sentinel@example.invalid",
     PROFILE_ID,
     Date.UTC(2030, 0, 1),
-    FIXTURE_NOW,
-    FIXTURE_NOW,
-  );
-}
-
-async function insertPage(
-  database,
-  { id, publishedAt, slug, status, title, visibility },
-) {
-  await run(
-    database,
-    `INSERT INTO pages (
-       id, organization_id, title, slug, status, visibility, current_revision,
-       published_at, created_by_profile_id, updated_by_profile_id, created_at,
-       updated_at, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL)`,
-    id,
-    ORGANIZATION_ID,
-    title,
-    slug,
-    status,
-    visibility,
-    publishedAt,
-    PROFILE_ID,
-    PROFILE_ID,
-    FIXTURE_NOW,
-    FIXTURE_NOW,
-  );
-}
-
-async function insertSection(
-  database,
-  { content, id, key, pageId, sortOrder, type },
-) {
-  await run(
-    database,
-    `INSERT INTO page_sections (
-       id, organization_id, page_id, section_key, section_type, content_json,
-       sort_order, created_at, updated_at, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-    id,
-    ORGANIZATION_ID,
-    pageId,
-    key,
-    type,
-    JSON.stringify(content),
-    sortOrder,
     FIXTURE_NOW,
     FIXTURE_NOW,
   );

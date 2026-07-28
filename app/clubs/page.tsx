@@ -1,16 +1,20 @@
 import { notFound } from "next/navigation";
-import { ClubDirectory } from "@/app/_components/ClubDirectory";
 import {
   buildEditorialMetadata,
-  EditorialPage,
   EditorialUnavailable,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
+import { ClubsRouteBody } from "@/app/_components/EditorialRouteBodies";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import {
   listPublicClubs,
+  resolvePublicOrganization,
   type PublicClubDto,
 } from "@/lib/server/public/catalog";
+import {
+  resolveMediaAssetsForRendering,
+  type ResponsiveMediaAssetDto,
+} from "@/lib/server/media/usage";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
 const route = "/clubs";
@@ -38,28 +42,49 @@ export default async function ClubsPage() {
   }
 
   return (
-    <EditorialPage page={loaded.page} tone="think">
-      {clubs.kind === "available" ? (
-        <ClubDirectory clubs={clubs.clubs} />
-      ) : (
-        <section className="public-service-state" aria-live="polite">
-          <p className="section-kicker">Published clubs</p>
-          <h2>Club pages are temporarily unavailable.</h2>
-          <p>No draft or substitute program information is being shown.</p>
-        </section>
-      )}
-    </EditorialPage>
+    <ClubsRouteBody
+      clubs={clubs.kind === "available" ? clubs.clubs : null}
+      mediaById={
+        clubs.kind === "available"
+          ? new Map(clubs.media.map((media) => [media.assetId, media]))
+          : new Map()
+      }
+      page={loaded.page}
+    />
   );
 }
 
 async function loadClubs(): Promise<
-  | Readonly<{ clubs: readonly PublicClubDto[]; kind: "available" }>
+  | Readonly<{
+      clubs: readonly PublicClubDto[];
+      kind: "available";
+      media: readonly ResponsiveMediaAssetDto[];
+    }>
   | Readonly<{ kind: "unavailable" }>
 > {
   try {
     const { database } = getRuntimeAuthConfiguration();
     const clubs = await listPublicClubs(database);
-    return Object.freeze({ clubs, kind: "available" as const });
+    const organization = await resolvePublicOrganization(database);
+    const media = organization
+      ? await resolveMediaAssetsForRendering(database, {
+          organizationId: organization.id,
+          publicationScope: "published",
+          usages: clubs.flatMap((club) =>
+            club.thumbnailAssetId
+              ? [
+                  {
+                    assetId: club.thumbnailAssetId,
+                    entityKey: club.slug,
+                    entityType: "club_public_profile" as const,
+                    usageKind: "thumbnail",
+                  },
+                ]
+              : [],
+          ),
+        })
+      : [];
+    return Object.freeze({ clubs, kind: "available" as const, media });
   } catch {
     writeSafeLog("error", "public_clubs_unavailable", {
       code: "service_unavailable",

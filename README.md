@@ -80,10 +80,9 @@ trigger bodies necessarily contain internal semicolons, so trigger DDL is not
 safe in that packaging path.
 
 The deployed Phase 2 pre-production chain is normalized into four retry-safe
-files, each with at most 49 single statements. Phases 3 through 5 then add
+files, each with at most 49 single statements. Phases 3 through 6 then add
 tokenizer-safe, retryable migrations without trigger bodies, destructive
-rebuilds, `ALTER`, `PRAGMA`, or rename grammar. The current Phase 5 schema has
-58 tables and 131 explicit indexes.
+rebuilds, `ALTER`, `PRAGMA`, or rename grammar.
 
 Before the Worker dispatches any application request, a server-only D1
 initializer installs every reservation, public-integrity, membership,
@@ -156,7 +155,6 @@ D1 stores are generated artifacts and must never be committed.
 ## Verification
 
 ```powershell
-npm.cmd run db:generate
 npm.cmd run db:apply:local
 npm.cmd run db:apply:preview
 npm.cmd run typecheck
@@ -169,6 +167,15 @@ npm.cmd audit --omit=dev --json
 npm.cmd audit --json
 git diff --check
 ```
+
+Do not run `db:generate` directly into the real `drizzle` directory after the
+Phase 6 migration exists: the real journal already ends at index 15 and a
+direct generation can create an unintended `0016`. The Phase 6 snapshot is
+regenerated in a disposable output directory seeded only with the real
+`0014_snapshot.json` and a temporary journal ending at index 14. Only the
+generated `0015_snapshot.json` is copied back. The real
+`0015_phase6_cms_media.sql` and real journal must remain byte-for-byte
+unchanged across that procedure, followed by `drizzle-kit check`.
 
 `npm.cmd run test:rendered` executes the built Cloudflare Worker in Miniflare
 against a fresh generated migration chain. It verifies public HTML, metadata,
@@ -231,11 +238,12 @@ private event index applies search and lifecycle filters in parameterized D1
 queries and exposes deterministic 200-record pages, including recoverable
 soft-deleted records.
 
-Phase 3 introduced runtime invariant version 3 with 30 guards. Phase 4
-advances the active initializer to version 4 and verifies or repairs the full
-set of 48 database guards before application dispatch. Both additive
-migrations remain tokenizer-safe after the immutable deployed version-8
-chain.
+Phase 3 introduced runtime invariant version 3 with 30 guards, Phase 4
+introduced version 4 for the conflict engine, and Phase 5 introduced version 5
+for publication. Phase 6 advances the active fail-closed initializer to
+version 6 while retaining the exact prior definitions and phase-aware
+migration-adoption behavior. Every additive migration remains tokenizer-safe
+after the immutable deployed version-8 chain.
 
 See:
 
@@ -352,6 +360,120 @@ See:
 - `docs/owner-guide-phase5.md`
 - `docs/organizer-guide-phase5.md`
 
-Phase 5 is intended to be saved as one unpublished Sites version. The existing
+Phase 5 was saved as exactly one unpublished Sites version 11. The existing
 owner-only live version 8 remains unchanged unless a separate turn explicitly
 authorizes deployment.
+
+## Phase 6 structured content and media
+
+Phase 6 keeps the existing public projection tables and adds private immutable
+revisions around them. Owners and Administrators can prepare structured page,
+club, recurring Program, Community, navigation, site-identity, and legal-status
+drafts; preview the exact revision through the public Field Notes shell and
+entity renderer; publish or unpublish eligible content; and restore history as
+a new private draft. The preview is authenticated, no-store, noindex, has one
+keyboard skip target and main landmark, and never creates a share token.
+
+Pages accept only bounded allowlisted blocks. They do not accept arbitrary
+HTML, scripts, iframes, CSS, executable Markdown, protected routes, or
+unconfirmed external destinations. Dynamic selections resolve current
+published events, clubs, Community links, and approved media in bounded bulk
+queries into one render context used by both preview and production. Home,
+Events, generic editorial pages, and club details consume the same validated
+published revision data rather than a separate preview-only approximation. A
+draft never changes public HTML, metadata, navigation, structured data, or
+sitemap output.
+
+Home and the required system pages keep their canonical paths. They can be
+edited and republished, but generic CMS actions cannot rename or unpublish
+them. Resources is the one optional system page: an Owner or Administrator can
+create its private draft without code, but `/resources` is non-renamable and
+stays absent until explicitly published. Permanent page and club redirects
+resolve only to a current, same-organization published target, so unpublishing
+never creates a redirect to a 404.
+
+Published navigation preserves the validated labels and order while retaining
+every required header, footer, policy, and Organizer Login destination.
+Organizer Login cannot be renamed, removed, or repointed. Duplicate
+placement-and-target pairs are rejected, and optional-item limits reserve room
+for all required links.
+
+The existing `MEDIA` R2 binding now stores immutable image bytes. D1 remains
+authoritative for metadata, opaque object keys, responsive WebP variants,
+rights, consent, credit, alt text, usage, upload state, and deterministic
+cleanup. Public routes serve only approved 480, 960, and 1600 pixel WebP
+variants with a current published usage. Original uploads and private metadata
+remain Owner/Administrator-only and no-store. Interrupted cleanup remains in
+an authorized retry queue rather than becoming an orphaned public asset.
+Public image DTOs carry their real variant dimensions, canonical live alt
+text, credit, caption inheritance, and focal point; metadata does not invent a
+1600-by-900 crop. Event and club SEO fields and approved Open Graph selections
+are materialized with the same public-ready, same-organization media checks,
+with the published site identity as the safe fallback.
+
+Owners and Administrators manage event lanes and categories through one
+versioned, audited taxonomy workflow. The four canonical lane identities keep
+their stable slugs while labels, descriptions, and order remain editable.
+Archive and safe-delete recheck event, club, Program, and immutable CMS history
+references inside the committing D1 protocol. New or reassigned events can use
+only active taxonomy; an existing event may retain its exact archived value
+without switching to another archived value.
+
+Organizer public attribution is a separate explicit self-service publication
+workflow. Saving display name, biography, approved profile photo, and consent
+creates only a private draft. Publishing creates an immutable receipt and
+public projection; revocation removes that attribution output immediately.
+An event must separately enable public hosts and select that organizer. Public
+reads never expose email, role, assignments, auth identifiers, private profile
+fields, raw object keys, or a newer private attribution draft.
+
+Site identity colors are constrained to the actual public text, background,
+accent, border, and focus pairings. Publishing a club theme checks it against
+the current site palette, and publishing a new site palette rechecks every
+published club theme in the committing operation. Invalid combinations are
+rejected rather than emitted as unsafe CSS.
+
+Legal wording has a separate Owner-only confirmation and publication gate.
+Administrators may prepare a private draft but cannot confirm, revoke, or
+publish it. Provincial registration and CRA charity status are never inferred
+or conflated. The shared protected-claim validator also covers ordinary page,
+club, site, Community, and public event copy, including event SEO and access,
+cost, location, and preparation fields. Runtime database guards and public
+projection filters keep crafted or raced legal, charity, registration,
+tax-deductibility, or nonprofit claims out of public HTML, metadata,
+structured data, and feeds unless they come through the exact confirmed legal
+projection.
+
+The only Phase 6 migration is
+`0015_phase6_cms_media.sql`. It is additive, retry-safe, partial-prefix safe,
+and Sites tokenizer-compatible. Runtime guards remain fail-closed and healthy
+verification is consolidated so complete Worker routes stay within D1's
+50-statement invocation limit. Request-driven scheduled publication and Meetup
+refresh use bounded redirect-before-render maintenance invocations rather than
+sharing the database budget with a full public render. There is no cron or
+realtime claim.
+
+See:
+
+- `docs/architecture/0010-phase-6-cms-media.md`
+- `docs/owner-guide-phase6.md`
+- `docs/organizer-guide-phase6.md`
+- `docs/known-limitations-phase6.md`
+- `docs/phase6-local-testing.md`
+
+Phase 6 status cuts are explicit:
+
+- Editor role — **Not implemented — authorized cut**
+- Viewer role — **Not implemented — authorized cut**
+- Realtime subscriptions — **Not implemented — authorized cut**
+
+Phase 6 also adds no import, export, public form, submission inbox, email,
+automatic Meetup publishing, public account, RSVP system, payment, comment,
+message, forum, or chat feature.
+
+Publishing a CMS revision changes D1-backed public content. Saving a Sites
+version records an immutable source/build candidate. Deploying a saved version
+changes what the live URL serves. These are separate actions: the Phase 6
+candidate is not deployed, live owner-only version 8 remains unchanged unless
+a separate turn explicitly authorizes deployment, and Phase 7 imports,
+exports, public forms, and submissions have not started.

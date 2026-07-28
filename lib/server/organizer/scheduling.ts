@@ -3730,6 +3730,15 @@ async function authorizeSchedulingActorForEvent(
          ON club.id = ?
         AND club.organization_id = membership.organization_id
         AND club.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM club_public_profiles AS archived_profile
+          WHERE archived_profile.club_id = club.id
+            AND archived_profile.organization_id =
+                club.organization_id
+            AND archived_profile.publication_status = 'archived'
+            AND archived_profile.deleted_at IS NULL
+        )
        WHERE membership.id = ?
          AND membership.organization_id = ?
          AND membership.profile_id = ?

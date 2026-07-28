@@ -19,6 +19,11 @@ const utilityNavigation = [
   { href: "/organizer/settings", label: "Settings" },
 ] as const;
 
+const contentNavigation = [
+  { href: "/organizer/content", label: "Website content" },
+  { href: "/organizer/media", label: "Media library" },
+] as const;
+
 export function WorkspaceShell({
   children,
   context,
@@ -29,6 +34,9 @@ export function WorkspaceShell({
   currentPath: string;
 }>) {
   const role = roleLabel(context.membership.role);
+  const canManageContent =
+    context.membership.role === "owner" ||
+    context.membership.role === "administrator";
   return (
     <div className={styles.workspace}>
       <aside className={styles.sidebar} aria-label="Organizer workspace">
@@ -52,13 +60,19 @@ export function WorkspaceShell({
         </nav>
 
         <nav className={styles.utilityNavigation} aria-label="Workspace tools">
+          {canManageContent ? (
+            <WorkspaceLinks
+              currentPath={currentPath}
+              links={contentNavigation}
+            />
+          ) : null}
           <WorkspaceLinks currentPath={currentPath} links={utilityNavigation} />
         </nav>
 
         <p className={styles.phaseNote}>
-          Private scheduling, conflict coordination, and website publication
-          controls live here. Open an event to manage its protected preview and
-          public page.
+          Private scheduling and event publishing live alongside the structured
+          website editor. Approved media and published content remain separate
+          from drafts.
         </p>
 
         <details className={styles.accountMenu}>
@@ -156,6 +170,12 @@ export function WorkspaceShell({
             <Link href="/organizer/clubs">Clubs</Link>
             <Link href="/organizer/meetup">Meetup</Link>
             <Link href="/organizer/notifications">Notifications</Link>
+            {canManageContent ? (
+              <>
+                <Link href="/organizer/content">Website content</Link>
+                <Link href="/organizer/media">Media library</Link>
+              </>
+            ) : null}
             <Link href="/organizer/profile">Profile</Link>
             <Link href="/organizer/settings">Settings</Link>
           </div>

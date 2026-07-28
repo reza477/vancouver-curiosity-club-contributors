@@ -1,13 +1,12 @@
 import { notFound } from "next/navigation";
 import {
   buildEditorialMetadata,
-  CommunityDestinations,
-  CommunityDestinationsUnavailable,
-  EditorialPage,
   EditorialUnavailable,
+  hasCommunityLinksBlock,
   loadCommunityDestinations,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
+import { HostAnEventRouteBody } from "@/app/_components/EditorialRouteBodies";
 
 const route = "/host-an-event";
 const slug = "host-an-event";
@@ -24,25 +23,14 @@ export function generateMetadata() {
 }
 
 export default async function HostAnEventPage() {
-  const [loaded, destinations] = await Promise.all([
-    loadEditorialPage(slug, route),
-    loadCommunityDestinations(route),
-  ]);
+  const loaded = await loadEditorialPage(slug, route);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "unavailable") {
     return <EditorialUnavailable title="Host an Event" />;
   }
 
-  return (
-    <EditorialPage page={loaded.page} tone="reset-make">
-      {destinations.kind === "available" ? (
-        <CommunityDestinations
-          heading="Connect through a confirmed group"
-          links={destinations.links}
-        />
-      ) : (
-        <CommunityDestinationsUnavailable />
-      )}
-    </EditorialPage>
-  );
+  const destinations = hasCommunityLinksBlock(loaded.page)
+    ? null
+    : await loadCommunityDestinations(route);
+  return <HostAnEventRouteBody destinations={destinations} page={loaded.page} />;
 }

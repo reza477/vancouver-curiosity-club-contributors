@@ -10,10 +10,12 @@ type PublicationStatus = "private" | "published" | "scheduled" | "unpublished";
 type PublicDetailsView = Readonly<{
   arrivalInstructions: string;
   attendanceMode: "hybrid" | "in_person" | "location_undecided" | "online";
+  artworkAssetId: string | null;
   availabilityState: "full" | "open" | "waitlist";
   capacity: number | null;
   costText: string;
   externalMapUrl: string;
+  metaDescription: string;
   meetupUrlConfirmed: boolean;
   preparationInformation: string;
   publicAccessNote: string;
@@ -22,6 +24,7 @@ type PublicDetailsView = Readonly<{
   publicLocationName: string;
   publicOnlineUrl: string;
   rsvpMode: "coming_soon" | "meetup";
+  seoTitle: string;
   verifiedAccessibilityNotes: string;
   weatherNote: string;
   whatToBring: string;
@@ -34,7 +37,14 @@ type HostOptionView = Readonly<{
   selected: boolean;
 }>;
 
+type ArtworkOptionView = Readonly<{
+  assetId: string;
+  label: string;
+  selected: boolean;
+}>;
+
 type PublicationWorkspaceView = Readonly<{
+  artworkOptions: readonly ArtworkOptionView[];
   details: PublicDetailsView;
   event: Readonly<{
     contentVersion: number;
@@ -117,6 +127,7 @@ export function WebsitePublicationPanel({
           body: JSON.stringify({
             arrivalInstructions: optional(details.arrivalInstructions),
             attendanceMode: details.attendanceMode,
+            artworkAssetId: details.artworkAssetId,
             availabilityState: details.availabilityState,
             capacity: details.capacity,
             confirmMeetupEventUrl:
@@ -125,6 +136,7 @@ export function WebsitePublicationPanel({
             expectedContentVersion: workspace.event.contentVersion,
             expectedScheduleVersion: workspace.event.scheduleVersion,
             externalMapUrl: optional(details.externalMapUrl),
+            metaDescription: optional(details.metaDescription),
             meetupEventUrl: workspace.event.meetupEventUrl,
             preparationInformation: optional(details.preparationInformation),
             publicAccessNote: optional(details.publicAccessNote),
@@ -136,6 +148,7 @@ export function WebsitePublicationPanel({
             publicLocationName: optional(details.publicLocationName),
             publicOnlineUrl: optional(details.publicOnlineUrl),
             rsvpMode: details.rsvpMode,
+            seoTitle: optional(details.seoTitle),
             verifiedAccessibilityNotes: optional(
               details.verifiedAccessibilityNotes,
             ),
@@ -204,6 +217,48 @@ export function WebsitePublicationPanel({
               schedule are edited in the event form above.
             </p>
             <div className={styles.publicationFields}>
+              <label>
+                <span>Event artwork</span>
+                <select
+                  onChange={(event) =>
+                    update(
+                      "artworkAssetId",
+                      event.target.value === "" ? null : event.target.value,
+                    )
+                  }
+                  value={details.artworkAssetId ?? ""}
+                >
+                  <option value="">Use the Field Notes category artwork</option>
+                  {workspace.artworkOptions.map((option) => (
+                    <option key={option.assetId} value={option.assetId}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  Only approved, consent-cleared artwork from this workspace is
+                  available. Selecting artwork changes content only, never the
+                  event schedule.
+                </small>
+              </label>
+              <TextField
+                label="SEO title"
+                maxLength={60}
+                onChange={(value) => update("seoTitle", value)}
+                value={details.seoTitle}
+              />
+              <TextAreaField
+                label="Meta description"
+                maxLength={160}
+                onChange={(value) => update("metaDescription", value)}
+                rows={3}
+                value={details.metaDescription}
+              />
+              <p>
+                Event artwork is used for the social preview while it remains
+                approved and published. Without approved artwork, the existing
+                Field Notes social image remains the honest fallback.
+              </p>
               <label>
                 <span>Attendance mode</span>
                 <select
@@ -674,11 +729,13 @@ function PublicationState({
 
 function TextField({
   label,
+  maxLength = 2_048,
   onChange,
   type = "text",
   value,
 }: Readonly<{
   label: string;
+  maxLength?: number;
   onChange: (value: string) => void;
   type?: "text" | "url";
   value: string;
@@ -687,7 +744,7 @@ function TextField({
     <label>
       <span>{label}</span>
       <input
-        maxLength={2_048}
+        maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
         spellCheck={type !== "url"}
         type={type}
@@ -699,20 +756,24 @@ function TextField({
 
 function TextAreaField({
   label,
+  maxLength = 5_000,
   onChange,
+  rows = 4,
   value,
 }: Readonly<{
   label: string;
+  maxLength?: number;
   onChange: (value: string) => void;
+  rows?: number;
   value: string;
 }>) {
   return (
     <label>
       <span>{label}</span>
       <textarea
-        maxLength={5_000}
+        maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
-        rows={4}
+        rows={rows}
         value={value}
       />
     </label>
@@ -732,6 +793,7 @@ function parseWorkspace(value: unknown): PublicationWorkspaceView {
     !isRecord(value.event) ||
     !isRecord(value.permissions) ||
     !isRecord(value.readiness) ||
+    !Array.isArray(value.artworkOptions) ||
     !Array.isArray(value.hostOptions) ||
     !Array.isArray(value.readiness.missing)
   ) {
@@ -750,6 +812,9 @@ function parseWorkspace(value: unknown): PublicationWorkspaceView {
   const details = rawDetails;
   const permissions = value.permissions;
   const publicationStatus = requiredPublicationStatus(event.publicationStatus);
+  const artworkOptions = Object.freeze(
+    value.artworkOptions.map(parseArtworkOption),
+  );
   const hostOptions = Object.freeze(value.hostOptions.map(parseHostOption));
   const missing = Object.freeze(value.readiness.missing.map(parseMissingItem));
   const pendingJob =
@@ -757,11 +822,16 @@ function parseWorkspace(value: unknown): PublicationWorkspaceView {
       ? null
       : parsePendingJob(value.pendingJob);
   return Object.freeze({
+    artworkOptions,
     details: Object.freeze({
       arrivalInstructions: optionalText(details.arrivalInstructions),
       attendanceMode: requiredAttendanceMode(
         details.attendanceMode ?? "location_undecided",
       ),
+      artworkAssetId:
+        typeof details.artworkAssetId === "string"
+          ? details.artworkAssetId
+          : null,
       availabilityState: requiredAvailabilityState(
         details.availabilityState ?? "open",
       ),
@@ -773,6 +843,7 @@ function parseWorkspace(value: unknown): PublicationWorkspaceView {
           : null,
       costText: optionalText(details.costText),
       externalMapUrl: optionalText(details.externalMapUrl),
+      metaDescription: optionalText(details.metaDescription),
       meetupUrlConfirmed: details.meetupUrlConfirmed === true,
       preparationInformation: optionalText(details.preparationInformation),
       publicAccessNote: optionalText(details.publicAccessNote),
@@ -781,6 +852,7 @@ function parseWorkspace(value: unknown): PublicationWorkspaceView {
       publicLocationName: optionalText(details.publicLocationName),
       publicOnlineUrl: optionalText(details.publicOnlineUrl),
       rsvpMode: details.rsvpMode === "meetup" ? "meetup" : "coming_soon",
+      seoTitle: optionalText(details.seoTitle),
       verifiedAccessibilityNotes: optionalText(
         details.verifiedAccessibilityNotes,
       ),
@@ -825,6 +897,15 @@ function editableDetails(workspace: PublicationWorkspaceView): EditableDetails {
         .filter((host) => host.selected)
         .map((host) => host.profileId),
     ),
+  });
+}
+
+function parseArtworkOption(value: unknown): ArtworkOptionView {
+  if (!isRecord(value)) throw new TypeError("Unexpected artwork option");
+  return Object.freeze({
+    assetId: requiredText(value.assetId),
+    label: requiredText(value.label),
+    selected: value.selected === true,
   });
 }
 

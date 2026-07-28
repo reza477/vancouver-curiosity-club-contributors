@@ -2,7 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { ensureDatabaseInvariants } from "../lib/server/database/invariants";
-import { reconcileDueOrganizerPublications } from "../lib/server/organizer/publication";
+import { runRequestMaintenance } from "../lib/server/database/request-maintenance";
 import {
   clearInvitationTokenCookie,
   invitationTokenCookie,
@@ -58,19 +58,20 @@ function isLocalRequest(requestUrl: URL): boolean {
   );
 }
 
-function shouldReconcileScheduledPublication(
-  method: string,
-  pathname: string,
-): boolean {
-  if (method !== "GET" && method !== "HEAD") return false;
-  return (
-    pathname === "/" ||
-    pathname === "/events" ||
-    pathname.startsWith("/events/") ||
-    pathname.startsWith("/clubs/") ||
-    pathname === "/sitemap.xml" ||
-    pathname === "/organizer" ||
-    pathname.startsWith("/organizer/events/")
+function maintenanceRedirect(requestUrl: URL): Response {
+  return new Response(null, {
+    headers: {
+      "Cache-Control": "no-store",
+      Location: requestUrl.toString(),
+      Pragma: "no-cache",
+    },
+    status: 303,
+  });
+}
+
+function maintenanceUnavailableResponse(): Response {
+  return databaseInvariantUnavailableResponse(
+    "A required data refresh could not be completed safely. Please try again shortly.",
   );
 }
 
@@ -312,12 +313,15 @@ const worker = {
       );
     }
 
-    if (shouldReconcileScheduledPublication(request.method, url.pathname)) {
-      try {
-        await reconcileDueOrganizerPublications(env.DB, { limit: 1 });
-      } catch {
-        // Public requests retain the last committed publication state. The
-        // bounded code intentionally excludes event/job/identity facts.
+    const maintenance = await runRequestMaintenance(
+      env.DB,
+      {
+        method: request.method,
+        pathname: url.pathname,
+      },
+    );
+    if (maintenance.kind === "unavailable") {
+      if (maintenance.source === "publication") {
         console.error(
           JSON.stringify({
             code: "publication_reconciliation_deferred",
@@ -325,7 +329,27 @@ const worker = {
             level: "error",
           }),
         );
+      } else {
+        console.error(
+          JSON.stringify({
+            code: "public_meetup_refresh_deferred",
+            event: "public_meetup_refresh_failed",
+            level: "error",
+          }),
+        );
       }
+      return secureResponse(
+        request,
+        maintenanceUnavailableResponse(),
+        policy,
+      );
+    }
+    if (maintenance.kind === "redirect") {
+      return secureResponse(
+        request,
+        maintenanceRedirect(url),
+        policy,
+      );
     }
 
     const securedRequest = requestWithSecurityContext(

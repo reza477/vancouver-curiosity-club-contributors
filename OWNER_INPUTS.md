@@ -32,8 +32,11 @@ data.
   using only the three confirmed clean public group URLs above. Private
   calendar-feed configuration remains separate.
 - Exact public Meetup discussion URL: **Missing**
+- Any confirmed social-profile, future community-platform, or other public
+  Community destination beyond the three Meetup groups: **Missing**. No future
+  platform may be named or seeded without the exact owner-confirmed URL.
 - One owner-selected real confirmed event and its exact individual Meetup event
-  RSVP URL for the future Phase 5 hosted publication smoke test: **Missing**.
+  RSVP URL for the future Phase 6 hosted publication smoke test: **Missing**.
   The earlier isolated feed smoke test verified official RSVP destinations
   without committing them as fixtures; the local review database intentionally
   contains no real event.
@@ -46,11 +49,14 @@ state, logs, or this file.
 ## British Columbia legal identity
 
 - Exact legal name: **Missing**
+- Jurisdiction: **Missing**
 - Legal form/status wording: **Missing**
 - Registration number: **Missing**
 - Effective date: **Missing**
 - Approved legal footer: **Missing**
-- Charity status and approved wording: **Missing**
+- CRA registered-charity status: **Unconfirmed**
+- CRA charity number: **Missing**
+- Owner-approved charity wording, if applicable: **Missing**
 
 Until these are supplied and approved, the site must not publish a legal-status,
 society-registration, tax, or charity claim.
@@ -61,6 +67,15 @@ society-registration, tax, or charity claim.
   starter copy that remains subject to owner approval and later authorized CMS
   editing.
 - Working tagline currently supplied: `A social calendar with a brain.`
+- Confirmed Resources or reading-packet content: **Missing**. The Resources
+  page must remain unpublished until real content is entered and explicitly
+  published.
+- Sufficient confirmed public content and destination links for
+  **Off-Radar Eats** and **Contemplative Meditation + Journaling Circle**:
+  **Missing**. Their profiles must remain unpublished.
+- Verified public accessibility facts beyond general process guidance:
+  **Missing**. Venue- and event-specific accessibility claims require separate
+  factual confirmation.
 
 ## Public contact and permanent origin
 
@@ -68,14 +83,23 @@ society-registration, tax, or charity claim.
   confirmed Meetup group destinations and renders no fake form.
 - Owner-only Sites origin: **Available for the deployed Phase 2 version 8**.
   Public/shared access is not authorized, and unpublished Phase 3, Phase 4, or
-  Phase 5 candidates must not be represented as live there. QR downloads
-  remain a later-phase feature and require a separately authorized stable
-  destination.
+  Phase 5 candidates, or the current Phase 6 candidate, must not be
+  represented as live there. QR downloads remain outside Phase 6 and require
+  a separately authorized stable destination.
 - Custom domain: **Not requested and not required**
 
 ## Photography and consent
 
 - Real photographs: **Missing**
+- Approved-real-artwork browser smoke: **Awaiting owner**. Synthetic local
+  non-person artwork may verify mechanics but cannot satisfy this factual
+  owner-approval step.
+- Owner-approved logo or Open Graph replacement artwork: **Missing**. The
+  existing Field Notes brand icon and social card remain the safe published
+  fallback.
+- Final per-page, per-club, and per-event Open Graph selections: **Missing**
+  unless an approved asset is deliberately selected in the corresponding
+  private editor.
 - Rights/license state for each photograph: **Missing**
 - Required credit for each photograph: **Missing**
 - Participant-consent state for each identifiable person: **Missing**

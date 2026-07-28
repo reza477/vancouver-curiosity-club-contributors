@@ -64,6 +64,19 @@ function seedOrganizations(database) {
         'profile_b', 1, 1
       );
 
+    INSERT INTO organization_memberships (
+      id, organization_id, profile_id, normalized_email, role, status,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES
+      (
+        'membership_a', 'org_a', 'profile_a', 'a@example.test',
+        'owner', 'active', 'profile_a', 1, 1
+      ),
+      (
+        'membership_b', 'org_b', 'profile_b', 'b@example.test',
+        'owner', 'active', 'profile_b', 1, 1
+      );
+
     INSERT INTO clubs (
       id, organization_id, name, slug, created_by_profile_id,
       created_at, updated_at
@@ -224,7 +237,7 @@ test("fresh migrations enforce same-organization public catalog rows on every mu
       database.exec(
         "UPDATE event_lanes SET organization_id = 'org_b' WHERE id = 'lane_a_1'",
       ),
-    /event_lanes_public_profile_organization_mismatch/u,
+    /phase6_lane_taxonomy_write_invalid/u,
   );
   assert.throws(
     () =>
@@ -349,14 +362,27 @@ test("runtime validation rejects malformed pre-existing rows atomically", async 
     );
   `);
 
-  await assert.rejects(
-    ensureDatabaseInvariants(database),
+  let initializationError = null;
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    try {
+      assert.equal(
+        await ensureDatabaseInvariants(database),
+        "repaired",
+        "malformed data must never be certified ready",
+      );
+    } catch (error) {
+      initializationError = error;
+      break;
+    }
+  }
+  assert.match(
+    initializationError?.message ?? "",
     /Database integrity guards are unavailable/u,
   );
   assert.deepEqual(
     await triggerNames(database, "%_org_integrity_before_%"),
-    [],
-    "the failed D1 batch must not leave partial guard installation",
+    INTEGRITY_TRIGGER_NAMES,
+    "earlier successful bounded repair chunks remain installed, but cannot certify the marker",
   );
   assert.equal(
     await database
@@ -372,8 +398,8 @@ test("runtime validation rejects malformed pre-existing rows atomically", async 
   );
   assert.deepEqual(
     await triggerNames(database, "events_reservation_guard_%"),
-    [],
-    "the failed atomic batch must not leave reservation guards either",
+    RESERVATION_TRIGGER_NAMES,
+    "successful earlier reservation-guard repair remains fail-closed without a readiness marker",
   );
   assert.equal(
     await database

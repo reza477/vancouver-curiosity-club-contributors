@@ -9,6 +9,7 @@ import {
   trustedIdentityFromSites,
 } from "../../lib/server/auth/index.ts";
 import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
+import { PHASE6_INVARIANT_COUNT_SQL } from "../../lib/server/database/phase6-invariant-sql.ts";
 import {
   acceptOrganizerInvitation,
   createOrganizerInvitation,
@@ -22,7 +23,9 @@ import {
   updateTeamMember,
 } from "../../lib/server/organizer/team.ts";
 import {
+  confirmOrganizerPublicAttribution,
   getOrganizerProfile,
+  revokeOrganizerPublicAttribution,
   updateOrganizerProfile,
 } from "../../lib/server/organizer/profiles.ts";
 import {
@@ -43,14 +46,27 @@ import {
   listOrganizerClubs,
   updateOrganizerClub,
 } from "../../lib/server/organizer/clubs.ts";
+import { createOrganizerTaxonomyItem } from "../../lib/server/organizer/taxonomy.ts";
 import { listActivityHistory } from "../../lib/server/organizer/activity.ts";
+import { ensureCmsAdoption } from "../../lib/server/organizer/cms-adoption.ts";
+import { activityLabel } from "../../app/_organizer/activity-labels.ts";
 import { consumeOrganizerRateLimit } from "../../lib/server/organizer/rate-limit.ts";
 import {
   createOrganizerEvent,
   softDeleteOrganizerEvent,
 } from "../../lib/server/organizer/events.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
-import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import {
+  SqliteD1TestDatabase,
+  startSqliteD1StatementRecording,
+} from "../auth/sqlite-d1.mjs";
+import {
+  assertRecordedD1ShapesCompile,
+} from "../database/d1-recorded-shapes.mjs";
+
+const profileSqlRecording = startSqliteD1StatementRecording({
+  sourceIncludes: ["lib/server/organizer/profiles.ts"],
+});
 
 function migrationSql() {
   return readdirSync(join(process.cwd(), "drizzle"))
@@ -64,7 +80,6 @@ function migrationSql() {
 
 async function newDatabase() {
   const database = new SqliteD1TestDatabase(migrationSql());
-  await ensureDatabaseInvariantsReady(database);
   database.exec(`
     INSERT INTO organizations (
       id, name, slug, timezone, owner_bootstrap_closed_at,
@@ -88,6 +103,26 @@ async function newDatabase() {
     role: "owner",
   });
   database.exec(`
+    UPDATE clubs
+    SET description = 'A confirmed public Club fixture.'
+    WHERE id = 'club_think';
+    INSERT INTO event_lanes (
+      id, organization_id, name, slug, description, sort_order,
+      created_by_profile_id, created_at, updated_at, deleted_at
+    ) VALUES (
+      'lane_think_public', 'org_vcc', 'Think', 'think',
+      'A confirmed public lane fixture.', 10,
+      'profile_owner', 1, 1, NULL
+    );
+    INSERT INTO club_public_profiles (
+      club_id, organization_id, primary_event_lane_id,
+      publication_status, is_featured, description,
+      public_group_url, published_at, created_at, updated_at, deleted_at
+    ) VALUES (
+      'club_think', 'org_vcc', 'lane_think_public',
+      'published', 1, 'A confirmed public Club fixture.',
+      NULL, 1, 1, 1, NULL
+    );
     INSERT INTO organizer_conflict_policies (
       id, organization_id, mode, policy_version, default_hold_hours,
       nearing_expiry_hours, updated_by_profile_id, created_at, updated_at
@@ -96,6 +131,17 @@ async function newDatabase() {
       'profile_owner', 1, 1
     );
   `);
+  await ensureDatabaseInvariantsReady(database);
+  await ensureCmsAdoption(
+    database,
+    {
+      membershipId: "membership_owner",
+      organizationId: "org_vcc",
+      profileId: "profile_owner",
+      role: "owner",
+    },
+    2,
+  );
   return database;
 }
 
@@ -141,6 +187,59 @@ function seedMember(
       );
     `);
   }
+}
+
+function seedEligiblePublicProfilePhoto(database) {
+  database.exec(`
+    INSERT INTO media_assets (
+      id, organization_id, object_key, file_name, mime_type, byte_size,
+      alt_text, credit, rights_status, participant_consent_status,
+      is_public, uploaded_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'asset-profile-photo', 'org_vcc', 'PRIVATE-PROFILE-OBJECT-KEY',
+      'PRIVATE-PROFILE-FILE-NAME.png', 'image/png', 1000,
+      'Abstract forest and cobalt profile artwork.',
+      'Vancouver Curiosity Club', 'approved', 'not_applicable',
+      0, 'profile_owner', 1, 1
+    );
+    INSERT INTO media_asset_details (
+      asset_id, organization_id, upload_state, caption,
+      private_rights_source_note, private_participant_consent_note,
+      focal_point_x, focal_point_y, informative, content_version,
+      original_sha256, width, height, pixel_count, finalized_at,
+      updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'asset-profile-photo', 'org_vcc', 'ready', 'Public-safe artwork.',
+      'PRIVATE-RIGHTS-SOURCE-NOTE', 'PRIVATE-CONSENT-NOTE',
+      5000, 5000, 1, 1, '${"a".repeat(64)}',
+      1600, 1067, 1707200, 1, 'profile_owner', 1, 1
+    );
+    INSERT INTO media_asset_variants (
+      id, organization_id, asset_id, variant_kind, object_key, mime_type,
+      byte_size, width, height, pixel_count, sha256, state,
+      finalized_at, created_at
+    ) VALUES
+      (
+        'variant-profile-original', 'org_vcc', 'asset-profile-photo',
+        'original', 'PRIVATE-PROFILE-ORIGINAL-KEY', 'image/png', 1000,
+        1600, 1067, 1707200, '${"b".repeat(64)}', 'ready', 1, 1
+      ),
+      (
+        'variant-profile-480', 'org_vcc', 'asset-profile-photo',
+        'webp_480', 'PRIVATE-PROFILE-480-KEY', 'image/webp', 100,
+        480, 320, 153600, '${"c".repeat(64)}', 'ready', 1, 1
+      ),
+      (
+        'variant-profile-960', 'org_vcc', 'asset-profile-photo',
+        'webp_960', 'PRIVATE-PROFILE-960-KEY', 'image/webp', 200,
+        960, 640, 614400, '${"d".repeat(64)}', 'ready', 1, 1
+      ),
+      (
+        'variant-profile-1600', 'org_vcc', 'asset-profile-photo',
+        'webp_1600', 'PRIVATE-PROFILE-1600-KEY', 'image/webp', 300,
+        1600, 1067, 1707200, '${"e".repeat(64)}', 'ready', 1, 1
+      );
+  `);
 }
 
 function identity(email, displayName = "Test organizer") {
@@ -976,12 +1075,33 @@ test("profiles, private settings, notifications, clubs, and allowlisted history 
   t.after(() => database.close());
   const owner = identity("owner@example.com", "Owner");
 
+  const initialAttributionDraft = await updateOrganizerProfile(
+    database,
+    owner,
+    {
+      calendarColor: "forest",
+      displayName: "Published Host",
+      expectedAttributionDraftVersion: 0,
+      initials: "PH",
+      publicAttributionConsent: true,
+      publicBiography: null,
+      publicPhotoAssetId: null,
+    },
+    2,
+  );
+  const initialPublishedAttribution =
+    await confirmOrganizerPublicAttribution(
+      database,
+      owner,
+      {
+        expectedAttributionDraftVersion:
+          initialAttributionDraft.publicAttributionDraftVersion,
+        expectedAttributionPublishedVersion:
+          initialAttributionDraft.publicAttributionPublishedVersion,
+      },
+      3,
+    );
   database.exec(`
-    UPDATE profiles
-    SET display_name = 'Published Host',
-        public_attribution_consent = 1,
-        updated_at = 2
-    WHERE id = 'profile_owner';
     INSERT INTO events (
       id, organization_id, club_id, primary_organizer_profile_id,
       title, slug, status, visibility, time_kind,
@@ -1021,9 +1141,12 @@ test("profiles, private settings, notifications, clubs, and allowlisted history 
     {
       calendarColor: "cobalt",
       displayName: "Reza",
+      expectedAttributionDraftVersion:
+        initialPublishedAttribution.publicAttributionDraftVersion,
       initials: "RJ",
       publicAttributionConsent: false,
       publicBiography: "Organizer profile draft.",
+      publicPhotoAssetId: null,
     },
     30_000,
   );
@@ -1055,7 +1178,7 @@ test("profiles, private settings, notifications, clubs, and allowlisted history 
     {
       display_name: "Published Host",
       public_attribution_consent: 1,
-      updated_at: 2,
+      updated_at: 3,
     },
   );
   assert.equal(
@@ -1063,29 +1186,109 @@ test("profiles, private settings, notifications, clubs, and allowlisted history 
     "Reza",
   );
 
-  database.exec(`
-    UPDATE profiles
-    SET public_attribution_consent = 0
-    WHERE id = 'profile_owner';
-  `);
+  const publishableProfile = await updateOrganizerProfile(
+    database,
+    owner,
+    {
+      calendarColor: "cobalt",
+      displayName: "PRIVATE-PROFILE-SENTINEL",
+      expectedAttributionDraftVersion:
+        profile.publicAttributionDraftVersion,
+      initials: "PS",
+      publicAttributionConsent: true,
+      publicBiography: "PRIVATE-BIOGRAPHY-SENTINEL",
+      publicPhotoAssetId: null,
+    },
+    30_001,
+  );
+  const publishedProfile = await confirmOrganizerPublicAttribution(
+    database,
+    owner,
+    {
+      expectedAttributionDraftVersion:
+        publishableProfile.publicAttributionDraftVersion,
+      expectedAttributionPublishedVersion:
+        publishableProfile.publicAttributionPublishedVersion,
+    },
+    30_002,
+  );
+  assert.equal(publishedProfile.publicAttributionStatus, "confirmed");
+  const confirmedAuditCount = Number(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM audit_logs
+         WHERE organization_id = 'org_vcc'
+           AND actor_profile_id = 'profile_owner'
+           AND action = 'profile.public_attribution_confirmed'`,
+      )
+      .first("count"),
+  );
+  const idempotentPublishedProfile =
+    await confirmOrganizerPublicAttribution(
+      database,
+      owner,
+      {
+        expectedAttributionDraftVersion:
+          publishableProfile.publicAttributionDraftVersion,
+        expectedAttributionPublishedVersion:
+          publishableProfile.publicAttributionPublishedVersion,
+      },
+      30_002,
+    );
+  assert.equal(
+    idempotentPublishedProfile.publicAttributionPublishedVersion,
+    publishedProfile.publicAttributionPublishedVersion,
+  );
+  assert.equal(
+    Number(
+      await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM audit_logs
+           WHERE organization_id = 'org_vcc'
+             AND actor_profile_id = 'profile_owner'
+             AND action = 'profile.public_attribution_confirmed'`,
+        )
+        .first("count"),
+    ),
+    confirmedAuditCount,
+    "repeating an identical Confirm is an idempotent no-op",
+  );
+  const revokedProfile = await revokeOrganizerPublicAttribution(
+    database,
+    owner,
+    {
+      expectedAttributionDraftVersion:
+        publishedProfile.publicAttributionDraftVersion,
+      expectedAttributionPublishedVersion:
+        publishedProfile.publicAttributionPublishedVersion,
+    },
+    30_003,
+  );
+  assert.equal(revokedProfile.publicAttributionStatus, "revoked");
   const publicWithoutCanonicalConsent =
     await listUpcomingPublicEvents(database, {
       fromUtcMs: 1,
       organizationId: "org_vcc",
       todayDate: "2026-07-25",
     });
-  await updateOrganizerProfile(
+  const nextPrivateDraft = await updateOrganizerProfile(
     database,
     owner,
     {
       calendarColor: "cobalt",
       displayName: "PRIVATE-PROFILE-SENTINEL",
+      expectedAttributionDraftVersion:
+        revokedProfile.publicAttributionDraftVersion,
       initials: "PS",
       publicAttributionConsent: true,
       publicBiography: "PRIVATE-BIOGRAPHY-SENTINEL",
+      publicPhotoAssetId: null,
     },
-    30_001,
+    30_004,
   );
+  assert.equal(nextPrivateDraft.publicAttributionStatus, "revoked");
   assert.deepEqual(
     await listUpcomingPublicEvents(database, {
       fromUtcMs: 1,
@@ -1099,7 +1302,7 @@ test("profiles, private settings, notifications, clubs, and allowlisted history 
     database,
     owner,
     "important_only",
-    30_002,
+    30_005,
   );
   assert.deepEqual(
     {
@@ -1130,7 +1333,7 @@ test("profiles, private settings, notifications, clubs, and allowlisted history 
       defaultTimezone: "America/Toronto",
       workspaceName: "Private planning room",
     },
-    30_003,
+    30_006,
   );
   assert.equal(settings.workspaceName, "Private planning room");
   assert.deepEqual(
@@ -1314,6 +1517,654 @@ test("profiles, private settings, notifications, clubs, and allowlisted history 
   assert.equal(serialized.includes("Discuss scope internally"), false);
 });
 
+test("public profile photo confirmation creates one exact published usage and revoke suppresses it", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const owner = identity("owner@example.com", "Owner");
+  seedEligiblePublicProfilePhoto(database);
+
+  const draft = await updateOrganizerProfile(
+    database,
+    owner,
+    {
+      calendarColor: "forest",
+      displayName: "Photographic Host",
+      expectedAttributionDraftVersion: 0,
+      initials: "PH",
+      publicAttributionConsent: true,
+      publicBiography: "A confirmed public organizer biography.",
+      publicPhotoAssetId: "asset-profile-photo",
+    },
+    40_000,
+  );
+  const confirmed = await confirmOrganizerPublicAttribution(
+    database,
+    owner,
+    {
+      expectedAttributionDraftVersion:
+        draft.publicAttributionDraftVersion,
+      expectedAttributionPublishedVersion:
+        draft.publicAttributionPublishedVersion,
+    },
+    40_001,
+  );
+  assert.equal(confirmed.publicAttributionStatus, "confirmed");
+  assert.equal(
+    confirmed.publicAttributionPublished?.photoAssetId,
+    "asset-profile-photo",
+  );
+
+  database.exec(`
+    INSERT INTO events (
+      id, organization_id, club_id, primary_organizer_profile_id,
+      title, slug, status, visibility, time_kind,
+      starts_at_utc, ends_at_utc, timezone,
+      organizer_scope_json, schedule_version, schedule_review_state,
+      published_at, created_by_profile_id, updated_by_profile_id,
+      created_at, updated_at
+    ) VALUES (
+      'event_public_photo_service', 'org_vcc', 'club_think',
+      'profile_owner', 'Public photo service event',
+      'public-photo-service-event', 'confirmed', 'public', 'timed',
+      1900000000000, 1900003600000, 'America/Vancouver',
+      '["profile_owner"]', 1, 'unreviewed', 1,
+      'profile_owner', 'profile_owner', 1, 1
+    );
+    INSERT INTO event_organizers (
+      id, organization_id, event_id, profile_id, role,
+      is_publicly_listed, created_by_profile_id, created_at
+    ) VALUES (
+      'event_public_photo_service_host', 'org_vcc',
+      'event_public_photo_service', 'profile_owner', 'primary',
+      1, 'profile_owner', 1
+    );
+  `);
+
+  const publishedUsage = await database
+    .prepare(
+      `SELECT usage.asset_id, usage.revision_id,
+              usage.publication_scope, receipt.photo_media_asset_id
+       FROM media_usage_references AS usage
+       JOIN organizer_public_attribution_states AS attribution
+         ON attribution.organization_id = usage.organization_id
+        AND attribution.profile_id = usage.entity_id
+        AND attribution.current_receipt_id = usage.revision_id
+       JOIN organizer_public_attribution_receipts AS receipt
+         ON receipt.id = attribution.current_receipt_id
+        AND receipt.organization_id = attribution.organization_id
+        AND receipt.profile_id = attribution.profile_id
+       WHERE usage.organization_id = 'org_vcc'
+         AND usage.entity_type = 'organizer_profile'
+         AND usage.entity_id = 'profile_owner'
+         AND usage.usage_kind = 'profile_photo'
+         AND usage.publication_scope = 'published'
+         AND usage.deleted_at IS NULL`,
+    )
+    .first();
+  assert.deepEqual(
+    { ...publishedUsage },
+    {
+      asset_id: "asset-profile-photo",
+      photo_media_asset_id: "asset-profile-photo",
+      publication_scope: "published",
+      revision_id: publishedUsage?.revision_id,
+    },
+  );
+  assert.ok(publishedUsage?.revision_id);
+
+  const publicEvent = (
+    await listUpcomingPublicEvents(database, {
+      fromUtcMs: 1,
+      organizationId: "org_vcc",
+      todayDate: "2026-07-25",
+    })
+  ).find((event) => event.slug === "public-photo-service-event");
+  assert.deepEqual(publicEvent?.organizers, [
+    {
+      biography: "A confirmed public organizer biography.",
+      displayName: "Photographic Host",
+      photo: {
+        altText: "Abstract forest and cobalt profile artwork.",
+        credit: "Vancouver Curiosity Club",
+        height: 320,
+        url: "/media/asset-profile-photo/webp_480",
+        width: 480,
+      },
+    },
+  ]);
+  const publicSerialization = JSON.stringify(publicEvent);
+  for (const sentinel of [
+    "PRIVATE-PROFILE-OBJECT-KEY",
+    "PRIVATE-PROFILE-FILE-NAME.png",
+    "PRIVATE-RIGHTS-SOURCE-NOTE",
+    "PRIVATE-CONSENT-NOTE",
+  ]) {
+    assert.equal(publicSerialization.includes(sentinel), false, sentinel);
+  }
+
+  const revoked = await revokeOrganizerPublicAttribution(
+    database,
+    owner,
+    {
+      expectedAttributionDraftVersion:
+        confirmed.publicAttributionDraftVersion,
+      expectedAttributionPublishedVersion:
+        confirmed.publicAttributionPublishedVersion,
+    },
+    40_002,
+  );
+  assert.equal(revoked.publicAttributionStatus, "revoked");
+  assert.equal(
+    Number(
+      await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM media_usage_references
+           WHERE organization_id = 'org_vcc'
+             AND entity_type = 'organizer_profile'
+             AND entity_id = 'profile_owner'
+             AND usage_kind = 'profile_photo'
+             AND publication_scope = 'published'
+             AND deleted_at IS NULL`,
+        )
+        .first("count"),
+    ),
+    0,
+  );
+  const afterRevoke = (
+    await listUpcomingPublicEvents(database, {
+      fromUtcMs: 1,
+      organizationId: "org_vcc",
+      todayDate: "2026-07-25",
+    })
+  ).find((event) => event.slug === "public-photo-service-event");
+  assert.deepEqual(afterRevoke?.organizers, []);
+
+  for (const [index, sql] of PHASE6_INVARIANT_COUNT_SQL.entries()) {
+    assert.equal(
+      Number(
+        await database.prepare(sql).first("violation_count"),
+      ),
+      0,
+      `Phase 6 invariant count ${index}`,
+    );
+  }
+  const invariantStatuses = await ensureDatabaseInvariantsReady(database);
+  assert.equal(invariantStatuses.at(-1), "ready");
+});
+
+test("public attribution races converge to one exact confirm or revoke envelope", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const owner = identity("owner@example.com", "Owner");
+  const draft = await updateOrganizerProfile(
+    database,
+    owner,
+    {
+      calendarColor: "forest",
+      displayName: "Race-safe host",
+      expectedAttributionDraftVersion: 0,
+      initials: "RH",
+      publicAttributionConsent: true,
+      publicBiography: "One exact public biography.",
+      publicPhotoAssetId: null,
+    },
+    51_000,
+  );
+  const confirmInput = {
+    expectedAttributionDraftVersion:
+      draft.publicAttributionDraftVersion,
+    expectedAttributionPublishedVersion:
+      draft.publicAttributionPublishedVersion,
+  };
+  const [confirmA, confirmB] =
+    synchronizedBatchBindings(database, 2);
+  const confirmResults = await Promise.allSettled([
+    confirmOrganizerPublicAttribution(
+      confirmA,
+      owner,
+      confirmInput,
+      51_001,
+    ),
+    confirmOrganizerPublicAttribution(
+      confirmB,
+      owner,
+      confirmInput,
+      51_001,
+    ),
+  ]);
+  assert.equal(
+    confirmResults.filter(({ status }) => status === "fulfilled").length,
+    2,
+    "the exact concurrent loser re-reads the committed result",
+  );
+  assert.deepEqual(
+    {
+      audits: await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM audit_logs
+           WHERE entity_id = 'profile_owner'
+             AND action = 'profile.public_attribution_confirmed'`,
+        )
+        .first("count"),
+      intents: await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM organizer_public_attribution_write_intents
+           WHERE profile_id = 'profile_owner'
+             AND operation = 'confirmed'`,
+        )
+        .first("count"),
+      receipts: await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM organizer_public_attribution_receipts
+           WHERE profile_id = 'profile_owner'
+             AND action = 'confirmed'`,
+        )
+        .first("count"),
+    },
+    { audits: 1, intents: 1, receipts: 1 },
+  );
+
+  const confirmed = await getOrganizerProfile(database, owner);
+  const revokeInput = {
+    expectedAttributionDraftVersion:
+      confirmed.publicAttributionDraftVersion,
+    expectedAttributionPublishedVersion:
+      confirmed.publicAttributionPublishedVersion,
+  };
+  const [revokeA, revokeB] =
+    synchronizedBatchBindings(database, 2);
+  const revokeResults = await Promise.allSettled([
+    revokeOrganizerPublicAttribution(
+      revokeA,
+      owner,
+      revokeInput,
+      51_002,
+    ),
+    revokeOrganizerPublicAttribution(
+      revokeB,
+      owner,
+      revokeInput,
+      51_002,
+    ),
+  ]);
+  assert.equal(
+    revokeResults.filter(({ status }) => status === "fulfilled").length,
+    2,
+    "a lost revoke response accepts only its exact committed successor",
+  );
+  assert.deepEqual(
+    {
+      audits: await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM audit_logs
+           WHERE entity_id = 'profile_owner'
+             AND action = 'profile.public_attribution_revoked'`,
+        )
+        .first("count"),
+      intents: await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM organizer_public_attribution_write_intents
+           WHERE profile_id = 'profile_owner'
+             AND operation = 'revoked'`,
+        )
+        .first("count"),
+      receipts: await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM organizer_public_attribution_receipts
+           WHERE profile_id = 'profile_owner'
+             AND action = 'revoked'`,
+        )
+        .first("count"),
+    },
+    { audits: 1, intents: 1, receipts: 1 },
+  );
+  const revokeAuditCountAfterRace = await database
+    .prepare(
+      `SELECT count(*) AS count
+       FROM audit_logs
+       WHERE entity_id = 'profile_owner'
+         AND action = 'profile.public_attribution_revoked'`,
+    )
+    .first("count");
+  await revokeOrganizerPublicAttribution(
+    database,
+    owner,
+    revokeInput,
+    51_002,
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM audit_logs
+         WHERE entity_id = 'profile_owner'
+           AND action = 'profile.public_attribution_revoked'`,
+      )
+      .first("count"),
+    revokeAuditCountAfterRace,
+    "a post-commit revoke retry does not append another envelope",
+  );
+
+  const revoked = await getOrganizerProfile(database, owner);
+  const republishDraft = await updateOrganizerProfile(
+    database,
+    owner,
+    {
+      calendarColor: "forest",
+      displayName: "Race-safe host",
+      expectedAttributionDraftVersion:
+        revoked.publicAttributionDraftVersion,
+      initials: "RH",
+      publicAttributionConsent: true,
+      publicBiography: "Republished exact biography.",
+      publicPhotoAssetId: null,
+    },
+    51_003,
+  );
+  const republished = await confirmOrganizerPublicAttribution(
+    database,
+    owner,
+    {
+      expectedAttributionDraftVersion:
+        republishDraft.publicAttributionDraftVersion,
+      expectedAttributionPublishedVersion:
+        republishDraft.publicAttributionPublishedVersion,
+    },
+    51_004,
+  );
+  const divergentDraft = await updateOrganizerProfile(
+    database,
+    owner,
+    {
+      calendarColor: "forest",
+      displayName: "Race-safe host",
+      expectedAttributionDraftVersion:
+        republished.publicAttributionDraftVersion,
+      initials: "RH",
+      publicAttributionConsent: true,
+      publicBiography: "Divergent private biography.",
+      publicPhotoAssetId: null,
+    },
+    51_005,
+  );
+  const before = {
+    audits: Number(
+      await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM audit_logs
+           WHERE entity_id = 'profile_owner'
+             AND action IN (
+               'profile.public_attribution_confirmed',
+               'profile.public_attribution_revoked'
+             )`,
+        )
+        .first("count"),
+    ),
+    receipts: Number(
+      await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM organizer_public_attribution_receipts
+           WHERE profile_id = 'profile_owner'`,
+        )
+        .first("count"),
+    ),
+    intents: Number(
+      await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM organizer_public_attribution_write_intents
+           WHERE profile_id = 'profile_owner'`,
+        )
+        .first("count"),
+    ),
+  };
+  const divergentInput = {
+    expectedAttributionDraftVersion:
+      divergentDraft.publicAttributionDraftVersion,
+    expectedAttributionPublishedVersion:
+      divergentDraft.publicAttributionPublishedVersion,
+  };
+  const [divergentConfirm, divergentRevoke] =
+    synchronizedBatchBindings(database, 2);
+  const divergentResults = await Promise.allSettled([
+    confirmOrganizerPublicAttribution(
+      divergentConfirm,
+      owner,
+      divergentInput,
+      51_006,
+    ),
+    revokeOrganizerPublicAttribution(
+      divergentRevoke,
+      owner,
+      divergentInput,
+      51_006,
+    ),
+  ]);
+  assert.equal(
+    divergentResults.filter(({ status }) => status === "fulfilled").length,
+    1,
+  );
+  assert.equal(
+    divergentResults.filter(
+      (result) =>
+        result.status === "rejected" &&
+        result.reason?.status === 409,
+    ).length,
+    1,
+    "the divergent loser receives a bounded stale response",
+  );
+  assert.deepEqual(
+    {
+      audits: Number(
+        await database
+          .prepare(
+            `SELECT count(*) AS count
+             FROM audit_logs
+             WHERE entity_id = 'profile_owner'
+               AND action IN (
+                 'profile.public_attribution_confirmed',
+                 'profile.public_attribution_revoked'
+               )`,
+          )
+          .first("count"),
+      ),
+      openIntents: Number(
+        await database
+          .prepare(
+            `SELECT count(*) AS count
+             FROM organizer_public_attribution_write_intents
+             WHERE profile_id = 'profile_owner'
+               AND completed_at IS NULL`,
+          )
+          .first("count"),
+      ),
+      receipts: Number(
+        await database
+          .prepare(
+            `SELECT count(*) AS count
+             FROM organizer_public_attribution_receipts
+             WHERE profile_id = 'profile_owner'`,
+          )
+          .first("count"),
+      ),
+      intents: Number(
+        await database
+          .prepare(
+            `SELECT count(*) AS count
+             FROM organizer_public_attribution_write_intents
+             WHERE profile_id = 'profile_owner'`,
+          )
+          .first("count"),
+      ),
+    },
+    {
+      audits: before.audits + 1,
+      intents: before.intents + 1,
+      openIntents: 0,
+      receipts: before.receipts + 1,
+    },
+  );
+  await assert.rejects(
+    revokeOrganizerPublicAttribution(
+      database,
+      owner,
+      {
+        expectedAttributionDraftVersion:
+          divergentDraft.publicAttributionDraftVersion,
+        expectedAttributionPublishedVersion:
+          Math.max(
+            0,
+            divergentDraft.publicAttributionPublishedVersion - 2,
+          ),
+      },
+      51_007,
+    ),
+    (error) => error?.status === 409,
+    "drift beyond the exact one-version retry window stays stale",
+  );
+  await ensureDatabaseInvariantsReady(database);
+  const phase6Counts = await Promise.all(
+    PHASE6_INVARIANT_COUNT_SQL.map((sql) =>
+      database.prepare(sql).first("violation_count"),
+    ),
+  );
+  assert.equal(
+    phase6Counts.length,
+    PHASE6_INVARIANT_COUNT_SQL.length,
+  );
+  assert.deepEqual(
+    phase6Counts.map(Number),
+    PHASE6_INVARIANT_COUNT_SQL.map(() => 0),
+  );
+});
+
+test("Phase 6 CMS, legal, and media activity is typed, organization-scoped, and metadata-free", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const owner = identity("owner@example.com", "Owner");
+  const expected = [
+    [
+      "cms.club_profile_archived",
+      "club_public_profile",
+      "Club public profile archived",
+    ],
+    ["cms.entity_created", "page", "Page draft created"],
+    ["cms.entity_draft_saved", "navigation", "Navigation draft saved"],
+    [
+      "cms.entity_restored_as_draft",
+      "site_identity",
+      "Site settings revision restored as draft",
+    ],
+    [
+      "cms.entity_published",
+      "club_public_profile",
+      "Club public profile published",
+    ],
+    [
+      "cms.entity_unpublished",
+      "community_link",
+      "Community link unpublished",
+    ],
+    [
+      "cms.legal_status_confirmed",
+      "legal_status",
+      "Legal wording confirmed",
+    ],
+    [
+      "cms.legal_status_revoked",
+      "legal_status",
+      "Legal wording confirmation revoked",
+    ],
+    ["media.upload_started", "media_asset", "Media upload started"],
+    ["media.upload_finalized", "media_asset", "Media upload finalized"],
+    ["media.upload_failed", "media_asset", "Media upload failed"],
+    ["media.metadata_updated", "media_asset", "Media metadata updated"],
+    ["media.deleted", "media_asset", "Media deleted"],
+    ["media.cleanup_completed", "media_asset", "Media cleanup completed"],
+  ];
+  for (const [index, [action, entityType]] of expected.entries()) {
+    await database
+      .prepare(
+        `INSERT INTO audit_logs (
+           id, organization_id, actor_profile_id, action,
+           entity_type, entity_id, metadata_json, created_at
+         ) VALUES (?, 'org_vcc', 'profile_owner', ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        `phase6_activity_${index}`,
+        action,
+        entityType,
+        `phase6_entity_${index}`,
+        JSON.stringify({
+          email: "owner@example.com",
+          object_key: "private/r2/object-key",
+          private: "PRIVATE_ACTIVITY_SENTINEL",
+        }),
+        60_000 + index,
+      )
+      .run();
+  }
+  database.exec(`
+    INSERT INTO organizations (
+      id, name, slug, timezone, owner_bootstrap_closed_at,
+      created_at, updated_at, deleted_at
+    ) VALUES (
+      'org_external_activity', 'External activity workspace',
+      'external-activity-workspace', 'America/Vancouver', 1,
+      1, 1, NULL
+    );
+    INSERT INTO audit_logs (
+      id, organization_id, actor_profile_id, action,
+      entity_type, entity_id, metadata_json, created_at
+    ) VALUES (
+      'phase6_external_activity', 'org_external_activity', NULL,
+      'cms.entity_published', 'page', 'external_page',
+      '{"private":"EXTERNAL_ACTIVITY_SENTINEL"}', 70000
+    );
+    INSERT INTO audit_logs (
+      id, organization_id, actor_profile_id, action,
+      entity_type, entity_id, metadata_json, created_at
+    ) VALUES (
+      'phase6_internal_media_usage', 'org_vcc', 'profile_owner',
+      'media.usage_reconciled', 'media_usage_set', 'page:home:published',
+      '{"private":"INTERNAL_USAGE_SENTINEL"}', 70001
+    );
+  `);
+
+  const activity = await listActivityHistory(database, owner, {
+    limit: 100,
+  });
+  assert.equal(activity.length, expected.length);
+  for (const [action, entityType, label] of expected) {
+    const item = activity.find(
+      (candidate) =>
+        candidate.action === action &&
+        candidate.entityType === entityType,
+    );
+    assert.ok(item, `${action}/${entityType} should be visible`);
+    assert.equal(activityLabel(item.action, item.entityType), label);
+    assert.equal(item.actorDisplayName, "owner Person");
+  }
+
+  const serialized = JSON.stringify(activity);
+  assert.equal(serialized.includes("PRIVATE_ACTIVITY_SENTINEL"), false);
+  assert.equal(serialized.includes("EXTERNAL_ACTIVITY_SENTINEL"), false);
+  assert.equal(serialized.includes("INTERNAL_USAGE_SENTINEL"), false);
+  assert.equal(serialized.includes("owner@example.com"), false);
+  assert.equal(serialized.includes("private/r2/object-key"), false);
+  assert.equal(serialized.includes("media.usage_reconciled"), false);
+  assert.equal(serialized.includes("external_page"), false);
+});
+
 test("a concurrent public-profile change rolls back a private club identity update without settings or audit residue", async (t) => {
   const database = await newDatabase();
   t.after(() => database.close());
@@ -1329,15 +2180,21 @@ test("a concurrent public-profile change rolls back a private club identity upda
     },
     40_000,
   );
-  database.exec(`
-    INSERT INTO event_lanes (
-      id, organization_id, name, slug, description, sort_order,
-      created_by_profile_id, created_at, updated_at, deleted_at
-    ) VALUES (
-      'lane_race', 'org_vcc', 'Race lane', 'race-lane', NULL, 1,
-      'profile_owner', 40001, 40001, NULL
-    );
-  `);
+  const taxonomy = await createOrganizerTaxonomyItem(
+    database,
+    owner,
+    {
+      description: null,
+      entityType: "lane",
+      name: "Race lane",
+      slug: "race-lane",
+    },
+    40_001,
+  );
+  const raceLane = taxonomy.lanes.find(
+    (lane) => lane.slug === "race-lane",
+  );
+  assert.ok(raceLane);
 
   const settingKey = `organizer_club:${privateClub.id}`;
   const settingBefore = await database
@@ -1375,7 +2232,7 @@ test("a concurrent public-profile change rolls back a private club identity upda
             publication_status, is_featured, description,
             public_group_url, published_at, created_at, updated_at, deleted_at
           ) VALUES (
-            '${privateClub.id}', 'org_vcc', 'lane_race',
+            '${privateClub.id}', 'org_vcc', '${raceLane.id}',
             'draft', 0, NULL, NULL, NULL, 40002, 40002, NULL
           );
         `);
@@ -1893,3 +2750,10 @@ function synchronizedBatchBindings(database, count) {
     },
   }));
 }
+
+test("all exercised profile SQL shapes compile through real D1", async () => {
+  await assertRecordedD1ShapesCompile(profileSqlRecording.stop(), {
+    expectedCount: 28,
+    label: "organizer profile service",
+  });
+});

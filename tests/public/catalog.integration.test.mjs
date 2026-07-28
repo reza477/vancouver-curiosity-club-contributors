@@ -14,14 +14,42 @@ import {
   listPublicCommunityLinks,
   listPublicLanes,
 } from "../../lib/server/public/catalog.ts";
+import { ensureCmsAdoption } from "../../lib/server/organizer/cms-adoption.ts";
 import { ensureMeetupProgramClubs } from "../../lib/server/meetup/clubs.ts";
+import {
+  listPublicCatalogSitemapEntries,
+} from "../../lib/server/public/sitemap.ts";
+import {
+  PHASE6_INVARIANT_COUNT_SQL,
+  PHASE6_INVARIANT_TRIGGER_STATEMENTS,
+} from "../../lib/server/database/phase6-invariant-sql.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
 const EXPECTED_LANES = Object.freeze([
-  Object.freeze({ name: "Think", slug: "think" }),
-  Object.freeze({ name: "Reset & Make", slug: "reset-and-make" }),
-  Object.freeze({ name: "Explore", slug: "explore" }),
-  Object.freeze({ name: "Eat & Play", slug: "eat-and-play" }),
+  Object.freeze({
+    description:
+      "Books, film, philosophy, debate, psychology, artificial intelligence, technology, and serious discussion.",
+    name: "Think",
+    slug: "think",
+  }),
+  Object.freeze({
+    description:
+      "Meditation, journaling, poetry, creative workshops, reflective practice, and silent reading.",
+    name: "Reset & Make",
+    slug: "reset-and-make",
+  }),
+  Object.freeze({
+    description:
+      "Walks, hikes, art, culture, neighbourhood outings, and discovering Vancouver.",
+    name: "Explore",
+    slug: "explore",
+  }),
+  Object.freeze({
+    description:
+      "Restaurant outings, karaoke, casual social events, and playful community gatherings.",
+    name: "Eat & Play",
+    slug: "eat-and-play",
+  }),
 ]);
 const EXPECTED_CLUBS = Object.freeze([
   Object.freeze({
@@ -67,6 +95,12 @@ const ORGANIZER = trustedIdentityFromSites({
   displayName: "Catalog organizer",
   email: "catalog-organizer@example.com",
 });
+const OWNER_ACTOR = Object.freeze({
+  membershipId: "membership_owner",
+  organizationId: "org_public",
+  profileId: "profile_owner",
+  role: "owner",
+});
 const UNINVITED = trustedIdentityFromSites({
   displayName: "Uninvited",
   email: "catalog-uninvited@example.com",
@@ -87,6 +121,7 @@ function loadGeneratedMigrations() {
       "0012_phase3_organizer_foundation.sql",
       "0013_phase4_conflict_engine.sql",
       "0014_phase5_publication.sql",
+      "0015_phase6_cms_media.sql",
     ],
     "the normalized Sites-compatible baseline must be authoritative",
   );
@@ -173,10 +208,11 @@ test("authorized seed creates the exact public catalog and only three safe club 
   );
 
   await ensurePublicCatalog(database, OWNER, 2_000);
+  await ensureCmsAdoption(database, OWNER_ACTOR, 2_001);
 
   const lanes = await database
     .prepare(
-      `SELECT name, slug
+      `SELECT description, name, slug
        FROM event_lanes
        WHERE organization_id = 'org_public'
        ORDER BY sort_order, name`,
@@ -269,6 +305,229 @@ test("authorized seed creates the exact public catalog and only three safe club 
   );
 });
 
+test("catalog sitemap entries require exact current receipt-backed route identities", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensurePublicCatalog(database, OWNER, 2_000);
+  await ensureCmsAdoption(database, OWNER_ACTOR, 2_001);
+
+  const baseline = await listPublicCatalogSitemapEntries(
+    database,
+    "org_public",
+  );
+  assert.equal(
+    baseline.pages.some(({ slug }) => slug === "about"),
+    true,
+  );
+  assert.equal(
+    baseline.clubs.some(
+      ({ slug }) => slug === "vancouver-curiosity-club",
+    ),
+    true,
+  );
+  assert.equal(
+    baseline.programs.some(
+      ({ programSlug }) => programSlug === "vancouver-curiosity-club",
+    ),
+    true,
+  );
+
+  database.exec(`
+    UPDATE pages
+    SET slug = 'tampered-about'
+    WHERE organization_id = 'org_public' AND slug = 'about';
+  `);
+  const tamperedPage = await listPublicCatalogSitemapEntries(
+    database,
+    "org_public",
+  );
+  assert.equal(
+    tamperedPage.pages.some(
+      ({ slug }) => slug === "about" || slug === "tampered-about",
+    ),
+    false,
+  );
+  database.exec(`
+    UPDATE pages
+    SET slug = 'about'
+    WHERE organization_id = 'org_public' AND slug = 'tampered-about';
+    UPDATE clubs
+    SET slug = 'tampered-club'
+    WHERE organization_id = 'org_public'
+      AND slug = 'vancouver-curiosity-club';
+  `);
+  const tamperedClub = await listPublicCatalogSitemapEntries(
+    database,
+    "org_public",
+  );
+  assert.equal(
+    tamperedClub.clubs.some(
+      ({ slug }) =>
+        slug === "vancouver-curiosity-club" || slug === "tampered-club",
+    ),
+    false,
+  );
+  assert.equal(
+    tamperedClub.programs.some(
+      ({ clubSlug }) =>
+        clubSlug === "vancouver-curiosity-club" ||
+        clubSlug === "tampered-club",
+    ),
+    false,
+  );
+  database.exec(`
+    UPDATE clubs
+    SET slug = 'vancouver-curiosity-club'
+    WHERE organization_id = 'org_public' AND slug = 'tampered-club';
+    UPDATE program_public_profile_details
+    SET public_slug = 'tampered-program'
+    WHERE organization_id = 'org_public'
+      AND public_slug = 'vancouver-curiosity-club';
+  `);
+  const tamperedProgram = await listPublicCatalogSitemapEntries(
+    database,
+    "org_public",
+  );
+  assert.equal(
+    tamperedProgram.programs.some(
+      ({ programSlug }) =>
+        programSlug === "vancouver-curiosity-club" ||
+        programSlug === "tampered-program",
+    ),
+    false,
+  );
+});
+
+test("fresh guarded bootstrap creates canonical lanes through completed taxonomy intents and remains invariant-clean", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+
+  for (
+    let index = 0;
+    index < PHASE6_INVARIANT_TRIGGER_STATEMENTS.length;
+    index += 40
+  ) {
+    await database.batch(
+      PHASE6_INVARIANT_TRIGGER_STATEMENTS
+        .slice(index, index + 40)
+        .map((sql) => database.prepare(sql)),
+    );
+  }
+
+  await ensurePublicCatalog(database, OWNER, 2_000);
+
+  const taxonomy = await database
+    .prepare(
+      `SELECT (
+         SELECT count(*) FROM event_lanes
+         WHERE organization_id = 'org_public'
+       ) AS lanes,
+       (
+         SELECT count(*) FROM event_lane_taxonomy_states
+         WHERE organization_id = 'org_public'
+           AND active_intent_id IS NULL
+           AND last_completed_intent_id IS NOT NULL
+       ) AS states,
+       (
+         SELECT count(*) FROM taxonomy_write_intents
+         WHERE organization_id = 'org_public'
+           AND entity_type = 'lane'
+           AND operation = 'create'
+           AND completed_at IS NOT NULL
+       ) AS intents,
+       (
+         SELECT count(*) FROM audit_logs
+         WHERE organization_id = 'org_public'
+           AND action = 'taxonomy.lane_created'
+           AND json_extract(metadata_json, '$.writeIntentId') IS NOT NULL
+       ) AS audits`,
+    )
+    .first();
+  assert.deepEqual(
+    {
+      audits: taxonomy?.audits,
+      intents: taxonomy?.intents,
+      lanes: taxonomy?.lanes,
+      states: taxonomy?.states,
+    },
+    { audits: 4, intents: 4, lanes: 4, states: 4 },
+  );
+
+  const taxonomyIntegrity = await database
+    .prepare(PHASE6_INVARIANT_COUNT_SQL.at(-1))
+    .first();
+  assert.equal(taxonomyIntegrity?.violation_count, 0);
+  await ensurePublicCatalog(database, OWNER, 3_000);
+
+  const stable = await database
+    .prepare(
+      `SELECT
+         (SELECT count(*) FROM event_lanes
+          WHERE organization_id = 'org_public') AS lanes,
+         (SELECT count(*) FROM taxonomy_write_intents
+          WHERE organization_id = 'org_public') AS intents,
+         (SELECT count(*) FROM audit_logs
+          WHERE organization_id = 'org_public'
+            AND action = 'taxonomy.lane_created') AS audits`,
+    )
+    .first();
+  assert.deepEqual(
+    {
+      audits: stable?.audits,
+      intents: stable?.intents,
+      lanes: stable?.lanes,
+    },
+    { audits: 4, intents: 4, lanes: 4 },
+  );
+});
+
+test("canonical lane seed keeps all four exact descriptions and later runs are fill-only", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+
+  await ensurePublicCatalog(database, OWNER, 2_000);
+  const readLanes = async () =>
+    (
+      await database
+        .prepare(
+          `SELECT description, name, slug
+           FROM event_lanes
+           WHERE organization_id = 'org_public'
+           ORDER BY sort_order, name`,
+        )
+        .all()
+    ).results.map((row) => ({ ...row }));
+
+  assert.deepEqual(await readLanes(), EXPECTED_LANES);
+
+  for (const lane of EXPECTED_LANES) {
+    await database
+      .prepare(
+        `UPDATE event_lanes
+         SET description = ?, updated_at = ?
+         WHERE organization_id = 'org_public'
+           AND slug = ?`,
+      )
+      .bind(`OWNER EDITED ${lane.slug}`, 9_000, lane.slug)
+      .run();
+  }
+  database.exec(`
+    DELETE FROM site_settings
+    WHERE organization_id = 'org_public'
+      AND key = 'public_catalog_version';
+  `);
+
+  await ensurePublicCatalog(database, OWNER, 10_000);
+  await ensurePublicCatalog(database, OWNER, 11_000);
+  assert.deepEqual(
+    await readLanes(),
+    EXPECTED_LANES.map((lane) => ({
+      ...lane,
+      description: `OWNER EDITED ${lane.slug}`,
+    })),
+  );
+});
+
 test("catalog seed is idempotent and preserves later D1 editorial changes", async (t) => {
   const database = createDatabase();
   t.after(() => database.close());
@@ -309,6 +568,7 @@ test("catalog seed is idempotent and preserves later D1 editorial changes", asyn
 
   await ensurePublicCatalog(database, OWNER, 10_000);
   await ensurePublicCatalog(database, OWNER, 11_000);
+  await ensureCmsAdoption(database, OWNER_ACTOR, 12_000);
 
   assert.equal(
     await database

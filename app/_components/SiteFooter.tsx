@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 type ExternalLink = Readonly<{
   href: string;
@@ -8,14 +9,19 @@ type ExternalLink = Readonly<{
 export function SiteFooter({
   externalLinks = [],
   brandName = "Vancouver Curiosity Club",
+  legalFooter = null,
   location = "Vancouver, British Columbia",
   mission = null,
+  navigation = [],
 }: Readonly<{
   brandName?: string;
   externalLinks?: readonly ExternalLink[];
+  legalFooter?: string | null;
   location?: string;
   mission?: string | null;
+  navigation?: readonly PublicNavigationItemDto[];
 }>) {
+  const footerNavigation = normalizedFooterNavigation(navigation);
   return (
     <footer className="site-footer">
       <div className="site-footer__brand">
@@ -27,18 +33,15 @@ export function SiteFooter({
       <nav className="site-footer__navigation" aria-label="Footer navigation">
         <div className="footer-nav-group">
           <p>Explore</p>
-          <Link href="/events">Events</Link>
-          <Link href="/clubs">Clubs</Link>
-          <Link href="/community">Community</Link>
-          <Link href="/about">About</Link>
-          <Link href="/get-involved">Get Involved</Link>
-          <Link href="/contact">Contact</Link>
+          {footerNavigation.explore.map((item) => (
+            <FooterLink item={item} key={item.href} />
+          ))}
         </div>
         <div className="footer-nav-group">
           <p>Field notes</p>
-          <Link href="/conduct">Code of Conduct</Link>
-          <Link href="/accessibility">Accessibility</Link>
-          <Link href="/privacy">Privacy</Link>
+          {footerNavigation.policies.map((item) => (
+            <FooterLink item={item} key={item.href} />
+          ))}
           <Link href="/organizer">Organizer Login</Link>
         </div>
         {externalLinks.length > 0 ? (
@@ -60,7 +63,79 @@ export function SiteFooter({
 
       <p className="footer-copyright">
         © {new Date().getUTCFullYear()} {brandName}
+        {legalFooter ? <span> · {legalFooter}</span> : null}
       </p>
     </footer>
   );
+}
+
+function FooterLink({
+  item,
+}: Readonly<{ item: PublicNavigationItemDto }>) {
+  return item.href.startsWith("/") ? (
+    <Link href={item.href}>{item.label}</Link>
+  ) : (
+    <a href={item.href} rel="noreferrer noopener" target="_blank">
+      {item.label}
+    </a>
+  );
+}
+
+function normalizedFooterNavigation(
+  configured: readonly PublicNavigationItemDto[],
+): Readonly<{
+  explore: readonly PublicNavigationItemDto[];
+  policies: readonly PublicNavigationItemDto[];
+}> {
+  const fallbackExplore = [
+    { href: "/events", label: "Events" },
+    { href: "/clubs", label: "Clubs" },
+    { href: "/community", label: "Community" },
+    { href: "/about", label: "About" },
+    { href: "/get-involved", label: "Get Involved" },
+    { href: "/contact", label: "Contact" },
+  ] as const;
+  const fallbackPolicies = [
+    { href: "/conduct", label: "Code of Conduct" },
+    { href: "/accessibility", label: "Accessibility" },
+    { href: "/privacy", label: "Privacy" },
+  ] as const;
+  const source =
+    configured.length > 0
+      ? configured
+      : [...fallbackExplore, ...fallbackPolicies];
+  const policyTargets = new Set<string>(
+    fallbackPolicies.map((item) => item.href),
+  );
+  const seen = new Set<string>();
+  const explore: PublicNavigationItemDto[] = [];
+  const policies: PublicNavigationItemDto[] = [];
+  for (const item of source) {
+    if (item.href === "/organizer" || seen.has(item.href)) continue;
+    seen.add(item.href);
+    (policyTargets.has(item.href) ? policies : explore).push(item);
+  }
+  for (const required of [...fallbackExplore, ...fallbackPolicies]) {
+    if (seen.has(required.href)) continue;
+    seen.add(required.href);
+    (policyTargets.has(required.href) ? policies : explore).push(required);
+  }
+  const requiredTargets = new Set<string>(
+    [...fallbackExplore, ...fallbackPolicies].map((item) => item.href),
+  );
+  const optionalTargets = new Set(
+    [...explore, ...policies]
+      .filter((item) => !requiredTargets.has(item.href))
+      .slice(
+        0,
+        24 - fallbackExplore.length - fallbackPolicies.length,
+      )
+      .map((item) => item.href),
+  );
+  const include = (item: PublicNavigationItemDto) =>
+    requiredTargets.has(item.href) || optionalTargets.has(item.href);
+  return Object.freeze({
+    explore: Object.freeze(explore.filter(include)),
+    policies: Object.freeze(policies.filter(include)),
+  });
 }

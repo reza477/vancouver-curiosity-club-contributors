@@ -33,11 +33,12 @@ test("the futuristic brand mark ships at every declared icon size", async () => 
 });
 
 test("metadata and the web manifest declare only real local brand assets", async () => {
-  const [layout, manifestText] = await Promise.all([
+  const [layout, manifestSource, brandSource, metadataSource] = await Promise.all([
     readFile(new URL("app/layout.tsx", projectRoot), "utf8"),
-    readFile(new URL("public/site.webmanifest", projectRoot), "utf8"),
+    readFile(new URL("app/manifest.ts", projectRoot), "utf8"),
+    readFile(new URL("lib/brand.ts", projectRoot), "utf8"),
+    readFile(new URL("lib/server/public/metadata.ts", projectRoot), "utf8"),
   ]);
-  const manifest = JSON.parse(manifestText);
 
   for (const path of [
     "/favicon-16.png",
@@ -46,25 +47,26 @@ test("metadata and the web manifest declare only real local brand assets", async
     "/icon.png",
     "/icon-192.png",
     "/apple-touch-icon.png",
-    "/site.webmanifest",
-    "/og.png",
   ]) {
-    assert.match(layout, new RegExp(path.replace(".", "\\.")));
+    assert.match(brandSource, new RegExp(path.replace(".", "\\.")));
   }
+  assert.match(layout, /\/manifest\.webmanifest/u);
+  assert.match(metadataSource, /"\/og\.png"/u);
 
-  assert.equal(manifest.name, "Vancouver Curiosity Club");
-  assert.equal(manifest.display, "standalone");
-  assert.equal(manifest.theme_color, "#061a3a");
-  assert.deepEqual(
-    manifest.icons.map((icon) => [icon.src, icon.sizes, icon.purpose]),
-    [
-      ["/icon-192.png", "192x192", "any"],
-      ["/icon-512.png", "512x512", "any"],
-      ["/icon-maskable-512.png", "512x512", "maskable"],
-    ],
-  );
-  assert.equal("screenshots" in manifest, false);
-  assert.equal("shortcuts" in manifest, false);
+  assert.match(manifestSource, /getPublicSiteContext/u);
+  assert.match(manifestSource, /buildPublicManifest\(site, logo\)/u);
+  assert.match(brandSource, /site\?\.brandName/u);
+  assert.match(brandSource, /site\?\.palette\?\.background/u);
+  assert.match(brandSource, /site\?\.palette\?\.foreground/u);
+  assert.match(brandSource, /display:\s*"standalone"/u);
+  for (const icon of [
+    "/icon-192.png",
+    "/icon-512.png",
+    "/icon-maskable-512.png",
+  ]) {
+    assert.match(brandSource, new RegExp(icon.replace(".", "\\.")));
+  }
+  assert.doesNotMatch(`${manifestSource}\n${brandSource}`, /screenshots|shortcuts/u);
 });
 
 test("preserves the master artwork outside the public build surface", async () => {

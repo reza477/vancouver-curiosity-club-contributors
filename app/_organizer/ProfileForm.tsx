@@ -41,10 +41,14 @@ export function ProfileForm({
         body: JSON.stringify({
           calendarColor: form.get("calendarColor"),
           displayName: form.get("displayName"),
+          expectedAttributionDraftVersion:
+            profile.publicAttributionDraftVersion,
           initials: form.get("initials"),
           publicAttributionConsent:
             form.get("publicAttributionConsent") === "on",
           publicBiography: form.get("publicBiography") || null,
+          publicPhotoAssetId:
+            form.get("publicPhotoAssetId") || null,
         }),
         method: "PATCH",
       });
@@ -79,8 +83,67 @@ export function ProfileForm({
     }
   }
 
+  async function mutatePublicAttribution(
+    action: "confirm" | "revoke",
+  ) {
+    if (busy) return;
+    if (
+      action === "revoke" &&
+      !window.confirm(
+        "Remove your public name, biography, and profile photo from event host attribution?",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setNotice("");
+    try {
+      const body = await organizerRequest(
+        "/api/organizer/profile/public-attribution",
+        {
+          body: JSON.stringify({
+            expectedAttributionDraftVersion:
+              profile.publicAttributionDraftVersion,
+            expectedAttributionPublishedVersion:
+              profile.publicAttributionPublishedVersion,
+          }),
+          method: action === "confirm" ? "POST" : "DELETE",
+        },
+      );
+      if (!isRecord(body) || !isRecord(body.profile)) {
+        throw new TypeError("Unexpected profile response");
+      }
+      setProfile(body.profile as OrganizerProfileDto);
+      setNotice(
+        action === "confirm"
+          ? "Your saved attribution is now eligible for event pages that explicitly select you as a public host."
+          : "Your public attribution was revoked. Private organizer details remain private.",
+      );
+    } catch (error) {
+      setNotice(
+        safeNotice(
+          error,
+          action === "confirm"
+            ? "Your public attribution was not published."
+            : "Your public attribution was not revoked.",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <form className={styles.profileForm} onSubmit={submit}>
+    <form
+      className={styles.profileForm}
+      key={[
+        profile.publicAttributionDraftVersion,
+        profile.publicAttributionPublishedVersion,
+        profile.publicAttributionConsent ? "consented" : "not-consented",
+        profile.publicAttributionStatus,
+      ].join(":")}
+      onSubmit={submit}
+    >
       <section className={styles.profileIdentity} aria-labelledby="profile-identity-title">
         <div
           aria-label={`${profile.calendarColor} calendar color`}
@@ -127,13 +190,33 @@ export function ProfileForm({
             public website.
           </small>
         </label>
+        <label className={styles.fieldFull}>
+          <span>Approved public profile photo</span>
+          <select
+            defaultValue={profile.publicPhotoAssetId ?? ""}
+            name="publicPhotoAssetId"
+          >
+            <option value="">No public profile photo</option>
+            {profile.eligiblePublicPhotos.map((photo) => (
+              <option key={photo.id} value={photo.id}>
+                {photo.altText} - {photo.credit}
+              </option>
+            ))}
+          </select>
+          <small>
+            Only ready media with approved rights, confirmed or
+            not-applicable participant consent, credit, and useful alt text is
+            available.
+          </small>
+        </label>
         <label className={`${styles.consentField} ${styles.fieldFull}`}>
           <input defaultChecked={profile.publicAttributionConsent} name="publicAttributionConsent" type="checkbox" />
           <span>
-            <strong>Draft consent for a later public-attribution workflow</strong>
+            <strong>Consent to publish this saved attribution</strong>
             <small>
-              Saving this private preference does not add, remove, or rename a
-              host on the current public website.
+              Save keeps this private. Publishing below is a separate explicit
+              action, and an event must still select you as a public host
+              before the attribution appears there.
             </small>
           </span>
         </label>
@@ -159,10 +242,61 @@ export function ProfileForm({
 
       <footer className={styles.formFooter}>
         <button className={styles.primaryButton} disabled={busy} type="submit">
-          {busy ? "Saving…" : "Save profile"}
+          {busy ? "Saving..." : "Save profile"}
         </button>
+        <button
+          className={styles.secondaryButton}
+          disabled={
+            busy ||
+            !profile.publicAttributionConsent ||
+            profile.publicAttributionDraftVersion < 1 ||
+            (
+              profile.publicAttributionStatus === "confirmed" &&
+              !profile.publicAttributionHasNewerDraft
+            )
+          }
+          onClick={() => mutatePublicAttribution("confirm")}
+          type="button"
+        >
+          Publish public attribution
+        </button>
+        {profile.publicAttributionStatus === "confirmed" ||
+        profile.publicAttributionStatus === "legacy" ? (
+          <button
+            className={styles.dangerButton}
+            disabled={busy}
+            onClick={() => mutatePublicAttribution("revoke")}
+            type="button"
+          >
+            Revoke public attribution
+          </button>
+        ) : null}
         <p aria-live="polite">{notice}</p>
       </footer>
+      <section
+        aria-labelledby="public-attribution-state-title"
+        className={styles.assignedClubPanel}
+      >
+        <p className={styles.kicker}>Public attribution</p>
+        <h2 id="public-attribution-state-title">
+          {attributionStatusLabel(profile.publicAttributionStatus)}
+        </h2>
+        {profile.publicAttributionPublished ? (
+          <p>
+            Current public name:{" "}
+            <strong>
+              {profile.publicAttributionPublished.displayName}
+            </strong>
+            {profile.publicAttributionHasNewerDraft
+              ? " A newer private draft is waiting for explicit publication."
+              : ""}
+          </p>
+        ) : (
+          <p>
+            No biography or profile photo from this workflow is public.
+          </p>
+        )}
+      </section>
     </form>
   );
 }
@@ -175,4 +309,13 @@ function roleLabel(role: OrganizerProfileDto["role"]): string {
 
 function capitalize(value: string): string {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function attributionStatusLabel(
+  status: OrganizerProfileDto["publicAttributionStatus"],
+): string {
+  if (status === "confirmed") return "Published by you";
+  if (status === "legacy") return "Existing name attribution";
+  if (status === "revoked") return "Revoked";
+  return "Private draft";
 }

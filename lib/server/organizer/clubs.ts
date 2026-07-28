@@ -511,7 +511,10 @@ export async function archivePrivateOrganizerClub(
     clubId,
   );
   if (!current) throw clubNotFound();
-  if (!current.identityEditable) {
+  if (
+    !current.identityEditable &&
+    current.publicationState !== "archived"
+  ) {
     throw new OrganizerAccessDeniedError("role_not_allowed");
   }
   const now = parseFiniteInteger(nowUtcMs, {
@@ -539,8 +542,14 @@ export async function archivePrivateOrganizerClub(
              AND deleted_at IS NULL
              AND NOT EXISTS (
                SELECT 1
-               FROM club_public_profiles
-               WHERE club_id = clubs.id
+               FROM club_public_profiles AS public_profile
+               WHERE public_profile.club_id = clubs.id
+                 AND (
+                   public_profile.organization_id <>
+                     clubs.organization_id
+                   OR public_profile.publication_status <> 'archived'
+                   OR public_profile.deleted_at IS NOT NULL
+                 )
              )
              AND NOT EXISTS (
                SELECT 1
@@ -561,7 +570,6 @@ export async function archivePrivateOrganizerClub(
                FROM events
                WHERE organization_id = clubs.organization_id
                  AND club_id = clubs.id
-                 AND deleted_at IS NULL
              )
              AND NOT EXISTS (
                SELECT 1
@@ -734,7 +742,6 @@ async function loadClubArchiveBlockers(
              FROM events
              WHERE organization_id = ?
                AND club_id = ?
-               AND deleted_at IS NULL
            ) AS event_count`,
       )
       .bind(
@@ -766,7 +773,6 @@ async function loadClubArchiveBlockers(
            FROM events
            WHERE organization_id = ?
              AND club_id = ?
-             AND deleted_at IS NULL
          )
          ORDER BY updated_at DESC, id ASC
          LIMIT 50`,

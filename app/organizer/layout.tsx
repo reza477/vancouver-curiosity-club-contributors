@@ -46,6 +46,9 @@ export default async function OrganizerLayout({
   if (loaded.kind !== "granted") {
     return <OrganizerRouteState load={loaded} />;
   }
+  if (requestPathname?.startsWith("/organizer/content/revisions/")) {
+    return <>{children}</>;
+  }
 
   return (
     <WorkspaceShell

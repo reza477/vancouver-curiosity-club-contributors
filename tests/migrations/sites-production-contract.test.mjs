@@ -3,6 +3,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import {
+  MAX_D1_MIGRATION_BATCH_STATEMENTS_WITH_LEDGER,
+  MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
+  migrationStatementBatches,
+} from "../../scripts/d1-migration-batches.mjs";
 
 const MIGRATION_DIRECTORY = join(process.cwd(), "drizzle");
 const EXPECTED_MIGRATIONS = Object.freeze([
@@ -13,14 +18,15 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0012_phase3_organizer_foundation.sql",
   "0013_phase4_conflict_engine.sql",
   "0014_phase5_publication.sql",
+  "0015_phase6_cms_media.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
-  checks: 110,
-  explicitIndexes: 131,
-  foreignKeys: 199,
-  tables: 58,
+  checks: 194,
+  explicitIndexes: 184,
+  foreignKeys: 273,
+  tables: 78,
   triggers: 0,
-  uniqueIndexes: 47,
+  uniqueIndexes: 73,
 });
 
 test("the normalized migration chain is safe for the Sites production tokenizer", () => {
@@ -37,9 +43,10 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0012_snapshot.json",
       "0013_snapshot.json",
       "0014_snapshot.json",
+      "0015_snapshot.json",
       "_journal.json",
     ],
-    "the normalized chain must end exactly at 0014 with no 0015 residue",
+    "the normalized chain must end exactly at the single Phase 6 migration 0015",
   );
 
   const journal = JSON.parse(
@@ -55,10 +62,11 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 12, tag: "0012_phase3_organizer_foundation" },
       { idx: 13, tag: "0013_phase4_conflict_engine" },
       { idx: 14, tag: "0014_phase5_publication" },
+      { idx: 15, tag: "0015_phase6_cms_media" },
     ],
   );
   assert.deepEqual(
-    ["0008", "0009", "0010", "0011", "0012", "0013", "0014"].map((prefix) => {
+    ["0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015"].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
           join(MIGRATION_DIRECTORY, "meta", `${prefix}_snapshot.json`),
@@ -71,7 +79,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131],
+    [0, 0, 38, 75, 90, 117, 131, 184],
     "migration snapshots must match the cumulative packaged index state",
   );
 
@@ -84,10 +92,39 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
     const fragments = productionFragments(sql);
     assert.ok(fragments.length > 0, `${file} must contain SQL`);
     assert.ok(
-      fragments.length <= 49,
-      `${file} exceeds the bounded 49-statement migration contract`,
+      migrationStatementBatches(fragments).every(
+        (batch) =>
+          batch.length <= MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
+      ),
+      `${file} exceeds the bounded per-D1-request migration contract`,
     );
   }
+
+  const phase6Fragments = productionFragments(
+    migrationSql("0015_phase6_cms_media.sql"),
+  );
+  const phase6Batches = migrationStatementBatches(phase6Fragments);
+  assert.equal(phase6Fragments.length, 73);
+  assert.deepEqual(
+    phase6Batches.map((batch) => batch.length),
+    [48, 25],
+  );
+  assert.deepEqual(
+    phase6Batches.map(
+      (batch, index) =>
+        batch.length + (index === phase6Batches.length - 1 ? 1 : 0),
+    ),
+    [48, 26],
+    "the migration ledger insert belongs only to the final D1 batch",
+  );
+  assert.ok(
+    phase6Batches.every(
+      (batch, index) =>
+        batch.length +
+          (index === phase6Batches.length - 1 ? 1 : 0) <=
+        MAX_D1_MIGRATION_BATCH_STATEMENTS_WITH_LEDGER,
+    ),
+  );
 
   const database = new DatabaseSync(":memory:");
   try {

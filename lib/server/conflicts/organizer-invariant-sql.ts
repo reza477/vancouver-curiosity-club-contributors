@@ -536,6 +536,15 @@ BEGIN
       WHERE club.id = NEW.club_id
         AND club.organization_id = NEW.organization_id
         AND club.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM club_public_profiles AS archived_profile
+          WHERE archived_profile.club_id = club.id
+            AND archived_profile.organization_id =
+                club.organization_id
+            AND archived_profile.publication_status = 'archived'
+            AND archived_profile.deleted_at IS NULL
+        )
     )
     OR (
       NEW.venue_id IS NOT NULL
@@ -1561,7 +1570,7 @@ AND EXISTS (
   SELECT 1
   FROM database_invariant_state AS marker
   WHERE marker.singleton_key = 'database-guards'
-    AND marker.version = 5
+    AND marker.version >= 5
 )
 BEGIN
   SELECT RAISE(ABORT, 'phase4_external_reservation_active');
@@ -1925,61 +1934,80 @@ BEGIN
             AND interval.sync_source_id = snapshot.sync_source_id
             AND interval.generation_id = snapshot.generation_id
             AND interval.event_id = snapshot.event_id
-            AND interval.club_id = NEW.club_id
-            AND interval.planning_status = snapshot.status
-            AND interval.schedule_shape = snapshot.time_kind
-            AND interval.timezone = snapshot.timezone
-            AND interval.all_day_start_date IS
-                snapshot.all_day_start_date
-            AND interval.all_day_end_date_exclusive IS
-                snapshot.all_day_end_date_exclusive
+            AND normalization.club_id = NEW.club_id
             AND interval.buffer_before_minutes = 0
             AND interval.buffer_after_minutes = 0
-            AND interval.venue_id IS event.venue_id
-            AND interval.primary_organizer_profile_id IS
-                event.primary_organizer_profile_id
-            AND interval.organizer_scope_json =
-                event.organizer_scope_json
-            AND interval.schedule_version = event.schedule_version
-            AND interval.title = snapshot.title
-             AND interval.source_fingerprint =
-                 snapshot.source_fingerprint
-             AND normalization.club_id = interval.club_id
-             AND normalization.planning_status =
-                 interval.planning_status
-             AND normalization.schedule_shape = interval.schedule_shape
-             AND normalization.actual_start_utc =
-                 interval.actual_start_utc
-             AND normalization.actual_end_utc =
-                 interval.actual_end_utc
-             AND normalization.expanded_start_utc =
-                 interval.expanded_start_utc
-             AND normalization.expanded_end_utc =
-                 interval.expanded_end_utc
-             AND normalization.timezone = interval.timezone
-             AND normalization.all_day_start_date IS
-                 interval.all_day_start_date
-             AND normalization.all_day_end_date_exclusive IS
-                 interval.all_day_end_date_exclusive
-             AND normalization.buffer_before_minutes =
-                 interval.buffer_before_minutes
-             AND normalization.buffer_after_minutes =
-                 interval.buffer_after_minutes
-             AND normalization.venue_id IS interval.venue_id
-             AND normalization.primary_organizer_profile_id IS
-                 interval.primary_organizer_profile_id
-             AND normalization.organizer_scope_json =
-                 interval.organizer_scope_json
-             AND normalization.schedule_version =
-                 interval.schedule_version
-             AND normalization.hold_expires_at IS
-                 interval.hold_expires_at
-             AND normalization.source_fingerprint =
-                 interval.source_fingerprint
-             AND normalization.normalized_state_fingerprint =
-                 interval.normalized_state_fingerprint
-             AND normalization.reservation_semantic_fingerprint =
-                 interval.reservation_semantic_fingerprint
+            AND json_array(
+                  interval.club_id,
+                  interval.planning_status,
+                  interval.schedule_shape,
+                  interval.actual_start_utc,
+                  interval.actual_end_utc,
+                  interval.expanded_start_utc,
+                  interval.expanded_end_utc,
+                  interval.timezone,
+                  interval.all_day_start_date,
+                  interval.all_day_end_date_exclusive,
+                  interval.buffer_before_minutes,
+                  interval.buffer_after_minutes,
+                  interval.venue_id,
+                  interval.primary_organizer_profile_id,
+                  interval.organizer_scope_json,
+                  interval.schedule_version,
+                  interval.hold_expires_at,
+                  interval.source_fingerprint,
+                  interval.normalized_state_fingerprint,
+                  interval.reservation_semantic_fingerprint
+                ) = json_array(
+                  normalization.club_id,
+                  normalization.planning_status,
+                  normalization.schedule_shape,
+                  normalization.actual_start_utc,
+                  normalization.actual_end_utc,
+                  normalization.expanded_start_utc,
+                  normalization.expanded_end_utc,
+                  normalization.timezone,
+                  normalization.all_day_start_date,
+                  normalization.all_day_end_date_exclusive,
+                  normalization.buffer_before_minutes,
+                  normalization.buffer_after_minutes,
+                  normalization.venue_id,
+                  normalization.primary_organizer_profile_id,
+                  normalization.organizer_scope_json,
+                  normalization.schedule_version,
+                  normalization.hold_expires_at,
+                  normalization.source_fingerprint,
+                  normalization.normalized_state_fingerprint,
+                  normalization.reservation_semantic_fingerprint
+                )
+            AND json_array(
+                  interval.planning_status,
+                  interval.schedule_shape,
+                  interval.timezone,
+                  interval.all_day_start_date,
+                  interval.all_day_end_date_exclusive,
+                  interval.title,
+                  interval.source_fingerprint
+                ) = json_array(
+                  snapshot.status,
+                  snapshot.time_kind,
+                  snapshot.timezone,
+                  snapshot.all_day_start_date,
+                  snapshot.all_day_end_date_exclusive,
+                  snapshot.title,
+                  snapshot.source_fingerprint
+                )
+            AND json_array(
+                  interval.venue_id,
+                  interval.primary_organizer_profile_id,
+                  interval.organizer_scope_json,
+                  interval.schedule_version
+                ) = json_array(
+                  event.venue_id,
+                  event.primary_organizer_profile_id,
+                  event.organizer_scope_json,
+                  event.schedule_version
+                )
             AND (
               snapshot.time_kind = 'all_day'
               OR (
@@ -2210,6 +2238,97 @@ BEGIN
   SELECT RAISE(ABORT, 'phase4_source_identity_immutable');
 END;`;
 
+/**
+ * D1 compiles each trigger program against the programs fired by its nested
+ * writes. Keeping activation authorization, conflict invalidation, reservation
+ * parity, and overlap validation in one trigger exceeds SQLite's expression
+ * depth once the complete Phase 6 guard graph is installed. Split those
+ * independent checks at build time; every trigger still runs inside the same
+ * outer UPDATE and any RAISE rolls all sibling-trigger writes back.
+ */
+function shallowSourceActivationTriggers(sql: string): readonly string[] {
+  const name = "sync_sources_phase4_activation_before_update";
+  const beginIndex = sql.indexOf("BEGIN");
+  const endIndex = sql.lastIndexOf("END;");
+  if (beginIndex < 0 || endIndex < beginIndex) {
+    throw new Error("Malformed source activation trigger.");
+  }
+  const header = sql.slice(0, beginIndex);
+  const statements: string[] = [];
+  const body = sql.slice(beginIndex + "BEGIN".length, endIndex);
+  let quoted = false;
+  let start = 0;
+  for (let index = 0; index < body.length; index += 1) {
+    if (body[index] === "'") {
+      if (quoted && body[index + 1] === "'") {
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (body[index] === ";" && !quoted) {
+      const statement = body.slice(start, index).trim();
+      if (statement) statements.push(statement);
+      start = index + 1;
+    }
+  }
+  const tail = body.slice(start).trim();
+  if (tail) statements.push(tail);
+  if (statements.length !== 6) {
+    throw new Error(
+      `Expected six source activation statements; received ${statements.length}.`,
+    );
+  }
+  const splitReservationParityCheck = (
+    statement: string,
+  ): readonly string[] => {
+    const conditionPrefix = "SELECT CASE\n    WHEN ";
+    const branchMarker = "\n    OR EXISTS (";
+    const resultMarker = "\n    THEN RAISE";
+    const conditionStart = statement.indexOf(conditionPrefix);
+    const branchIndex = statement.indexOf(
+      branchMarker,
+      conditionStart + conditionPrefix.length,
+    );
+    const resultIndex = statement.lastIndexOf(resultMarker);
+    if (
+      conditionStart !== 0
+      || branchIndex < conditionPrefix.length
+      || resultIndex < branchIndex
+    ) {
+      throw new Error("Malformed source activation reservation check.");
+    }
+    const left = statement.slice(conditionPrefix.length, branchIndex);
+    const right =
+      `EXISTS (` +
+      statement.slice(branchIndex + branchMarker.length, resultIndex);
+    const result = statement.slice(resultIndex);
+    return Object.freeze([
+      `${conditionPrefix}${left}${result}`,
+      `${conditionPrefix}${right}${result}`,
+    ]);
+  };
+  const reservationChecks = splitReservationParityCheck(statements[4]);
+  const groups = [
+    Object.freeze([statements[0]]),
+    Object.freeze(statements.slice(1, 4)),
+    Object.freeze([reservationChecks[0]]),
+    Object.freeze([reservationChecks[1]]),
+    Object.freeze([statements[5]]),
+  ] as const;
+  return Object.freeze(
+    groups.map((group, index) => {
+      const splitName =
+        index === 0 ? name : `${name}_check_${index + 1}`;
+      return `${header.replace(name, splitName)}BEGIN
+  ${group.join(";\n\n  ")};
+END;`;
+    }),
+  );
+}
+
+const SOURCE_ACTIVATION_BEFORE_UPDATE_STATEMENTS =
+  shallowSourceActivationTriggers(SOURCE_ACTIVATION_BEFORE_UPDATE_SQL);
+
 export const PHASE4_INVARIANT_TRIGGER_STATEMENTS = [
   SCHEDULE_INTENT_BEFORE_INSERT_SQL,
   SCHEDULE_INTENT_BEFORE_UPDATE_SQL,
@@ -2225,7 +2344,7 @@ export const PHASE4_INVARIANT_TRIGGER_STATEMENTS = [
   EXTERNAL_RESERVATION_BEFORE_INSERT_SQL,
   EXTERNAL_RESERVATION_BEFORE_UPDATE_SQL,
   EXTERNAL_RESERVATION_BEFORE_DELETE_SQL,
-  SOURCE_ACTIVATION_BEFORE_UPDATE_SQL,
+  ...SOURCE_ACTIVATION_BEFORE_UPDATE_STATEMENTS,
   SOURCE_DEACTIVATION_BEFORE_UPDATE_SQL,
   SOURCE_IDENTITY_BEFORE_UPDATE_SQL,
 ] as const;

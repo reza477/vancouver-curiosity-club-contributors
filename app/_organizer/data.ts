@@ -222,12 +222,17 @@ export async function loadEventFormOptions(
     loadTaxonomyOptions(context),
     loadVenueOptions(context),
   ]);
-  const clubIds = clubs.map((club) => club.id);
+  const schedulableClubs = clubs.filter(
+    (club) => club.publicationState !== "archived",
+  );
+  const clubIds = schedulableClubs.map((club) => club.id);
   const programs = await loadPrograms(context, clubIds);
   return Object.freeze({
     categories: taxonomy.categories,
     clubs: Object.freeze(
-      clubs.map((club) => Object.freeze({ id: club.id, label: club.name })),
+      schedulableClubs.map((club) =>
+        Object.freeze({ id: club.id, label: club.name }),
+      ),
     ),
     lanes: taxonomy.lanes,
     organizers: Object.freeze(
@@ -369,22 +374,28 @@ async function loadTaxonomyOptions(context: OrganizerPageContext) {
   const [lanes, categories] = await Promise.all([
     context.database
       .prepare(
-        `SELECT id, name
+        `SELECT id, name, deleted_at
          FROM event_lanes
          WHERE organization_id = ?
-           AND deleted_at IS NULL
-         ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+         ORDER BY (deleted_at IS NOT NULL) ASC,
+                  sort_order ASC,
+                  name COLLATE NOCASE ASC
          LIMIT 100`,
       )
       .bind(context.membership.organizationId)
       .all<Record<string, unknown>>(),
     context.database
       .prepare(
-        `SELECT id, name
-         FROM categories
-         WHERE organization_id = ?
-           AND deleted_at IS NULL
-         ORDER BY name COLLATE NOCASE ASC
+        `SELECT category.id, category.name, category.deleted_at
+         FROM categories AS category
+         LEFT JOIN category_taxonomy_states AS state
+           ON state.category_id = category.id
+          AND state.organization_id = category.organization_id
+         WHERE category.organization_id = ?
+         ORDER BY (category.deleted_at IS NOT NULL) ASC,
+                  COALESCE(state.sort_order, 100000) ASC,
+                  category.name COLLATE NOCASE ASC,
+                  category.id ASC
          LIMIT 250`,
       )
       .bind(context.membership.organizationId)
@@ -409,6 +420,14 @@ async function loadPrograms(
        WHERE organization_id = ?
          AND club_id IN (${placeholders})
          AND deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1
+           FROM program_public_profile_details AS public_profile
+           WHERE public_profile.program_id = programs.id
+             AND public_profile.organization_id = programs.organization_id
+             AND public_profile.publication_status = 'archived'
+             AND public_profile.deleted_at IS NULL
+         )
        ORDER BY name COLLATE NOCASE ASC
        LIMIT 250`,
     )
@@ -438,10 +457,18 @@ function rowsToOptions(
 ): readonly OrganizerOption[] {
   return Object.freeze(
     rows
-      .map((row) => {
+      .map((row): OrganizerOption | null => {
         const id = readString(row.id);
         const label = readString(row.name);
-        return id && label ? Object.freeze({ id, label }) : null;
+        const archived =
+          row.deleted_at !== null && row.deleted_at !== undefined;
+        return id && label
+          ? Object.freeze({
+              archived,
+              id,
+              label: archived ? `${label} (archived)` : label,
+            })
+          : null;
       })
       .filter((value): value is OrganizerOption => value !== null),
   );

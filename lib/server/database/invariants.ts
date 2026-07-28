@@ -13,19 +13,27 @@ import {
   PHASE5_INVARIANT_TRIGGER_STATEMENTS,
 } from "../organizer/publication-invariant-sql";
 import {
+  PHASE6_INVARIANT_COUNT_SQL,
+  PHASE6_INVARIANT_TRIGGER_STATEMENTS,
+} from "./phase6-invariant-sql";
+import {
   externalReservationSemanticFingerprint,
   externalReservationStateFingerprint,
   normalizeAllDayConflictInterval,
   normalizeConflictInterval,
 } from "../organizer/conflict-domain";
+import { protectedLegalClaimSql } from "../../validation/protected-legal-claims";
+import { publicOrganizerEmailExposureSql } from "../../validation/public-organizer-email";
 
 export const DATABASE_INVARIANT_MARKER_KEY = "database-guards";
 export const PRE_PHASE5_DATABASE_INVARIANT_VERSION = 4;
-export const DATABASE_INVARIANT_VERSION = 5;
+export const PRE_PHASE6_DATABASE_INVARIANT_VERSION = 5;
+export const DATABASE_INVARIANT_VERSION = 6;
 export const DATABASE_INVARIANT_STATEMENT_LIMIT = 50;
 
 export type DatabaseInvariantVersion =
   | typeof PRE_PHASE5_DATABASE_INVARIANT_VERSION
+  | typeof PRE_PHASE6_DATABASE_INVARIANT_VERSION
   | typeof DATABASE_INVARIANT_VERSION;
 
 const PUBLIC_INTEGRITY_TRIGGER_STATEMENTS = [
@@ -175,13 +183,24 @@ const PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
   ...PHASE4_INVARIANT_TRIGGER_STATEMENTS,
 ]);
 
-export const DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
+const PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
   ...PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_STATEMENTS,
   ...PHASE5_INVARIANT_TRIGGER_STATEMENTS,
 ]);
 
+export const DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
+  ...PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_STATEMENTS,
+  ...PHASE6_INVARIANT_TRIGGER_STATEMENTS,
+]);
+
 export const PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
   PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_STATEMENTS.map(readTriggerName).sort(),
+);
+
+export const PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
+  PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_STATEMENTS.map(
+    readTriggerName,
+  ).sort(),
 );
 
 export const DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
@@ -195,41 +214,83 @@ const PRE_PHASE5_INTEGRITY_COUNT_SQL = Object.freeze([
   ...PHASE4_INVARIANT_COUNT_SQL,
 ]);
 
-const INTEGRITY_COUNT_SQL = Object.freeze([
+const PRE_PHASE6_INTEGRITY_COUNT_SQL = Object.freeze([
   ...PRE_PHASE5_INTEGRITY_COUNT_SQL,
   ...PHASE5_INVARIANT_COUNT_SQL,
 ]);
 
-// Production D1 caps both expression depth and compound-SELECT terms below the
-// full invariant set. Keep each shallow UNION group deliberately small.
-const INTEGRITY_COUNT_CHUNK_SIZE = 4;
-function combineIntegrityCountSql(
-  checks: readonly string[],
-): readonly string[] {
-  return Object.freeze(
-    Array.from(
-      {
-        length: Math.ceil(checks.length / INTEGRITY_COUNT_CHUNK_SIZE),
-      },
-      (_, index) => {
-        const chunk = checks.slice(
-          index * INTEGRITY_COUNT_CHUNK_SIZE,
-          (index + 1) * INTEGRITY_COUNT_CHUNK_SIZE,
-        );
-        return String.raw`
+const INTEGRITY_COUNT_SQL = Object.freeze([
+  ...PRE_PHASE6_INTEGRITY_COUNT_SQL,
+  ...PHASE6_INVARIANT_COUNT_SQL,
+]);
+
+// Leave material headroom below D1's 100 KiB prepared-statement limit. The
+// wrapper and aborting INSERT add a small amount of SQL around each packed
+// group, so enforce the ceiling on the final combined count statement.
+export const DATABASE_INVARIANT_SQL_BYTE_LIMIT = 85_000;
+const INTEGRITY_COUNT_MAX_COMPOUND_TERMS = 4;
+
+function combinedIntegrityCountChunkSql(
+  chunk: readonly string[],
+): string {
+  return String.raw`
 SELECT COALESCE(sum(invariant_check.violation_count), 0)
        AS violation_count
 FROM (
-  ${chunk.map((query) => query.trim()).join("\n  UNION ALL\n  ")}
+  ${chunk
+    .map((query) => {
+      const trimmed = query.trim();
+      return /^WITH\b/iu.test(trimmed)
+        ? `SELECT isolated_invariant.violation_count
+           FROM (${trimmed}) AS isolated_invariant`
+        : trimmed;
+    })
+    .join("\n  UNION ALL\n  ")}
 ) AS invariant_check`;
-      },
-    ),
-  );
+}
+
+function combineIntegrityCountSql(
+  checks: readonly string[],
+): readonly string[] {
+  const chunks: string[] = [];
+  let current: string[] = [];
+  for (const check of checks) {
+    const candidate = [...current, check];
+    const candidateSql = combinedIntegrityCountChunkSql(candidate);
+    const candidateBytes =
+      new TextEncoder().encode(candidateSql).length;
+    if (
+      current.length > 0 &&
+      (
+        candidate.length > INTEGRITY_COUNT_MAX_COMPOUND_TERMS ||
+        candidateBytes > DATABASE_INVARIANT_SQL_BYTE_LIMIT
+      )
+    ) {
+      chunks.push(combinedIntegrityCountChunkSql(current));
+      current = [check];
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length > 0) {
+    chunks.push(combinedIntegrityCountChunkSql(current));
+  }
+  for (const sql of chunks) {
+    if (new TextEncoder().encode(sql).length >
+        DATABASE_INVARIANT_SQL_BYTE_LIMIT) {
+      throw new Error(
+        "A database invariant probe exceeds the D1 SQL byte budget.",
+      );
+    }
+  }
+  return Object.freeze(chunks);
 }
 
 const PRE_PHASE5_COMBINED_INTEGRITY_COUNT_SQL =
   combineIntegrityCountSql(PRE_PHASE5_INTEGRITY_COUNT_SQL);
-const COMBINED_INTEGRITY_COUNT_SQL =
+const PRE_PHASE6_COMBINED_INTEGRITY_COUNT_SQL =
+  combineIntegrityCountSql(PRE_PHASE6_INTEGRITY_COUNT_SQL);
+export const DATABASE_INVARIANT_COMBINED_COUNT_SQL =
   combineIntegrityCountSql(INTEGRITY_COUNT_SQL);
 
 /**
@@ -248,17 +309,25 @@ INSERT INTO database_invariant_state (
   singleton_key, version, trigger_fingerprint, verified_at
 )
 SELECT 'integrity-probe', 0, '', 0
-WHERE (${countSql}) > 0`,
+FROM (${countSql}) AS integrity_result
+WHERE integrity_result.violation_count > 0`,
     ),
   );
 }
 
 const PRE_PHASE5_ABORTING_INTEGRITY_PROBE_SQL =
   abortingIntegrityProbeSql(PRE_PHASE5_COMBINED_INTEGRITY_COUNT_SQL);
-const ABORTING_INTEGRITY_PROBE_SQL =
-  abortingIntegrityProbeSql(COMBINED_INTEGRITY_COUNT_SQL);
+const PRE_PHASE6_ABORTING_INTEGRITY_PROBE_SQL =
+  abortingIntegrityProbeSql(PRE_PHASE6_COMBINED_INTEGRITY_COUNT_SQL);
+export const DATABASE_INVARIANT_ABORTING_INTEGRITY_PROBE_SQL =
+  abortingIntegrityProbeSql(DATABASE_INVARIANT_COMBINED_COUNT_SQL);
 
-const PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT = 4;
+// A mismatched durable marker may require the three bounded Phase 4 adoption
+// scans, the Phase 6 legacy public-attribution scan, and one taxonomy coverage
+// read after the two-read marker/definition fast path. Repair budgets reserve
+// those reads plus headroom even though a healthy request executes only the
+// fast path.
+const PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT = 9;
 
 type DatabaseInvariantContract = Readonly<{
   abortingIntegrityProbeSql: readonly string[];
@@ -278,28 +347,36 @@ function createDatabaseInvariantContract(input: Readonly<{
   triggerStatements: readonly string[];
   version: DatabaseInvariantVersion;
 }>): DatabaseInvariantContract {
-  // Marker/definition reads plus bounded integrity chunks, matching atomic
-  // probes, one marker write, a complete read-back, and an optional marker
-  // invalidation must all fit in one Worker invocation.
-  const inspectionStatementCount =
-    2 + input.combinedIntegrityCountSql.length;
+  // The fast readiness read already returns the exact trigger definitions.
+  // A repair therefore executes every integrity chunk exactly once, as an
+  // aborting statement in the same batch as trigger installation and marker
+  // certification. Do not pre-scan or repeat the counts in the marker write.
+  const readinessStatementCount = 2;
+  const certificationReadBackStatementCount = 2;
   return Object.freeze({
     ...input,
-    expectedTriggerNameSql: input.triggerNames.map(() => "?").join(", "),
-    maxAtomicRepairMutations:
+    // Trigger names are compile-time constants extracted from our own CREATE
+    // statements. Embed them as escaped literals so the consolidated marker
+    // write does not exceed D1's bound-variable limit as the guard set grows.
+    expectedTriggerNameSql: input.triggerNames
+      .map(quoteSqliteStringLiteral)
+      .join(", "),
+    maxAtomicRepairMutations: Math.max(
+      0,
       DATABASE_INVARIANT_STATEMENT_LIMIT -
-      PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
-      inspectionStatementCount -
-      input.abortingIntegrityProbeSql.length -
-      1 -
-      inspectionStatementCount -
-      1,
+        PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
+        readinessStatementCount -
+        input.abortingIntegrityProbeSql.length -
+        1 -
+        certificationReadBackStatementCount -
+        1,
+    ),
     // Adoption preflight can read marker, missing policies, manual
     // projections, external projections, and invariant inspection state.
     maxFailClosedDropCount:
       DATABASE_INVARIANT_STATEMENT_LIMIT -
       PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
-      inspectionStatementCount -
+      readinessStatementCount -
       1,
   });
 }
@@ -316,9 +393,23 @@ const PRE_PHASE5_DATABASE_INVARIANT_CONTRACT =
     version: PRE_PHASE5_DATABASE_INVARIANT_VERSION,
   });
 
+const PRE_PHASE6_DATABASE_INVARIANT_CONTRACT =
+  createDatabaseInvariantContract({
+    abortingIntegrityProbeSql:
+      PRE_PHASE6_ABORTING_INTEGRITY_PROBE_SQL,
+    combinedIntegrityCountSql:
+      PRE_PHASE6_COMBINED_INTEGRITY_COUNT_SQL,
+    triggerNames: PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES,
+    triggerStatements:
+      PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_STATEMENTS,
+    version: PRE_PHASE6_DATABASE_INVARIANT_VERSION,
+  });
+
 const DATABASE_INVARIANT_CONTRACT = createDatabaseInvariantContract({
-  abortingIntegrityProbeSql: ABORTING_INTEGRITY_PROBE_SQL,
-  combinedIntegrityCountSql: COMBINED_INTEGRITY_COUNT_SQL,
+  abortingIntegrityProbeSql:
+    DATABASE_INVARIANT_ABORTING_INTEGRITY_PROBE_SQL,
+  combinedIntegrityCountSql:
+    DATABASE_INVARIANT_COMBINED_COUNT_SQL,
   triggerNames: DATABASE_INVARIANT_TRIGGER_NAMES,
   triggerStatements: DATABASE_INVARIANT_TRIGGER_STATEMENTS,
   version: DATABASE_INVARIANT_VERSION,
@@ -327,8 +418,11 @@ const DATABASE_INVARIANT_CONTRACT = createDatabaseInvariantContract({
 function databaseInvariantContract(
   version: DatabaseInvariantVersion,
 ): DatabaseInvariantContract {
-  return version === PRE_PHASE5_DATABASE_INVARIANT_VERSION
-    ? PRE_PHASE5_DATABASE_INVARIANT_CONTRACT
+  if (version === PRE_PHASE5_DATABASE_INVARIANT_VERSION) {
+    return PRE_PHASE5_DATABASE_INVARIANT_CONTRACT;
+  }
+  return version === PRE_PHASE6_DATABASE_INVARIANT_VERSION
+    ? PRE_PHASE6_DATABASE_INVARIANT_CONTRACT
     : DATABASE_INVARIANT_CONTRACT;
 }
 const MAX_POLICY_ADOPTIONS_PER_REQUEST = 24;
@@ -356,8 +450,12 @@ export class DatabaseInvariantError extends Error {
 /**
  * Installs and verifies every database-enforced guard before application code
  * can access D1. The in-isolate promise deduplicates concurrent calls only:
- * every request revalidates the durable marker, sqlite_master definitions,
- * and integrity counts so a repair initiated by another isolate fails closed.
+ * every request revalidates the durable marker and exact sqlite_master
+ * definitions. The database triggers keep a healthy marked database closed
+ * against malformed writes; the heavier integrity/adoption scans run only
+ * after the marker or definitions drift. A repair initiated by another isolate
+ * therefore remains fail closed without charging every application request for
+ * the complete integrity suite.
  */
 export function ensureDatabaseInvariants(
   database: D1DatabaseLike,
@@ -432,25 +530,35 @@ async function initializeDatabaseInvariants(
   database: D1DatabaseLike,
   contract: DatabaseInvariantContract,
 ): Promise<DatabaseInvariantInitializationStatus> {
-  if (
-    (await phase4AdoptionRequired(database, contract.version)) &&
-    (await adoptMissingPhase4ConflictProjections(database))
-  ) {
-    return "repaired";
-  }
   const fingerprint = await getExpectedDatabaseInvariantFingerprint(
     contract.version,
   );
-  const inspection = await inspectDatabaseInvariants(
+  const readiness = await inspectDatabaseInvariantReadiness(
     database,
     fingerprint,
     contract,
   );
-  if (inspection.ready) return "ready";
+  if (readiness.ready) return "ready";
 
-  if (inspection.violationCount !== 0) {
-    await invalidateReadinessMarker(database);
-    throw new DatabaseInvariantError();
+  if (
+    readiness.markerVersion !== contract.version &&
+    (await adoptMissingPhase4ConflictProjections(database))
+  ) {
+    return "repaired";
+  }
+  if (
+    readiness.markerVersion !== contract.version &&
+    contract.version === DATABASE_INVARIANT_VERSION &&
+    (await adoptLegacyPublicAttribution(database))
+  ) {
+    return "repaired";
+  }
+  if (
+    !readiness.ready &&
+    contract.version === DATABASE_INVARIANT_VERSION &&
+    (await adoptMissingPhase6TaxonomyStates(database))
+  ) {
+    return "repaired";
   }
 
   const expectedDefinitions = expectedNormalizedTriggerDefinitions(contract);
@@ -458,12 +566,12 @@ async function initializeDatabaseInvariants(
     expectedDefinitions.map((definition) => [definition.name, definition.sql]),
   );
   const actualByName = new Map(
-    inspection.actualDefinitions.map((definition) => [
+    readiness.actualDefinitions.map((definition) => [
       definition.name,
       definition.sql,
     ]),
   );
-  const dropNames = inspection.actualDefinitions
+  const dropNames = readiness.actualDefinitions
     .filter(
       (definition) =>
         expectedByName.get(definition.name) !== definition.sql,
@@ -520,7 +628,6 @@ async function initializeDatabaseInvariants(
     return "repaired";
   }
 
-  const triggerNames = [...contract.triggerNames];
   const installationStatements = [
     ...dropNames.map((name) =>
       database.prepare(
@@ -537,15 +644,12 @@ async function initializeDatabaseInvariants(
            singleton_key, version, trigger_fingerprint, verified_at
          )
          SELECT ?, ?, ?, ?
-         WHERE ${contract.combinedIntegrityCountSql.map(
-           (sql) => `(${sql}) = 0`,
-         ).join("\n           AND ")}
-           AND (
+         WHERE (
              SELECT count(*)
              FROM sqlite_master
              WHERE type = 'trigger'
-           ) = ?
-           AND (
+         ) = ?
+         AND (
              SELECT count(*)
              FROM sqlite_master
              WHERE type = 'trigger'
@@ -561,9 +665,8 @@ async function initializeDatabaseInvariants(
         contract.version,
         fingerprint,
         Date.now(),
-        triggerNames.length,
-        ...triggerNames,
-        triggerNames.length,
+        contract.triggerNames.length,
+        contract.triggerNames.length,
       ),
   ];
 
@@ -581,7 +684,7 @@ async function initializeDatabaseInvariants(
   }
   if (
     !(
-      await inspectDatabaseInvariants(
+      await inspectDatabaseInvariantReadiness(
         database,
         fingerprint,
         contract,
@@ -594,30 +697,14 @@ async function initializeDatabaseInvariants(
   return "repaired";
 }
 
-async function phase4AdoptionRequired(
-  database: D1DatabaseLike,
-  expectedVersion: DatabaseInvariantVersion,
-): Promise<boolean> {
-  const marker = await database
-    .prepare(
-      `SELECT version
-       FROM database_invariant_state
-       WHERE singleton_key = ?
-       LIMIT 1`,
-    )
-    .bind(DATABASE_INVARIANT_MARKER_KEY)
-    .first<Record<string, unknown>>();
-  return marker?.version !== expectedVersion;
-}
-
-async function inspectDatabaseInvariants(
+async function inspectDatabaseInvariantReadiness(
   database: D1DatabaseLike,
   fingerprint: string,
   contract: DatabaseInvariantContract,
 ): Promise<{
   actualDefinitions: ReadonlyArray<{ name: string; sql: string }>;
+  markerVersion: unknown;
   ready: boolean;
-  violationCount: number;
 }> {
   const markerPromise = database
       .prepare(
@@ -636,41 +723,37 @@ async function inspectDatabaseInvariants(
          ORDER BY name`,
       )
       .all<Record<string, unknown>>();
-  const integrityPromise = Promise.all(
-    contract.combinedIntegrityCountSql.map((sql) =>
-      database.prepare(sql).first<Record<string, unknown>>(),
-    ),
-  );
-  const [marker, triggerResult, integrityResults] = await Promise.all([
+  const [marker, triggerResult] = await Promise.all([
     markerPromise,
     triggerPromise,
-    integrityPromise,
   ]);
   const actualDefinitions = (triggerResult.results ?? []).map((row) => ({
     name: typeof row.name === "string" ? row.name : "",
     sql: typeof row.sql === "string" ? normalizeTriggerDefinition(row.sql) : "",
   }));
-  const expectedDefinitions = expectedNormalizedTriggerDefinitions(contract);
-  const definitionsMismatch =
-    actualDefinitions.length !== expectedDefinitions.length ||
-    actualDefinitions.some(
-      (actual, index) =>
-        actual.name !== expectedDefinitions[index]?.name ||
-        actual.sql !== expectedDefinitions[index]?.sql,
-    );
-  const violationCount = integrityResults.reduce(
-    (total, result) => total + readViolationCount(result),
-    0,
-  );
   return {
     actualDefinitions,
+    markerVersion: marker?.version,
     ready:
       marker?.version === contract.version &&
       marker.trigger_fingerprint === fingerprint &&
-      !definitionsMismatch &&
-      violationCount === 0,
-    violationCount,
+      triggerDefinitionsMatch(actualDefinitions, contract),
   };
+}
+
+function triggerDefinitionsMatch(
+  actualDefinitions: ReadonlyArray<{ name: string; sql: string }>,
+  contract: DatabaseInvariantContract,
+): boolean {
+  const expectedDefinitions = expectedNormalizedTriggerDefinitions(contract);
+  return (
+    actualDefinitions.length === expectedDefinitions.length &&
+    actualDefinitions.every(
+      (actual, index) =>
+        actual.name === expectedDefinitions[index]?.name &&
+        actual.sql === expectedDefinitions[index]?.sql,
+    )
+  );
 }
 
 const PHASE4_MANUAL_ADOPTION_SQL = String.raw`
@@ -1194,6 +1277,823 @@ async function adoptMissingPhase4ConflictProjections(
     throw new DatabaseInvariantError();
   }
   return true;
+}
+
+const PHASE6_TAXONOMY_ADOPTION_COUNT_SQL = String.raw`
+SELECT (
+  (
+    SELECT count(*)
+    FROM event_lanes AS lane
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM event_lane_taxonomy_states AS state
+      WHERE state.lane_id = lane.id
+        AND state.organization_id = lane.organization_id
+    )
+  )
+  +
+  (
+    SELECT count(*)
+    FROM categories AS category
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM category_taxonomy_states AS state
+      WHERE state.category_id = category.id
+        AND state.organization_id = category.organization_id
+    )
+  )
+  +
+  (
+    SELECT count(*)
+    FROM taxonomy_write_intents AS intent
+    WHERE intent.operation = 'adopt'
+      AND intent.completed_at IS NULL
+  )
+) AS violation_count,
+(
+  (
+    SELECT count(*)
+    FROM (
+      SELECT organization_id
+      FROM event_lanes
+      GROUP BY organization_id
+      HAVING count(*) > 100
+    )
+  )
+  +
+  (
+    SELECT count(*)
+    FROM (
+      SELECT organization_id
+      FROM categories
+      GROUP BY organization_id
+      HAVING count(*) > 100
+    )
+  )
+) AS overflow_count`;
+
+/**
+ * Phase 6 adds optimistic workflow state around the preexisting lane/category
+ * scheduling identities. This bounded, set-based bootstrap runs before the
+ * full integrity scan and never depends on an organizer route being visited.
+ * Deterministic intent/audit IDs plus INSERT-OR-IGNORE make concurrent isolates
+ * and a retry after an interrupted request converge without duplicate history.
+ */
+export async function adoptMissingPhase6TaxonomyStates(
+  database: D1DatabaseLike,
+): Promise<boolean> {
+  let missing: Record<string, unknown> | null;
+  try {
+    missing = await database
+      .prepare(PHASE6_TAXONOMY_ADOPTION_COUNT_SQL)
+      .first<Record<string, unknown>>();
+  } catch {
+    // A pre-0015 migration-only harness does not yet have taxonomy state.
+    return false;
+  }
+  if (readInteger(missing?.overflow_count) !== 0) {
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+  if (readViolationCount(missing) === 0) return false;
+
+  const now = Date.now();
+  const activeManagerSql = String.raw`
+    SELECT membership.profile_id
+    FROM organization_memberships AS membership
+    JOIN profiles AS profile
+      ON profile.id = membership.profile_id
+     AND profile.status = 'active'
+     AND profile.deleted_at IS NULL
+    JOIN organizations AS organization
+      ON organization.id = membership.organization_id
+     AND organization.deleted_at IS NULL
+    WHERE membership.organization_id = source.organization_id
+      AND membership.role IN ('owner', 'administrator')
+      AND membership.status = 'active'
+      AND membership.deleted_at IS NULL
+    ORDER BY CASE membership.role WHEN 'owner' THEN 0 ELSE 1 END,
+             membership.id
+    LIMIT 1`;
+  const statements = [
+    database
+      .prepare(
+        `DELETE FROM database_invariant_state
+         WHERE singleton_key = ?`,
+      )
+      .bind(DATABASE_INVARIANT_MARKER_KEY),
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO taxonomy_write_intents (
+           id, organization_id, entity_type, entity_id, operation,
+           expected_content_version, proposed_content_version,
+           proposed_name, proposed_slug, proposed_description,
+           proposed_color_token, proposed_sort_order,
+           proposed_deleted_at, mutation_group_id,
+           mutation_group_size, actor_profile_id,
+           created_at, completed_at
+         )
+         SELECT 'taxonomy-adopt-v1:lane:' || source.id,
+                source.organization_id, 'lane', source.id, 'adopt',
+                0, 1, source.name, source.slug, source.description,
+                NULL, source.sort_order, source.deleted_at, NULL, NULL,
+                (${activeManagerSql}), ?, NULL
+         FROM event_lanes AS source
+         WHERE NOT EXISTS (
+           SELECT 1
+           FROM event_lane_taxonomy_states AS state
+           WHERE state.lane_id = source.id
+         )
+           AND (${activeManagerSql}) IS NOT NULL`,
+      )
+      .bind(now),
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO event_lane_taxonomy_states (
+           lane_id, organization_id, content_version,
+           active_intent_id, last_completed_intent_id,
+           updated_by_profile_id, created_at, updated_at
+         )
+         SELECT source.id, source.organization_id, 1,
+                intent.id, NULL, intent.actor_profile_id,
+                intent.created_at, intent.created_at
+         FROM event_lanes AS source
+         JOIN taxonomy_write_intents AS intent
+           ON intent.id = 'taxonomy-adopt-v1:lane:' || source.id
+          AND intent.organization_id = source.organization_id
+          AND intent.entity_type = 'lane'
+          AND intent.entity_id = source.id
+          AND intent.operation = 'adopt'
+          AND intent.completed_at IS NULL
+         WHERE NOT EXISTS (
+           SELECT 1
+           FROM event_lane_taxonomy_states AS state
+           WHERE state.lane_id = source.id
+         )`,
+      ),
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO audit_logs (
+           id, organization_id, actor_profile_id, action,
+           entity_type, entity_id, metadata_json, created_at
+         )
+         SELECT 'taxonomy-adopt-audit-v1:lane:' || intent.entity_id,
+                intent.organization_id, intent.actor_profile_id,
+                'taxonomy.lane_adopted', 'event_lane',
+                intent.entity_id,
+                json_object('writeIntentId', intent.id),
+                intent.created_at
+         FROM taxonomy_write_intents AS intent
+         WHERE intent.entity_type = 'lane'
+           AND intent.operation = 'adopt'
+           AND intent.completed_at IS NULL`,
+      ),
+    database
+      .prepare(
+        `UPDATE event_lane_taxonomy_states
+         SET active_intent_id = NULL,
+             last_completed_intent_id = active_intent_id,
+             updated_by_profile_id = (
+               SELECT intent.actor_profile_id
+               FROM taxonomy_write_intents AS intent
+               WHERE intent.id =
+                     event_lane_taxonomy_states.active_intent_id
+             ),
+             updated_at = ?
+         WHERE active_intent_id IN (
+           SELECT intent.id
+           FROM taxonomy_write_intents AS intent
+           WHERE intent.entity_type = 'lane'
+             AND intent.operation = 'adopt'
+             AND intent.completed_at IS NULL
+         )`,
+      )
+      .bind(now),
+    database
+      .prepare(
+        `UPDATE taxonomy_write_intents
+         SET completed_at = ?
+         WHERE entity_type = 'lane'
+           AND operation = 'adopt'
+           AND completed_at IS NULL`,
+      )
+      .bind(now),
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO taxonomy_write_intents (
+           id, organization_id, entity_type, entity_id, operation,
+           expected_content_version, proposed_content_version,
+           proposed_name, proposed_slug, proposed_description,
+           proposed_color_token, proposed_sort_order,
+           proposed_deleted_at, mutation_group_id,
+           mutation_group_size, actor_profile_id,
+           created_at, completed_at
+         )
+         SELECT 'taxonomy-adopt-v1:category:' || source.id,
+                source.organization_id, 'category', source.id, 'adopt',
+                0, 1, source.name, source.slug, source.description,
+                source.color_token,
+                (
+                  SELECT count(*) * 10
+                  FROM categories AS ordered
+                  WHERE ordered.organization_id =
+                        source.organization_id
+                    AND (
+                      ordered.name COLLATE NOCASE <
+                          source.name COLLATE NOCASE
+                      OR (
+                        ordered.name COLLATE NOCASE =
+                            source.name COLLATE NOCASE
+                        AND ordered.id <= source.id
+                      )
+                    )
+                ),
+                source.deleted_at, NULL, NULL,
+                (${activeManagerSql}), ?, NULL
+         FROM categories AS source
+         WHERE NOT EXISTS (
+           SELECT 1
+           FROM category_taxonomy_states AS state
+           WHERE state.category_id = source.id
+         )
+           AND (${activeManagerSql}) IS NOT NULL`,
+      )
+      .bind(now),
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO category_taxonomy_states (
+           category_id, organization_id, sort_order, content_version,
+           active_intent_id, last_completed_intent_id,
+           updated_by_profile_id, created_at, updated_at
+         )
+         SELECT source.id, source.organization_id,
+                intent.proposed_sort_order, 1,
+                intent.id, NULL, intent.actor_profile_id,
+                intent.created_at, intent.created_at
+         FROM categories AS source
+         JOIN taxonomy_write_intents AS intent
+           ON intent.id = 'taxonomy-adopt-v1:category:' || source.id
+          AND intent.organization_id = source.organization_id
+          AND intent.entity_type = 'category'
+          AND intent.entity_id = source.id
+          AND intent.operation = 'adopt'
+          AND intent.completed_at IS NULL
+         WHERE NOT EXISTS (
+           SELECT 1
+           FROM category_taxonomy_states AS state
+           WHERE state.category_id = source.id
+         )`,
+      ),
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO audit_logs (
+           id, organization_id, actor_profile_id, action,
+           entity_type, entity_id, metadata_json, created_at
+         )
+         SELECT 'taxonomy-adopt-audit-v1:category:' ||
+                    intent.entity_id,
+                intent.organization_id, intent.actor_profile_id,
+                'taxonomy.category_adopted', 'event_category',
+                intent.entity_id,
+                json_object('writeIntentId', intent.id),
+                intent.created_at
+         FROM taxonomy_write_intents AS intent
+         WHERE intent.entity_type = 'category'
+           AND intent.operation = 'adopt'
+           AND intent.completed_at IS NULL`,
+      ),
+    database
+      .prepare(
+        `UPDATE category_taxonomy_states
+         SET active_intent_id = NULL,
+             last_completed_intent_id = active_intent_id,
+             updated_by_profile_id = (
+               SELECT intent.actor_profile_id
+               FROM taxonomy_write_intents AS intent
+               WHERE intent.id =
+                     category_taxonomy_states.active_intent_id
+             ),
+             updated_at = ?
+         WHERE active_intent_id IN (
+           SELECT intent.id
+           FROM taxonomy_write_intents AS intent
+           WHERE intent.entity_type = 'category'
+             AND intent.operation = 'adopt'
+             AND intent.completed_at IS NULL
+         )`,
+      )
+      .bind(now),
+    database
+      .prepare(
+        `UPDATE taxonomy_write_intents
+         SET completed_at = ?
+         WHERE entity_type = 'category'
+           AND operation = 'adopt'
+           AND completed_at IS NULL`,
+      )
+      .bind(now),
+  ];
+
+  let results: Awaited<ReturnType<D1DatabaseLike["batch"]>>;
+  try {
+    results = await runInvariantBatch(database, statements);
+  } catch {
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+  if (
+    results.slice(1).every((result) => result.meta?.changes === 0)
+  ) {
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+  return true;
+}
+
+const LEGACY_PUBLIC_ATTRIBUTION_ADOPTION_SQL = String.raw`
+SELECT profile.id AS profile_id,
+       profile.display_name AS display_name,
+       membership.organization_id AS organization_id,
+       COALESCE(attribution.attribution_version, 1)
+         AS draft_version,
+       (
+         SELECT count(*)
+         FROM organization_memberships AS active_membership
+         WHERE active_membership.profile_id = profile.id
+           AND active_membership.status = 'active'
+           AND active_membership.deleted_at IS NULL
+       ) AS active_organization_count,
+       CASE
+         WHEN length(trim(profile.display_name)) NOT BETWEEN 1 AND 120
+           OR instr(profile.display_name, '@') > 0
+           OR lower(trim(profile.display_name)) =
+              lower(profile.normalized_email)
+           OR ${protectedLegalClaimSql(["profile.display_name"])}
+           OR ${publicOrganizerEmailExposureSql(
+             ["profile.display_name"],
+             "membership.organization_id",
+           )}
+         THEN 1
+         ELSE 0
+       END AS unsafe_public_content
+FROM profiles AS profile
+JOIN organization_memberships AS membership
+  ON membership.profile_id = profile.id
+ AND membership.status = 'active'
+ AND membership.deleted_at IS NULL
+LEFT JOIN organizer_public_attribution_states AS attribution
+  ON attribution.profile_id = profile.id
+ AND attribution.organization_id = membership.organization_id
+WHERE profile.public_attribution_consent = 1
+  AND profile.status = 'active'
+  AND profile.deleted_at IS NULL
+  AND (
+    attribution.profile_id IS NULL
+    OR (
+      attribution.workflow_status = 'unconfirmed'
+      AND attribution.published_attribution_version = 0
+      AND attribution.current_receipt_id IS NULL
+    )
+  )
+ORDER BY membership.organization_id, profile.id
+LIMIT 1`;
+
+/**
+ * Phase 5 stored a canonical name/consent bit without a durable self-receipt.
+ * Before the Phase 6 integrity marker can be certified, one bounded candidate
+ * per fail-closed request is adopted into the receipt-backed model. The
+ * `adopted` action preserves the exact already-public name without pretending
+ * the organizer performed a new confirmation.
+ */
+async function adoptLegacyPublicAttribution(
+  database: D1DatabaseLike,
+): Promise<boolean> {
+  let candidate: Record<string, unknown> | null;
+  try {
+    candidate = await database
+      .prepare(LEGACY_PUBLIC_ATTRIBUTION_ADOPTION_SQL)
+      .first<Record<string, unknown>>();
+  } catch {
+    // The additive Phase 6 tables may not exist in a pre-0015 migration seam.
+    return false;
+  }
+  if (!candidate) return false;
+
+  const profileId = readString(candidate.profile_id);
+  const organizationId = readString(candidate.organization_id);
+  const displayName = readString(candidate.display_name);
+  const draftVersion = readInteger(candidate.draft_version);
+  if (
+    readInteger(candidate.active_organization_count) !== 1 ||
+    readInteger(candidate.unsafe_public_content) !== 0 ||
+    draftVersion < 1
+  ) {
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+
+  const adoptionId = await sha256Hex(
+    `phase6-public-attribution-adoption-v1\u0000${organizationId}\u0000${profileId}`,
+  );
+  const intentId = `attribution-adoption-intent:${adoptionId}`;
+  const receiptId = `attribution-adoption-receipt:${adoptionId}`;
+  const auditId = `attribution-adoption-audit:${adoptionId}`;
+  const assertionKey = `attribution-adoption-assert:${adoptionId}`;
+  const now = Date.now();
+  const snapshotJson = JSON.stringify({
+    biography: null,
+    consent: true,
+    displayName,
+    draftVersion,
+    legacyAdopted: true,
+    photoAssetId: null,
+  });
+  const snapshotHash = await sha256Hex(snapshotJson);
+  const metadataJson = JSON.stringify({
+    draftVersion,
+    publishedVersion: 1,
+    writeIntentId: intentId,
+  });
+  const statements = [
+    database
+      .prepare(
+        `DELETE FROM database_invariant_state
+         WHERE singleton_key IN (?, ?)`,
+      )
+      .bind(DATABASE_INVARIANT_MARKER_KEY, assertionKey),
+    database
+      .prepare(
+        `INSERT INTO organizer_public_attribution_states (
+           profile_id, organization_id, attribution_version,
+           published_attribution_version, workflow_status,
+           draft_photo_media_asset_id, public_display_name,
+           public_biography, public_photo_media_asset_id,
+           current_receipt_id, confirmed_at, revoked_at,
+           updated_by_profile_id, created_at, updated_at
+         )
+         SELECT profile.id, membership.organization_id, 1, 0,
+                'unconfirmed', NULL, NULL, NULL, NULL, NULL,
+                NULL, NULL, profile.id, ?, ?
+         FROM profiles AS profile
+         JOIN organization_memberships AS membership
+           ON membership.profile_id = profile.id
+          AND membership.organization_id = ?
+          AND membership.status = 'active'
+          AND membership.deleted_at IS NULL
+         WHERE profile.id = ?
+           AND profile.status = 'active'
+           AND profile.deleted_at IS NULL
+           AND profile.public_attribution_consent = 1
+           AND NOT EXISTS (
+             SELECT 1
+             FROM organizer_public_attribution_states AS existing
+             WHERE existing.profile_id = profile.id
+           )`,
+      )
+      .bind(now, now, organizationId, profileId),
+    database
+      .prepare(
+        `INSERT INTO organizer_public_attribution_write_intents (
+           id, organization_id, profile_id, operation,
+           expected_draft_version, expected_published_version,
+           proposed_published_version, snapshot_hash,
+           actor_profile_id, created_at, completed_at
+         )
+         SELECT ?, attribution.organization_id,
+                attribution.profile_id, 'adopted',
+                attribution.attribution_version, 0, 1, ?,
+                attribution.profile_id, ?, NULL
+         FROM organizer_public_attribution_states AS attribution
+         WHERE attribution.profile_id = ?
+           AND attribution.organization_id = ?
+           AND attribution.attribution_version = ?
+           AND attribution.published_attribution_version = 0
+           AND attribution.workflow_status = 'unconfirmed'
+           AND attribution.current_receipt_id IS NULL`,
+      )
+      .bind(
+        intentId,
+        snapshotHash,
+        now,
+        profileId,
+        organizationId,
+        draftVersion,
+      ),
+    database
+      .prepare(
+        `INSERT INTO organizer_public_attribution_receipts (
+           id, organization_id, profile_id, action,
+           attribution_version, display_name, biography,
+           photo_media_asset_id, consent, draft_version,
+           legacy_adopted, prior_published_version,
+           snapshot_json, snapshot_hash,
+           actor_profile_id, write_intent_id,
+           related_receipt_id, created_at
+         )
+         SELECT ?, intent.organization_id, intent.profile_id,
+                'adopted', 1, ?, NULL, NULL, 1, ?, 1, NULL,
+                ?, ?, intent.profile_id,
+                intent.id, NULL, ?
+         FROM organizer_public_attribution_write_intents AS intent
+         WHERE intent.id = ?
+           AND intent.organization_id = ?
+           AND intent.profile_id = ?
+           AND intent.operation = 'adopted'
+           AND intent.completed_at IS NULL`,
+      )
+      .bind(
+        receiptId,
+        displayName,
+        draftVersion,
+        snapshotJson,
+        snapshotHash,
+        now,
+        intentId,
+        organizationId,
+        profileId,
+      ),
+    database
+      .prepare(
+        `UPDATE organizer_public_attribution_states
+         SET published_attribution_version = 1,
+             workflow_status = 'confirmed',
+             public_display_name = ?,
+             public_biography = NULL,
+             public_photo_media_asset_id = NULL,
+             current_receipt_id = ?,
+             confirmed_at = ?,
+             revoked_at = NULL,
+             updated_by_profile_id = profile_id,
+             updated_at = ?
+         WHERE profile_id = ?
+           AND organization_id = ?
+           AND attribution_version = ?
+           AND published_attribution_version = 0
+           AND workflow_status = 'unconfirmed'
+           AND current_receipt_id IS NULL`,
+      )
+      .bind(
+        displayName,
+        receiptId,
+        now,
+        now,
+        profileId,
+        organizationId,
+        draftVersion,
+      ),
+    database
+      .prepare(
+        `INSERT INTO audit_logs (
+           id, organization_id, actor_profile_id, action,
+           entity_type, entity_id, metadata_json, created_at
+         )
+         SELECT ?, ?, ?, 'profile.public_attribution_adopted',
+                'profile', ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1
+           FROM organizer_public_attribution_states AS attribution
+           JOIN organizer_public_attribution_receipts AS receipt
+             ON receipt.id = attribution.current_receipt_id
+            AND receipt.write_intent_id = ?
+            AND receipt.action = 'adopted'
+           WHERE attribution.profile_id = ?
+             AND attribution.organization_id = ?
+             AND attribution.attribution_version = ?
+             AND attribution.published_attribution_version = 1
+             AND attribution.workflow_status = 'confirmed'
+         )`,
+      )
+      .bind(
+        auditId,
+        organizationId,
+        profileId,
+        profileId,
+        metadataJson,
+        now,
+        intentId,
+        profileId,
+        organizationId,
+        draftVersion,
+      ),
+    database
+      .prepare(
+        `UPDATE organizer_public_attribution_write_intents
+         SET completed_at = ?
+         WHERE id = ?
+           AND organization_id = ?
+           AND profile_id = ?
+           AND operation = 'adopted'
+           AND expected_draft_version = ?
+           AND expected_published_version = 0
+           AND proposed_published_version = 1
+           AND completed_at IS NULL`,
+      )
+      .bind(
+        now,
+        intentId,
+        organizationId,
+        profileId,
+        draftVersion,
+      ),
+    database
+      .prepare(
+        `INSERT INTO database_invariant_state (
+           singleton_key, version, trigger_fingerprint, verified_at
+         )
+         SELECT ?,
+                CASE WHEN EXISTS (
+                  SELECT 1
+                  FROM organizer_public_attribution_states AS attribution
+                  JOIN organizer_public_attribution_receipts AS receipt
+                    ON receipt.id = attribution.current_receipt_id
+                   AND receipt.organization_id =
+                       attribution.organization_id
+                   AND receipt.profile_id = attribution.profile_id
+                   AND receipt.action = 'adopted'
+                   AND receipt.attribution_version = 1
+                   AND receipt.display_name = ?
+                   AND receipt.biography IS NULL
+                   AND receipt.photo_media_asset_id IS NULL
+                   AND receipt.consent = 1
+                   AND receipt.draft_version = ?
+                   AND receipt.legacy_adopted = 1
+                   AND receipt.prior_published_version IS NULL
+                   AND receipt.snapshot_json = ?
+                   AND receipt.snapshot_hash = ?
+                   AND receipt.actor_profile_id = attribution.profile_id
+                   AND receipt.write_intent_id = ?
+                   AND receipt.related_receipt_id IS NULL
+                  JOIN organizer_public_attribution_write_intents AS intent
+                    ON intent.id = receipt.write_intent_id
+                   AND intent.organization_id =
+                       attribution.organization_id
+                   AND intent.profile_id = attribution.profile_id
+                   AND intent.operation = 'adopted'
+                   AND intent.expected_draft_version = ?
+                   AND intent.expected_published_version = 0
+                   AND intent.proposed_published_version = 1
+                   AND intent.snapshot_hash = receipt.snapshot_hash
+                   AND intent.actor_profile_id = attribution.profile_id
+                   AND intent.completed_at IS NOT NULL
+                  JOIN audit_logs AS audit
+                    ON audit.id = ?
+                   AND audit.organization_id =
+                       attribution.organization_id
+                   AND audit.actor_profile_id =
+                       attribution.profile_id
+                   AND audit.action =
+                       'profile.public_attribution_adopted'
+                   AND audit.entity_type = 'profile'
+                   AND audit.entity_id = attribution.profile_id
+                   AND audit.metadata_json = ?
+                  WHERE attribution.profile_id = ?
+                    AND attribution.organization_id = ?
+                    AND attribution.attribution_version = ?
+                    AND attribution.published_attribution_version = 1
+                    AND attribution.workflow_status = 'confirmed'
+                    AND attribution.public_display_name = ?
+                    AND attribution.public_biography IS NULL
+                    AND attribution.public_photo_media_asset_id IS NULL
+                    AND attribution.confirmed_at IS NOT NULL
+                    AND attribution.revoked_at IS NULL
+                ) THEN 1 ELSE 0 END,
+                ?, ?
+         ON CONFLICT(singleton_key) DO UPDATE SET
+           version = excluded.version,
+           trigger_fingerprint = excluded.trigger_fingerprint,
+           verified_at = excluded.verified_at`,
+      )
+      .bind(
+        assertionKey,
+        displayName,
+        draftVersion,
+        snapshotJson,
+        snapshotHash,
+        intentId,
+        draftVersion,
+        auditId,
+        metadataJson,
+        profileId,
+        organizationId,
+        draftVersion,
+        displayName,
+        snapshotHash,
+        now,
+      ),
+    database
+      .prepare(
+        `DELETE FROM database_invariant_state
+         WHERE singleton_key = ?`,
+      )
+      .bind(assertionKey),
+  ];
+
+  try {
+    const results = await runInvariantBatch(database, statements);
+    if (
+      results[2]?.meta?.changes !== 1 ||
+      results[3]?.meta?.changes !== 1 ||
+      results[4]?.meta?.changes !== 1 ||
+      results[5]?.meta?.changes !== 1 ||
+      results[6]?.meta?.changes !== 1 ||
+      results[7]?.meta?.changes !== 1 ||
+      results[8]?.meta?.changes !== 1
+    ) {
+      throw new DatabaseInvariantError();
+    }
+  } catch {
+    if (
+      await hasExactAdoptedPublicAttribution(
+        database,
+        organizationId,
+        profileId,
+        displayName,
+        snapshotJson,
+        snapshotHash,
+        intentId,
+        receiptId,
+        auditId,
+        metadataJson,
+      )
+    ) {
+      return true;
+    }
+    await invalidateReadinessMarker(database);
+    throw new DatabaseInvariantError();
+  }
+  return true;
+}
+
+async function hasExactAdoptedPublicAttribution(
+  database: D1DatabaseLike,
+  organizationId: string,
+  profileId: string,
+  displayName: string,
+  snapshotJson: string,
+  snapshotHash: string,
+  intentId: string,
+  receiptId: string,
+  auditId: string,
+  metadataJson: string,
+): Promise<boolean> {
+  const row = await database
+    .prepare(
+      `SELECT count(*) AS exact_count
+       FROM organizer_public_attribution_states AS attribution
+       JOIN organizer_public_attribution_receipts AS receipt
+         ON receipt.id = attribution.current_receipt_id
+        AND receipt.id = ?
+        AND receipt.organization_id = attribution.organization_id
+        AND receipt.profile_id = attribution.profile_id
+        AND receipt.action = 'adopted'
+        AND receipt.attribution_version =
+            attribution.published_attribution_version
+        AND receipt.display_name = ?
+        AND receipt.biography IS NULL
+        AND receipt.photo_media_asset_id IS NULL
+        AND receipt.consent = 1
+        AND receipt.draft_version = attribution.attribution_version
+        AND receipt.legacy_adopted = 1
+        AND receipt.prior_published_version IS NULL
+        AND receipt.snapshot_json = ?
+        AND receipt.snapshot_hash = ?
+       JOIN organizer_public_attribution_write_intents AS intent
+         ON intent.id = receipt.write_intent_id
+        AND intent.id = ?
+        AND intent.completed_at IS NOT NULL
+        AND intent.snapshot_hash = receipt.snapshot_hash
+       JOIN audit_logs AS audit
+         ON audit.id = ?
+        AND audit.organization_id = attribution.organization_id
+        AND audit.actor_profile_id = attribution.profile_id
+        AND audit.action = 'profile.public_attribution_adopted'
+        AND audit.entity_type = 'profile'
+        AND audit.entity_id = attribution.profile_id
+        AND audit.metadata_json = ?
+       JOIN profiles AS profile
+         ON profile.id = attribution.profile_id
+        AND profile.public_attribution_consent = 1
+        AND profile.display_name = attribution.public_display_name
+       WHERE attribution.profile_id = ?
+         AND attribution.organization_id = ?
+         AND attribution.workflow_status = 'confirmed'
+         AND attribution.public_display_name = ?
+         AND attribution.published_attribution_version = 1`,
+    )
+    .bind(
+      receiptId,
+      displayName,
+      snapshotJson,
+      snapshotHash,
+      intentId,
+      auditId,
+      metadataJson,
+      profileId,
+      organizationId,
+      displayName,
+    )
+    .first<{ exact_count: number }>();
+  return row?.exact_count === 1;
 }
 
 type AdoptionInterval = Readonly<{
@@ -2030,6 +2930,10 @@ async function invalidateReadinessMarker(
 
 function quoteSqliteIdentifier(value: string): string {
   return `"${value.replace(/"/gu, '""')}"`;
+}
+
+function quoteSqliteStringLiteral(value: string): string {
+  return `'${value.replace(/'/gu, "''")}'`;
 }
 
 function expectedNormalizedTriggerDefinitions(

@@ -564,7 +564,10 @@ BEGIN
         SELECT 1 FROM event_lanes AS lane
         WHERE lane.id = NEW.event_lane_id
           AND lane.organization_id = NEW.organization_id
-          AND lane.deleted_at IS NULL
+          AND (
+            lane.deleted_at IS NULL
+            OR NEW.event_lane_id IS OLD.event_lane_id
+          )
       )
     )
     OR (
@@ -573,7 +576,10 @@ BEGIN
         SELECT 1 FROM categories AS category
         WHERE category.id = NEW.category_id
           AND category.organization_id = NEW.organization_id
-          AND category.deleted_at IS NULL
+          AND (
+            category.deleted_at IS NULL
+            OR NEW.category_id IS OLD.category_id
+          )
       )
     )
     OR (
@@ -1299,13 +1305,11 @@ OR (
      SELECT 1 FROM event_lanes AS lane
      WHERE lane.id = event.event_lane_id
        AND lane.organization_id = event.organization_id
-       AND lane.deleted_at IS NULL
    ))
    OR (event.category_id IS NOT NULL AND NOT EXISTS (
      SELECT 1 FROM categories AS category
      WHERE category.id = event.category_id
        AND category.organization_id = event.organization_id
-       AND category.deleted_at IS NULL
    ))
    OR (event.venue_id IS NOT NULL AND NOT EXISTS (
      SELECT 1 FROM venues AS venue

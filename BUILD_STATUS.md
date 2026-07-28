@@ -2,418 +2,372 @@
 
 Last updated: 2026-07-27 (America/Vancouver)
 
-## Active phase and authorized scope
+## Active phase and release state
 
-- **Phase 5 — Private-to-public publishing connection.**
-- Phase 5 is implemented and verified in local D1, preview D1, source tests,
-  production build, rendered Worker, and local browser seams.
-- Phase 6 has not started.
-- Authorized cuts: **none**.
-- No Phase 5 deployment is authorized. The owner-only live deployment remains
-  version 8.
+- **Phase 6 — Structured content, media, taxonomy, and public attribution.**
+- The Phase 6 implementation is materially complete in the working tree, and
+  its migration, runtime-invariant, SQL-compatibility, CMS, catalog, media,
+  publication, and focused browser seams have verified evidence below.
+- Phase 6 is **not yet terminally complete**, but the first-run Meetup
+  Program/Club catalog request-budget blocker is closed. The catalog seed now
+  uses seven set-based statements and one live server authorization; the
+  largest measured whole-route invocation is 43 D1 statements, leaving seven
+  statements of headroom. The clean deterministic full suite is 592/592.
+  Fresh build, rendered Worker, browser, migration, package, and privacy gates
+  are green. The exact source commit and one authorized unpublished Sites save
+  remain pending.
+- **Phase 7 — Not started.**
+- Authorized cuts:
 
-## Completed and verified
+  - Editor role — **Not implemented — authorized cut**
+  - Viewer role — **Not implemented — authorized cut**
+  - Realtime subscriptions — **Not implemented — authorized cut**
 
-### Canonical publishing workflow
+- Approved-real-artwork browser smoke — **Awaiting owner / not run**.
+  Synthetic local non-person artwork verifies mechanics only.
+- No awards are claimed.
+- No deployment or access change is authorized. The owner-only live deployment
+  remains version 8 with one allowed owner and zero groups.
 
-- `organizer_events` remains the only writable canonical manual-event record.
-  Publication metadata lives in organization-scoped sidecars; no organizer
-  event is copied into legacy `events`, Meetup snapshots, static JSON, or page
-  content.
-- Protected organizer workflows now support:
+## Implemented Phase 6 scope
 
-  - saving explicitly public event details;
-  - eligible host selection with active membership, consent, organizer-scope,
-    and safe-name checks;
-  - protected preview through the same allowlisted public DTO and event-detail
-    renderer used by the public route;
-  - immediate website publication;
-  - future website publication scheduling;
-  - cancellation of a pending publication;
-  - bounded request-driven due-job reconciliation;
-  - unpublication;
-  - published cancellation, scheduled cancellation, completion, archive,
-    soft-delete, and restore behavior;
-  - a narrow Owner/Administrator policy for Organizer self-publication.
+### CMS, preview, and public materialization
 
-- Every publication-affecting action revalidates trusted Sites identity,
-  active profile/membership, role, organization, club assignment, event scope,
-  content version, schedule version, current policy, public readiness, public
-  slug uniqueness, and the Phase 4 conflict contract inside the authoritative
-  committing path.
-- Publication uses the existing Phase 4 schedule-intent envelope. Exact current
-  conflict incidents and required reason/approved-review overrides are rebound
-  to the publication intent, checked by D1, finalized, and completed in the
-  same bounded batch. The database guard was not weakened.
-- Stale, unauthorized, unready, conflicting, or zero-row mutations fail
-  without partial event, job, sidecar, revision, audit, notification,
-  incident, or override residue.
-- Immediate and concurrent publication are idempotent at the canonical state:
-  one transition and one publication audit can commit.
+- Owners and Administrators can create, save, preview, publish, unpublish,
+  restore, reorder, archive, and safely delete supported structured content
+  within the exact server-authorized lifecycle for pages, clubs, recurring
+  Programs, Community destinations, navigation, Site Identity, and legal
+  status.
+- Required system pages retain their canonical slugs and required structure.
+  Resources is an optional unpublished page with a no-code draft-creation
+  path and protected `/resources` slug.
+- Private preview is authenticated, no-store, noindex, revision-specific, and
+  uses the same entity renderers, layout, responsive media, palette, typography,
+  and current public facts as production. It does not create a share token.
+- Immutable revisions, publication states, receipts, exact projection parity,
+  write intents, audits, redirects, and media usages form one fail-closed
+  materialization contract. Direct projection tampering and missing or
+  unrelated media usage fail closed.
+- Page, Club, Program, Community, navigation, Site Identity, legal, and public
+  event reads require the exact current or intentionally retained archived
+  materialization. Stale and crafted projections are suppressed.
 
-### Publication readiness and lifecycle
+### Media and public attribution
 
-- Publication requires a confirmed, scheduled, undeleted, unarchived event
-  with a stable title/slug, public summary and description, a published club,
-  an explicit in-person/online/hybrid attendance mode, matching approved public
-  location/online facts, and a valid RSVP choice.
-- `location_undecided` remains a private draft/preview value and blocks Publish
-  and Schedule publication.
-- `meetup` RSVP mode accepts only a canonical HTTPS
-  `www.meetup.com/<group>/events/<event-id>/` event destination. Group-home
-  URLs are rejected. Changing the saved URL clears confirmation and falls back
-  to honest “RSVP information coming soon” behavior until reconfirmed.
-- Public host display requires event-level enablement plus a selected current
-  organizer with active membership/profile, canonical consent, and a safe
-  canonical display name. Later consent, membership, or name ineligibility
-  suppresses attribution without making the whole site fail closed.
-- Immediate publication cancels any older pending job atomically.
-- Scheduled publication stores UTC plus the original IANA timezone, binds the
-  exact content/schedule versions, and remains absent from all public surfaces
-  until successful reconciliation.
-- At most one due job is processed per request, keeping all measured success,
-  deterministic invalidation, and transient paths below the Sites D1
-  50-statement limit. No cron, realtime, or exact-to-the-second promise is
-  made.
-- A stale/ineligible scheduled job is invalidated safely even if its original
-  authorizer is removed, suspended, demoted, reassigned, or no longer eligible
-  under the self-publish policy. Current Owner/Administrator recovery remains
-  organization/job/version bound.
-- Published cancellation retains the stable public detail page with a clear
-  cancellation state and removes the event from Upcoming. Scheduled
-  cancellation terminalizes the job and leaves the event unpublished.
-  Completion may remain in Past. Archive and soft-delete unpublish. Restore
-  never silently republishes.
-- Editing a scheduled event invalidates the stale job unless explicitly
-  rescheduled. Editing a published event updates the same canonical public
-  page and reports that truthfully in the organizer UI.
+- D1 is authoritative for media metadata, opaque R2 keys, upload state,
+  responsive WebP variants, dimensions, focal point, rights, consent, credit,
+  alt text, caption inheritance, hashes, exact usages, deletion, and durable
+  cleanup retry.
+- Public media serves only normalized `webp_480`, `webp_960`, and
+  `webp_1600` variants through the exact organization, entity, revision, and
+  usage relationship. Originals remain authenticated and no-store; Organizers
+  cannot fetch originals.
+- Upload and finalization races await every R2 operation and preserve a
+  deterministic cleanup manifest. Failed upload and deletion cleanup remain
+  discoverable and idempotently retryable without exposing object keys.
+- Media required for event artwork, Open Graph, logo, cover, thumbnail, and
+  profile-photo uses requires useful alt text even when an asset is marked
+  decorative. Inline genuinely decorative media may retain empty alt.
+- Organizer public attribution uses a separate private draft and immutable
+  confirmed/adopted receipt. Public output requires profile consent and
+  event-level host display; revocation removes output immediately. Public DTOs
+  allow only display name, bounded biography, and approved photo metadata and
+  never expose email, role, assignments, auth identifiers, private drafts, or
+  raw object keys.
 
-### Unified public projection and privacy
+### Taxonomy, clubs, Programs, and events
 
-- The Phase 2 unified public projection now has an explicit, allowlisted
-  `organizer_events` branch in addition to the unchanged legacy-manual and
-  completed-active-Meetup branches.
-- Organizer events appear only when canonically `published`, attached to an
-  active published club, publication-ready, organization-consistent,
-  source-free, and in a supported planning state.
-- Scheduled, private, unpublished, draft, hold, archived, soft-deleted, and
-  guessed-slug records remain absent from Home, Events, club pages, event
-  detail, metadata, JSON-LD, sitemap, and public errors.
-- Pending, partial, failed, and older Meetup generations remain invisible.
-  Existing active-generation publication isolation is unchanged.
-- Public slug collision checks use one shared semantic contract across
-  service readiness and D1 enforcement, including organizer, eligible legacy,
-  and completed-active Meetup candidates without counting Meetup mirrors
-  twice.
-- Preview is authenticated, authorization-scoped, dynamic, `no-store`, and
-  `noindex, nofollow, noarchive`. It uses the exact public DTO without exposing
-  private notes, private meeting details, conflicts/reasons, overrides,
-  emails, memberships, invitations, revisions, audits, source configuration,
-  runtime values, or identity headers.
-- A D1 production-compatibility issue in the public-host aggregate was fixed by
-  using a ranked host CTE and joined JSON window aggregate. The primary-first,
-  maximum-24, consent/safe-name/privacy contract is unchanged.
+- Owners and Administrators manage event lanes and categories through bounded
+  intent, base-row, companion-state, audit, and completion envelopes.
+- The four canonical lane slugs remain immutable:
 
-### Organizer experience
+  - `think`
+  - `reset-and-make`
+  - `explore`
+  - `eat-and-play`
 
-- The existing Field Notes organizer shell now includes an accessible Website
-  publication panel, readiness checklist, public details editor, host
-  selection, protected Preview, immediate/scheduled publication actions,
-  cancellation, unpublication, and accurate success/error copy.
-- A fresh confirmed event can open the panel with safe default draft values;
-  Preview appears only when the exact server projection can render it.
-- Owner and Administrator may publish eligible events. Organizer publication
-  remains disabled by default and requires the narrow organization policy plus
-  existing assigned-club and owned/co-organized scope.
-- Viewer, unassigned Organizer, cross-organization, suspended, deleted, and
-  uninvited identities cannot gain edit, preview, schedule, or publish access.
-- Settings exposes only the narrow self-publish policy. No Phase 6 CMS,
-  Community, branding, legal, or media controls were added.
-- Notification and audit allowlists cover publication scheduled, published,
-  failed/invalidated, public cancellation, and material public time changes
-  without email, tokens, private notes, feed URLs, conflict reasons, or raw
-  identity data.
+- Canonical labels, descriptions, and order are fill-only during adoption so
+  owner edits are not overwritten. Direct base-table or companion-state
+  protocol bypasses, cross-organization writes, history forks, reference
+  destruction, and incomplete envelopes are rejected or detected.
+- Existing events may preserve their exact archived lane/category on ordinary
+  edits. New events and reassignment may select only active values.
+- First-class recurring Programs use the existing Program/event relationship
+  with CMS profile, publication, order, feature, archive, history, media,
+  resources, and public route support. Top-level Club identities remain
+  distinct from recurring Programs.
+- Archived Club and Program details retain truthful historical public detail,
+  exact published media, and eligible Past events while leaving active
+  directories and future discovery. Upcoming events block archive; retained
+  history blocks destructive safe-delete.
+- Unified public events keep exact Club/Program receipt tokens across list,
+  detail, editorial, related, sitemap, and private-selection paths.
+  Publication, edit, tamper, cross-source collision, and split-read races fail
+  closed.
 
-### Migration and persistent invariants
+### Branding, navigation, legal, metadata, and accessibility
 
-- Existing migrations `0008` through `0013` remain byte-for-byte preserved.
-- Exactly one additive migration was added:
-  `0014_phase5_publication.sql`.
-- Migration 0014 contains **20 complete tokenizer-safe statements** and adds
-  five tables plus bounded indexes. It contains no packaged trigger body,
-  `ALTER`, `DROP`, destructive rebuild, reset, rename, or `PRAGMA` mutation.
-- There is no migration 0015. Drizzle schema, migration, snapshot, and journal
-  are aligned, including `update_unpublished`.
-- Current verified D1 shape:
+- Published Site Identity drives brand name, title/site name, palette,
+  typography, logo, global Open Graph fallback, root icons, and dynamic
+  manifest output. Rebranding never silently retains contradictory VCC social
+  artwork.
+- Page, event, Club, and Program metadata uses exact approved media with real
+  dimensions and canonical alt, falling back only to a current approved Site
+  Identity selection or a truthful static default.
+- Required navigation targets survive maximum optional ordering; duplicate
+  placement-and-target pairs are rejected. The responsive menu changes before
+  a maximum validated navigation row can overflow.
+- Legal claims are blocked across public CMS, event, media, metadata,
+  structured-data, and feed surfaces unless exact coherent wording comes
+  through the Owner-confirmed legal projection. Administrators may prepare a
+  legal draft but cannot confirm, revoke, publish, or unpublish it.
+- Organizer identity emails are denied from public content in both directions:
+  public publication rejects historical/current organizer emails, and later
+  organizer activation or email mutation rejects a collision with still
+  resolvable public content.
+- Palette validation covers actual text/background, inverse, caption, alert,
+  focus, border, chip, and status-indicator pairings. Public soft text derives
+  from the validated foreground token.
+- Shared public and preview renderers preserve one main landmark, a valid skip
+  target, structured breadcrumbs, route-specific composition, responsive
+  image source sets built from real deduplicated widths, and mobile target
+  sizes.
 
-  - 7 migrations (`0008` through `0014`);
-  - 58 tables;
-  - 131 explicit indexes;
-  - 74 exact runtime-installed triggers;
-  - runtime invariant version 5;
-  - invariant fingerprint
-    `f4d5e707058f628c1a0dcaf908bd7a4c918b3bb099c6dd4ff6183a0c4850f356`;
-  - durable status converges through bounded `repaired` requests to `ready`;
-  - zero `PRAGMA foreign_key_check` violations.
+## Frozen migration and schema evidence
 
-- Runtime installation remains phase-aware during historical migration/adoption
-  tests and fail closed once the Phase 5 schema is expected.
-- Healthy, repair, repeat, partial-prefix, concurrent-isolate, malformed-data,
-  and populated upgrade paths were exercised. No invalid or partial
-  installation writes a false ready marker.
+- Exactly one Phase 6 migration exists:
+  `drizzle/0015_phase6_cms_media.sql`. There is no `0016`.
+- Migration chain is exactly `0008` through `0015`; prior `0008` through
+  `0014` remain unchanged.
+- Frozen hashes:
 
-## Exact verification evidence
+  - `0015_phase6_cms_media.sql` SHA-256:
+    `53f13344db9a8f37c34e2c4b9c2fefb0fd6184b842be8a69583f9c2165448091`
+    (58,180 bytes)
+  - `drizzle/meta/0015_snapshot.json` SHA-256:
+    `3255a27f8704f3c54ace3c6a216d4008b17ea061adb47a8d666bc76a9fa195ca`
+    (485,823 bytes)
+  - `drizzle/meta/_journal.json` SHA-256:
+    `660131356c9d3e505b63b23eb1736a7e694bd545f44e2e2dd579e6adccd91911`
+    (1,272 bytes)
 
-Commands ran from `C:\Users\user\Documents\Website` on 2026-07-27.
+- Measured schema/package/snapshot signature:
 
-- `npm.cmd ci` — exit 0; 503 packages added and 504 audited from the preserved
-  lockfile.
-- `npm.cmd run db:generate` — exit 0; 58 tables; no schema drift and no
-  unexpected migration generated.
-- `npm.cmd run db:apply:local` — exit 0; 7 migrations, migration 0014 applied
-  in 20 statements, 58 tables, 74/74 triggers, bounded
-  `repaired`/`repaired`/`ready`, zero foreign-key violations.
-- `npm.cmd run db:apply:preview` — exit 0 with the same migration, table,
-  trigger, readiness, and foreign-key result.
-- `npm.cmd run typecheck` — exit 0 under strict TypeScript.
-- Exact `npm.cmd run lint` before build — exit 0 with **zero warnings**.
-- `npm.cmd test` — exit 0; **318/318 passed**, 0 failed, 0 skipped, 0 todo.
-- Focused migration/invariant/Phase 5/public gate — exit 0;
-  **119/119 passed**, 0 failed, 0 skipped.
-- Focused Phase 5/public/invariant audit subsets also reported **93/93
-  passed**.
-- `npm.cmd run build` — exit 0; vinext produced the complete public and
-  protected Worker route set.
-- Exact `npm.cmd run lint` after retained build artifacts — exit 0 with
-  **zero warnings**.
-- `npm.cmd run test:rendered` — exit 0; **22/22 passed**, 0 failed, 0 skipped.
-  The built Worker applies the packaged migration set, installs/verifies
-  invariant v5 and 74 triggers, denies unauthorized organizer access, executes
-  protected preview and immediate/scheduled publication, reconciles a due job,
-  renders Home/Events/detail/club/metadata/JSON-LD/sitemap, handles
-  cancellation/unpublication, and passes public/private sentinel scans.
-- Focused migration/snapshot/invariant contract — **28/28 passed**.
-- Measured conflict-publication D1 paths:
+  - 78 tables
+  - 194 checks
+  - 273 foreign keys
+  - 184 explicit indexes
+  - 73 unique indexes
+  - 0 packaged triggers
 
-  - Warn immediate publish: 42 statements, largest batch 12;
-  - Warn schedule: 43 statements, largest batch 13;
-  - Administrator-approved immediate publish: 42 statements, largest batch
-    12;
-  - Administrator-approved due reconciliation: 25 statements, largest batch
-    13.
+- Phase 6 contains 73 retry-safe idempotent CREATE fragments. DDL batches are
+  48 plus 25 statements; request statement counts are 48 plus 26 because the
+  migration ledger is written only in the final successful batch.
+- All 74 interruption cuts, followed by two complete retries, converge to the
+  exact schema with zero foreign-key violations.
+- Local and preview migration application each verified 8 migrations,
+  78 tables, all 213 runtime triggers, bounded repair followed by `ready`, and
+  zero `PRAGMA foreign_key_check` violations.
+- Real D1 accepts valid non-null Club and Program theme colors and rejects
+  invalid colors through the short length/substr/negative-GLOB check. The
+  platform witness confirms a 50-byte GLOB pattern succeeds and a 51-byte
+  pattern fails.
 
-- `git diff --check` — exit 0; only expected Windows line-ending notices.
-- Current `dist` audit before source freeze — 112 files / 6,433,186 bytes;
-  hosting metadata present; 15 Drizzle resources byte-identical to source; no
-  environment file, local D1, log, test/fixture/work artifact, unoptimized
-  design master, email-like value, private sentinel, supplied private Meetup
-  feed URL, credential, private key, or Bearer-token pattern.
-- Generic `events/ical/` parser text exists as required to recognize official
-  operator input; no owner feed address is embedded.
-- Exact official-helper archive from source commit
-  `8d33f124d6e6b55a8eea5b6af64baa7982484b3f`:
+## Runtime invariants, SQL, and request budgets
 
-  - 127 tar entries;
-  - 112 regular files;
-  - 6,433,186 uncompressed bytes;
-  - 2,000,863 compressed bytes;
-  - local gzip SHA-256
-    `b023b335d0c9f26989190ad4119ed7cd77bff17c24da8bde56ce85c636ab6c37`;
-  - zero unsafe paths, missing required files, forbidden artifacts, private or
-    secret scan hits;
-  - 15/15 packaged Drizzle resources byte-identical to source;
-  - packaged hosting metadata byte-identical to
-    `.openai/hosting.json`.
+- Current runtime invariant evidence:
 
-### Dependency audit
+  - 213 exact global triggers
+  - 135 Phase 6 triggers
+  - 61 Phase 6 count statements
+  - 23 combined invariant count groups
+  - every current invariant count equals zero at readiness
+  - empty convergence: 9 bounded requests
+  - 12-profile legacy-attribution plus taxonomy convergence: 23 bounded
+    requests
+  - worst repair request: 48 D1 statements
 
-- `npm.cmd audit --omit=dev --json` ran and exited 1 because findings exist:
-  **3 high, 0 critical** production advisories.
-- `npm.cmd audit --json` ran and exited 1 because findings exist:
-  **18 total** — 1 low, 4 moderate, 13 high, 0 critical.
-- Seven packages report pending install scripts. No unsafe forced upgrade was
-  applied to the pinned Sites runtime.
+- All 213 trigger definitions and 132 distinct table/operation activation
+  families compile on fresh Miniflare D1. The maximum audited Phase 6 trigger
+  is 43,345 bytes; the maximum combined probe is 74,743 bytes.
+- Stable production D1-shape evidence:
 
-### Failures encountered and resolved
+  - Events: 47/47; 35 shapes; max 87,259 bytes / 19 binds
+  - Catalog/sitemap: 7/7; 14 shapes; max 59,988 bytes / 5 binds
+  - CMS: 22/22; 118 shapes; max 31,803 bytes / 58 binds
+  - Media: 23/23; 55 shapes; max 43,913 bytes / 14 binds
+  - Profiles: 18/18; 28 shapes; max 18,664 bytes / 17 binds
+  - Taxonomy: 4/4; 45 shapes; max 2,535 bytes / 21 binds
+  - Publication: 105/105
 
-- Phase 5 trigger and publication-intent ordering, historical-intent
-  validation, stale-authorizer invalidation, scheduled lifecycle bridging,
-  notification recipients, host eligibility, preview permission parity, RSVP
-  confirmation, slug parity, conflict authorization, D1 statement budget,
-  migration snapshot, and rendered-harness drift were each reproduced and
-  fixed with executed regression coverage.
-- Rendered production D1 rejected a nested correlated public-host aggregate
-  even though local SQLite accepted it. The D1-compatible ranked CTE/window
-  implementation now passes the complete rendered Worker suite.
-- The final stabilized source gate is green; no failing test was suppressed,
-  weakened, skipped, or cast away.
+- No audited production SQL shape reaches the D1 100,000-byte statement limit
+  or 100-bind limit. Audited global maxima are 87,259 bytes and 58 binds.
+- Administrator-approved immediate publication uses 49 statements with a
+  largest batch of 15. The hardest due-publication path uses 31 statements
+  with a largest batch of 16. Both remain below the 50-statement request cap.
+- Home peak D1 concurrency is 5, below the six-connection Worker-invocation
+  limit.
+- Public-catalog accounting at `lib/server/public/catalog.ts` SHA-256
+  `5f88a0bd9b465d4cb846bb94aae6b15ee6a4477b7acc73c2b86dc59b9e145676`
+  uses seven set-based fill-only catalog statements and one live
+  server-authorized actor. The actor-taking core is private rather than an
+  externally forgeable authorization seam.
+- The taxonomy protocol still accepts only the exact known first-result `N` or
+  `N+1`, requires every other result to equal `N`, and verifies the exact
+  durable taxonomy envelope after the batch.
+- Full Worker-invocation request traces, including invariant preflight,
+  request maintenance, both organizer GET context loads, route reads, live
+  authorization, catalog maintenance, and response work, are:
 
-## Browser and accessibility evidence
+  - Meetup GET: 23 healthy, 37 existing-owner fresh catalog, and 43
+    first-owner fresh catalog
+  - Meetup connect POST: 14 healthy with a new source, 28 existing-owner fresh
+    catalog with a new source, 34 first-owner fresh catalog with a new source,
+    and 11 for an exact-source retry
 
-- Local browser QA used the normal localhost preview with the fresh isolated
-  review D1. No production auth, runtime value, access policy, or hosted data
-  was changed.
-- Widths checked:
+- The maximum is 43, leaving seven statements below the 50-statement request
+  cap. Failure, retry, concurrent initialization, marker deletion/repair
+  interleavings, and exact durable postconditions are covered without blind
+  retries.
 
-  - 320×800 Home;
-  - 390×844 Events;
-  - 768×1024 About route;
-  - 1280×800 Home;
-  - 1440×900 Events;
-  - 720×900 as a 1440-at-200%-equivalent reflow check.
+## Verification already completed
 
-- Every measured page retained 16px body text, a main landmark, and no
-  essential horizontal overflow.
-- At 320px the mark, wordmark, compact navigation, hero, and footer remained
-  readable. Visible `:focus-visible` keyboard focus was verified on the mobile
-  navigation summary with a 3px outline; its six destinations were inspected.
-- Events filters were keyboard/focus inspectable, showed a truthful zero-result
-  state, produced a shareable validated query URL, and Clear Filters returned
-  to the canonical state.
-- The guessed public route rendered the custom “This trail ends here.” 404 at
-  390px without overflow.
-- Signed-out `/organizer` redirected to
-  `/signin-with-chatgpt?return_to=%2Forganizer`. The standalone local preview
-  does not provide the Sites dispatcher-owned sign-in UI, so that destination
-  rendered the local 404; rendered Worker authorization/header tests cover the
-  production contract.
-- The fresh local review D1 has no initialized public page catalog, so the
-  About route rendered the truthful custom 404 and no real organizer event was
-  available for an end-to-end browser publication smoke. The isolated built
-  Worker exercises that complete flow.
-- Browser console capture contained **0 errors and 0 warnings** during the
-  final checks.
-- Static reduced-motion, landmark, focus, target-size, no-overflow, private
-  route, and safe-error contracts pass automated tests.
+- Clean `npm.cmd ci` completed from the tracked lockfile: 503 packages.
+- Current accepted dependency audit state:
 
-## Implemented but not externally verified
+  - production: 3 high, 0 critical
+  - complete tree: 18 total — 1 low, 4 moderate, 13 high, 0 critical
 
-- Phase 5 is not deployed. Hosted Phase 5 publication, scheduled
-  reconciliation, and preview behavior remain externally unverified.
-- Hosted D1 schema/table/index/trigger introspection is unavailable through the
-  current Sites capability. Local, preview, source, and rendered Worker D1
-  provide the evidence above.
-- Hosted second-identity role and invitation checks remain unavailable while
-  access is one owner and zero groups.
-- Scheduled publication is request-driven: the first relevant public or
-  authenticated request at or after the due instant processes at most one job.
-  No background scheduler is claimed.
-- R2 remains bound as `MEDIA` and unchanged. Phase 5 adds no media workflow.
+  No unsafe forced upgrade of the pinned Sites/Next runtime was applied.
+- Focused migration/runtime compatibility gate after the theme-color repair:
+  **11/11 passed**.
+- Site Identity canonical adoption and CMS/adoption gate:
+  **25/25 passed**; all 119 captured CMS/adoption D1 shapes compile, with
+  maximum 31,803 bytes and 58 binds.
+- Public-catalog and whole-route focused real-Miniflare gate: **30/30 passed**.
+- Catalog, Meetup, invariant, and request-budget affected gate:
+  **93/93 passed**.
+- The clean deterministic serial repository suite is **592/592 passed**.
+- Strict typecheck, zero-warning lint before build, production build,
+  zero-warning lint after build, and `git diff --check` are green on the final
+  source.
+- The fresh rendered Worker integration is **23/23 passed**.
+- `drizzle-kit check` reports `Everything's fine`.
+- Fresh local and preview migration application each reached `ready` with
+  8 migrations, 78 tables, 213/213 runtime triggers, and zero foreign-key
+  violations.
+- The retained final `dist` contains **141 files / 8,711,691 bytes**. Its
+  hosting metadata, migration 0015, snapshot, and journal are byte-identical
+  to source, and its forbidden-artifact count is zero.
+- Final package/privacy scans report zero raw R2 identifiers, private identity
+  columns, fixture `.test` emails, private Meetup iCal URLs, private-key
+  material, common secret-token shapes, or literal initial-owner email
+  assignments.
+- After the final CMS trailing-space correction, the affected CMS and real-D1
+  compatibility rerun passed **24/24**, followed by a fresh production build,
+  zero-warning post-build lint, rendered Worker **23/23**, and this repeated
+  package/privacy inventory.
+
+## Final browser and accessibility evidence
+
+- Local Cloudflare-backed browser QA covered:
+
+  - desktop 1440×900
+  - tablet 1024×768
+  - mobile 390×844
+
+- Home, Community, and Club pages retained one main landmark, header/footer,
+  valid breadcrumbs where applicable, and no horizontal overflow.
+- The responsive menu is a native keyboard-focusable `details`/`summary`
+  control. At mobile width the wordmark and menu control are at least 44px,
+  and all six open-menu destinations plus Organizer Login are 48px high.
+- The skip link targets an existing focusable `#page-content`.
+- The Club accessibility tree had one main, one banner, one contentinfo, and
+  no unnamed links or buttons.
+- The narrow Program-card action regression was corrected: the mobile
+  “Read the Program note” link measures 175px wide by 44px high and no longer
+  collapses into a one-word grid column.
+- In-app keyboard event simulation could not reliably exercise browser-native
+  Tab/Enter defaults. Semantic controls, focus targets, visible focus styles,
+  target sizes, and source/render contracts were verified; no literal
+  end-to-end keyboard-keypress claim is made.
+- The final Cloudflare-backed browser pass measured exact 1440×900, 1024×768,
+  and 390×844 viewports. Each had one main, one header, one footer, a valid
+  skip target, zero horizontal overflow, and a 92×44 menu control.
+- The final Home render showed the canonical Site Identity, substantive
+  required content, exact canonical lane descriptions, featured Clubs, and
+  confirmed Community destinations.
+- The local Worker and its workerd child were stopped after the pass; port
+  3000 is free and the temporary browser logs were removed.
+
+## Final Phase 6 release actions still pending
+
+All implementation, verification, build, rendered, browser, migration,
+package, and privacy gates are green. The remaining authorized release actions
+are:
+
+1. Commit the exact verified source, push that exact SHA to the temporary
+   Sites source repository, and archive the exact pushed state.
+2. Save exactly one new **unpublished** Sites version, expected version 12,
+    and verify its source SHA, content hash, file count, byte count, and null
+    preview state by readback.
+3. Verify the live owner-only version 8, access policy, bindings, runtime,
+   domains, and preview state remain unchanged.
+
+If any release action or readback fails, stop without deployment or access
+changes and record the exact blocker.
 
 ## Not implemented
 
-- General CMS/page editing, Community/navigation/footer/branding/legal
-  controls, R2 media library/upload, CSV/ICS import, export, public forms and
-  submissions inbox, QR downloads, email/digests, automatic Meetup write-back,
-  payments, donations, internal RSVP, attendee accounts, comments, messaging,
-  forums, and chat.
-- No Phase 6 or later dead control was added.
+- Editor role — **Not implemented — authorized cut**
+- Viewer role — **Not implemented — authorized cut**
+- Realtime subscriptions — **Not implemented — authorized cut**
+- Phase 6 adds no import/export workflow, public form, submission inbox,
+  attendee account, internal RSVP system, payment, donation, email, comment,
+  message, forum, chat, automatic Meetup write-back, or on-site social feature.
+- Phase 7 imports, exports, public forms, and submissions are not implemented.
 
-## Not run
+## Awaiting owner / not run
 
-- Hosted Phase 5 owner smoke test — no Phase 5 deployment is authorized.
-- Real-event local browser publication/cancellation/unpublication flow — the
-  fresh review D1 has no real confirmed event and no owner-approved event RSVP
-  input. The isolated rendered Worker flow passed.
-- Hosted second human identity — current Sites access permits one owner and
-  zero groups.
-- Hosted D1 direct SQL introspection — not exposed by current Sites tools.
-- Automated Axe, Lighthouse, and Core Web Vitals — unavailable in the pinned
-  local toolchain; no score is claimed.
-- Exact browser zoom and reduced-motion emulation — the 720px reflow equivalent
-  and static reduced-motion tests passed, but native zoom/emulation was not
-  available.
+- Approved-real-artwork browser smoke — **Awaiting owner / not run**.
+- Hosted Phase 6 CMS/media/publication smoke — not run because Phase 6 is not
+  deployed and no deployment is authorized.
+- Hosted second-human identity verification — not run because current access
+  permits one owner and zero groups.
+- Real-event end-to-end publication smoke — not run because no approved real
+  event/artwork fixture is authorized for production use.
+- No award submission or award claim was made.
 
-## Blocked
-
-- Hosted Phase 5 smoke testing requires a later explicitly authorized private
-  deployment.
-- Hosted second-identity verification requires a separately authorized Sites
-  access-policy change.
-- Remaining factual owner inputs:
-
-  - exact BC legal name, legal form/status wording, registration number,
-    effective date, approved legal footer, and charity status;
-  - exact public Meetup discussion URL;
-  - one real confirmed event and its exact individual Meetup event URL for the
-    future hosted publication smoke;
-  - event-specific approved public summary/description, attendance mode,
-    location/online facts, access notes, and verified accessibility facts;
-  - approved final public copy and confirmed public contact;
-  - real photographs with rights, credit, and participant-consent state;
-  - approved public organizer names/biographies and both host-consent gates.
-
-## Sites project, bindings, version, and deployment state
+## Sites project and live-state preservation
 
 - Sites project:
   `appgprj_6a62eaf79c4881919bb8e47998af851a`.
 - Logical bindings remain D1 `DB` and R2 `MEDIA`.
-- Runtime revision remains 1 with only redacted `INITIAL_OWNER_EMAIL`.
+- Runtime remains revision 1 with only the redacted
+  `INITIAL_OWNER_EMAIL` secret.
+- Access remains custom: exactly one allowed owner and zero groups.
+- Custom domains: none.
+- Preview deployment: none.
+- Public/shared access: disabled.
 - Existing live deployment remains owner-only version 8 at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
-- Access remains custom: exactly one allowed owner and zero groups.
-- Custom domains: none. Preview deployment: none. Public/shared access: not
-  enabled.
-- Phase 4 source commit:
-  `61db32cbe42acfd3b6edbb288305066a2a377ba1`.
-- Unpublished Phase 4 Sites version 10 remains preserved:
-  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_6356519315688191a6df7f457a116d2d`.
-- Phase 5 source commit:
-  `8d33f124d6e6b55a8eea5b6af64baa7982484b3f`.
-- Unpublished Phase 5 Sites version 11:
-  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_c698ee1802e08191b7ac4cde79e6afe5`.
-- Sites readback matches the exact source commit and reports:
-
-  - version number 11;
-  - 112 files;
-  - 6,533,120 stored bytes;
-  - content hash
-    `sha256:fd1b49bd5439694e460f998c0562a4d25eca189d1b5c5518d7e7b3ebd76cda02`;
-  - screenshot URL: null.
-
-- Version history is newest-first as v11, v10, v9. Exactly one Phase 5 version
-  was saved.
-- Live deployment
-  `appgdep_6a654533aee481918098af58b5a4f861` remains `succeeded` on saved
-  version 8
+- Live deployment ID remains
+  `appgdep_6a654533aee481918098af58b5a4f861` on saved version
   `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_eed88ec7d02c8191a865045cd32c940e`.
-- Current preview URL remains null. Current live URL remains
-  `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
-- Access remains custom with one allowed owner and zero groups at access
-  revision 1.
-- Runtime environment remains revision 1 with only redacted secret
-  `INITIAL_OWNER_EMAIL`.
-- Custom-domain count remains zero.
-- No Phase 5 deployment is authorized.
+- Preserved unpublished Phase 5 version 11:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_c698ee1802e08191b7ac4cde79e6afe5`.
+  Its readback source is
+  `8d33f124d6e6b55a8eea5b6af64baa7982484b3f`, content hash is
+  `sha256:fd1b49bd5439694e460f998c0562a4d25eca189d1b5c5518d7e7b3ebd76cda02`,
+  and preview state is null.
+- No Phase 6 version has been saved yet.
+- No Phase 6 deployment, preview deployment, access-policy change,
+  custom-domain change, binding change, or runtime change has occurred.
 
-## Awaiting a future private deployment
+## Exact next action and next phase
 
-Status: **Awaiting a future private deployment.**
+Commit and archive the exact verified source, save one unpublished Sites
+version 12, verify exact readback and unchanged live state, then stop for
+independent coordinator audit. Do not deploy.
 
-Five-minute owner smoke card for the next explicitly authorized private
-deployment of this Phase 5-or-later source:
-
-1. Sign in with the matching ChatGPT owner account.
-2. Open one real confirmed event with its exact Meetup event page.
-3. Confirm the event is absent from public Home, Events, club, and guessed slug
-   before publication.
-4. Complete public fields and confirm the Meetup link points to the individual
-   event, not the group home.
-5. Open protected Preview and confirm internal notes and conflict details are
-   absent.
-6. Publish to Website.
-7. Confirm it appears on Home, Events, its public detail page, and the correct
-   club.
-8. Open **RSVP on Meetup** and confirm the destination.
-9. Cancel the event; confirm its public detail page shows a prominent
-   cancellation banner and it disappears from Upcoming.
-10. Unpublish it; confirm its public page and discovery entries disappear.
-11. For scheduled publication, schedule a real eligible event shortly ahead,
-    open a relevant page after the due time, and confirm it publishes once
-    without pretending an exact background scheduler exists.
-
-Do not create or publish a fabricated production event for this test.
-
-## Exact next phase
-
-**Phase 6 — Not started.**
+**Phase 7 — Not started.**

@@ -1,5 +1,96 @@
 import { DatabaseSync } from "node:sqlite";
 
+let activeStatementRecorder = null;
+
+export function startSqliteD1StatementRecording({
+  sourceIncludes,
+} = {}) {
+  assertRecorderIdle();
+  const sourceNeedles = Array.isArray(sourceIncludes)
+    ? sourceIncludes
+    : sourceIncludes
+      ? [sourceIncludes]
+      : [];
+  const shapes = new Map();
+  activeStatementRecorder = {
+    matches(stack) {
+      const normalizedStack = stack.replaceAll("\\", "/");
+      return (
+        sourceNeedles.length === 0 ||
+        sourceNeedles.some((needle) =>
+          normalizedStack.includes(needle.replaceAll("\\", "/")),
+        )
+      );
+    },
+    record(sql, bindings, source) {
+      const normalizedSql = sql.trim().replaceAll(/\s+/gu, " ");
+      const key = `${normalizedSql}\u0000${bindings.length}`;
+      if (!shapes.has(key)) {
+        shapes.set(key, {
+          bindings: bindings.map(normalizeRecordedBinding),
+          sources: new Set(),
+          sql,
+        });
+      }
+      if (source) shapes.get(key).sources.add(source);
+    },
+  };
+  return {
+    snapshot() {
+      return recordedShapeSnapshot(shapes);
+    },
+    stop() {
+      const snapshot = recordedShapeSnapshot(shapes);
+      if (activeStatementRecorder !== null) {
+        activeStatementRecorder = null;
+      }
+      return snapshot;
+    },
+  };
+}
+
+function recordedShapeSnapshot(shapes) {
+  return [...shapes.values()].map(({ bindings, sources, sql }) => ({
+    bindings,
+    sources: [...sources].sort(),
+    sql,
+  }));
+}
+
+function assertRecorderIdle() {
+  if (activeStatementRecorder !== null) {
+    throw new Error("A D1 statement recorder is already active.");
+  }
+}
+
+function normalizeRecordedBinding(value) {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function activeRecorderSource() {
+  if (activeStatementRecorder === null) return null;
+  const stack = (new Error().stack ?? "").replaceAll("\\", "/");
+  if (!activeStatementRecorder.matches(stack)) return null;
+  const lines = stack.split("\n");
+  return (
+    lines.find((line) => line.includes("/lib/server/"))?.trim() ??
+    lines.find(
+      (line) =>
+        !line.includes("/tests/auth/sqlite-d1.mjs") &&
+        line.includes("/tests/"),
+    )?.trim() ??
+    "unknown"
+  );
+}
+
 export class SqliteD1TestDatabase {
   constructor(schemaSql) {
     this.sqlite = new DatabaseSync(":memory:");
@@ -8,7 +99,20 @@ export class SqliteD1TestDatabase {
   }
 
   prepare(sql) {
-    return new SqliteD1TestStatement(this, sql, []);
+    const recordSource = activeRecorderSource();
+    if (
+      recordSource !== null &&
+      activeStatementRecorder !== null &&
+      !sql.includes("?")
+    ) {
+      activeStatementRecorder.record(sql, [], recordSource);
+    }
+    return new SqliteD1TestStatement(
+      this,
+      sql,
+      [],
+      recordSource,
+    );
   }
 
   async batch(statements) {
@@ -41,17 +145,28 @@ export class SqliteD1TestDatabase {
 }
 
 class SqliteD1TestStatement {
-  constructor(database, sql, bindings) {
+  constructor(database, sql, bindings, recordSource) {
     this.database = database;
     this.sql = sql;
     this.bindings = bindings;
+    this.recordSource = recordSource;
   }
 
   bind(...values) {
-    return new SqliteD1TestStatement(this.database, this.sql, values);
+    const recordSource = this.recordSource ?? activeRecorderSource();
+    if (recordSource !== null && activeStatementRecorder !== null) {
+      activeStatementRecorder.record(this.sql, values, recordSource);
+    }
+    return new SqliteD1TestStatement(
+      this.database,
+      this.sql,
+      values,
+      recordSource,
+    );
   }
 
   async first(columnName) {
+    this.recordExecution();
     const row = this.database.sqlite
       .prepare(this.sql)
       .get(...this.bindings);
@@ -60,6 +175,7 @@ class SqliteD1TestStatement {
   }
 
   async all() {
+    this.recordExecution();
     const results = this.database.sqlite
       .prepare(this.sql)
       .all(...this.bindings);
@@ -71,6 +187,7 @@ class SqliteD1TestStatement {
   }
 
   runSynchronously() {
+    this.recordExecution();
     const result = this.database.sqlite
       .prepare(this.sql)
       .run(...this.bindings);
@@ -80,5 +197,15 @@ class SqliteD1TestStatement {
         changes: Number(result.changes),
       },
     };
+  }
+
+  recordExecution() {
+    if (this.recordSource !== null && activeStatementRecorder !== null) {
+      activeStatementRecorder.record(
+        this.sql,
+        this.bindings,
+        this.recordSource,
+      );
+    }
   }
 }

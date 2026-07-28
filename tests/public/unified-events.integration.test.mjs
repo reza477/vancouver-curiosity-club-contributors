@@ -1,14 +1,25 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  getEditorialPublicEvents,
   getAuthorizedOrganizerEventPublicPreview,
   getPublicEventBySlug,
+  listUpcomingPublicEvents,
+  listUpcomingPublicMeetupEvents,
+  listPublishedEventSelections,
+  listPublicEventCategoryOptions,
   listPublicEventSitemapSlugs,
   listRelatedPublicEvents,
   queryPublicEvents,
+  resolveEditorialPublishedEventSelectionProofs,
+  resolvePublishedEventSelections,
 } from "../../lib/server/public/events.ts";
+import {
+  buildPublicEventJsonLd,
+} from "../../lib/server/public/event-structured-data.ts";
 import { InputValidationError } from "../../lib/validation/index.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
@@ -22,10 +33,29 @@ const PRIVATE_SENTINELS = Object.freeze([
   "PRIVATE_VENUE_DIRECTIONS_SENTINEL",
   "PRIVATE_WITHHELD_LOCATION_SENTINEL",
   "PRIVATE_FEED_TOKEN_SENTINEL",
+  "PRIVATE-R2-OBJECT-KEY-SENTINEL",
+  "PRIVATE-ORIGINAL-NAME.png",
+  "PRIVATE-R2-ORIGINAL-SENTINEL",
+  "PRIVATE-R2-480-SENTINEL",
+  "PRIVATE-R2-960-SENTINEL",
+  "PRIVATE-R2-1600-SENTINEL",
+  "PRIVATE-RIGHTS-NOTE-SENTINEL",
+  "PRIVATE-CONSENT-NOTE-SENTINEL",
   "private-organizer@synthetic.invalid",
   "PENDING_TITLE_SENTINEL",
   "PENDING_ADDITION_SENTINEL",
 ]);
+const PUBLIC_HOST = Object.freeze({
+  biography: "A confirmed public biography for event attribution.",
+  displayName: "Public Host",
+  photo: Object.freeze({
+    altText: "Abstract cobalt and forest profile artwork.",
+    credit: "Vancouver Curiosity Club",
+    height: 320,
+    url: "/media/asset_public_host/webp_480",
+    width: 480,
+  }),
+});
 
 function loadGeneratedMigrations() {
   const migrationDirectory = join(process.cwd(), "drizzle");
@@ -189,6 +219,29 @@ async function createFixture(t) {
         'profile_owner', 1, 1
       );
   `);
+  await seedConfirmedPublicAttribution(database, {
+    displayName: "Public Host",
+    profileId: "profile_public_host",
+  });
+  seedCurrentPublishedClubProjection(database, {
+    clubId: "club_vcc",
+    description: "Synthetic public club.",
+    featured: true,
+    laneId: "lane_think",
+    meetupGroupUrl: "https://www.meetup.com/synthetic-public-group/",
+    name: "Vancouver Curiosity Club",
+    slug: "vancouver-curiosity-club",
+  });
+  seedCurrentPublishedClubProjection(database, {
+    clubId: "club_literature",
+    description: "Synthetic public club.",
+    featured: true,
+    laneId: "lane_think",
+    meetupGroupUrl:
+      "https://www.meetup.com/synthetic-literature-group/",
+    name: "Vancouver Literature and Film",
+    slug: "vancouver-literature-and-film",
+  });
 
   const fixtures = [
     timedEvent({
@@ -372,6 +425,11 @@ async function createFixture(t) {
         'organizer_no_consent', '${ORGANIZATION_ID}',
         'event_manual_upcoming', 'profile_no_consent', 'co_organizer', 1,
         'profile_owner', 1
+      ),
+      (
+        'organizer_public_meetup', '${ORGANIZATION_ID}',
+        'event_meetup_active', 'profile_public_host', 'primary', 1,
+        'profile_owner', 1
       );
 
     INSERT INTO sync_sources (
@@ -536,11 +594,13 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
   );
   assert.ok(manual);
   assert.deepEqual(Object.keys(manual).sort(), [
+    "artwork",
     "attendanceMode",
     "category",
     "club",
     "isCancelled",
     "lane",
+    "program",
     "rsvpMode",
     "rsvpUrl",
     "schedule",
@@ -550,6 +610,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "title",
     "venue",
   ]);
+  assert.equal(manual.artwork, null);
   assert.equal(manual.rsvpMode, null);
   assert.deepEqual(Object.keys(manual.club).sort(), ["name", "slug"]);
   assert.deepEqual(Object.keys(manual.venue).sort(), ["address", "name"]);
@@ -582,6 +643,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
   assert.ok(detail);
   assert.deepEqual(Object.keys(detail).sort(), [
     "arrivalInstructions",
+    "artwork",
     "attendanceMode",
     "availabilityState",
     "capacity",
@@ -592,13 +654,16 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "externalMapUrl",
     "isCancelled",
     "lane",
+    "metaDescription",
     "organizers",
     "preparationInformation",
+    "program",
     "publicAccessNote",
     "publicOnlineUrl",
     "rsvpMode",
     "rsvpUrl",
     "schedule",
+    "seoTitle",
     "slug",
     "status",
     "summary",
@@ -608,7 +673,8 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "weatherNote",
     "whatToBring",
   ]);
-  assert.deepEqual(detail.organizers, [{ displayName: "Public Host" }]);
+  assert.equal(detail.artwork, null);
+  assert.deepEqual(detail.organizers, [PUBLIC_HOST]);
 
   const serialized = JSON.stringify({ page, detail });
   for (const sentinel of PRIVATE_SENTINELS) {
@@ -629,6 +695,714 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
       false,
       forbiddenKey,
     );
+  }
+});
+
+test("public category options follow taxonomy order and retain archived categories only while public projections use them", async (t) => {
+  const database = await createFixture(t);
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_category_projection",
+    slug: "organizer-category-projection",
+    title: "Organizer Category Projection",
+  });
+
+  const legacy = await listPublicEventCategoryOptions(
+    database,
+    ORGANIZATION_ID,
+  );
+  assert.deepEqual(
+    legacy.map((category) => category.slug),
+    ["books", "ideas"],
+  );
+
+  database.exec(`
+    INSERT INTO taxonomy_write_intents (
+      id, organization_id, entity_type, entity_id, operation,
+      expected_content_version, proposed_content_version,
+      proposed_name, proposed_slug, proposed_description,
+      proposed_color_token, proposed_sort_order,
+      proposed_deleted_at, mutation_group_id, mutation_group_size,
+      actor_profile_id, created_at, completed_at
+    ) VALUES
+      (
+        'intent-category-ideas-adopt', '${ORGANIZATION_ID}',
+        'category', 'category_ideas', 'adopt', 0, 1,
+        'Ideas', 'ideas', 'Synthetic category.', 'cobalt', 10,
+        NULL, NULL, NULL, 'profile_owner', 2, 2
+      ),
+      (
+        'intent-category-books-adopt', '${ORGANIZATION_ID}',
+        'category', 'category_books', 'adopt', 0, 1,
+        'Books', 'books', 'Synthetic category.', 'forest', 20,
+        NULL, NULL, NULL, 'profile_owner', 2, 2
+      );
+    INSERT INTO category_taxonomy_states (
+      category_id, organization_id, sort_order, content_version,
+      active_intent_id, last_completed_intent_id,
+      updated_by_profile_id, created_at, updated_at
+    ) VALUES
+      (
+        'category_ideas', '${ORGANIZATION_ID}', 10, 1,
+        NULL, 'intent-category-ideas-adopt', 'profile_owner', 2, 2
+      ),
+      (
+        'category_books', '${ORGANIZATION_ID}', 20, 1,
+        NULL, 'intent-category-books-adopt', 'profile_owner', 2, 2
+      );
+  `);
+
+  const adopted = await listPublicEventCategoryOptions(
+    database,
+    ORGANIZATION_ID,
+  );
+  assert.deepEqual(
+    adopted.map((category) => category.slug),
+    ["ideas", "books"],
+  );
+  assert.deepEqual(adopted, [
+    { name: "Ideas", slug: "ideas" },
+    { name: "Books", slug: "books" },
+  ]);
+
+  database.exec(`
+    UPDATE categories
+    SET deleted_at = 3,
+        updated_at = 3
+    WHERE id = 'category_ideas';
+  `);
+  assert.deepEqual(
+    (
+      await listPublicEventCategoryOptions(
+        database,
+        ORGANIZATION_ID,
+      )
+    ).map((category) => category.slug),
+    ["ideas", "books"],
+    "an archived category remains filterable while visible events use it",
+  );
+
+  database.exec(`
+    UPDATE events
+    SET visibility = 'private',
+        updated_at = 4
+    WHERE category_id = 'category_ideas';
+  `);
+  assert.deepEqual(
+    (
+      await listPublicEventCategoryOptions(
+        database,
+        ORGANIZATION_ID,
+      )
+    ).map((category) => category.slug),
+    ["ideas", "books"],
+    "the organizer projection independently keeps the archived category visible",
+  );
+
+  database.exec(`
+    UPDATE organizer_events
+    SET publication_status = 'unpublished',
+        updated_at = 5
+    WHERE id = 'organizer_category_projection';
+  `);
+  assert.deepEqual(
+    await listPublicEventCategoryOptions(database, ORGANIZATION_ID),
+    [{ name: "Books", slug: "books" }],
+    "an archived category disappears when no current public projection uses it",
+  );
+});
+
+test("public events fail closed when the exact current club materialization is tampered", async (t) => {
+  const database = await createFixture(t);
+  const slug = "manual-ideas-gathering";
+  const readManualEvent = () =>
+    getPublicEventBySlug(database, {
+      organizationId: ORGANIZATION_ID,
+      slug,
+    });
+  const assertAbsentEverywhere = async () => {
+    const list = await queryPublicEvents(database, upcomingInput());
+    assert.equal(list.events.some((event) => event.slug === slug), false);
+    assert.equal(await readManualEvent(), null);
+    const editorial = await getEditorialPublicEvents(database, {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      requestedSlugs: [slug],
+      todayDate: TODAY_DATE,
+    });
+    assert.equal(
+      [...editorial.selected, ...editorial.defaultUpcoming].some(
+        (event) => event.slug === slug,
+      ),
+      false,
+    );
+    assert.deepEqual(
+      await listRelatedPublicEvents(database, {
+        limit: 6,
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        slug,
+        todayDate: TODAY_DATE,
+      }),
+      [],
+    );
+    assert.equal(
+      (await listPublicEventSitemapSlugs(database, {
+        organizationId: ORGANIZATION_ID,
+      })).includes(slug),
+      false,
+    );
+    assert.equal(
+      (await listPublishedEventSelections(database, {
+        organizationId: ORGANIZATION_ID,
+      })).some((event) => event.slug === slug),
+      false,
+    );
+  };
+
+  assert.equal(
+    (await readManualEvent())?.club.name,
+    "Vancouver Curiosity Club",
+  );
+
+  database.exec(`
+    UPDATE clubs
+    SET name = 'Tampered club identity'
+    WHERE id = 'club_vcc';
+  `);
+  await assertAbsentEverywhere();
+
+  database.exec(`
+    UPDATE clubs
+    SET name = 'Vancouver Curiosity Club'
+    WHERE id = 'club_vcc';
+    UPDATE club_public_profile_details
+    SET public_display_name = 'Tampered club profile'
+    WHERE club_id = 'club_vcc';
+  `);
+  await assertAbsentEverywhere();
+
+  database.exec(`
+    UPDATE club_public_profile_details
+    SET public_display_name = 'Vancouver Curiosity Club'
+    WHERE club_id = 'club_vcc';
+  `);
+  assert.equal(
+    (await readManualEvent())?.club.name,
+    "Vancouver Curiosity Club",
+  );
+
+  database.exec(`
+    UPDATE clubs
+    SET name = 'Forged club identity'
+    WHERE id = 'club_vcc';
+    UPDATE club_public_profile_details
+    SET public_display_name = 'Forged club identity'
+    WHERE club_id = 'club_vcc';
+    UPDATE cms_public_materialization_receipts
+    SET projection_json = json_set(
+      projection_json,
+      '$.club.name', 'Forged club identity',
+      '$.details.publicDisplayName', 'Forged club identity'
+    ),
+        canonical_byte_size = length(CAST(json_set(
+      projection_json,
+      '$.club.name', 'Forged club identity',
+      '$.details.publicDisplayName', 'Forged club identity'
+    ) AS BLOB))
+    WHERE entity_type = 'club_public_profile'
+      AND entity_key = 'club_vcc';
+  `);
+  assert.equal(
+    (await queryPublicEvents(database, upcomingInput())).events.some(
+      (event) => event.slug === slug,
+    ),
+    false,
+    "a forged receipt/live-row pair must not outrank its immutable revision",
+  );
+});
+
+test("public event final identity checks suppress club edits racing every multi-read surface", async (t) => {
+  const slug = "manual-ideas-gathering";
+  const surfaces = [
+    {
+      label: "list",
+      mutateAfterRead: 2,
+      async read(database) {
+        const page = await queryPublicEvents(database, upcomingInput());
+        return page.events.some((event) => event.slug === slug);
+      },
+    },
+    {
+      label: "detail",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          (await getPublicEventBySlug(database, {
+            organizationId: ORGANIZATION_ID,
+            slug,
+          })) !== null
+        );
+      },
+    },
+    {
+      label: "editorial",
+      mutateAfterRead: 1,
+      async read(database) {
+        const result = await getEditorialPublicEvents(database, {
+          nowUtcMs: NOW_UTC_MS,
+          organizationId: ORGANIZATION_ID,
+          requestedSlugs: [slug],
+          todayDate: TODAY_DATE,
+        });
+        return [...result.selected, ...result.defaultUpcoming].some(
+          (event) => event.slug === slug,
+        );
+      },
+    },
+    {
+      label: "related",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (await listRelatedPublicEvents(database, {
+            limit: 6,
+            nowUtcMs: NOW_UTC_MS,
+            organizationId: ORGANIZATION_ID,
+            slug,
+            todayDate: TODAY_DATE,
+          })).length > 0;
+      },
+    },
+    {
+      label: "sitemap",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listPublicEventSitemapSlugs(database, {
+            organizationId: ORGANIZATION_ID,
+          })
+        ).includes(slug);
+      },
+    },
+    {
+      label: "private CMS selection",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await resolveEditorialPublishedEventSelectionProofs(database, {
+            organizationId: ORGANIZATION_ID,
+            selectionIds: ["legacy:event_manual_upcoming"],
+          })
+        ).some((event) => event.slug === slug);
+      },
+    },
+  ];
+  for (const surface of surfaces) {
+    await t.test(surface.label, async (surfaceTest) => {
+      const database = await createFixture(surfaceTest);
+      let reads = 0;
+      let mutated = false;
+      const visible = await surface.read(
+        injectAfterQuery(database, async () => {
+          reads += 1;
+          if (!mutated && reads === surface.mutateAfterRead) {
+            mutated = true;
+            database.exec(`
+              UPDATE clubs
+              SET name = 'Raced club identity'
+              WHERE id = 'club_vcc'
+            `);
+          }
+        }),
+      );
+      assert.equal(mutated, true);
+      assert.equal(
+        visible,
+        false,
+        `${surface.label} must drop an event whose Club receipt became stale`,
+      );
+    });
+  }
+});
+
+test("a coherent Club republish racing a multi-read surface drops only the stale event snapshot", async (t) => {
+  const slug = "manual-ideas-gathering";
+  const republishedName = "Vancouver Curiosity Club — republished";
+  const surfaces = [
+    {
+      label: "list",
+      mutateAfterRead: 2,
+      async read(database) {
+        return (await queryPublicEvents(database, upcomingInput())).events.some(
+          (event) => event.slug === slug,
+        );
+      },
+    },
+    {
+      label: "detail",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          (await getPublicEventBySlug(database, {
+            organizationId: ORGANIZATION_ID,
+            slug,
+          })) !== null
+        );
+      },
+    },
+    {
+      label: "editorial",
+      mutateAfterRead: 1,
+      async read(database) {
+        const result = await getEditorialPublicEvents(database, {
+          nowUtcMs: NOW_UTC_MS,
+          organizationId: ORGANIZATION_ID,
+          requestedSlugs: [slug],
+          todayDate: TODAY_DATE,
+        });
+        return [...result.selected, ...result.defaultUpcoming].some(
+          (event) => event.slug === slug,
+        );
+      },
+    },
+    {
+      label: "related",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listRelatedPublicEvents(database, {
+            limit: 6,
+            nowUtcMs: NOW_UTC_MS,
+            organizationId: ORGANIZATION_ID,
+            slug,
+            todayDate: TODAY_DATE,
+          })
+        ).some((event) => event.slug === "related-manual-conversation");
+      },
+    },
+    {
+      label: "sitemap",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listPublicEventSitemapSlugs(database, {
+            organizationId: ORGANIZATION_ID,
+          })
+        ).includes(slug);
+      },
+    },
+    {
+      label: "private CMS selection",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await resolveEditorialPublishedEventSelectionProofs(database, {
+            organizationId: ORGANIZATION_ID,
+            selectionIds: ["legacy:event_manual_upcoming"],
+          })
+        ).some((event) => event.slug === slug);
+      },
+    },
+    {
+      label: "legacy compatibility adapter",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listUpcomingPublicEvents(database, {
+            fromUtcMs: NOW_UTC_MS,
+            limit: 100,
+            organizationId: ORGANIZATION_ID,
+            todayDate: TODAY_DATE,
+          })
+        ).some((event) => event.slug === slug);
+      },
+    },
+    {
+      label: "Meetup compatibility adapter",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listUpcomingPublicMeetupEvents(database, {
+            fromUtcMs: NOW_UTC_MS,
+            limit: 100,
+            organizationId: ORGANIZATION_ID,
+            todayDate: TODAY_DATE,
+          })
+        ).some((event) => event.slug === "meetup-active-event");
+      },
+    },
+  ];
+  for (const surface of surfaces) {
+    await t.test(surface.label, async (surfaceTest) => {
+      const database = await createFixture(surfaceTest);
+      let reads = 0;
+      let republished = false;
+      const visible = await surface.read(
+        injectAfterQuery(database, async () => {
+          reads += 1;
+          if (!republished && reads === surface.mutateAfterRead) {
+            republished = true;
+            republishCurrentClubProjection(database, {
+              clubId: "club_vcc",
+              description: "A coherently republished public club.",
+              featured: true,
+              laneId: "lane_think",
+              meetupGroupUrl:
+                "https://www.meetup.com/synthetic-public-group/",
+              name: republishedName,
+              slug: "vancouver-curiosity-club",
+            });
+          }
+        }),
+      );
+      assert.equal(republished, true);
+      assert.equal(
+        visible,
+        false,
+        `${surface.label} must not return fields from the prior valid Club revision`,
+      );
+      assert.equal(
+        (await getPublicEventBySlug(database, {
+          organizationId: ORGANIZATION_ID,
+          slug,
+        }))?.club.name,
+        republishedName,
+        "the coherently republished Club must remain visible on a fresh read",
+      );
+    });
+  }
+});
+
+test("a published Program with mutable projection or receipt drift suppresses its event", async (t) => {
+  const database = await createFixture(t);
+  const slug = "manual-ideas-gathering";
+  seedCurrentPublishedProgramProjection(database, {
+    clubId: "club_vcc",
+    description: "A confirmed recurring conversation.",
+    laneId: "lane_think",
+    name: "Ideas Program",
+    programId: "program-ideas",
+    slug: "ideas-program",
+  });
+  database.exec(`
+    UPDATE events
+    SET program_id = 'program-ideas',
+        updated_at = updated_at + 1
+    WHERE id = 'event_manual_upcoming'
+  `);
+  assert.equal(
+    (await getPublicEventBySlug(database, {
+      organizationId: ORGANIZATION_ID,
+      slug,
+    }))?.program?.name,
+    "Ideas Program",
+  );
+
+  database.exec(`
+    UPDATE program_public_profile_details
+    SET public_display_name = 'Tampered Program'
+    WHERE program_id = 'program-ideas'
+  `);
+  assert.equal(
+    await getPublicEventBySlug(database, {
+      organizationId: ORGANIZATION_ID,
+      slug,
+    }),
+    null,
+  );
+
+  database.exec(`
+    UPDATE program_public_profile_details
+    SET public_display_name = 'Ideas Program'
+    WHERE program_id = 'program-ideas';
+    UPDATE cms_public_materialization_receipts
+    SET projection_json = replace(
+          projection_json,
+          'Ideas Program',
+          'Forged Program'
+        ),
+        canonical_byte_size = length(CAST(replace(
+          projection_json,
+          'Ideas Program',
+          'Forged Program'
+        ) AS BLOB))
+    WHERE entity_type = 'program_public_profile'
+      AND entity_key = 'program-ideas'
+  `);
+  assert.equal(
+    (await queryPublicEvents(database, upcomingInput())).events.some(
+      (event) => event.slug === slug,
+    ),
+    false,
+  );
+  assert.equal(
+    (await listPublicEventSitemapSlugs(database, {
+      organizationId: ORGANIZATION_ID,
+    })).includes(slug),
+    false,
+  );
+});
+
+test("a coherent Program republish racing a multi-read surface drops only the stale event snapshot", async (t) => {
+  const slug = "manual-ideas-gathering";
+  const republishedName = "Ideas Program — republished";
+  const surfaces = [
+    {
+      label: "list",
+      mutateAfterRead: 2,
+      async read(database) {
+        return (await queryPublicEvents(database, upcomingInput())).events.some(
+          (event) => event.slug === slug,
+        );
+      },
+    },
+    {
+      label: "detail",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          (await getPublicEventBySlug(database, {
+            organizationId: ORGANIZATION_ID,
+            slug,
+          })) !== null
+        );
+      },
+    },
+    {
+      label: "editorial",
+      mutateAfterRead: 1,
+      async read(database) {
+        const result = await getEditorialPublicEvents(database, {
+          nowUtcMs: NOW_UTC_MS,
+          organizationId: ORGANIZATION_ID,
+          requestedSlugs: [slug],
+          todayDate: TODAY_DATE,
+        });
+        return [...result.selected, ...result.defaultUpcoming].some(
+          (event) => event.slug === slug,
+        );
+      },
+    },
+    {
+      label: "related",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listRelatedPublicEvents(database, {
+            limit: 6,
+            nowUtcMs: NOW_UTC_MS,
+            organizationId: ORGANIZATION_ID,
+            slug,
+            todayDate: TODAY_DATE,
+          })
+        ).some((event) => event.slug === "related-manual-conversation");
+      },
+    },
+    {
+      label: "sitemap",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listPublicEventSitemapSlugs(database, {
+            organizationId: ORGANIZATION_ID,
+          })
+        ).includes(slug);
+      },
+    },
+    {
+      label: "private CMS selection",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await resolveEditorialPublishedEventSelectionProofs(database, {
+            organizationId: ORGANIZATION_ID,
+            selectionIds: ["legacy:event_manual_upcoming"],
+          })
+        ).some((event) => event.slug === slug);
+      },
+    },
+    {
+      label: "legacy compatibility adapter",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listUpcomingPublicEvents(database, {
+            fromUtcMs: NOW_UTC_MS,
+            limit: 100,
+            organizationId: ORGANIZATION_ID,
+            todayDate: TODAY_DATE,
+          })
+        ).some((event) => event.slug === slug);
+      },
+    },
+    {
+      label: "Meetup compatibility adapter",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listUpcomingPublicMeetupEvents(database, {
+            fromUtcMs: NOW_UTC_MS,
+            limit: 100,
+            organizationId: ORGANIZATION_ID,
+            todayDate: TODAY_DATE,
+          })
+        ).some((event) => event.slug === "meetup-active-event");
+      },
+    },
+  ];
+  for (const surface of surfaces) {
+    await t.test(surface.label, async (surfaceTest) => {
+      const database = await createFixture(surfaceTest);
+      seedCurrentPublishedProgramProjection(database, {
+        clubId: "club_vcc",
+        description: "A confirmed recurring conversation.",
+        laneId: "lane_think",
+        name: "Ideas Program",
+        programId: "program-ideas",
+        slug: "ideas-program",
+      });
+      database.exec(`
+        UPDATE events
+        SET program_id = 'program-ideas',
+            updated_at = updated_at + 1
+        WHERE id IN (
+          'event_manual_upcoming',
+          'event_manual_related',
+          'event_meetup_active'
+        )
+      `);
+      let reads = 0;
+      let republished = false;
+      const visible = await surface.read(
+        injectAfterQuery(database, async () => {
+          reads += 1;
+          if (!republished && reads === surface.mutateAfterRead) {
+            republished = true;
+            republishCurrentProgramProjection(database, {
+              clubId: "club_vcc",
+              description: "A coherently republished recurring conversation.",
+              laneId: "lane_think",
+              name: republishedName,
+              programId: "program-ideas",
+              slug: "ideas-program",
+            });
+          }
+        }),
+      );
+      assert.equal(republished, true);
+      assert.equal(
+        visible,
+        false,
+        `${surface.label} must not return fields from the prior valid Program revision`,
+      );
+      assert.equal(
+        (await getPublicEventBySlug(database, {
+          organizationId: ORGANIZATION_ID,
+          slug,
+        }))?.program?.name,
+        republishedName,
+        "the coherently republished Program must remain visible on a fresh read",
+      );
+    });
   }
 });
 
@@ -819,6 +1593,50 @@ test("pending failed Meetup generation cannot leak through any unified read path
   );
 });
 
+test("protected legal claims are suppressed across legacy and Meetup public event branches", async (t) => {
+  const database = await createFixture(t);
+  database.exec(`
+    UPDATE events
+    SET title = 'Registered nonprofit society event'
+    WHERE id = 'event_manual_upcoming';
+    UPDATE meetup_event_snapshots
+    SET title = 'BC incorporated society gathering'
+    WHERE generation_id = 'generation_active'
+      AND external_id = 'synthetic-active-uid';
+  `);
+
+  const page = await queryPublicEvents(database, upcomingInput());
+  assert.equal(
+    page.events.some(
+      ({ slug }) =>
+        slug === "manual-ideas-gathering" ||
+        slug === "meetup-active-event",
+    ),
+    false,
+  );
+  for (const slug of [
+    "manual-ideas-gathering",
+    "meetup-active-event",
+  ]) {
+    assert.equal(
+      await getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug,
+      }),
+      null,
+    );
+  }
+  const sitemapSlugs = await listPublicEventSitemapSlugs(database, {
+    organizationId: ORGANIZATION_ID,
+  });
+  assert.equal(sitemapSlugs.includes("manual-ideas-gathering"), false);
+  assert.equal(sitemapSlugs.includes("meetup-active-event"), false);
+  assert.doesNotMatch(
+    JSON.stringify({ page, sitemapSlugs }),
+    /registered nonprofit|incorporated society/iu,
+  );
+});
+
 test("combines validated filters and provides bounded stable pagination", async (t) => {
   const database = await createFixture(t);
   const combined = await queryPublicEvents(database, {
@@ -966,7 +1784,7 @@ test("canonical organizer events publish from allowlisted sidecars only", async 
     slug: "organizer-public-event",
   });
   assert.ok(detail);
-  assert.deepEqual(detail.organizers, [{ displayName: "Public Host" }]);
+  assert.deepEqual(detail.organizers, [PUBLIC_HOST]);
   assert.equal(detail.publicAccessNote, "Use the public east entrance.");
   assert.equal(
     detail.publicOnlineUrl,
@@ -982,6 +1800,32 @@ test("canonical organizer events publish from allowlisted sidecars only", async 
   assert.equal(detail.preparationInformation, "Read the public handout.");
   assert.equal(detail.whatToBring, "A notebook.");
   assert.equal(detail.arrivalInstructions, "Arrive ten minutes early.");
+  const structuredData = buildPublicEventJsonLd(
+    detail,
+    "https://site.synthetic.invalid/events/organizer-public-event",
+    "Confirmed Site Identity",
+  );
+  assert.deepEqual(structuredData.organizer, [
+    {
+      "@type": "Organization",
+      name: "Confirmed Site Identity",
+      url: "https://site.synthetic.invalid/",
+    },
+    {
+      "@type": "Person",
+      name: "Public Host",
+    },
+  ]);
+  assert.equal("performer" in structuredData, false);
+  assert.equal(
+    structuredData.organizer.some(
+      (organizer) =>
+        organizer["@type"] === "Organization" &&
+        organizer.name === detail.club.name,
+    ),
+    false,
+    "the club must not be mislabeled as the schema.org organizer",
+  );
   assert.equal(detail.weatherNote, "The courtyard portion is weather dependent.");
   assert.equal(
     detail.verifiedAccessibilityNotes,
@@ -1011,6 +1855,250 @@ test("canonical organizer events publish from allowlisted sidecars only", async 
       false,
       forbiddenKey,
     );
+  }
+});
+
+test("CMS event selections use one collision-safe unified public projection", async (t) => {
+  const database = await createFixture(t);
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_selection",
+    slug: "organizer-selection",
+    title: "Selected Organizer Event",
+  });
+
+  const choices = await listPublishedEventSelections(database, {
+    organizationId: ORGANIZATION_ID,
+  });
+  const choiceIds = new Set(choices.map((choice) => choice.id));
+  assert.equal(choiceIds.has("legacy:event_manual_upcoming"), true);
+  assert.equal(
+    choiceIds.has("meetup:source_synthetic:synthetic-active-uid"),
+    true,
+  );
+  assert.equal(choiceIds.has("organizer:organizer_selection"), true);
+  assert.equal(
+    choiceIds.has("meetup:source_synthetic:synthetic-pending-uid"),
+    false,
+  );
+
+  const requestedIds = [
+    "organizer:organizer_selection",
+    "meetup:source_synthetic:synthetic-active-uid",
+    "legacy:event_manual_upcoming",
+    "meetup:source_synthetic:synthetic-pending-uid",
+  ];
+  let selectionQueries = 0;
+  const selected = await resolvePublishedEventSelections(
+    countAllQueries(database, () => {
+      selectionQueries += 1;
+    }),
+    {
+      organizationId: ORGANIZATION_ID,
+      selectionIds: requestedIds,
+    },
+  );
+  assert.equal(
+    selectionQueries,
+    2,
+    "one bounded selection read plus one exact current projection revalidation",
+  );
+  assert.deepEqual(
+    selected.map(({ id, slug, title }) => ({ id, slug, title })),
+    [
+      {
+        id: "organizer:organizer_selection",
+        slug: "organizer-selection",
+        title: "Selected Organizer Event",
+      },
+      {
+        id: "meetup:source_synthetic:synthetic-active-uid",
+        slug: "meetup-active-event",
+        title: "Active Snapshot Authority",
+      },
+      {
+        id: "legacy:event_manual_upcoming",
+        slug: "manual-ideas-gathering",
+        title: "Manual Ideas Gathering",
+      },
+    ],
+  );
+
+  const legacyDraftSelection = await resolvePublishedEventSelections(
+    database,
+    {
+      organizationId: ORGANIZATION_ID,
+      selectionIds: ["organizer_selection"],
+    },
+  );
+  assert.deepEqual(legacyDraftSelection, [
+    {
+      id: "organizer_selection",
+      slug: "organizer-selection",
+      title: "Selected Organizer Event",
+    },
+  ]);
+
+  let editorialQueries = 0;
+  const editorial = await getEditorialPublicEvents(
+    countAllQueries(database, () => {
+      editorialQueries += 1;
+    }),
+    {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      requestedSlugs: [
+        "organizer-selection",
+        "meetup-active-event",
+        "manual-ideas-gathering",
+        "pending-addition-sentinel",
+        "manual-ideas-gathering",
+      ],
+      todayDate: TODAY_DATE,
+    },
+  );
+  assert.equal(
+    editorialQueries,
+    4,
+    "one authoritative event query, two bounded source enrichments, and one final identity revalidation replace the oversized monolithic D1 statement",
+  );
+  assert.deepEqual(
+    editorial.selected.map((event) => event.slug),
+    [
+      "organizer-selection",
+      "meetup-active-event",
+      "manual-ideas-gathering",
+      "manual-ideas-gathering",
+    ],
+  );
+  assert.ok(editorial.defaultUpcoming.length <= 12);
+  assert.equal(
+    editorial.defaultUpcoming.some(
+      (event) => event.slug === "pending-addition-sentinel",
+    ),
+    false,
+  );
+});
+
+test("crafted protected media claims suppress organizer artwork from public cards, detail, and metadata inputs", async (t) => {
+  const database = await createFixture(t);
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_artwork_legal",
+    slug: "organizer-artwork-legal",
+    title: "Organizer artwork safety",
+  });
+  database.exec(`
+    INSERT INTO organizer_event_revisions (
+      id, organization_id, organizer_event_id, content_version,
+      schedule_version, action, snapshot_json, actor_profile_id, created_at
+    ) VALUES (
+      'revision-organizer-artwork-legal', '${ORGANIZATION_ID}',
+      'organizer_artwork_legal', 1, 1, 'created', '{}', 'profile_owner', 10
+    );
+    INSERT INTO media_assets (
+      id, organization_id, object_key, file_name, mime_type, byte_size,
+      alt_text, credit, rights_status, participant_consent_status,
+      is_public, uploaded_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'asset-organizer-artwork-legal', '${ORGANIZATION_ID}',
+      'opaque/artwork/original', 'private-artwork.png', 'image/png', 100,
+      'Safe abstract field-note shapes.', 'Vancouver Curiosity Club',
+      'approved', 'not_applicable', 0, 'profile_owner', 10, 10
+    );
+    INSERT INTO media_asset_details (
+      asset_id, organization_id, upload_state, caption,
+      private_rights_source_note, private_participant_consent_note,
+      informative, content_version, original_sha256, width, height,
+      pixel_count, finalized_at, updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'asset-organizer-artwork-legal', '${ORGANIZATION_ID}', 'ready',
+      'Safe public artwork caption.',
+      'Private CRA charity documentation.',
+      'Private society registration evidence.',
+      1, 1, '${"a".repeat(64)}', 1600, 900, 1440000, 10,
+      'profile_owner', 10, 10
+    );
+    INSERT INTO media_asset_variants (
+      id, organization_id, asset_id, variant_kind, object_key, mime_type,
+      byte_size, width, height, pixel_count, sha256, state,
+      finalized_at, created_at
+    ) VALUES
+      (
+        'variant-artwork-original', '${ORGANIZATION_ID}',
+        'asset-organizer-artwork-legal', 'original',
+        'opaque/artwork/original', 'image/png', 100, 1600, 900, 1440000,
+        '${"b".repeat(64)}', 'ready', 10, 10
+      ),
+      (
+        'variant-artwork-480', '${ORGANIZATION_ID}',
+        'asset-organizer-artwork-legal', 'webp_480',
+        'opaque/artwork/480', 'image/webp', 80, 480, 270, 129600,
+        '${"c".repeat(64)}', 'ready', 10, 10
+      ),
+      (
+        'variant-artwork-960', '${ORGANIZATION_ID}',
+        'asset-organizer-artwork-legal', 'webp_960',
+        'opaque/artwork/960', 'image/webp', 80, 960, 540, 518400,
+        '${"d".repeat(64)}', 'ready', 10, 10
+      ),
+      (
+        'variant-artwork-1600', '${ORGANIZATION_ID}',
+        'asset-organizer-artwork-legal', 'webp_1600',
+        'opaque/artwork/1600', 'image/webp', 80, 1600, 900, 1440000,
+        '${"e".repeat(64)}', 'ready', 10, 10
+      );
+    INSERT INTO media_usage_references (
+      id, organization_id, asset_id, entity_type, entity_id, revision_id,
+      usage_kind, publication_scope, created_by_profile_id, created_at
+    ) VALUES (
+      'usage-organizer-artwork-legal', '${ORGANIZATION_ID}',
+      'asset-organizer-artwork-legal', 'organizer_event',
+      'organizer_artwork_legal', 'revision-organizer-artwork-legal',
+      'event_artwork', 'published', 'profile_owner', 10
+    );
+  `);
+
+  const readDetail = () =>
+    getPublicEventBySlug(database, {
+      organizationId: ORGANIZATION_ID,
+      slug: "organizer-artwork-legal",
+    });
+  const safe = await readDetail();
+  assert.ok(safe?.artwork);
+  assert.equal(safe.artwork.altText, "Safe abstract field-note shapes.");
+  assert.equal(
+    JSON.stringify(safe).includes("Private CRA charity documentation"),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(safe).includes("Private society registration evidence"),
+    false,
+  );
+
+  for (const mutation of [
+    `UPDATE media_assets
+     SET alt_text = 'Registered charity artwork', updated_at = 11
+     WHERE id = 'asset-organizer-artwork-legal'`,
+    `UPDATE media_asset_details
+     SET caption = 'Tax-deductible artwork', updated_at = 12
+     WHERE asset_id = 'asset-organizer-artwork-legal'`,
+    `UPDATE media_assets
+     SET credit = 'BC incorporated society', updated_at = 13
+     WHERE id = 'asset-organizer-artwork-legal'`,
+  ]) {
+    database.exec(mutation);
+    const hidden = await readDetail();
+    assert.ok(hidden);
+    assert.equal(hidden.artwork, null);
+    database.exec(`
+      UPDATE media_assets
+      SET alt_text = 'Safe abstract field-note shapes.',
+          credit = 'Vancouver Curiosity Club',
+          updated_at = 14
+      WHERE id = 'asset-organizer-artwork-legal';
+      UPDATE media_asset_details
+      SET caption = 'Safe public artwork caption.', updated_at = 14
+      WHERE asset_id = 'asset-organizer-artwork-legal';
+    `);
   }
 });
 
@@ -1097,8 +2185,10 @@ test("organizer publication states fail closed while cancellation and completed 
   );
 
   const preview = await getAuthorizedOrganizerEventPublicPreview(database, {
+    membershipId: "membership_owner",
     organizationId: ORGANIZATION_ID,
     organizerEventId: "organizer_preview",
+    profileId: "profile_owner",
   });
   assert.equal(preview?.slug, "organizer-preview");
   assert.equal(preview?.rsvpMode, "coming_soon");
@@ -1121,15 +2211,19 @@ test("organizer publication states fail closed while cancellation and completed 
   `);
   assert.equal(
     await getAuthorizedOrganizerEventPublicPreview(database, {
+      membershipId: "membership_owner",
       organizationId: ORGANIZATION_ID,
       organizerEventId: "organizer_preview_incomplete",
+      profileId: "profile_owner",
     }),
     null,
   );
   assert.equal(
     await getAuthorizedOrganizerEventPublicPreview(database, {
+      membershipId: "membership_owner",
       organizationId: ORGANIZATION_ID,
       organizerEventId: "organizer_draft",
+      profileId: "profile_owner",
     }),
     null,
   );
@@ -1143,8 +2237,10 @@ test("organizer publication states fail closed while cancellation and completed 
   });
   const hostlessPreview =
     await getAuthorizedOrganizerEventPublicPreview(database, {
+      membershipId: "membership_owner",
       organizationId: ORGANIZATION_ID,
       organizerEventId: "organizer_preview_hostless",
+      profileId: "profile_owner",
     });
   assert.ok(hostlessPreview);
   assert.deepEqual(hostlessPreview.organizers, []);
@@ -1176,7 +2272,79 @@ test("organizer public hosts require selection, event enablement, current assign
     organizationId: ORGANIZATION_ID,
     slug: "organizer-host-gates",
   });
-  assert.deepEqual(detail?.organizers, [{ displayName: "Public Host" }]);
+  assert.deepEqual(detail?.organizers, [PUBLIC_HOST]);
+  assert.deepEqual(
+    (
+      await getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: "manual-ideas-gathering",
+      })
+    )?.organizers,
+    [PUBLIC_HOST],
+  );
+  assert.deepEqual(
+    (
+      await getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: "meetup-active-event",
+      })
+    )?.organizers,
+    [PUBLIC_HOST],
+  );
+
+  database.exec(`
+    UPDATE event_organizers
+    SET is_publicly_listed = 0
+    WHERE id = 'organizer_public';
+  `);
+  assert.deepEqual(
+    (
+      await getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: "manual-ideas-gathering",
+      })
+    )?.organizers,
+    [],
+    "the legacy-manual source requires its event-level public-host flag",
+  );
+  database.exec(`
+    UPDATE event_organizers
+    SET is_publicly_listed = 1
+    WHERE id = 'organizer_public';
+    UPDATE event_organizers
+    SET is_publicly_listed = 0
+    WHERE id = 'organizer_public_meetup';
+  `);
+  assert.deepEqual(
+    (
+      await getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: "meetup-active-event",
+      })
+    )?.organizers,
+    [],
+    "the Meetup-synced source requires its event-level public-host flag",
+  );
+  database.exec(`
+    UPDATE event_organizers
+    SET is_publicly_listed = 1
+    WHERE id = 'organizer_public_meetup';
+  `);
+
+  database.exec(`
+    UPDATE profiles
+    SET public_attribution_consent = 1
+    WHERE id = 'profile_no_consent';
+  `);
+  detail = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "organizer-host-gates",
+  });
+  assert.deepEqual(
+    detail?.organizers,
+    [PUBLIC_HOST],
+    "a crafted legacy consent bit without a completed receipt stays private",
+  );
 
   database.exec(`
     UPDATE organizer_event_public_details
@@ -1202,7 +2370,221 @@ test("organizer public hosts require selection, event enablement, current assign
     slug: "organizer-host-gates",
   });
   assert.deepEqual(detail?.organizers, []);
+  for (const slug of [
+    "manual-ideas-gathering",
+    "meetup-active-event",
+  ]) {
+    assert.deepEqual(
+      (
+        await getPublicEventBySlug(database, {
+          organizationId: ORGANIZATION_ID,
+          slug,
+        })
+      )?.organizers,
+      [],
+      `${slug} must suppress a host whose membership is suspended`,
+    );
+  }
 });
+
+async function seedConfirmedPublicAttribution(
+  database,
+  { displayName, profileId },
+) {
+  const intentId = `intent_confirmed_${profileId}`;
+  const receiptId = `receipt_confirmed_${profileId}`;
+  const photoAssetId = "asset_public_host";
+  const snapshotJson = JSON.stringify({
+    biography: PUBLIC_HOST.biography,
+    consent: true,
+    displayName,
+    draftVersion: 1,
+    legacyAdopted: false,
+    photoAssetId,
+  });
+  const snapshotHash = createHash("sha256")
+    .update(snapshotJson)
+    .digest("hex");
+  seedPublicHostMedia(database, { photoAssetId });
+  await database
+    .prepare(
+      `INSERT INTO organizer_public_attribution_states (
+         profile_id, organization_id, attribution_version,
+         published_attribution_version, workflow_status,
+         draft_photo_media_asset_id, public_display_name,
+         public_biography, public_photo_media_asset_id,
+         current_receipt_id, confirmed_at, revoked_at,
+         updated_by_profile_id, created_at, updated_at
+       ) VALUES (?, ?, 1, 0, 'unconfirmed', NULL, NULL, NULL, NULL,
+                 NULL, NULL, NULL, ?, 1, 1)`,
+    )
+    .bind(profileId, ORGANIZATION_ID, profileId)
+    .run();
+  await database
+    .prepare(
+      `INSERT INTO organizer_public_attribution_write_intents (
+         id, organization_id, profile_id, operation,
+         expected_draft_version, expected_published_version,
+         proposed_published_version, snapshot_hash,
+         actor_profile_id, created_at, completed_at
+       ) VALUES (?, ?, ?, 'confirmed', 1, 0, 1, ?, ?, 1, 1)`,
+    )
+    .bind(
+      intentId,
+      ORGANIZATION_ID,
+      profileId,
+      snapshotHash,
+      profileId,
+    )
+    .run();
+  await database
+    .prepare(
+      `INSERT INTO organizer_public_attribution_receipts (
+         id, organization_id, profile_id, action,
+         attribution_version, display_name, biography,
+         photo_media_asset_id, consent, draft_version,
+         legacy_adopted, prior_published_version,
+         snapshot_json, snapshot_hash, actor_profile_id,
+         write_intent_id, related_receipt_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'confirmed', 1, ?, ?, ?, 1, 1, 0, NULL,
+         ?, ?, ?, ?, NULL, 1
+       )`,
+    )
+    .bind(
+      receiptId,
+      ORGANIZATION_ID,
+      profileId,
+      displayName,
+      PUBLIC_HOST.biography,
+      photoAssetId,
+      snapshotJson,
+      snapshotHash,
+      profileId,
+      intentId,
+    )
+    .run();
+  await database
+    .prepare(
+      `UPDATE organizer_public_attribution_states
+       SET published_attribution_version = 1,
+           workflow_status = 'confirmed',
+           public_display_name = ?,
+           public_biography = ?,
+           public_photo_media_asset_id = ?,
+           current_receipt_id = ?,
+           confirmed_at = 1,
+           updated_at = 1
+       WHERE profile_id = ?
+         AND organization_id = ?`,
+    )
+    .bind(
+      displayName,
+      PUBLIC_HOST.biography,
+      photoAssetId,
+      receiptId,
+      profileId,
+      ORGANIZATION_ID,
+    )
+    .run();
+  await database
+    .prepare(
+      `INSERT INTO media_usage_references (
+         id, organization_id, asset_id, entity_type, entity_id,
+         revision_id, usage_kind, publication_scope,
+         created_by_profile_id, created_at
+       ) VALUES (
+         'usage-public-host-photo', ?, ?, 'organizer_profile', ?, ?,
+         'profile_photo', 'published', ?, 1
+       )`,
+    )
+    .bind(
+      ORGANIZATION_ID,
+      photoAssetId,
+      profileId,
+      receiptId,
+      profileId,
+    )
+    .run();
+  await database
+    .prepare(
+      `INSERT INTO audit_logs (
+         id, organization_id, actor_profile_id, action,
+         entity_type, entity_id, metadata_json, created_at
+       ) VALUES (?, ?, ?, 'profile.public_attribution_confirmed',
+                 'profile', ?, ?, 1)`,
+    )
+    .bind(
+      `audit_confirmed_${profileId}`,
+      ORGANIZATION_ID,
+      profileId,
+      profileId,
+      JSON.stringify({
+        draftVersion: 1,
+        publishedVersion: 1,
+        writeIntentId: intentId,
+      }),
+    )
+    .run();
+}
+
+function seedPublicHostMedia(database, { photoAssetId }) {
+  database.exec(`
+    INSERT INTO media_assets (
+      id, organization_id, object_key, file_name, mime_type, byte_size,
+      alt_text, credit, rights_status, participant_consent_status,
+      is_public, uploaded_by_profile_id, created_at, updated_at
+    ) VALUES (
+      '${photoAssetId}', '${ORGANIZATION_ID}',
+      'PRIVATE-R2-OBJECT-KEY-SENTINEL', 'PRIVATE-ORIGINAL-NAME.png',
+      'image/png', 100, '${PUBLIC_HOST.photo.altText}',
+      '${PUBLIC_HOST.photo.credit}', 'approved', 'not_applicable', 0,
+      'profile_owner', 1, 1
+    );
+    INSERT INTO media_asset_details (
+      asset_id, organization_id, upload_state, caption,
+      private_rights_source_note, private_participant_consent_note,
+      informative, content_version, original_sha256, width, height,
+      pixel_count, finalized_at, updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      '${photoAssetId}', '${ORGANIZATION_ID}', 'ready',
+      'Public-safe profile artwork.',
+      'PRIVATE-RIGHTS-NOTE-SENTINEL',
+      'PRIVATE-CONSENT-NOTE-SENTINEL',
+      1, 1, '${"2".repeat(64)}', 1600, 1067, 1707200, 1,
+      'profile_owner', 1, 1
+    );
+    INSERT INTO media_asset_variants (
+      id, organization_id, asset_id, variant_kind, object_key, mime_type,
+      byte_size, width, height, pixel_count, sha256, state,
+      finalized_at, created_at
+    ) VALUES
+      (
+        'variant-public-host-original', '${ORGANIZATION_ID}',
+        '${photoAssetId}', 'original', 'PRIVATE-R2-ORIGINAL-SENTINEL',
+        'image/png', 100, 1600, 1067, 1707200, '${"3".repeat(64)}',
+        'ready', 1, 1
+      ),
+      (
+        'variant-public-host-480', '${ORGANIZATION_ID}',
+        '${photoAssetId}', 'webp_480', 'PRIVATE-R2-480-SENTINEL',
+        'image/webp', 80, 480, 320, 153600, '${"4".repeat(64)}',
+        'ready', 1, 1
+      ),
+      (
+        'variant-public-host-960', '${ORGANIZATION_ID}',
+        '${photoAssetId}', 'webp_960', 'PRIVATE-R2-960-SENTINEL',
+        'image/webp', 80, 960, 640, 614400, '${"5".repeat(64)}',
+        'ready', 1, 1
+      ),
+      (
+        'variant-public-host-1600', '${ORGANIZATION_ID}',
+        '${photoAssetId}', 'webp_1600', 'PRIVATE-R2-1600-SENTINEL',
+        'image/webp', 80, 1600, 1067, 1707200, '${"6".repeat(64)}',
+        'ready', 1, 1
+      );
+  `);
+}
 
 test("organizer Meetup confirmation must match the current canonical event URL", async (t) => {
   const database = await createFixture(t);
@@ -1275,6 +2657,119 @@ test("cross-source public slug collisions fail closed instead of ranking away a 
       }),
     (error) => error?.code === "internal_error" && error?.status === 500,
   );
+  assert.deepEqual(
+    await resolveEditorialPublishedEventSelectionProofs(database, {
+      organizationId: ORGANIZATION_ID,
+      selectionIds: ["organizer:organizer_slug_collision"],
+    }),
+    [],
+    "a colliding slug cannot receive a CMS featured-event publication proof",
+  );
+});
+
+test("split public enrichment fails closed across publish-state and content races", async (t) => {
+  const cases = [
+    {
+      label: "legacy unpublish",
+      prepare: async () => ({
+        slug: "manual-ideas-gathering",
+        mutate(database) {
+          database.sqlite
+            .prepare(
+              `UPDATE events
+               SET published_at = NULL
+               WHERE id = 'event_manual_upcoming'`,
+            )
+            .run();
+        },
+      }),
+    },
+    {
+      label: "legacy content edit",
+      prepare: async () => ({
+        slug: "manual-ideas-gathering",
+        mutate(database) {
+          database.sqlite
+            .prepare(
+              `UPDATE events
+               SET title = 'Raced legacy title',
+                   updated_at = updated_at + 1
+               WHERE id = 'event_manual_upcoming'`,
+            )
+            .run();
+        },
+      }),
+    },
+    {
+      label: "organizer unpublish",
+      prepare: async (database) => {
+        await insertOrganizerPublicEvent(database, {
+          id: "organizer_race_unpublish",
+          slug: "organizer-race-unpublish",
+          title: "Organizer Race Unpublish",
+        });
+        return {
+          slug: "organizer-race-unpublish",
+          mutate(target) {
+            target.sqlite
+              .prepare(
+                `UPDATE organizer_events
+                 SET publication_status = 'unpublished'
+                 WHERE id = 'organizer_race_unpublish'`,
+              )
+              .run();
+          },
+        };
+      },
+    },
+    {
+      label: "organizer content edit",
+      prepare: async (database) => {
+        await insertOrganizerPublicEvent(database, {
+          id: "organizer_race_edit",
+          slug: "organizer-race-edit",
+          title: "Organizer Race Edit",
+        });
+        return {
+          slug: "organizer-race-edit",
+          mutate(target) {
+            target.sqlite
+              .prepare(
+                `UPDATE organizer_events
+                 SET title = 'Raced organizer title',
+                     updated_at = updated_at + 1
+                 WHERE id = 'organizer_race_edit'`,
+              )
+              .run();
+          },
+        };
+      },
+    },
+  ];
+
+  for (const race of cases) {
+    await t.test(race.label, async (raceTest) => {
+      const database = await createFixture(raceTest);
+      const prepared = await race.prepare(database);
+      let queryCount = 0;
+      const result = await getPublicEventBySlug(
+        injectAfterQuery(database, async () => {
+          queryCount += 1;
+          if (queryCount === 1) prepared.mutate(database);
+        }),
+        {
+          organizationId: ORGANIZATION_ID,
+          slug: prepared.slug,
+        },
+      );
+      assert.equal(
+        result,
+        null,
+        "the final identity/version proof must suppress a row changed after the authoritative base read",
+      );
+      assert.ok(queryCount >= 2);
+    });
+  }
 });
 
 test("public event branches use their bounded projection indexes", async (t) => {
@@ -1339,6 +2834,699 @@ test("public event branches use their bounded projection indexes", async (t) => 
     .join("\n");
   assert.match(organizerPlan, /organizer_events_org_status_idx/u);
 });
+
+function seedCurrentPublishedClubProjection(
+  database,
+  {
+    clubId,
+    description,
+    featured,
+    laneId,
+    meetupGroupUrl,
+    name,
+    slug,
+  },
+) {
+  const stateId = `state-${clubId}`;
+  const revisionId = `revision-${clubId}`;
+  const revisionHash =
+    clubId === "club_vcc" ? "a".repeat(64) : "b".repeat(64);
+  const snapshotJson = JSON.stringify({
+    contentConfirmed: true,
+    coverAssetId: null,
+    description,
+    featured,
+    laneId,
+    metaDescription: null,
+    meetupGroupUrl,
+    name,
+    openGraphAssetId: null,
+    preparation: null,
+    programType: "club",
+    relatedResourceIds: [],
+    seoTitle: null,
+    slug,
+    socialUrls: [],
+    summary: description,
+    themeColor: null,
+    thumbnailAssetId: null,
+    typicalFormat: null,
+    whatToExpect: null,
+  });
+  const projectionJson = JSON.stringify({
+    club: { description, name, slug },
+    details: {
+      confirmedSocialLinks: [],
+      coverAssetId: null,
+      fullDescription: description,
+      imageAltText: null,
+      metaDescription: null,
+      openGraphAssetId: null,
+      participantExpectations: null,
+      preparationInformation: null,
+      programType: "club",
+      publicDisplayName: name,
+      relatedResources: [],
+      seoTitle: null,
+      shortSummary: description,
+      themeColor: null,
+      thumbnailAssetId: null,
+      typicalFormat: null,
+    },
+    profile: {
+      featured,
+      laneId,
+      meetupGroupUrl,
+      summary: description,
+    },
+  });
+  database
+    .prepare(
+      `UPDATE club_public_profiles
+       SET description = ?
+       WHERE organization_id = ?
+         AND club_id = ?`,
+    )
+    .bind(description, ORGANIZATION_ID, clubId)
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO club_public_profile_details (
+         club_id, organization_id, public_display_name, short_summary,
+         full_description, program_type, cover_media_asset_id,
+         thumbnail_media_asset_id, image_alt_text, theme_color,
+         participant_expectations, preparation_information, typical_format,
+         confirmed_social_links_json, related_resources_json, seo_title,
+         meta_description, og_media_asset_id, updated_by_profile_id,
+         created_at, updated_at
+       ) VALUES (
+         ?, ?, ?, ?, ?, 'club', NULL, NULL, NULL, NULL,
+         NULL, NULL, NULL, '[]', '[]', NULL, NULL, NULL,
+         'profile_owner', 1, 1
+       )`,
+    )
+    .bind(
+      clubId,
+      ORGANIZATION_ID,
+      name,
+      description,
+      description,
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_entity_publication_states (
+         id, organization_id, entity_type, entity_key, workflow_status,
+         content_version, published_revision_id, last_editor_profile_id,
+         published_at, created_at, updated_at
+       ) VALUES (
+         ?, ?, 'club_public_profile', ?, 'published', 1, ?,
+         'profile_owner', 1, 1, 1
+       )`,
+    )
+    .bind(stateId, ORGANIZATION_ID, clubId, revisionId)
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_entity_revisions (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_number, snapshot_json, content_hash, canonical_byte_size,
+         actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'club_public_profile', ?, 1, ?, ?, ?,
+         'profile_owner', 1
+       )`,
+    )
+    .bind(
+      revisionId,
+      ORGANIZATION_ID,
+      stateId,
+      clubId,
+      snapshotJson,
+      revisionHash,
+      Buffer.byteLength(snapshotJson),
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_public_materialization_receipts (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_id, revision_hash, projection_json, canonical_byte_size,
+         actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'club_public_profile', ?, ?, ?, ?, ?,
+         'profile_owner', 1
+       )`,
+    )
+    .bind(
+      `receipt-${clubId}`,
+      ORGANIZATION_ID,
+      stateId,
+      clubId,
+      revisionId,
+      revisionHash,
+      projectionJson,
+      Buffer.byteLength(projectionJson),
+    )
+    .runSynchronously();
+}
+
+function republishCurrentClubProjection(
+  database,
+  {
+    clubId,
+    description,
+    featured,
+    laneId,
+    meetupGroupUrl,
+    name,
+    slug,
+  },
+) {
+  const stateId = `state-${clubId}`;
+  const revisionId = `revision-${clubId}-2`;
+  const revisionHash = "d".repeat(64);
+  const snapshotJson = JSON.stringify({
+    contentConfirmed: true,
+    coverAssetId: null,
+    description,
+    featured,
+    laneId,
+    metaDescription: null,
+    meetupGroupUrl,
+    name,
+    openGraphAssetId: null,
+    preparation: null,
+    programType: "club",
+    relatedResourceIds: [],
+    seoTitle: null,
+    slug,
+    socialUrls: [],
+    summary: description,
+    themeColor: null,
+    thumbnailAssetId: null,
+    typicalFormat: null,
+    whatToExpect: null,
+  });
+  const projectionJson = JSON.stringify({
+    club: { description, name, slug },
+    details: {
+      confirmedSocialLinks: [],
+      coverAssetId: null,
+      fullDescription: description,
+      imageAltText: null,
+      metaDescription: null,
+      openGraphAssetId: null,
+      participantExpectations: null,
+      preparationInformation: null,
+      programType: "club",
+      publicDisplayName: name,
+      relatedResources: [],
+      seoTitle: null,
+      shortSummary: description,
+      themeColor: null,
+      thumbnailAssetId: null,
+      typicalFormat: null,
+    },
+    profile: {
+      featured,
+      laneId,
+      meetupGroupUrl,
+      summary: description,
+    },
+  });
+  database
+    .prepare(
+      `INSERT INTO cms_entity_revisions (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_number, snapshot_json, content_hash, canonical_byte_size,
+         actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'club_public_profile', ?, 2, ?, ?, ?,
+         'profile_owner', 2
+       )`,
+    )
+    .bind(
+      revisionId,
+      ORGANIZATION_ID,
+      stateId,
+      clubId,
+      snapshotJson,
+      revisionHash,
+      Buffer.byteLength(snapshotJson),
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_public_materialization_receipts (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_id, revision_hash, projection_json, canonical_byte_size,
+         actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'club_public_profile', ?, ?, ?, ?, ?,
+         'profile_owner', 2
+       )`,
+    )
+    .bind(
+      `receipt-${clubId}-2`,
+      ORGANIZATION_ID,
+      stateId,
+      clubId,
+      revisionId,
+      revisionHash,
+      projectionJson,
+      Buffer.byteLength(projectionJson),
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `UPDATE clubs
+       SET name = ?,
+           slug = ?,
+           description = ?,
+           updated_at = 2
+       WHERE organization_id = ?
+         AND id = ?`,
+    )
+    .bind(name, slug, description, ORGANIZATION_ID, clubId)
+    .runSynchronously();
+  database
+    .prepare(
+      `UPDATE club_public_profiles
+       SET primary_event_lane_id = ?,
+           publication_status = 'published',
+           is_featured = ?,
+           public_group_url = ?,
+           description = ?,
+           published_at = 2,
+           updated_at = 2
+       WHERE organization_id = ?
+         AND club_id = ?`,
+    )
+    .bind(
+      laneId,
+      featured ? 1 : 0,
+      meetupGroupUrl,
+      description,
+      ORGANIZATION_ID,
+      clubId,
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `UPDATE club_public_profile_details
+       SET public_display_name = ?,
+           short_summary = ?,
+           full_description = ?,
+           program_type = 'club',
+           cover_media_asset_id = NULL,
+           thumbnail_media_asset_id = NULL,
+           image_alt_text = NULL,
+           theme_color = NULL,
+           participant_expectations = NULL,
+           preparation_information = NULL,
+           typical_format = NULL,
+           confirmed_social_links_json = '[]',
+           related_resources_json = '[]',
+           seo_title = NULL,
+           meta_description = NULL,
+           og_media_asset_id = NULL,
+           updated_by_profile_id = 'profile_owner',
+           updated_at = 2
+       WHERE organization_id = ?
+         AND club_id = ?`,
+    )
+    .bind(
+      name,
+      description,
+      description,
+      ORGANIZATION_ID,
+      clubId,
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `UPDATE cms_entity_publication_states
+       SET workflow_status = 'published',
+           content_version = 2,
+           published_revision_id = ?,
+           last_editor_profile_id = 'profile_owner',
+           published_at = 2,
+           updated_at = 2
+       WHERE organization_id = ?
+         AND id = ?
+         AND entity_type = 'club_public_profile'
+         AND entity_key = ?`,
+    )
+    .bind(revisionId, ORGANIZATION_ID, stateId, clubId)
+    .runSynchronously();
+}
+
+function seedCurrentPublishedProgramProjection(
+  database,
+  {
+    clubId,
+    description,
+    laneId,
+    name,
+    programId,
+    slug,
+  },
+) {
+  const stateId = `state-${programId}`;
+  const revisionId = `revision-${programId}`;
+  const revisionHash = "c".repeat(64);
+  const snapshotJson = JSON.stringify({
+    clubId,
+    contentConfirmed: true,
+    coverAssetId: null,
+    description,
+    displayOrder: 10,
+    featured: false,
+    laneId,
+    meetupGroupUrl: null,
+    metaDescription: null,
+    name,
+    openGraphAssetId: null,
+    preparation: null,
+    programType: "program",
+    relatedResourceIds: [],
+    seoTitle: null,
+    slug,
+    socialUrls: [],
+    summary: description,
+    themeColor: null,
+    thumbnailAssetId: null,
+    typicalFormat: null,
+    whatToExpect: null,
+  });
+  const projectionJson = JSON.stringify({
+    details: {
+      clubId,
+      confirmedSocialLinks: [],
+      coverAssetId: null,
+      displayOrder: 10,
+      featured: false,
+      fullDescription: description,
+      laneId,
+      meetupGroupUrl: null,
+      metaDescription: null,
+      name,
+      openGraphAssetId: null,
+      participantExpectations: null,
+      preparationInformation: null,
+      programType: "program",
+      relatedResources: [],
+      seoTitle: null,
+      slug,
+      summary: description,
+      themeColor: null,
+      thumbnailAssetId: null,
+      typicalFormat: null,
+    },
+  });
+  database.exec(`
+    INSERT INTO programs (
+      id, organization_id, club_id, name, slug, description,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES (
+      '${programId}', '${ORGANIZATION_ID}', '${clubId}',
+      '${name}', '${slug}', '${description}', 'profile_owner', 1, 1
+    );
+  `);
+  database
+    .prepare(
+      `INSERT INTO program_public_profile_details (
+         program_id, organization_id, club_id, primary_event_lane_id,
+         publication_status, public_display_name, public_slug,
+         short_summary, full_description, program_type,
+         public_group_url, cover_media_asset_id, thumbnail_media_asset_id,
+         theme_color, participant_expectations, preparation_information,
+         typical_format, is_featured, display_order,
+         confirmed_social_links_json, related_resources_json,
+         seo_title, meta_description, og_media_asset_id, published_at,
+         updated_by_profile_id, created_at, updated_at, deleted_at
+       ) VALUES (
+         ?, ?, ?, ?, 'published', ?, ?, ?, ?, 'program',
+         NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 10,
+         '[]', '[]', NULL, NULL, NULL, 1, 'profile_owner', 1, 1, NULL
+       )`,
+    )
+    .bind(
+      programId,
+      ORGANIZATION_ID,
+      clubId,
+      laneId,
+      name,
+      slug,
+      description,
+      description,
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_entity_publication_states (
+         id, organization_id, entity_type, entity_key, workflow_status,
+         content_version, published_revision_id, last_editor_profile_id,
+         published_at, created_at, updated_at
+       ) VALUES (
+         ?, ?, 'program_public_profile', ?, 'published', 1, ?,
+         'profile_owner', 1, 1, 1
+       )`,
+    )
+    .bind(stateId, ORGANIZATION_ID, programId, revisionId)
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_entity_revisions (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_number, snapshot_json, content_hash, canonical_byte_size,
+         actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'program_public_profile', ?, 1, ?, ?, ?,
+         'profile_owner', 1
+       )`,
+    )
+    .bind(
+      revisionId,
+      ORGANIZATION_ID,
+      stateId,
+      programId,
+      snapshotJson,
+      revisionHash,
+      Buffer.byteLength(snapshotJson),
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_public_materialization_receipts (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_id, revision_hash, projection_json, canonical_byte_size,
+         actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'program_public_profile', ?, ?, ?, ?, ?,
+         'profile_owner', 1
+       )`,
+    )
+    .bind(
+      `receipt-${programId}`,
+      ORGANIZATION_ID,
+      stateId,
+      programId,
+      revisionId,
+      revisionHash,
+      projectionJson,
+      Buffer.byteLength(projectionJson),
+    )
+    .runSynchronously();
+}
+
+function republishCurrentProgramProjection(
+  database,
+  {
+    clubId,
+    description,
+    laneId,
+    name,
+    programId,
+    slug,
+  },
+) {
+  const stateId = `state-${programId}`;
+  const revisionId = `revision-${programId}-2`;
+  const revisionHash = "e".repeat(64);
+  const snapshotJson = JSON.stringify({
+    clubId,
+    contentConfirmed: true,
+    coverAssetId: null,
+    description,
+    displayOrder: 10,
+    featured: false,
+    laneId,
+    meetupGroupUrl: null,
+    metaDescription: null,
+    name,
+    openGraphAssetId: null,
+    preparation: null,
+    programType: "program",
+    relatedResourceIds: [],
+    seoTitle: null,
+    slug,
+    socialUrls: [],
+    summary: description,
+    themeColor: null,
+    thumbnailAssetId: null,
+    typicalFormat: null,
+    whatToExpect: null,
+  });
+  const projectionJson = JSON.stringify({
+    details: {
+      clubId,
+      confirmedSocialLinks: [],
+      coverAssetId: null,
+      displayOrder: 10,
+      featured: false,
+      fullDescription: description,
+      laneId,
+      meetupGroupUrl: null,
+      metaDescription: null,
+      name,
+      openGraphAssetId: null,
+      participantExpectations: null,
+      preparationInformation: null,
+      programType: "program",
+      relatedResources: [],
+      seoTitle: null,
+      slug,
+      summary: description,
+      themeColor: null,
+      thumbnailAssetId: null,
+      typicalFormat: null,
+    },
+  });
+  database
+    .prepare(
+      `INSERT INTO cms_entity_revisions (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_number, snapshot_json, content_hash, canonical_byte_size,
+         actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'program_public_profile', ?, 2, ?, ?, ?,
+         'profile_owner', 2
+       )`,
+    )
+    .bind(
+      revisionId,
+      ORGANIZATION_ID,
+      stateId,
+      programId,
+      snapshotJson,
+      revisionHash,
+      Buffer.byteLength(snapshotJson),
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_public_materialization_receipts (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_id, revision_hash, projection_json, canonical_byte_size,
+         actor_profile_id, created_at
+       ) VALUES (
+         ?, ?, ?, 'program_public_profile', ?, ?, ?, ?, ?,
+         'profile_owner', 2
+       )`,
+    )
+    .bind(
+      `receipt-${programId}-2`,
+      ORGANIZATION_ID,
+      stateId,
+      programId,
+      revisionId,
+      revisionHash,
+      projectionJson,
+      Buffer.byteLength(projectionJson),
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `UPDATE programs
+       SET club_id = ?,
+           name = ?,
+           slug = ?,
+           description = ?,
+           updated_at = 2
+       WHERE organization_id = ?
+         AND id = ?`,
+    )
+    .bind(
+      clubId,
+      name,
+      slug,
+      description,
+      ORGANIZATION_ID,
+      programId,
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `UPDATE program_public_profile_details
+       SET club_id = ?,
+           primary_event_lane_id = ?,
+           publication_status = 'published',
+           public_display_name = ?,
+           public_slug = ?,
+           short_summary = ?,
+           full_description = ?,
+           program_type = 'program',
+           public_group_url = NULL,
+           cover_media_asset_id = NULL,
+           thumbnail_media_asset_id = NULL,
+           theme_color = NULL,
+           participant_expectations = NULL,
+           preparation_information = NULL,
+           typical_format = NULL,
+           is_featured = 0,
+           display_order = 10,
+           confirmed_social_links_json = '[]',
+           related_resources_json = '[]',
+           seo_title = NULL,
+           meta_description = NULL,
+           og_media_asset_id = NULL,
+           published_at = 2,
+           updated_by_profile_id = 'profile_owner',
+           updated_at = 2,
+           deleted_at = NULL
+       WHERE organization_id = ?
+         AND program_id = ?`,
+    )
+    .bind(
+      clubId,
+      laneId,
+      name,
+      slug,
+      description,
+      description,
+      ORGANIZATION_ID,
+      programId,
+    )
+    .runSynchronously();
+  database
+    .prepare(
+      `UPDATE cms_entity_publication_states
+       SET workflow_status = 'published',
+           content_version = 2,
+           published_revision_id = ?,
+           last_editor_profile_id = 'profile_owner',
+           published_at = 2,
+           updated_at = 2
+       WHERE organization_id = ?
+         AND id = ?
+         AND entity_type = 'program_public_profile'
+         AND entity_key = ?`,
+    )
+    .bind(revisionId, ORGANIZATION_ID, stateId, programId)
+    .runSynchronously();
+}
 
 function upcomingInput() {
   return {
@@ -1596,4 +3784,48 @@ async function insertSnapshot(
       updatedAt,
     )
     .run();
+}
+
+function countAllQueries(database, onAll) {
+  return {
+    prepare(sql) {
+      const statement = database.prepare(sql);
+      return {
+        bind(...values) {
+          const bound = statement.bind(...values);
+          return {
+            async all() {
+              onAll();
+              return bound.all();
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+function injectAfterQuery(database, afterQuery) {
+  return {
+    prepare(sql) {
+      const statement = database.prepare(sql);
+      return {
+        bind(...values) {
+          const bound = statement.bind(...values);
+          return {
+            async all() {
+              const result = await bound.all();
+              await afterQuery();
+              return result;
+            },
+            async first() {
+              const result = await bound.first();
+              await afterQuery();
+              return result;
+            },
+          };
+        },
+      };
+    },
+  };
 }

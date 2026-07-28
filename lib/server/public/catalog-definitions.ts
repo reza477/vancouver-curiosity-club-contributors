@@ -36,28 +36,28 @@ export const PUBLIC_CATALOG_LANES: readonly PublicCatalogLaneDefinition[] =
   Object.freeze([
     Object.freeze({
       description:
-        "Talks, reading, film, ideas, and conversations worth continuing.",
+        "Books, film, philosophy, debate, psychology, artificial intelligence, technology, and serious discussion.",
       name: "Think",
       slug: "think",
       sortOrder: 10,
     }),
     Object.freeze({
       description:
-        "Reflective and creative gatherings that make room to pause or make something.",
+        "Meditation, journaling, poetry, creative workshops, reflective practice, and silent reading.",
       name: "Reset & Make",
       slug: "reset-and-make",
       sortOrder: 20,
     }),
     Object.freeze({
       description:
-        "Curiosity taken into the city through walks, visits, and shared discovery.",
+        "Walks, hikes, art, culture, neighbourhood outings, and discovering Vancouver.",
       name: "Explore",
       slug: "explore",
       sortOrder: 30,
     }),
     Object.freeze({
       description:
-        "Food, games, and playful reasons to spend time together.",
+        "Restaurant outings, karaoke, casual social events, and playful community gatherings.",
       name: "Eat & Play",
       slug: "eat-and-play",
       sortOrder: 40,

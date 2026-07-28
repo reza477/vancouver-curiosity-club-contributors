@@ -9,29 +9,54 @@ import {
 
 const projectRoot = new URL("../", import.meta.url);
 
-test("homepage uses the unified public event service and canonical Events hub", async () => {
-  const [page, catalog] = await Promise.all([
+test("homepage uses the bounded unified public data service and canonical Events hub", async () => {
+  const [page, homeData, renderer, catalog] = await Promise.all([
     readFile(new URL("app/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("lib/server/public/home.ts", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("app/_components/HomePageRenderer.tsx", projectRoot),
+      "utf8",
+    ),
     readFile(
       new URL("lib/server/public/catalog-definitions.ts", projectRoot),
       "utf8",
     ),
   ]);
 
-  assert.match(page, /queryPublicEvents/);
-  assert.match(page, /pageSize:\s*6/);
-  assert.match(page, /href="\/events"/);
-  assert.match(page, /Explore Upcoming Events/);
-  assert.match(page, /No upcoming event is published here yet\./);
-  assert.match(page, /Nothing fabricated/);
+  assert.match(page, /loadPublicHomeData/);
+  assert.match(
+    page,
+    /loadPublicHomeData\(database,\s*\{\s*nowUtcMs,\s*organizationId:\s*organization\.id/,
+  );
+  assert.match(homeData, /const catalog = await loadPublicCatalog\(database\)/);
+  assert.match(
+    homeData,
+    /Promise\.all\(\[\s*getPublicPageContent\(database,\s*"home"\),\s*queryPublicEvents/,
+  );
+  assert.match(homeData, /pageSize:\s*6/);
+  assert.match(renderer, /href="\/events"/);
+  assert.match(renderer, /Explore Upcoming Events/);
+  assert.match(renderer, /No upcoming event is published here yet\./);
+  assert.match(renderer, /Nothing fabricated/);
   assert.match(catalog, /A social calendar with a brain\./);
-  assert.doesNotMatch(page, /href="\/calendar"/);
-  assert.doesNotMatch(page, /sampleEvents|fictional examples/i);
+  assert.doesNotMatch(renderer, /href="\/calendar"/);
+  assert.doesNotMatch(
+    `${page}\n${renderer}`,
+    /sampleEvents|fictional examples/i,
+  );
 });
 
 test("Events renders honest source states through the safe unified projection", async () => {
-  const [page, calendar, filters, projection] = await Promise.all([
+  const [page, renderer, calendar, filters, projection, worker, maintenance] =
+    await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
+      "utf8",
+    ),
     readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
     readFile(
       new URL("app/_components/EventFilters.tsx", projectRoot),
@@ -39,6 +64,14 @@ test("Events renders honest source states through the safe unified projection", 
     ),
     readFile(
       new URL("lib/server/public/events.ts", projectRoot),
+      "utf8",
+    ),
+    readFile(new URL("worker/index.ts", projectRoot), "utf8"),
+    readFile(
+      new URL(
+        "lib/server/database/request-maintenance.ts",
+        projectRoot,
+      ),
       "utf8",
     ),
   ]);
@@ -52,11 +85,14 @@ test("Events renders honest source states through the safe unified projection", 
     "disabled",
     "error",
   ]) {
-    assert.match(page, new RegExp(`${status}:`));
+    assert.match(renderer, new RegExp(`${status}:`));
   }
-  assert.match(page, /refreshMeetupCalendarSourceIfDue/);
-  assert.match(page, /The last completed snapshot remains visible/);
-  assert.match(page, /not on a guaranteed schedule/);
+  assert.doesNotMatch(page, /refreshMeetupCalendarSourceIfDue/);
+  assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/);
+  assert.match(maintenance, /attemptedMeetupRefresh/);
+  assert.match(worker, /maintenanceRedirect/);
+  assert.match(renderer, /The last completed snapshot remains visible/);
+  assert.match(renderer, /not on a guaranteed schedule/);
   assert.match(page, /queryPublicEvents/);
   assert.match(page, /readPublicMeetupSyncState/);
   assert.match(filters, /method="get"/);
@@ -110,8 +146,9 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
   assert.match(shell, /Meetup connection/);
   assert.match(
     portal,
-    /holds, confirmed schedules, conflicts[\s\S]*Website publication remains unavailable/u,
+    /holds, confirmed schedules, conflicts[\s\S]*Eligible confirmed events include website publication controls[\s\S]*Website content and Media are available from More/u,
   );
+  assert.doesNotMatch(portal, /Website publication remains unavailable/u);
   assert.doesNotMatch(portal, /private Phase 1 surface/i);
   assert.match(page, /loadOrganizerPageContext\("\/organizer\/meetup"\)/);
   assert.match(layout, /loadOrganizerPageContext\(returnTo\)/);
@@ -342,7 +379,7 @@ test("narrow navigation preserves every primary destination and organizer login"
 
   const narrowRules =
     css.match(
-      /@media \(max-width: 52rem\)\s*\{([\s\S]*?)\n\}\n\n@media \(max-width: 38rem\)/,
+      /@media \(max-width: 90rem\)\s*\{([\s\S]*?)\n\}\n\n@media \(max-width: 38rem\)/,
     )?.[1] ?? "";
 
   for (const destination of [
@@ -358,8 +395,17 @@ test("narrow navigation preserves every primary destination and organizer login"
       new RegExp(`href:\\s*"${destination}"|href="${destination}"`),
     );
   }
-  assert.match(header, /<details className="site-navigation">/);
+  assert.match(header, /className="site-navigation"/);
   assert.match(header, /<summary>/);
+  assert.match(header, /onKeyDown=\{closeMobileMenuWithEscape\}/);
+  assert.match(header, /mobileMenu\.current\.open = false/);
+  assert.match(header, /querySelector\("summary"\)\?\.focus\(\)/);
+  assert.match(header, /onClick=\{onNavigate\}/);
+  assert.match(
+    header,
+    /\.slice\(0, 12 - requiredNavigation\.length\)/u,
+  );
+  assert.match(css, /@media \(max-width: 90rem\)/u);
   assert.match(narrowRules, /\.site-navigation > \.primary-nav\s*\{/);
   assert.match(
     narrowRules,

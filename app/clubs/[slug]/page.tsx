@@ -1,25 +1,35 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
+import {
+  ClubDetailRenderer,
+  type ClubDetailEventsState,
+} from "@/app/_components/ClubDetailRenderer";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
-import { ClubEventList } from "@/app/_components/ClubEventList";
-import { PageMasthead } from "@/app/_components/PageMasthead";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import {
   getPublicClubBySlug,
+  getPublicSiteContext,
+  getPublicSlugRedirect,
+  listPublicProgramsForClub,
   resolvePublicOrganization,
   type PublicClubDto,
 } from "@/lib/server/public/catalog";
 import {
   queryPublicEvents,
-  type PublicEventPageDto,
 } from "@/lib/server/public/events";
+import {
+  resolveMediaAssetsForRendering,
+  type ResponsiveMediaAssetDto,
+} from "@/lib/server/media/usage";
 import { buildPublicPageMetadata } from "@/lib/server/public/metadata";
+import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
 import {
   DEFAULT_TIME_ZONE,
   calendarDateInTimeZone,
 } from "@/lib/time";
 import { writeSafeLog } from "@/lib/validation/server-observability";
+import { usesShippedSocialArtwork } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -27,33 +37,33 @@ type ClubPageProps = Readonly<{
   params: Promise<{ slug: string }>;
 }>;
 
-type ClubEventsState =
-  | Readonly<{
-      kind: "available";
-      past: PublicEventPageDto;
-      upcoming: PublicEventPageDto;
-    }>
-  | Readonly<{ kind: "unavailable" }>;
-
 export async function generateMetadata({
   params,
 }: ClubPageProps): Promise<Metadata> {
   const { slug } = await params;
   const loaded = await loadPublicClub(slug, `/clubs/${slug}`);
   const club = loaded.kind === "available" ? loaded.club : null;
+  const context = club ? await loadClubMetadataContext(club) : null;
+  const image = context?.media;
   return club
     ? buildPublicPageMetadata({
         description:
-          club.description ?? "A published Vancouver Curiosity Club program.",
+          club.metaDescription ??
+          club.description ??
+          "A published Vancouver Curiosity Club program.",
+        imageAlt: image ? (image.altText ?? "") : undefined,
+        imageHeight: image?.variants.webp1600.height,
+        imagePath:
+          image?.variants.webp1600.url ??
+          (context?.useShippedSocialFallback === false ? null : undefined),
+        imageWidth: image?.variants.webp1600.width,
         pathname: `/clubs/${club.slug}`,
-        title: club.name,
+        siteName: context?.siteName,
+        title: club.seoTitle ?? club.name,
       })
     : {
         title: "Club not found",
-        robots: {
-          index: false,
-          follow: false,
-        },
+        robots: { index: false, follow: false },
       };
 }
 
@@ -61,6 +71,9 @@ export default async function ClubDetailPage({ params }: ClubPageProps) {
   const { slug } = await params;
   const route = `/clubs/${slug}`;
   const loaded = await loadPublicClub(slug, route);
+  if (loaded.kind === "redirect") {
+    permanentRedirect(`/clubs/${loaded.slug}`);
+  }
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "unavailable") {
     return (
@@ -80,79 +93,151 @@ export default async function ClubDetailPage({ params }: ClubPageProps) {
       </main>
     );
   }
-
-  const events = await loadClubEvents(loaded.club, route);
+  const [events, coverMedia, programs] = await Promise.all([
+    loadClubEvents(loaded.club, route),
+    loadClubCoverMedia(loaded.club),
+    loadClubPrograms(loaded.club),
+  ]);
+  const programMediaById = await loadProgramThumbnailMedia(programs);
   return (
-    <main className="club-detail">
-      <Breadcrumbs
-        items={[
-          { href: "/", label: "Home" },
-          { href: "/clubs", label: "Clubs" },
-          { label: loaded.club.name },
-        ]}
-      />
-      <PageMasthead
-        deck={
-          loaded.club.description ??
-          "A published Vancouver Curiosity Club program."
-        }
-        eyebrow={loaded.club.lane.name}
-        title={loaded.club.name}
-        tone={artworkTone(loaded.club.lane.slug)}
-      />
-
-      <section
-        className="club-detail__destination"
-        aria-labelledby="club-destination-heading"
-      >
-        <div>
-          <p className="section-kicker">Official destination</p>
-          <h2 id="club-destination-heading">Continue on Meetup</h2>
-          <p>
-            Event RSVPs and group activity continue on this club&apos;s
-            confirmed public Meetup page.
-          </p>
-        </div>
-        {loaded.club.publicGroupUrl ? (
-          <a
-            href={loaded.club.publicGroupUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            Open {loaded.club.name} on Meetup
-            <span aria-hidden="true"> ↗</span>
-            <span className="sr-only"> (opens in a new tab)</span>
-          </a>
-        ) : null}
-      </section>
-
-      {events.kind === "available" ? (
-        <div className="club-detail__events">
-          <ClubEventList
-            emptyCopy="No upcoming published events are available for this club."
-            events={events.upcoming.events}
-            heading="Upcoming"
-            id="club-upcoming"
-          />
-          <ClubEventList
-            emptyCopy="No past published events are available for this club."
-            events={events.past.events}
-            heading="Past"
-            id="club-past"
-          />
-        </div>
-      ) : (
-        <section className="public-service-state" aria-live="polite">
-          <p className="section-kicker">Published calendar</p>
-          <h2>Club events are temporarily unavailable.</h2>
-          <p>
-            The club note remains available, but no substitute event facts are
-            being shown.
-          </p>
-        </section>
-      )}
-    </main>
+    <ClubDetailRenderer
+      club={loaded.club}
+      coverMedia={coverMedia}
+      events={events}
+      origin={await getTrustedRequestOrigin()}
+      programMediaById={programMediaById}
+      programs={programs}
+    />
   );
+}
+
+async function loadClubPrograms(
+  club: PublicClubDto,
+): Promise<
+  Awaited<ReturnType<typeof listPublicProgramsForClub>>
+> {
+  try {
+    const { database } = getRuntimeAuthConfiguration();
+    return await listPublicProgramsForClub(database, club.slug);
+  } catch {
+    return Object.freeze([]);
+  }
+}
+
+async function loadProgramThumbnailMedia(
+  programs: Awaited<ReturnType<typeof listPublicProgramsForClub>>,
+): Promise<ReadonlyMap<string, ResponsiveMediaAssetDto>> {
+  const assetIds = programs.flatMap((program) =>
+    program.thumbnailAssetId ? [program.thumbnailAssetId] : [],
+  );
+  if (assetIds.length === 0) return new Map();
+  try {
+    const { database } = getRuntimeAuthConfiguration();
+    const organization = await resolvePublicOrganization(database);
+    if (!organization) return new Map();
+    const media = await resolveMediaAssetsForRendering(database, {
+      organizationId: organization.id,
+      publicationScope: "published",
+      usages: programs.flatMap((program) =>
+        program.thumbnailAssetId
+          ? [
+              {
+                assetId: program.thumbnailAssetId,
+                entityKey: program.slug,
+                entityType: "program_public_profile" as const,
+                usageKind: "thumbnail",
+              },
+            ]
+          : [],
+      ),
+    });
+    return new Map(media.map((asset) => [asset.assetId, asset]));
+  } catch {
+    return new Map();
+  }
+}
+
+async function loadClubCoverMedia(
+  club: PublicClubDto,
+): Promise<ResponsiveMediaAssetDto | null> {
+  if (!club.coverAssetId) return null;
+  try {
+    const { database } = getRuntimeAuthConfiguration();
+    const organization = await resolvePublicOrganization(database);
+    if (!organization) return null;
+    const media = await resolveMediaAssetsForRendering(database, {
+      organizationId: organization.id,
+      publicationScope: "published",
+      usages: [
+        {
+          assetId: club.coverAssetId,
+          entityKey: club.slug,
+          entityType: "club_public_profile",
+          usageKind: "cover",
+        },
+      ],
+    });
+    return media[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadClubMetadataContext(
+  club: PublicClubDto,
+): Promise<Readonly<{
+  media: ResponsiveMediaAssetDto | null;
+  siteName: string | undefined;
+  useShippedSocialFallback: boolean;
+}> | null> {
+  try {
+    const { database } = getRuntimeAuthConfiguration();
+    const [organization, site] = await Promise.all([
+      resolvePublicOrganization(database),
+      getPublicSiteContext(database),
+    ]);
+    if (!organization) return null;
+    const media = await resolveMediaAssetsForRendering(database, {
+      organizationId: organization.id,
+      publicationScope: "published",
+      usages: [
+        ...(club.openGraphAssetId
+          ? [
+              {
+                assetId: club.openGraphAssetId,
+                entityKey: club.slug,
+                entityType: "club_public_profile" as const,
+                usageKind: "open_graph",
+              },
+            ]
+          : []),
+        ...(site?.openGraphAssetId
+          ? [
+              {
+                assetId: site.openGraphAssetId,
+                entityKey: organization.id,
+                entityType: "site_og" as const,
+                usageKind: "open_graph",
+              },
+            ]
+          : []),
+      ],
+    });
+    return Object.freeze({
+      media:
+        media.find(
+          ({ assetId }) => assetId === club.openGraphAssetId,
+        ) ??
+        media.find(
+          ({ assetId }) => assetId === site?.openGraphAssetId,
+        ) ??
+        null,
+      siteName: site?.brandName,
+      useShippedSocialFallback: usesShippedSocialArtwork(site),
+    });
+  } catch {
+    return null;
+  }
 }
 
 async function loadPublicClub(
@@ -161,13 +246,19 @@ async function loadPublicClub(
 ): Promise<
   | Readonly<{ club: PublicClubDto; kind: "available" }>
   | Readonly<{ kind: "missing" }>
+  | Readonly<{ kind: "redirect"; slug: string }>
   | Readonly<{ kind: "unavailable" }>
 > {
   try {
     const { database } = getRuntimeAuthConfiguration();
     const club = await getPublicClubBySlug(database, slug);
-    return club
-      ? Object.freeze({ club, kind: "available" as const })
+    if (club) return Object.freeze({ club, kind: "available" as const });
+    const redirect = await getPublicSlugRedirect(database, {
+      entityType: "club_public_profile",
+      fromSlug: slug,
+    });
+    return redirect
+      ? Object.freeze({ kind: "redirect" as const, slug: redirect })
       : Object.freeze({ kind: "missing" as const });
   } catch {
     writeSafeLog("error", "public_club_unavailable", {
@@ -183,7 +274,7 @@ async function loadPublicClub(
 async function loadClubEvents(
   club: PublicClubDto,
   route: string,
-): Promise<ClubEventsState> {
+): Promise<ClubDetailEventsState> {
   try {
     const { database } = getRuntimeAuthConfiguration();
     const organization = await resolvePublicOrganization(database);
@@ -229,11 +320,4 @@ async function loadClubEvents(
     });
     return Object.freeze({ kind: "unavailable" as const });
   }
-}
-
-function artworkTone(laneSlug: string) {
-  if (laneSlug === "reset-and-make") return "reset-make" as const;
-  if (laneSlug === "explore") return "explore" as const;
-  if (laneSlug === "eat-and-play") return "eat-play" as const;
-  return "think" as const;
 }

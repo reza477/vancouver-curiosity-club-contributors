@@ -1,13 +1,12 @@
 import { notFound } from "next/navigation";
 import {
   buildEditorialMetadata,
-  CommunityDestinations,
-  CommunityDestinationsUnavailable,
-  EditorialPage,
   EditorialUnavailable,
+  hasCommunityLinksBlock,
   loadCommunityDestinations,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
+import { ContactRouteBody } from "@/app/_components/EditorialRouteBodies";
 
 const route = "/contact";
 const slug = "contact";
@@ -24,25 +23,14 @@ export function generateMetadata() {
 }
 
 export default async function ContactPage() {
-  const [loaded, destinations] = await Promise.all([
-    loadEditorialPage(slug, route),
-    loadCommunityDestinations(route),
-  ]);
+  const loaded = await loadEditorialPage(slug, route);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "unavailable") {
     return <EditorialUnavailable title="Contact" />;
   }
 
-  return (
-    <EditorialPage page={loaded.page} tone="community">
-      {destinations.kind === "available" ? (
-        <CommunityDestinations
-          heading="Choose the relevant Meetup group"
-          links={destinations.links}
-        />
-      ) : (
-        <CommunityDestinationsUnavailable />
-      )}
-    </EditorialPage>
-  );
+  const destinations = hasCommunityLinksBlock(loaded.page)
+    ? null
+    : await loadCommunityDestinations(route);
+  return <ContactRouteBody destinations={destinations} page={loaded.page} />;
 }

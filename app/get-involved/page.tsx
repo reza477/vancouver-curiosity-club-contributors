@@ -1,14 +1,12 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   buildEditorialMetadata,
-  CommunityDestinations,
-  CommunityDestinationsUnavailable,
-  EditorialPage,
   EditorialUnavailable,
+  hasCommunityLinksBlock,
   loadCommunityDestinations,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
+import { GetInvolvedRouteBody } from "@/app/_components/EditorialRouteBodies";
 
 const route = "/get-involved";
 const slug = "get-involved";
@@ -25,32 +23,14 @@ export function generateMetadata() {
 }
 
 export default async function GetInvolvedPage() {
-  const [loaded, destinations] = await Promise.all([
-    loadEditorialPage(slug, route),
-    loadCommunityDestinations(route),
-  ]);
+  const loaded = await loadEditorialPage(slug, route);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "unavailable") {
     return <EditorialUnavailable title="Get Involved" />;
   }
 
-  return (
-    <EditorialPage page={loaded.page} tone="community">
-      <section className="editorial-actions" aria-labelledby="ways-heading">
-        <div>
-          <p className="section-kicker">Ways in</p>
-          <h2 id="ways-heading">Start with what is available now.</h2>
-        </div>
-        <div className="editorial-actions__links">
-          <Link href="/events">Explore upcoming events</Link>
-          <Link href="/host-an-event">Read about hosting</Link>
-        </div>
-      </section>
-      {destinations.kind === "available" ? (
-        <CommunityDestinations links={destinations.links} />
-      ) : (
-        <CommunityDestinationsUnavailable />
-      )}
-    </EditorialPage>
-  );
+  const destinations = hasCommunityLinksBlock(loaded.page)
+    ? null
+    : await loadCommunityDestinations(route);
+  return <GetInvolvedRouteBody destinations={destinations} page={loaded.page} />;
 }

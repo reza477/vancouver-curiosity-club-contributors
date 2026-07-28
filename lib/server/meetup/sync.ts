@@ -69,6 +69,7 @@ const CONFIGURE_ACTOR_GUARD_SQL = `EXISTS (
 // Worker invocation ceiling, including a conflict rollback plus rejection
 // record for every component in this slice.
 export const MAX_MEETUP_ROWS_PER_REFRESH = 3;
+const MAX_MEETUP_ROWS_PER_REFRESH_ON_VIEW = 2;
 
 type SourceRecord = Readonly<{
   clubId: string;
@@ -474,7 +475,7 @@ async function refreshSources(
     mode,
     now,
     organizationId: source.organizationId,
-    sourceId: source.id,
+    source,
     clock,
   });
 }
@@ -487,26 +488,17 @@ async function refreshOrganizationSource(
     mode: RefreshMode;
     now: number;
     organizationId: string;
-    sourceId: string;
+    source: SourceRecord;
     clock: () => number;
   }>,
 ): Promise<MeetupRefreshResult> {
   const triggerMode: RefreshTriggerMode =
     input.mode === "manual" ? "manual" : "refresh_on_view";
-  const initialSource = await readSourceById(database, input.sourceId);
-  if (!initialSource) {
-    return result("not_connected", notConnectedState());
-  }
-  if (!initialSource.enabled) {
-    return result(
-      "disabled",
-      stateFromSource(initialSource, input.now),
-    );
-  }
+  const initialSource = input.source;
 
   const leaseToken = crypto.randomUUID();
   const leaseExpiresAt = input.now + LEASE_DURATION_MS;
-  const acquired = await database
+  const acquiredSourceRow = await database
     .prepare(
       `UPDATE sync_sources
        SET lease_token = ?,
@@ -527,7 +519,14 @@ async function refreshOrganizationSource(
            ? = 'manual'
            OR next_refresh_at IS NULL
            OR next_refresh_at <= ?
-         )`,
+         )
+       RETURNING id, organization_id, club_id, source_url, enabled,
+                 next_refresh_at, lease_token, lease_expires_at,
+                 last_attempt_at, last_success_at, last_error_at,
+                 last_error_code, etag, http_last_modified,
+                 active_generation_id, pending_generation_id,
+                 pending_snapshot_hash, pending_cursor,
+                 updated_by_profile_id`,
     )
     .bind(
       leaseToken,
@@ -541,10 +540,18 @@ async function refreshOrganizationSource(
       input.mode,
       input.now,
     )
-    .run();
-  if (changes(acquired) !== 1) {
-    const current =
-      (await readSourceById(database, initialSource.id)) ?? initialSource;
+    .first<Record<string, unknown>>();
+  if (!acquiredSourceRow) {
+    const current = await readSourceById(database, initialSource.id);
+    if (!current) {
+      return result("not_connected", notConnectedState());
+    }
+    if (!current.enabled) {
+      return result(
+        "disabled",
+        stateFromSource(current, input.now),
+      );
+    }
     const outcome =
       current.leaseToken &&
       current.leaseExpiresAt !== null &&
@@ -554,12 +561,10 @@ async function refreshOrganizationSource(
     return result(outcome, stateFromSource(current, input.now));
   }
 
-  const source = await readSourceByLease(
-    database,
-    initialSource.id,
-    leaseToken,
-  );
-  if (!source) throw new MeetupSyncError("lease_lost");
+  const source = sourceRecord(acquiredSourceRow);
+  if (source.leaseToken !== leaseToken) {
+    throw new MeetupSyncError("lease_lost");
+  }
 
   let fetched;
   try {
@@ -660,9 +665,13 @@ async function refreshOrganizationSource(
     );
   }
   const cursor = generation.cursor;
+  const maxRows =
+    input.mode === "manual"
+      ? MAX_MEETUP_ROWS_PER_REFRESH
+      : MAX_MEETUP_ROWS_PER_REFRESH_ON_VIEW;
   const workSlice = workItems.slice(
     cursor,
-    cursor + MAX_MEETUP_ROWS_PER_REFRESH,
+    cursor + maxRows,
   );
   const nextCursor = cursor + workSlice.length;
   const hasMore = nextCursor < workItems.length;
@@ -3191,31 +3200,6 @@ async function readSourceById(
        LIMIT 1`,
     )
     .bind(sourceId, SOURCE_TYPE)
-    .first<Record<string, unknown>>();
-  return row ? sourceRecord(row) : null;
-}
-
-async function readSourceByLease(
-  database: D1DatabaseLike,
-  sourceId: string,
-  leaseToken: string,
-): Promise<SourceRecord | null> {
-  const row = await database
-    .prepare(
-      `SELECT id, organization_id, club_id, source_url, enabled,
-              next_refresh_at, lease_token, lease_expires_at,
-               last_attempt_at, last_success_at, last_error_at,
-               last_error_code, etag, http_last_modified,
-               active_generation_id, pending_generation_id,
-               pending_snapshot_hash, pending_cursor,
-              updated_by_profile_id
-       FROM sync_sources
-       WHERE id = ?
-         AND lease_token = ?
-         AND deleted_at IS NULL
-       LIMIT 1`,
-    )
-    .bind(sourceId, leaseToken)
     .first<Record<string, unknown>>();
   return row ? sourceRecord(row) : null;
 }

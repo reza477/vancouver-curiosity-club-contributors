@@ -297,9 +297,9 @@ export function ClubsWorkspace({
                       </>
                     ) : (
                       <p className={`${styles.fieldFull} ${styles.formNotice}`}>
-                        This club has a public profile. Its public identity,
-                        slug, description, group URL, and publication state are
-                        read-only until the CMS phase.
+                        {club.publicationState === "archived"
+                          ? "This archived public profile is retained as read-only history. Safe deletion is available only when no event, source, member, invitation, or program still references the club."
+                          : "Manage this club's public identity, ordering, links, and publication state in Website content. Private planning notes remain editable here."}
                       </p>
                     )}
                     <label className={styles.fieldFull}>
@@ -314,14 +314,19 @@ export function ClubsWorkspace({
                       >
                         {busy === `update-${club.id}` ? "Saving…" : "Save private settings"}
                       </button>
-                      {club.identityEditable ? (
+                      {club.identityEditable ||
+                      club.publicationState === "archived" ? (
                         <button
                           className={styles.secondaryButton}
                           disabled={busy === `archive-${club.id}`}
                           onClick={() => archiveClub(club.id)}
                           type="button"
                         >
-                          {busy === `archive-${club.id}` ? "Archiving…" : "Archive private club"}
+                          {busy === `archive-${club.id}`
+                            ? "Archiving…"
+                            : club.publicationState === "archived"
+                              ? "Safe-delete archived club"
+                              : "Archive private club"}
                         </button>
                       ) : null}
                     </div>

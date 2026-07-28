@@ -1,5 +1,8 @@
+import Link from "next/link";
 import { formatEventSchedule } from "@/app/_components/EventCard";
+import { FieldArtwork } from "@/app/_components/FieldArtwork";
 import { ShareControls } from "@/app/_components/ShareControls";
+import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import type { PublicEventDetailDto } from "@/lib/server/public/events";
 
 export function PublicEventDetailRenderer({
@@ -30,6 +33,16 @@ export function PublicEventDetailRenderer({
           <div>
             <p className="eyebrow">
               {event.club.name}
+              {event.program ? (
+                <>
+                  {" · "}
+                  <Link
+                    href={`/clubs/${event.club.slug}/programs/${event.program.slug}`}
+                  >
+                    {event.program.name}
+                  </Link>
+                </>
+              ) : null}
               {event.lane ? ` · ${event.lane.name}` : ""}
             </p>
             <h1>{event.title}</h1>
@@ -42,6 +55,49 @@ export function PublicEventDetailRenderer({
             <strong>{schedule.day}</strong>
           </div>
         </header>
+
+        {event.artwork ? (
+          <figure className="event-detail__artwork">
+            {/* The gated media route revalidates rights and published usage on every
+                request. Next/Image's optimizer cache would bypass that revocation
+                boundary, so this responsive image must load the controlled URLs
+                directly. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              alt={event.artwork.altText ?? ""}
+              height={event.artwork.dimensions.large.height}
+              sizes="(max-width: 720px) 100vw, (max-width: 1280px) 90vw, 1440px"
+              src={event.artwork.url}
+              srcSet={responsiveImageSrcSet([
+                {
+                  url: event.artwork.srcSet.small,
+                  width: event.artwork.dimensions.small.width,
+                },
+                {
+                  url: event.artwork.srcSet.medium,
+                  width: event.artwork.dimensions.medium.width,
+                },
+                {
+                  url: event.artwork.srcSet.large,
+                  width: event.artwork.dimensions.large.width,
+                },
+              ])}
+              style={{
+                objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+              }}
+              width={event.artwork.dimensions.large.width}
+            />
+            <figcaption>Artwork: {event.artwork.credit}</figcaption>
+          </figure>
+        ) : (
+          <div
+            aria-label="Field Notes category artwork"
+            className="event-detail__artwork event-detail__artwork--fallback"
+            role="img"
+          >
+            <FieldArtwork tone="think" />
+          </div>
+        )}
 
         <div className="event-detail__grid">
           <section className="event-detail__facts" aria-labelledby="facts-title">
@@ -157,13 +213,52 @@ export function PublicEventDetailRenderer({
               <p>No additional public description has been supplied.</p>
             )}
             {event.organizers.length > 0 ? (
-              <p className="event-organizers">
-                Publicly listed{" "}
-                {event.organizers.length === 1 ? "organizer" : "organizers"}:{" "}
-                {event.organizers
-                  .map((organizer) => organizer.displayName)
-                  .join(", ")}
-              </p>
+              <section
+                aria-labelledby="public-organizers-title"
+                className="event-organizers"
+              >
+                <p className="section-kicker">People</p>
+                <h3 id="public-organizers-title">
+                  {event.organizers.length === 1
+                    ? "Your organizer"
+                    : "Your organizers"}
+                </h3>
+                <ul>
+                  {event.organizers.map((organizer, index) => (
+                    <li
+                      className={
+                        organizer.photo
+                          ? undefined
+                          : "event-organizers__text-only"
+                      }
+                      key={`${organizer.displayName}:${index}`}
+                    >
+                      {organizer.photo ? (
+                        <figure>
+                          {/* This controlled media URL rechecks the immutable
+                              published usage before returning bytes. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            alt={organizer.photo.altText}
+                            height={organizer.photo.height}
+                            src={organizer.photo.url}
+                            width={organizer.photo.width}
+                          />
+                          <figcaption>
+                            Photo: {organizer.photo.credit}
+                          </figcaption>
+                        </figure>
+                      ) : null}
+                      <div>
+                        <strong>{organizer.displayName}</strong>
+                        {organizer.biography ? (
+                          <p>{organizer.biography}</p>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ) : null}
             {event.preparationInformation ? (
               <PublicNote

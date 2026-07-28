@@ -8,6 +8,7 @@ import { StructuredData } from "@/app/_components/StructuredData";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import {
+  getPublicSiteContext,
   resolvePublicOrganization,
 } from "@/lib/server/public/catalog";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
@@ -16,12 +17,17 @@ import {
   listRelatedPublicEvents,
   type PublicEventDetailDto,
 } from "@/lib/server/public/events";
-import { buildPublicPageMetadata } from "@/lib/server/public/metadata";
+import { buildPublicEventJsonLd } from "@/lib/server/public/event-structured-data";
+import {
+  buildPublicPageMetadata,
+  resolvePublicEventMetadataImage,
+} from "@/lib/server/public/metadata";
 import {
   getTrustedRequestOrigin,
   publicUrl,
 } from "@/lib/server/public/origin";
 import { InputValidationError } from "@/lib/validation";
+import { usesShippedSocialArtwork } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -38,12 +44,25 @@ export async function generateMetadata({
       robots: { index: false, follow: false },
     };
   }
+  const image = await resolvePublicEventMetadataImage(loaded.database, {
+    artwork: loaded.event.artwork,
+    organizationId: loaded.organizationId,
+    siteOpenGraphAssetId: loaded.siteOpenGraphAssetId,
+  });
   return buildPublicPageMetadata({
-    title: loaded.event.title,
+    title: loaded.event.seoTitle ?? loaded.event.title,
     description:
+      loaded.event.metaDescription ??
       loaded.event.summary ??
       `Published event details from ${loaded.event.club.name}.`,
+    imageAlt: image?.altText,
+    imageHeight: image?.height,
+    imagePath:
+      image?.path ??
+      (loaded.useShippedSocialFallback ? undefined : null),
+    imageWidth: image?.width,
     pathname: `/events/${loaded.event.slug}`,
+    siteName: loaded.siteName ?? undefined,
   });
 }
 
@@ -54,7 +73,7 @@ export default async function EventDetailPage({
   const loaded = await loadEvent(slug);
   if (!loaded) notFound();
 
-  const { event, organizationId, database } = loaded;
+  const { event, organizationId, database, siteName } = loaded;
   const nowUtcMs = readServerUtcMs();
   const related = event.isCancelled
     ? []
@@ -101,7 +120,9 @@ export default async function EventDetailPage({
 
       {canonicalUrl ? (
         <>
-          <StructuredData value={eventJsonLd(event, canonicalUrl)} />
+          <StructuredData
+            value={buildPublicEventJsonLd(event, canonicalUrl, siteName)}
+          />
           <StructuredData
             value={{
               "@context": "https://schema.org",
@@ -138,79 +159,33 @@ async function loadEvent(slug: string): Promise<{
   database: ReturnType<typeof getRuntimeAuthConfiguration>["database"];
   event: PublicEventDetailDto;
   organizationId: string;
+  siteName: string | null;
+  siteOpenGraphAssetId: string | null;
+  useShippedSocialFallback: boolean;
 } | null> {
   try {
     const { database } = getRuntimeAuthConfiguration();
     const organization = await resolvePublicOrganization(database);
     if (!organization) return null;
-    const event = await getPublicEventBySlug(database, {
-      organizationId: organization.id,
-      slug,
-    });
+    const [event, site] = await Promise.all([
+      getPublicEventBySlug(database, {
+        organizationId: organization.id,
+        slug,
+      }),
+      getPublicSiteContext(database),
+    ]);
     return event
-      ? { database, event, organizationId: organization.id }
+      ? {
+          database,
+          event,
+          organizationId: organization.id,
+          siteName: site?.brandName ?? null,
+          siteOpenGraphAssetId: site?.openGraphAssetId ?? null,
+          useShippedSocialFallback: usesShippedSocialArtwork(site),
+        }
       : null;
   } catch (error) {
     if (error instanceof InputValidationError) return null;
     throw error;
   }
-}
-
-function eventJsonLd(
-  event: PublicEventDetailDto,
-  canonicalUrl: string,
-): Readonly<Record<string, unknown>> {
-  const schedule =
-    event.schedule.kind === "timed"
-      ? {
-          startDate: event.schedule.startsAtUtc,
-          endDate: event.schedule.endsAtUtc,
-        }
-      : {
-          startDate: event.schedule.startDate,
-          endDate: inclusiveCalendarEnd(
-            event.schedule.endDateExclusive,
-          ),
-        };
-  const attendanceMode =
-    event.attendanceMode === "online"
-      ? "https://schema.org/OnlineEventAttendanceMode"
-      : event.attendanceMode === "hybrid"
-        ? "https://schema.org/MixedEventAttendanceMode"
-        : event.attendanceMode === "in-person"
-          ? "https://schema.org/OfflineEventAttendanceMode"
-          : undefined;
-  return {
-    "@context": "https://schema.org",
-    "@type": "Event",
-    name: event.title,
-    description: event.summary ?? event.description ?? undefined,
-    url: canonicalUrl,
-    ...schedule,
-    eventStatus: event.isCancelled
-      ? "https://schema.org/EventCancelled"
-      : event.status === "confirmed"
-        ? "https://schema.org/EventScheduled"
-        : undefined,
-    eventAttendanceMode: attendanceMode,
-    location: event.venue
-      ? {
-          "@type": "Place",
-          name: event.venue.name,
-          address: event.venue.address ?? undefined,
-        }
-      : undefined,
-    organizer: {
-      "@type": "Organization",
-      name: event.club.name,
-      url: new URL(`/clubs/${event.club.slug}`, canonicalUrl).toString(),
-    },
-    sameAs: event.rsvpUrl ?? undefined,
-  };
-}
-
-function inclusiveCalendarEnd(endDateExclusive: string): string {
-  const date = new Date(`${endDateExclusive}T12:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
 }

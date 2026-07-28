@@ -8,6 +8,7 @@ import {
   DATABASE_INVARIANT_TRIGGER_NAMES,
   DATABASE_INVARIANT_TRIGGER_STATEMENTS,
   DATABASE_INVARIANT_VERSION,
+  PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES,
   ensureDatabaseInvariants,
   getExpectedDatabaseInvariantFingerprint,
   normalizeTriggerDefinition,
@@ -17,6 +18,11 @@ import {
   ORGANIZER_PUBLIC_SLUG_COLLISION_QUERY_SQL,
   PHASE5_INVARIANT_COUNT_SQL,
 } from "../../lib/server/organizer/publication-invariant-sql.ts";
+import {
+  PHASE6_INVARIANT_COUNT_SQL,
+  PHASE6_INVARIANT_TRIGGER_STATEMENTS,
+} from "../../lib/server/database/phase6-invariant-sql.ts";
+import { MAX_DATABASE_INVARIANT_READY_ATTEMPTS } from "./invariant-ready.mjs";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
 function migrationSql() {
@@ -95,21 +101,32 @@ function assertWithinD1StatementCap(counter, label) {
 
 async function ensureInvariantReadiness(database, label = "invariant install") {
   const attempts = [];
-  for (let index = 0; index < 8; index += 1) {
+  for (
+    let index = 0;
+    index < MAX_DATABASE_INVARIANT_READY_ATTEMPTS;
+    index += 1
+  ) {
     const counter = countedBinding(database);
     const status = await ensureDatabaseInvariants(counter.binding);
     assertWithinD1StatementCap(counter, `${label} request ${index + 1}`);
     attempts.push({ counts: counter.counts(), status });
     const currentMarker = await marker(database);
-    if (currentMarker?.version === DATABASE_INVARIANT_VERSION) {
+    if (
+      status === "ready" &&
+      currentMarker?.version === DATABASE_INVARIANT_VERSION
+    ) {
       return attempts;
     }
   }
-  assert.fail(`${label} did not reach the durable v5 readiness marker`);
+  assert.fail(`${label} did not reach the durable v6 readiness marker`);
 }
 
 async function assertEventuallyFailsClosed(database, label) {
-  for (let index = 0; index < 8; index += 1) {
+  for (
+    let index = 0;
+    index < MAX_DATABASE_INVARIANT_READY_ATTEMPTS;
+    index += 1
+  ) {
     const counter = countedBinding(database);
     try {
       await ensureDatabaseInvariants(counter.binding);
@@ -135,10 +152,18 @@ async function assertEventuallyFailsClosed(database, label) {
 test("concurrent isolate initialization installs one exact durable guard set", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
+  const expectedTriggerCount =
+    PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES.length +
+    PHASE6_INVARIANT_TRIGGER_STATEMENTS.length;
   assert.equal(
     DATABASE_INVARIANT_TRIGGER_NAMES.length,
-    74,
-    "the v5 contract retains every prior guard and adds the Phase 5 guards",
+    expectedTriggerCount,
+    "the v6 contract retains every prior guard and adds every Phase 6 guard",
+  );
+  assert.equal(
+    new Set(DATABASE_INVARIANT_TRIGGER_NAMES).size,
+    expectedTriggerCount,
+    "the composed v6 trigger contract contains no duplicate names",
   );
   const firstCounter = countedBinding(database);
   const secondCounter = countedBinding(database);
@@ -172,52 +197,411 @@ test("concurrent isolate initialization installs one exact durable guard set", a
   );
 });
 
+test("empty and twelve-record legacy-attribution upgrades converge to an observed ready request within the D1 cap", async (t) => {
+  const empty = newDatabase();
+  t.after(() => empty.close());
+  const emptyAttempts = await ensureInvariantReadiness(
+    empty,
+    "empty v6 convergence",
+  );
+  const expectedEmptyTrace = [
+    ...Array.from(
+      { length: 5 },
+      () => ({
+        counts: { batchLengths: [39], statementCount: 46 },
+        status: "repaired",
+      }),
+    ),
+    {
+      counts: { batchLengths: [24], statementCount: 31 },
+      status: "repaired",
+    },
+    {
+      counts: { batchLengths: [24], statementCount: 33 },
+      status: "repaired",
+    },
+    {
+      counts: { batchLengths: [], statementCount: 2 },
+      status: "ready",
+    },
+  ];
+  assert.deepEqual(
+    emptyAttempts,
+    expectedEmptyTrace,
+    "empty v6 initialization uses seven bounded repair responses before the terminal ready response",
+  );
+  assert.equal(emptyAttempts.at(-1)?.status, "ready");
+  assert.ok(
+    emptyAttempts
+      .slice(0, -1)
+      .every(({ status }) => status === "repaired"),
+  );
+  assert.ok(
+    emptyAttempts.every(
+      ({ counts }) =>
+        counts.statementCount < DATABASE_INVARIANT_STATEMENT_LIMIT &&
+        counts.batchLengths.every(
+          (length) => length <= DATABASE_INVARIANT_STATEMENT_LIMIT,
+        ),
+    ),
+  );
+  assert.equal(
+    Math.max(
+      ...emptyAttempts.map(({ counts }) => counts.statementCount),
+    ),
+    46,
+  );
+  const expectedFingerprint =
+    await getExpectedDatabaseInvariantFingerprint();
+  assert.deepEqual(await marker(empty), {
+    singleton_key: DATABASE_INVARIANT_MARKER_KEY,
+    trigger_fingerprint: expectedFingerprint,
+    version: DATABASE_INVARIANT_VERSION,
+  });
+  assert.deepEqual(await legacyAttributionAdoptionSummary(empty), {
+    auditCount: 0,
+    intentCount: 0,
+    openIntentCount: 0,
+    receiptCount: 0,
+    sentinelCount: 0,
+    stateCount: 0,
+    validCount: 0,
+  });
+  assert.deepEqual(await taxonomyAdoptionSummary(empty), {
+    auditCount: 0,
+    intentCount: 0,
+    openIntentCount: 0,
+    stateCount: 0,
+  });
+
+  const legacy = newDatabase();
+  t.after(() => legacy.close());
+  seedOwnerInvariantData(legacy);
+  legacy.exec(`
+    INSERT INTO event_lanes (
+      id, organization_id, name, slug, description, sort_order,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'lane-legacy-taxonomy', 'org-owner', 'Legacy Taxonomy Lane',
+      'legacy-taxonomy-lane', 'Awaiting bounded adoption.', 10,
+      'profile-owner', 1, 1
+    );
+    INSERT INTO categories (
+      id, organization_id, name, slug, description, color_token,
+      created_at, updated_at
+    ) VALUES (
+      'category-legacy-taxonomy', 'org-owner',
+      'Legacy Taxonomy Category', 'legacy-taxonomy-category',
+      'Awaiting bounded adoption.', 'forest', 1, 1
+    );
+  `);
+  await legacy
+    .prepare(
+      `UPDATE profiles
+       SET public_attribution_consent = 1
+       WHERE id = 'profile-owner'`,
+    )
+    .run();
+  for (let index = 1; index < 12; index += 1) {
+    const suffix = String(index).padStart(2, "0");
+    const profileId = `profile-legacy-attribution-${suffix}`;
+    const email = `legacy-attribution-${suffix}@example.test`;
+    await legacy
+      .prepare(
+        `INSERT INTO profiles (
+           id, siwc_subject, normalized_email, display_name,
+           public_attribution_consent, status, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, 1, 'active', 1, 1)`,
+      )
+      .bind(
+        profileId,
+        `subject-legacy-attribution-${suffix}`,
+        email,
+        `Legacy attribution ${suffix}`,
+      )
+      .run();
+    await legacy
+      .prepare(
+        `INSERT INTO organization_memberships (
+           id, organization_id, profile_id, normalized_email, role, status,
+           created_by_profile_id, created_at, updated_at
+         ) VALUES (?, 'org-owner', ?, ?, 'administrator', 'active',
+                   'profile-owner', 1, 1)`,
+      )
+      .bind(`membership-legacy-attribution-${suffix}`, profileId, email)
+      .run();
+  }
+  const initialPhase6Counts = await Promise.all(
+    PHASE6_INVARIANT_COUNT_SQL.map((sql) =>
+      legacy.prepare(sql).first("violation_count"),
+    ),
+  );
+  const expectedInitialCounts = PHASE6_INVARIANT_COUNT_SQL.map(() => 0);
+  const legacyAttributionCountIndex = PHASE6_INVARIANT_COUNT_SQL.findIndex(
+    (sql) =>
+      sql.includes("profile.public_attribution_consent = 1") &&
+      sql.includes("FROM profiles AS profile"),
+  );
+  assert.notEqual(
+    legacyAttributionCountIndex,
+    -1,
+    "the legacy-attribution integrity count remains part of the exported contract",
+  );
+  expectedInitialCounts[legacyAttributionCountIndex] = 12;
+  expectedInitialCounts[PHASE6_INVARIANT_COUNT_SQL.length - 1] = 2;
+  assert.deepEqual(initialPhase6Counts.map(Number), expectedInitialCounts);
+
+  const legacyAttempts = await ensureInvariantReadiness(
+    legacy,
+    "twelve-record legacy attribution convergence",
+  );
+  const expectedLegacyTrace = [
+    {
+      counts: { batchLengths: [3], statementCount: 6 },
+      status: "repaired",
+    },
+    ...Array.from(
+      { length: 12 },
+      () => ({
+        counts: { batchLengths: [9], statementCount: 15 },
+        status: "repaired",
+      }),
+    ),
+    {
+      counts: { batchLengths: [11], statementCount: 18 },
+      status: "repaired",
+    },
+    ...Array.from(
+      { length: 5 },
+      () => ({
+        counts: { batchLengths: [39], statementCount: 46 },
+        status: "repaired",
+      }),
+    ),
+    {
+      counts: { batchLengths: [24], statementCount: 31 },
+      status: "repaired",
+    },
+    {
+      counts: { batchLengths: [24], statementCount: 33 },
+      status: "repaired",
+    },
+    {
+      counts: { batchLengths: [], statementCount: 2 },
+      status: "ready",
+    },
+  ];
+  assert.deepEqual(
+    legacyAttempts,
+    expectedLegacyTrace,
+    "one policy repair, twelve one-record attribution adoptions, one set-based taxonomy adoption, five full guard-repair batches, two tail repair batches, and one final ready request are required",
+  );
+  assert.equal(legacyAttempts.at(-1)?.status, "ready");
+  assert.ok(
+    legacyAttempts
+      .slice(0, -1)
+      .every(({ status }) => status === "repaired"),
+  );
+  assert.ok(
+    legacyAttempts.every(
+      ({ counts }) =>
+        counts.statementCount < DATABASE_INVARIANT_STATEMENT_LIMIT &&
+        counts.batchLengths.every(
+          (length) => length <= DATABASE_INVARIANT_STATEMENT_LIMIT,
+        ),
+    ),
+  );
+  assert.equal(
+    Math.max(
+      ...legacyAttempts.map(({ counts }) => counts.statementCount),
+    ),
+    46,
+  );
+  const adoptedSummary = await legacyAttributionAdoptionSummary(legacy);
+  assert.deepEqual(adoptedSummary, {
+    auditCount: 12,
+    intentCount: 12,
+    openIntentCount: 0,
+    receiptCount: 12,
+    sentinelCount: 0,
+    stateCount: 12,
+    validCount: 12,
+  });
+  const taxonomySummary = await taxonomyAdoptionSummary(legacy);
+  assert.deepEqual(taxonomySummary, {
+    auditCount: 2,
+    intentCount: 2,
+    openIntentCount: 0,
+    stateCount: 2,
+  });
+  assert.deepEqual(await marker(legacy), {
+    singleton_key: DATABASE_INVARIANT_MARKER_KEY,
+    trigger_fingerprint: expectedFingerprint,
+    version: DATABASE_INVARIANT_VERSION,
+  });
+  assert.deepEqual(
+    await Promise.all(
+      PHASE6_INVARIANT_COUNT_SQL.map((sql) =>
+        legacy.prepare(sql).first("violation_count"),
+      ),
+    ).then((counts) => counts.map(Number)),
+    PHASE6_INVARIANT_COUNT_SQL.map(() => 0),
+  );
+
+  for (let request = 1; request <= 2; request += 1) {
+    const counter = countedBinding(legacy);
+    assert.equal(await ensureDatabaseInvariants(counter.binding), "ready");
+    assert.deepEqual(counter.counts(), {
+      batchLengths: [],
+      statementCount: 2,
+    });
+    assertWithinD1StatementCap(
+      counter,
+      `idempotent attribution-ready request ${request}`,
+    );
+  }
+  assert.deepEqual(
+    await legacyAttributionAdoptionSummary(legacy),
+    adoptedSummary,
+    "healthy retries must not duplicate adopted states, intents, receipts, or audit history",
+  );
+  assert.deepEqual(
+    await taxonomyAdoptionSummary(legacy),
+    taxonomySummary,
+    "healthy retries must not duplicate taxonomy states, intents, or audit history",
+  );
+});
+
+test("synchronized legacy-attribution adoption creates one complete receipt graph and the losing isolate converges without residue", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  seedOwnerInvariantData(database);
+  database.exec(`
+    UPDATE profiles
+    SET public_attribution_consent = 1
+    WHERE id = 'profile-owner';
+    INSERT INTO organizer_conflict_policies (
+      id, organization_id, mode, policy_version, default_hold_hours,
+      nearing_expiry_hours, updated_by_profile_id, created_at, updated_at
+    ) VALUES
+      (
+        'phase4-policy-org-owner', 'org-owner', 'warn_reason', 1, 72, 24,
+        'profile-owner', 1, 1
+      ),
+      (
+        'phase4-policy-org-external', 'org-external', 'warn_reason', 1, 72, 24,
+        'profile-external', 1, 1
+      );
+  `);
+
+  const firstCounter = countedBinding(database);
+  const secondCounter = countedBinding(database);
+  const barrier = twoPartyBarrier();
+  const statuses = await Promise.all([
+    ensureDatabaseInvariants(
+      synchronizeFirstInvariantBatch(firstCounter.binding, barrier),
+    ),
+    ensureDatabaseInvariants(
+      synchronizeFirstInvariantBatch(secondCounter.binding, barrier),
+    ),
+  ]);
+  assert.deepEqual(statuses, ["repaired", "repaired"]);
+  assertWithinD1StatementCap(
+    firstCounter,
+    "first synchronized attribution adopter",
+  );
+  assertWithinD1StatementCap(
+    secondCounter,
+    "second synchronized attribution adopter",
+  );
+  assert.ok(
+    firstCounter.counts().statementCount <
+      DATABASE_INVARIANT_STATEMENT_LIMIT,
+  );
+  assert.ok(
+    secondCounter.counts().statementCount <
+      DATABASE_INVARIANT_STATEMENT_LIMIT,
+  );
+  assert.deepEqual(await legacyAttributionAdoptionSummary(database), {
+    auditCount: 1,
+    intentCount: 1,
+    openIntentCount: 0,
+    receiptCount: 1,
+    sentinelCount: 0,
+    stateCount: 1,
+    validCount: 1,
+  });
+
+  const convergence = await ensureInvariantReadiness(
+    database,
+    "synchronized attribution loser convergence",
+  );
+  assert.equal(convergence.at(-1)?.status, "ready");
+  assert.ok(
+    convergence.every(
+      ({ counts }) =>
+        counts.statementCount < DATABASE_INVARIANT_STATEMENT_LIMIT,
+    ),
+  );
+  assert.deepEqual(await legacyAttributionAdoptionSummary(database), {
+    auditCount: 1,
+    intentCount: 1,
+    openIntentCount: 0,
+    receiptCount: 1,
+    sentinelCount: 0,
+    stateCount: 1,
+    validCount: 1,
+  });
+  assert.deepEqual(
+    await Promise.all(
+      PHASE6_INVARIANT_COUNT_SQL.map((sql) =>
+        database.prepare(sql).first("violation_count"),
+      ),
+    ).then((counts) => counts.map(Number)),
+    PHASE6_INVARIANT_COUNT_SQL.map(() => 0),
+  );
+});
+
 test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 statement cap", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
 
-  const cold = countedBinding(database);
-  assert.equal(await ensureDatabaseInvariants(cold.binding), "repaired");
-  assertWithinD1StatementCap(cold, "cold installation");
-  assert.deepEqual(cold.counts(), {
-    batchLengths: [37],
-    statementCount: 50,
-  });
-  assert.equal(await marker(database), null);
-
-  const stagedCompletion = countedBinding(database);
-  assert.equal(
-    await ensureDatabaseInvariants(stagedCompletion.binding),
-    "repaired",
-  );
-  assertWithinD1StatementCap(
-    stagedCompletion,
-    "cold installation staged completion",
-  );
-  assert.deepEqual(stagedCompletion.counts(), {
-    batchLengths: [37],
-    statementCount: 50,
-  });
-  assert.equal(await marker(database), null);
-
-  const completion = countedBinding(database);
-  assert.equal(
-    await ensureDatabaseInvariants(completion.binding),
-    "repaired",
-  );
-  assertWithinD1StatementCap(completion, "cold installation completion");
-  assert.deepEqual(completion.counts(), {
-    batchLengths: [10],
-    statementCount: 32,
-  });
-  assert.ok(await marker(database));
+  const expectedColdTrace = [
+    { batchLengths: [39], statementCount: 46 },
+    { batchLengths: [39], statementCount: 46 },
+    { batchLengths: [39], statementCount: 46 },
+    { batchLengths: [39], statementCount: 46 },
+    { batchLengths: [39], statementCount: 46 },
+    { batchLengths: [24], statementCount: 31 },
+    { batchLengths: [24], statementCount: 33 },
+  ];
+  for (const [index, expectedCounts] of expectedColdTrace.entries()) {
+    const request = countedBinding(database);
+    assert.equal(
+      await ensureDatabaseInvariants(request.binding),
+      "repaired",
+    );
+    assertWithinD1StatementCap(
+      request,
+      `cold installation request ${index + 1}`,
+    );
+    assert.deepEqual(request.counts(), expectedCounts);
+    assert.ok(
+      request.counts().statementCount < DATABASE_INVARIANT_STATEMENT_LIMIT,
+      "every fail-closed setup request retains statement headroom",
+    );
+    assert.equal(
+      Boolean(await marker(database)),
+      index === expectedColdTrace.length - 1,
+    );
+  }
 
   const healthy = countedBinding(database);
   assert.equal(await ensureDatabaseInvariants(healthy.binding), "ready");
   assertWithinD1StatementCap(healthy, "healthy verification");
   assert.deepEqual(healthy.counts(), {
     batchLengths: [],
-    statementCount: 10,
+    statementCount: 2,
   });
 
   database.exec(
@@ -227,8 +611,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(missing.binding), "repaired");
   assertWithinD1StatementCap(missing, "missing-trigger repair");
   assert.deepEqual(missing.counts(), {
-    batchLengths: [9],
-    statementCount: 28,
+    batchLengths: [25],
+    statementCount: 30,
   });
 
   database.exec(`
@@ -243,8 +627,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(mismatch.binding), "repaired");
   assertWithinD1StatementCap(mismatch, "single-mismatch repair");
   assert.deepEqual(mismatch.counts(), {
-    batchLengths: [10],
-    statementCount: 29,
+    batchLengths: [26],
+    statementCount: 31,
   });
   assert.deepEqual(
     await normalizedTriggerDefinitions(database),
@@ -272,7 +656,7 @@ test("repair requests terminate before app queries and a verified request retain
   await ensureInvariantReadiness(database, "repair request convergence");
   const verifiedRequest = countedBinding(database);
   assert.equal(await ensureDatabaseInvariants(verifiedRequest.binding), "ready");
-  for (let index = 0; index < 40; index += 1) {
+  for (let index = 0; index < 48; index += 1) {
     await verifiedRequest.binding.prepare("SELECT 1").first();
   }
   assert.equal(verifiedRequest.counts().statementCount, 50);
@@ -302,7 +686,7 @@ test("a resolved same-isolate result never masks another isolate's invalidation"
   assert.equal(await ensureDatabaseInvariants(firstIsolate.binding), "ready");
   assert.deepEqual(firstIsolate.counts(), {
     batchLengths: [],
-    statementCount: 10,
+    statementCount: 2,
   });
 
   database.exec(`
@@ -316,8 +700,8 @@ test("a resolved same-isolate result never masks another isolate's invalidation"
     "repaired",
   );
   assert.deepEqual(firstIsolate.counts(), {
-    batchLengths: [9],
-    statementCount: 31,
+    batchLengths: [25],
+    statementCount: 34,
   });
   assertWithinD1StatementCap(
     firstIsolate,
@@ -393,6 +777,13 @@ test("cross-organization probe failure leaves no durable readiness marker", asyn
   t.after(() => database.close());
   seedOrganizations(database);
   database.exec(`
+    INSERT INTO audit_logs (
+      id, organization_id, actor_profile_id, action, entity_type,
+      entity_id, metadata_json, created_at
+    ) VALUES (
+      'audit-partial-install', 'org_a', 'profile_a', 'created', 'event',
+      'event_a', '{}', 1
+    );
     INSERT INTO club_public_profiles (
       club_id, organization_id, primary_event_lane_id,
       publication_status, is_featured, created_at, updated_at
@@ -406,17 +797,21 @@ test("cross-organization probe failure leaves no durable readiness marker", asyn
     );
   `);
 
-  const counter = countedBinding(database);
-  await assert.rejects(
-    ensureDatabaseInvariants(counter.binding),
-    /Database integrity guards are unavailable/u,
-  );
-  assertWithinD1StatementCap(counter, "malformed-data rejection");
+  await assertEventuallyFailsClosed(database, "malformed-data rejection");
   assert.equal(await marker(database), null);
-  assert.deepEqual(
-    await normalizedTriggerDefinitions(database),
-    [],
-    "the atomic probe failure must roll back every trigger install",
+  await assertInstalledGuardSetFailClosed(
+    database,
+    "the malformed-data probe failure",
+  );
+  assert.throws(
+    () =>
+      database.exec(`
+        UPDATE audit_logs
+        SET action = 'rewritten'
+        WHERE id = 'audit-partial-install';
+      `),
+    /audit_log_is_immutable/u,
+    "an already-installed guard must remain protective while readiness stays unavailable",
   );
 
   database.exec(`
@@ -425,6 +820,11 @@ test("cross-organization probe failure leaves no durable readiness marker", asyn
   `);
   await ensureInvariantReadiness(database, "malformed-data recovery");
   assert.ok(await marker(database));
+  assert.deepEqual(
+    await normalizedTriggerDefinitions(database),
+    expectedTriggerDefinitions(),
+    "retry must converge the staged subset to the exact complete trigger contract",
+  );
 });
 
 test("installed guards continue rejecting malformed public rows", async (t) => {
@@ -631,10 +1031,9 @@ test("malformed membership identity or an unusable sole Owner fails closed witho
     corrupt(database);
 
     await assertEventuallyFailsClosed(database, "malformed owner data");
-    assert.deepEqual(
-      await normalizedTriggerDefinitions(database),
-      [],
-      "a malformed owner/identity state must not retain a partial guard set",
+    await assertInstalledGuardSetFailClosed(
+      database,
+      "the malformed owner/identity state",
     );
   }
 });
@@ -660,7 +1059,10 @@ test("organizer-event creators require same-organization membership, including h
     malformed,
     "cross-organization creator",
   );
-  assert.deepEqual(await normalizedTriggerDefinitions(malformed), []);
+  await assertInstalledGuardSetFailClosed(
+    malformed,
+    "the cross-organization creator state",
+  );
 
   const historical = newDatabase();
   t.after(() => historical.close());
@@ -767,10 +1169,9 @@ test("Phase 5 readiness fails closed for location-undecided public events", asyn
     database,
     "location-undecided public event",
   );
-  assert.deepEqual(
-    await normalizedTriggerDefinitions(database),
-    [],
-    "a non-ready public event must not retain a partial guard set",
+  await assertInstalledGuardSetFailClosed(
+    database,
+    "the non-ready public event state",
   );
 });
 
@@ -1212,6 +1613,19 @@ function seedOrganizations(database) {
         'profile_b', 1, 1
       );
 
+    INSERT INTO organization_memberships (
+      id, organization_id, profile_id, normalized_email, role, status,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES
+      (
+        'membership_a', 'org_a', 'profile_a', 'a@example.test',
+        'owner', 'active', 'profile_a', 1, 1
+      ),
+      (
+        'membership_b', 'org_b', 'profile_b', 'b@example.test',
+        'owner', 'active', 'profile_b', 1, 1
+      );
+
     INSERT INTO clubs (
       id, organization_id, name, slug, created_by_profile_id,
       created_at, updated_at
@@ -1299,6 +1713,174 @@ function seedOwnerInvariantData(database) {
   `);
 }
 
+async function legacyAttributionAdoptionSummary(database) {
+  const summary = await database
+    .prepare(
+      `SELECT
+         (
+           SELECT count(*)
+           FROM organizer_public_attribution_states
+         ) AS state_count,
+         (
+           SELECT count(*)
+           FROM organizer_public_attribution_write_intents
+           WHERE operation = 'adopted'
+         ) AS intent_count,
+         (
+           SELECT count(*)
+           FROM organizer_public_attribution_write_intents
+           WHERE completed_at IS NULL
+         ) AS open_intent_count,
+         (
+           SELECT count(*)
+           FROM organizer_public_attribution_receipts
+           WHERE action = 'adopted'
+         ) AS receipt_count,
+         (
+           SELECT count(*)
+           FROM audit_logs
+           WHERE action = 'profile.public_attribution_adopted'
+         ) AS audit_count,
+         (
+           SELECT count(*)
+           FROM database_invariant_state
+           WHERE singleton_key <> 'database-guards'
+         ) AS sentinel_count,
+         (
+           SELECT count(*)
+           FROM organizer_public_attribution_states AS attribution
+           JOIN profiles AS profile
+             ON profile.id = attribution.profile_id
+            AND profile.public_attribution_consent = 1
+            AND profile.status = 'active'
+            AND profile.deleted_at IS NULL
+            AND profile.display_name = attribution.public_display_name
+           JOIN organizer_public_attribution_receipts AS receipt
+             ON receipt.id = attribution.current_receipt_id
+            AND receipt.organization_id = attribution.organization_id
+            AND receipt.profile_id = attribution.profile_id
+            AND receipt.action = 'adopted'
+            AND receipt.attribution_version = 1
+            AND receipt.related_receipt_id IS NULL
+           JOIN organizer_public_attribution_write_intents AS intent
+             ON intent.id = receipt.write_intent_id
+            AND intent.organization_id = attribution.organization_id
+            AND intent.profile_id = attribution.profile_id
+            AND intent.operation = 'adopted'
+            AND intent.expected_draft_version = 1
+            AND intent.expected_published_version = 0
+            AND intent.proposed_published_version = 1
+            AND intent.snapshot_hash = receipt.snapshot_hash
+            AND intent.actor_profile_id = attribution.profile_id
+            AND intent.completed_at IS NOT NULL
+           JOIN audit_logs AS audit
+             ON audit.organization_id = attribution.organization_id
+            AND audit.actor_profile_id = attribution.profile_id
+            AND audit.action = 'profile.public_attribution_adopted'
+            AND audit.entity_type = 'profile'
+            AND audit.entity_id = attribution.profile_id
+           WHERE attribution.attribution_version = 1
+             AND attribution.published_attribution_version = 1
+             AND attribution.workflow_status = 'confirmed'
+             AND attribution.public_biography IS NULL
+             AND attribution.public_photo_media_asset_id IS NULL
+             AND attribution.confirmed_at IS NOT NULL
+             AND attribution.revoked_at IS NULL
+             AND receipt.actor_profile_id = attribution.profile_id
+             AND json_valid(receipt.snapshot_json)
+             AND json_type(receipt.snapshot_json, '$.biography') = 'null'
+             AND json_type(receipt.snapshot_json, '$.consent') = 'true'
+             AND json_type(receipt.snapshot_json, '$.displayName') = 'text'
+             AND json_extract(receipt.snapshot_json, '$.displayName') =
+                 attribution.public_display_name
+             AND json_type(receipt.snapshot_json, '$.draftVersion') =
+                 'integer'
+             AND json_extract(receipt.snapshot_json, '$.draftVersion') = 1
+             AND json_type(receipt.snapshot_json, '$.legacyAdopted') = 'true'
+             AND json_type(receipt.snapshot_json, '$.photoAssetId') = 'null'
+             AND json_valid(audit.metadata_json)
+             AND json_extract(audit.metadata_json, '$.draftVersion') = 1
+             AND json_extract(audit.metadata_json, '$.publishedVersion') = 1
+             AND json_extract(audit.metadata_json, '$.writeIntentId') =
+                 intent.id
+         ) AS valid_count`,
+    )
+    .first();
+  return {
+    auditCount: Number(summary?.audit_count ?? -1),
+    intentCount: Number(summary?.intent_count ?? -1),
+    openIntentCount: Number(summary?.open_intent_count ?? -1),
+    receiptCount: Number(summary?.receipt_count ?? -1),
+    sentinelCount: Number(summary?.sentinel_count ?? -1),
+    stateCount: Number(summary?.state_count ?? -1),
+    validCount: Number(summary?.valid_count ?? -1),
+  };
+}
+
+async function taxonomyAdoptionSummary(database) {
+  const summary = await database
+    .prepare(
+      `SELECT
+         (
+           SELECT count(*) FROM event_lane_taxonomy_states
+         ) + (
+           SELECT count(*) FROM category_taxonomy_states
+         ) AS state_count,
+         (
+           SELECT count(*) FROM taxonomy_write_intents
+           WHERE operation = 'adopt'
+         ) AS intent_count,
+         (
+           SELECT count(*) FROM taxonomy_write_intents
+           WHERE operation = 'adopt'
+             AND completed_at IS NULL
+         ) AS open_intent_count,
+         (
+           SELECT count(*) FROM audit_logs
+           WHERE action IN (
+             'taxonomy.lane_adopted',
+             'taxonomy.category_adopted'
+           )
+         ) AS audit_count`,
+    )
+    .first();
+  return {
+    auditCount: Number(summary?.audit_count ?? -1),
+    intentCount: Number(summary?.intent_count ?? -1),
+    openIntentCount: Number(summary?.open_intent_count ?? -1),
+    stateCount: Number(summary?.state_count ?? -1),
+  };
+}
+
+function twoPartyBarrier() {
+  let arrivals = 0;
+  let release;
+  const ready = new Promise((resolve) => {
+    release = resolve;
+  });
+  return {
+    async wait() {
+      arrivals += 1;
+      if (arrivals === 2) release();
+      await ready;
+    },
+  };
+}
+
+function synchronizeFirstInvariantBatch(database, barrier) {
+  let synchronized = false;
+  return {
+    async batch(statements) {
+      if (!synchronized) {
+        synchronized = true;
+        await barrier.wait();
+      }
+      return database.batch(statements);
+    },
+    prepare: (sql) => database.prepare(sql),
+  };
+}
+
 async function marker(database) {
   return database
     .prepare(
@@ -1333,6 +1915,31 @@ async function normalizedTriggerDefinitions(database) {
         sql: normalizeTriggerDefinition(row.sql),
       })),
     );
+}
+
+async function assertInstalledGuardSetFailClosed(database, label) {
+  const installed = await normalizedTriggerDefinitions(database);
+  const expected = expectedTriggerDefinitions();
+  const expectedByName = new Map(
+    expected.map((definition) => [definition.name, definition.sql]),
+  );
+
+  assert.equal(
+    await marker(database),
+    null,
+    `${label} must never retain a durable readiness marker`,
+  );
+  assert.ok(
+    installed.length > 0 && installed.length <= expected.length,
+    `${label} must retain only an exact staged subset of the guard contract`,
+  );
+  for (const definition of installed) {
+    assert.equal(
+      definition.sql,
+      expectedByName.get(definition.name),
+      `${label} retained an unexpected or mismatched ${definition.name} trigger`,
+    );
+  }
 }
 
 function triggerName(sql) {

@@ -13,6 +13,10 @@ import {
   updateOrganizerEvent,
 } from "../../lib/server/organizer/events.ts";
 import {
+  createOrganizerTaxonomyItem,
+  performOrganizerTaxonomyAction,
+} from "../../lib/server/organizer/taxonomy.ts";
+import {
   getOrganizerCalendarEvent,
   listOrganizerCalendarEvents,
 } from "../../lib/server/organizer/calendar.ts";
@@ -22,7 +26,10 @@ import {
 } from "../../lib/server/database/invariants.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
-import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
+import {
+  MAX_DATABASE_INVARIANT_READY_ATTEMPTS,
+  ensureDatabaseInvariantsReady,
+} from "../database/invariant-ready.mjs";
 
 const ownerIdentity = Object.freeze({
   displayName: "Owner",
@@ -207,6 +214,145 @@ test("private Ideas and Drafts have atomic CRUD, revisions, audits, and stale CA
         !Object.hasOwn(snapshot, "token") &&
         !Object.hasOwn(snapshot, "normalizedEmail"),
     ),
+  );
+});
+
+test("event edits preserve exact archived taxonomy while create and reassignment require active values", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+
+  let taxonomy = await createOrganizerTaxonomyItem(
+    database,
+    ownerIdentity,
+    {
+      entityType: "lane",
+      name: "Historical Lane",
+      slug: null,
+    },
+    10,
+  );
+  taxonomy = await createOrganizerTaxonomyItem(
+    database,
+    ownerIdentity,
+    {
+      colorToken: "forest",
+      entityType: "category",
+      name: "Historical Category",
+      slug: null,
+    },
+    20,
+  );
+  taxonomy = await createOrganizerTaxonomyItem(
+    database,
+    ownerIdentity,
+    {
+      entityType: "lane",
+      name: "Other Archived Lane",
+      slug: null,
+    },
+    30,
+  );
+  const historicalLane = taxonomy.lanes.find(
+    (item) => item.slug === "historical-lane",
+  );
+  const otherLane = taxonomy.lanes.find(
+    (item) => item.slug === "other-archived-lane",
+  );
+  const historicalCategory = taxonomy.categories.find(
+    (item) => item.slug === "historical-category",
+  );
+  assert.ok(historicalLane);
+  assert.ok(otherLane);
+  assert.ok(historicalCategory);
+
+  const event = await createOrganizerEvent(
+    database,
+    ownerIdentity,
+    ideaInput({
+      categoryId: historicalCategory.id,
+      eventLaneId: historicalLane.id,
+    }),
+  );
+
+  for (const item of [
+    { entityType: "lane", item: historicalLane },
+    { entityType: "lane", item: otherLane },
+    { entityType: "category", item: historicalCategory },
+  ]) {
+    taxonomy = await performOrganizerTaxonomyAction(
+      database,
+      ownerIdentity,
+      {
+        action: "archive",
+        entityType: item.entityType,
+        expectedContentVersion: item.item.contentVersion,
+        id: item.item.id,
+      },
+      40,
+    );
+  }
+
+  const preserved = await updateOrganizerEvent(
+    database,
+    ownerIdentity,
+    event.id,
+    event.contentVersion,
+    ideaInput({
+      categoryId: historicalCategory.id,
+      eventLaneId: historicalLane.id,
+      title: "Historical taxonomy remains selected",
+    }),
+  );
+  assert.equal(preserved.eventLaneId, historicalLane.id);
+  assert.equal(preserved.categoryId, historicalCategory.id);
+
+  await assert.rejects(
+    createOrganizerEvent(
+      database,
+      ownerIdentity,
+      ideaInput({
+        categoryId: historicalCategory.id,
+        eventLaneId: historicalLane.id,
+        title: "Archived taxonomy cannot be newly selected",
+      }),
+    ),
+    (error) => error?.code === "not_found",
+  );
+  await assert.rejects(
+    updateOrganizerEvent(
+      database,
+      ownerIdentity,
+      event.id,
+      preserved.contentVersion,
+      ideaInput({
+        categoryId: historicalCategory.id,
+        eventLaneId: otherLane.id,
+        title: "Archived reassignment is rejected",
+      }),
+    ),
+    (error) => error?.code === "not_found",
+  );
+
+  const current = await database
+    .prepare(
+      `SELECT event_lane_id, category_id, content_version
+       FROM organizer_events
+       WHERE id = ?`,
+    )
+    .bind(event.id)
+    .first();
+  assert.deepEqual(
+    {
+      categoryId: current?.category_id,
+      contentVersion: current?.content_version,
+      eventLaneId: current?.event_lane_id,
+    },
+    {
+      categoryId: historicalCategory.id,
+      contentVersion: preserved.contentVersion,
+      eventLaneId: historicalLane.id,
+    },
   );
 });
 
@@ -907,7 +1053,7 @@ test("runtime guards enforce Organizer club assignment on direct writes and rest
   );
 });
 
-test("malformed existing Phase 3 data leaves no v3 marker or partial guard set", async (t) => {
+test("malformed existing Phase 3 data remains fail-closed throughout staged guard installation", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
   insertCraftedOrganizerEvent(database, {
@@ -918,10 +1064,35 @@ test("malformed existing Phase 3 data leaves no v3 marker or partial guard set",
     organizationId: "org-main",
   });
 
-  await assert.rejects(
-    ensureDatabaseInvariants(database),
-    /Database integrity guards are unavailable/u,
-  );
+  let failedClosed = false;
+  for (
+    let attempt = 0;
+    attempt < MAX_DATABASE_INVARIANT_READY_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      assert.equal(await ensureDatabaseInvariants(database), "repaired");
+    } catch (error) {
+      assert.match(
+        String(error),
+        /Database integrity guards are unavailable/u,
+      );
+      failedClosed = true;
+      break;
+    }
+    assert.equal(
+      await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM database_invariant_state
+           WHERE singleton_key = 'database-guards'`,
+        )
+        .first("count"),
+      0,
+      "staged repair must not certify malformed Phase 3 data",
+    );
+  }
+  assert.equal(failedClosed, true, "malformed Phase 3 data must fail closed");
   assert.equal(
     (
       await database
@@ -934,16 +1105,17 @@ test("malformed existing Phase 3 data leaves no v3 marker or partial guard set",
     ).count,
     0,
   );
-  assert.equal(
-    (
-      await database
-        .prepare(
-          "SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger'",
-        )
-        .first()
-    ).count,
-    0,
-    "the aborting v2 probe rolls back the complete trigger installation",
+  const installedTriggers = await database
+    .prepare(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'trigger'
+       ORDER BY name`,
+    )
+    .all();
+  assert.ok(
+    installedTriggers.results.length > 0,
+    "staged installation retains already-verified protective guards",
   );
 });
 

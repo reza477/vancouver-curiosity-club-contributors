@@ -1,18 +1,16 @@
 import {
-  authorizeMembership,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
 } from "../auth";
 import {
-  parseFiniteInteger,
   parseIdentifier,
   validationIssue,
 } from "../../validation";
 import {
   PUBLIC_CATALOG_CLUBS,
 } from "../public/catalog-definitions";
-import { ensurePublicCatalog } from "../public/catalog";
+import { ensurePublicCatalogAndAuthorize } from "../public/catalog";
 import { MeetupSyncError } from "./errors";
 
 type MeetupProgramDefinition = Readonly<{
@@ -50,16 +48,11 @@ export async function ensureMeetupProgramClubs(
   identity: TrustedServerIdentity,
   nowUtcMs = Date.now(),
 ): Promise<readonly MeetupProgramClub[]> {
-  const actor = await authorizeMembership(database, identity, {
-    allowedRoles: ["owner", "administrator"],
-  });
-  const now = parseFiniteInteger(nowUtcMs, {
-    path: "nowUtcMs",
-    minimum: 0,
-  });
-
-  await ensurePublicCatalog(database, identity, now);
-
+  const actor = await ensurePublicCatalogAndAuthorize(
+    database,
+    identity,
+    nowUtcMs,
+  );
   const result = await database
     .prepare(
       `SELECT id, name, slug

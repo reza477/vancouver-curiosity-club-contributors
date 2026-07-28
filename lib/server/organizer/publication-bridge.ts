@@ -219,6 +219,29 @@ export async function prepareCanonicalEventPublicationMutationGuard(
         ),
     );
   }
+  if (
+    nextPublicationStatus === "unpublished" ||
+    stateEffect === "restored_unpublished"
+  ) {
+    preMutationStatements.push(
+      database
+        .prepare(
+          `UPDATE media_usage_references
+           SET deleted_at = ?
+           WHERE organization_id = ?
+             AND entity_type = 'organizer_event'
+             AND entity_id = ?
+             AND usage_kind = 'event_artwork'
+             AND publication_scope = 'published'
+             AND deleted_at IS NULL`,
+        )
+        .bind(
+          input.now,
+          actor.organizationId,
+          event.id,
+        ),
+    );
+  }
   return Object.freeze({
     completionStatement: database
       .prepare(

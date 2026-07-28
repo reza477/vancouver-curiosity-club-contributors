@@ -471,6 +471,260 @@ export const categories = sqliteTable(
   ],
 );
 
+/**
+ * Exact transaction envelope for owner/administrator taxonomy mutations.
+ *
+ * Taxonomy rows predate Phase 6 and remain the canonical scheduling
+ * identities. The intent binds the complete proposed base/state value so
+ * runtime guards can reject direct writes that omit optimistic versioning,
+ * immutable audit history, or reference-safe archive/delete checks.
+ */
+export const taxonomyWriteIntents = sqliteTable(
+  "taxonomy_write_intents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    entityType: text("entity_type", {
+      enum: ["lane", "category"],
+    }).notNull(),
+    entityId: text("entity_id").notNull(),
+    operation: text("operation", {
+      enum: [
+        "adopt",
+        "create",
+        "update",
+        "reorder",
+        "archive",
+        "safe_delete",
+      ],
+    }).notNull(),
+    expectedContentVersion: integer(
+      "expected_content_version",
+    ).notNull(),
+    proposedContentVersion: integer(
+      "proposed_content_version",
+    ).notNull(),
+    proposedName: text("proposed_name").notNull(),
+    proposedSlug: text("proposed_slug").notNull(),
+    proposedDescription: text("proposed_description"),
+    proposedColorToken: text("proposed_color_token"),
+    proposedSortOrder: integer("proposed_sort_order").notNull(),
+    proposedDeletedAt: integer("proposed_deleted_at"),
+    mutationGroupId: text("mutation_group_id"),
+    mutationGroupSize: integer("mutation_group_size"),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    completedAt: integer("completed_at"),
+  },
+  (table) => [
+    uniqueIndex("taxonomy_write_intents_open_entity_unique")
+      .on(table.organizationId, table.entityType, table.entityId)
+      .where(sql`${table.completedAt} IS NULL`),
+    index("taxonomy_write_intents_entity_history_idx").on(
+      table.organizationId,
+      table.entityType,
+      table.entityId,
+      table.proposedContentVersion,
+    ),
+    uniqueIndex("taxonomy_write_intents_entity_version_unique").on(
+      table.organizationId,
+      table.entityType,
+      table.entityId,
+      table.proposedContentVersion,
+    ),
+    index("taxonomy_write_intents_open_idx").on(
+      table.organizationId,
+      table.completedAt,
+      table.createdAt,
+    ),
+    uniqueIndex("taxonomy_write_intents_reorder_group_sort_unique")
+      .on(
+        table.organizationId,
+        table.entityType,
+        table.mutationGroupId,
+        table.proposedSortOrder,
+      )
+      .where(sql`${table.operation} = 'reorder'`),
+    index("taxonomy_write_intents_reorder_group_idx").on(
+      table.organizationId,
+      table.entityType,
+      table.mutationGroupId,
+      table.completedAt,
+    ),
+    check(
+      "taxonomy_write_intents_operation_check",
+      sql`${table.operation} IN (
+        'adopt', 'create', 'update', 'reorder', 'archive', 'safe_delete'
+      )`,
+    ),
+    check(
+      "taxonomy_write_intents_version_check",
+      sql`${table.expectedContentVersion} >= 0
+          AND ${table.proposedContentVersion} =
+              ${table.expectedContentVersion} + 1
+          AND (
+            (
+              ${table.operation} IN ('adopt', 'create')
+              AND ${table.expectedContentVersion} = 0
+            )
+            OR (
+              ${table.operation} NOT IN ('adopt', 'create')
+              AND ${table.expectedContentVersion} >= 1
+            )
+          )`,
+    ),
+    check(
+      "taxonomy_write_intents_public_fields_check",
+      sql`length(trim(${table.proposedName})) BETWEEN 1 AND 120
+          AND length(${table.proposedSlug}) BETWEEN 1 AND 160
+          AND ${table.proposedSlug} = lower(${table.proposedSlug})
+          AND ${table.proposedSlug} NOT GLOB '*[^a-z0-9-]*'
+          AND ${table.proposedSlug} NOT GLOB '-*'
+          AND ${table.proposedSlug} NOT GLOB '*-'
+          AND instr(${table.proposedSlug}, '--') = 0
+          AND (
+            ${table.proposedDescription} IS NULL
+            OR length(${table.proposedDescription}) BETWEEN 1 AND 1000
+          )
+          AND (
+            ${table.proposedColorToken} IS NULL
+            OR (
+              length(${table.proposedColorToken}) BETWEEN 1 AND 64
+              AND ${table.proposedColorToken} =
+                  lower(${table.proposedColorToken})
+              AND ${table.proposedColorToken} GLOB '[a-z]*'
+              AND ${table.proposedColorToken}
+                  NOT GLOB '*[^a-z0-9-]*'
+              AND instr(${table.proposedColorToken}, '--') = 0
+              AND ${table.proposedColorToken} NOT GLOB '*-'
+            )
+          )
+          AND ${table.proposedSortOrder} BETWEEN 0 AND 100000
+          AND (
+            ${table.entityType} <> 'lane'
+            OR ${table.proposedColorToken} IS NULL
+          )`,
+    ),
+    check(
+      "taxonomy_write_intents_state_shape_check",
+      sql`(
+        ${table.operation} IN ('create', 'update', 'reorder')
+        AND ${table.proposedDeletedAt} IS NULL
+      ) OR (
+        ${table.operation} IN ('archive', 'safe_delete')
+        AND ${table.proposedDeletedAt} IS NOT NULL
+      ) OR ${table.operation} = 'adopt'`,
+    ),
+    check(
+      "taxonomy_write_intents_group_shape_check",
+      sql`(
+        ${table.operation} = 'reorder'
+        AND length(${table.mutationGroupId}) BETWEEN 1 AND 128
+        AND ${table.mutationGroupSize} BETWEEN 1 AND 100
+        AND ${table.proposedSortOrder} BETWEEN 10 AND 1000
+        AND ${table.proposedSortOrder} % 10 = 0
+        AND ${table.proposedSortOrder} <=
+            ${table.mutationGroupSize} * 10
+      ) OR (
+        ${table.operation} <> 'reorder'
+        AND ${table.mutationGroupId} IS NULL
+        AND ${table.mutationGroupSize} IS NULL
+      )`,
+    ),
+    check(
+      "taxonomy_write_intents_completion_check",
+      sql`${table.completedAt} IS NULL
+          OR ${table.completedAt} >= ${table.createdAt}`,
+    ),
+  ],
+);
+
+export const eventLaneTaxonomyStates = sqliteTable(
+  "event_lane_taxonomy_states",
+  {
+    laneId: text("lane_id")
+      .primaryKey()
+      .references(() => eventLanes.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    contentVersion: integer("content_version").notNull().default(1),
+    activeIntentId: text("active_intent_id").references(
+      () => taxonomyWriteIntents.id,
+      { onDelete: "restrict" },
+    ),
+    lastCompletedIntentId: text("last_completed_intent_id").references(
+      () => taxonomyWriteIntents.id,
+      { onDelete: "restrict" },
+    ),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("event_lane_taxonomy_states_org_lane_unique").on(
+      table.organizationId,
+      table.laneId,
+    ),
+    check(
+      "event_lane_taxonomy_states_version_check",
+      sql`${table.contentVersion} >= 1`,
+    ),
+  ],
+);
+
+export const categoryTaxonomyStates = sqliteTable(
+  "category_taxonomy_states",
+  {
+    categoryId: text("category_id")
+      .primaryKey()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+    contentVersion: integer("content_version").notNull().default(1),
+    activeIntentId: text("active_intent_id").references(
+      () => taxonomyWriteIntents.id,
+      { onDelete: "restrict" },
+    ),
+    lastCompletedIntentId: text("last_completed_intent_id").references(
+      () => taxonomyWriteIntents.id,
+      { onDelete: "restrict" },
+    ),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("category_taxonomy_states_org_category_unique").on(
+      table.organizationId,
+      table.categoryId,
+    ),
+    index("category_taxonomy_states_org_sort_idx").on(
+      table.organizationId,
+      table.sortOrder,
+      table.categoryId,
+    ),
+    check(
+      "category_taxonomy_states_sort_order_check",
+      sql`${table.sortOrder} BETWEEN 0 AND 100000`,
+    ),
+    check(
+      "category_taxonomy_states_version_check",
+      sql`${table.contentVersion} >= 1`,
+    ),
+  ],
+);
+
 export const invitations = sqliteTable(
   "invitations",
   {
@@ -2868,6 +3122,1434 @@ export const siteSettings = sqliteTable(
     check(
       "site_settings_value_json_check",
       sql`json_valid(${table.valueJson})`,
+    ),
+  ],
+);
+
+/**
+ * Phase 6 keeps the existing public tables as the only public materialized
+ * projection. This additive state row points at private immutable revisions;
+ * saving a draft cannot mutate a public table.
+ */
+export const cmsEntityPublicationStates = sqliteTable(
+  "cms_entity_publication_states",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    entityType: text("entity_type", {
+      enum: [
+        "page",
+        "club_public_profile",
+        "program_public_profile",
+        "community_link",
+        "navigation",
+        "site_identity",
+        "legal_status",
+      ],
+    }).notNull(),
+    entityKey: text("entity_key").notNull(),
+    workflowStatus: text("workflow_status", {
+      enum: ["draft", "published", "unpublished", "archived"],
+    })
+      .notNull()
+      .default("draft"),
+    contentVersion: integer("content_version").notNull().default(1),
+    currentDraftRevisionId: text("current_draft_revision_id"),
+    publishedRevisionId: text("published_revision_id"),
+    lastEditorProfileId: text("last_editor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    draftUpdatedAt: integer("draft_updated_at"),
+    publishedAt: integer("published_at"),
+    unpublishedAt: integer("unpublished_at"),
+    adoptedAt: integer("adopted_at"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("cms_entity_publication_states_org_entity_unique").on(
+      table.organizationId,
+      table.entityType,
+      table.entityKey,
+    ),
+    index("cms_entity_publication_states_org_status_idx").on(
+      table.organizationId,
+      table.entityType,
+      table.workflowStatus,
+      table.updatedAt,
+    ),
+    index("cms_entity_publication_states_draft_revision_idx").on(
+      table.organizationId,
+      table.currentDraftRevisionId,
+    ),
+    index("cms_entity_publication_states_published_revision_idx").on(
+      table.organizationId,
+      table.publishedRevisionId,
+    ),
+    check(
+      "cms_entity_publication_states_entity_type_check",
+      sql`${table.entityType} IN (
+        'page', 'club_public_profile', 'program_public_profile',
+        'community_link',
+        'navigation', 'site_identity', 'legal_status'
+      )`,
+    ),
+    check(
+      "cms_entity_publication_states_status_check",
+      sql`${table.workflowStatus} IN (
+        'draft', 'published', 'unpublished', 'archived'
+      )`,
+    ),
+    check(
+      "cms_entity_publication_states_version_check",
+      sql`${table.contentVersion} >= 1`,
+    ),
+    check(
+      "cms_entity_publication_states_entity_key_check",
+      sql`length(trim(${table.entityKey})) BETWEEN 1 AND 160`,
+    ),
+    check(
+      "cms_entity_publication_states_revision_shape_check",
+      sql`(
+        ${table.workflowStatus} = 'draft'
+        AND ${table.currentDraftRevisionId} IS NOT NULL
+      ) OR (
+        ${table.workflowStatus} = 'published'
+        AND ${table.publishedRevisionId} IS NOT NULL
+        AND ${table.publishedAt} IS NOT NULL
+      ) OR (
+        ${table.workflowStatus} = 'unpublished'
+        AND ${table.unpublishedAt} IS NOT NULL
+      ) OR ${table.workflowStatus} = 'archived'`,
+    ),
+  ],
+);
+
+export const cmsEntityRevisions = sqliteTable(
+  "cms_entity_revisions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    publicationStateId: text("publication_state_id")
+      .notNull()
+      .references(() => cmsEntityPublicationStates.id, {
+        onDelete: "cascade",
+      }),
+    entityType: text("entity_type", {
+      enum: [
+        "page",
+        "club_public_profile",
+        "program_public_profile",
+        "community_link",
+        "navigation",
+        "site_identity",
+        "legal_status",
+      ],
+    }).notNull(),
+    entityKey: text("entity_key").notNull(),
+    revisionNumber: integer("revision_number").notNull(),
+    snapshotJson: text("snapshot_json").notNull(),
+    contentHash: text("content_hash").notNull(),
+    canonicalByteSize: integer("canonical_byte_size").notNull(),
+    restoredFromRevisionId: text("restored_from_revision_id"),
+    legacyPageRevisionId: text("legacy_page_revision_id").references(
+      () => pageRevisions.id,
+      { onDelete: "restrict" },
+    ),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("cms_entity_revisions_state_number_unique").on(
+      table.publicationStateId,
+      table.revisionNumber,
+    ),
+    index("cms_entity_revisions_org_entity_idx").on(
+      table.organizationId,
+      table.entityType,
+      table.entityKey,
+      table.revisionNumber,
+    ),
+    index("cms_entity_revisions_restore_idx").on(
+      table.organizationId,
+      table.restoredFromRevisionId,
+    ),
+    uniqueIndex("cms_entity_revisions_legacy_page_unique")
+      .on(table.legacyPageRevisionId)
+      .where(sql`${table.legacyPageRevisionId} IS NOT NULL`),
+    check(
+      "cms_entity_revisions_entity_type_check",
+      sql`${table.entityType} IN (
+        'page', 'club_public_profile', 'program_public_profile',
+        'community_link',
+        'navigation', 'site_identity', 'legal_status'
+      )`,
+    ),
+    check(
+      "cms_entity_revisions_number_check",
+      sql`${table.revisionNumber} >= 1`,
+    ),
+    check(
+      "cms_entity_revisions_snapshot_check",
+      sql`json_valid(${table.snapshotJson})
+          AND json_type(${table.snapshotJson}) = 'object'
+          AND ${table.canonicalByteSize} =
+              length(CAST(${table.snapshotJson} AS BLOB))
+          AND ${table.canonicalByteSize} BETWEEN 2 AND 131072`,
+    ),
+    check(
+      "cms_entity_revisions_hash_check",
+      sql`length(${table.contentHash}) = 64
+          AND ${table.contentHash} = lower(${table.contentHash})
+          AND ${table.contentHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "cms_entity_revisions_entity_key_check",
+      sql`length(trim(${table.entityKey})) BETWEEN 1 AND 160`,
+    ),
+  ],
+);
+
+/**
+ * Immutable proof that the allowlisted materialized public rows were produced
+ * from one exact CMS revision. The projection JSON is verification data only:
+ * public readers continue to read the established projection tables and must
+ * prove those rows still match this receipt.
+ */
+export const cmsPublicMaterializationReceipts = sqliteTable(
+  "cms_public_materialization_receipts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    publicationStateId: text("publication_state_id")
+      .notNull()
+      .references(() => cmsEntityPublicationStates.id, {
+        onDelete: "cascade",
+      }),
+    entityType: text("entity_type", {
+      enum: [
+        "page",
+        "club_public_profile",
+        "program_public_profile",
+        "community_link",
+        "navigation",
+        "site_identity",
+        "legal_status",
+      ],
+    }).notNull(),
+    entityKey: text("entity_key").notNull(),
+    revisionId: text("revision_id")
+      .notNull()
+      .references(() => cmsEntityRevisions.id, { onDelete: "cascade" }),
+    revisionHash: text("revision_hash").notNull(),
+    projectionJson: text("projection_json").notNull(),
+    canonicalByteSize: integer("canonical_byte_size").notNull(),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("cms_public_materialization_receipts_state_revision_unique")
+      .on(table.publicationStateId, table.revisionId),
+    index("cms_public_materialization_receipts_org_entity_idx").on(
+      table.organizationId,
+      table.entityType,
+      table.entityKey,
+      table.createdAt,
+    ),
+    check(
+      "cms_public_materialization_receipts_entity_type_check",
+      sql`${table.entityType} IN (
+        'page', 'club_public_profile', 'program_public_profile',
+        'community_link', 'navigation', 'site_identity', 'legal_status'
+      )`,
+    ),
+    check(
+      "cms_public_materialization_receipts_projection_check",
+      sql`json_valid(${table.projectionJson})
+          AND json_type(${table.projectionJson}) = 'object'
+          AND ${table.canonicalByteSize} =
+              length(CAST(${table.projectionJson} AS BLOB))
+          AND ${table.canonicalByteSize} BETWEEN 2 AND 131072`,
+    ),
+    check(
+      "cms_public_materialization_receipts_hash_check",
+      sql`length(${table.revisionHash}) = 64
+          AND ${table.revisionHash} = lower(${table.revisionHash})
+          AND ${table.revisionHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "cms_public_materialization_receipts_entity_key_check",
+      sql`length(trim(${table.entityKey})) BETWEEN 1 AND 160`,
+    ),
+  ],
+);
+
+/**
+ * CMS adoption is scoped per organization and is deliberately not part of the
+ * global public-request readiness marker. Private CMS services fail closed
+ * until the existing public projection has been adopted and this marker has
+ * been written atomically.
+ */
+export const cmsAdoptionStates = sqliteTable(
+  "cms_adoption_states",
+  {
+    organizationId: text("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    adoptionVersion: integer("adoption_version").notNull().default(1),
+    sourceFingerprint: text("source_fingerprint").notNull(),
+    adoptedAt: integer("adopted_at").notNull(),
+    verifiedAt: integer("verified_at").notNull(),
+  },
+  (table) => [
+    check(
+      "cms_adoption_states_version_check",
+      sql`${table.adoptionVersion} = 1`,
+    ),
+    check(
+      "cms_adoption_states_fingerprint_check",
+      sql`length(${table.sourceFingerprint}) = 64
+          AND ${table.sourceFingerprint} = lower(${table.sourceFingerprint})
+          AND ${table.sourceFingerprint} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "cms_adoption_states_time_check",
+      sql`${table.verifiedAt} >= ${table.adoptedAt}`,
+    ),
+  ],
+);
+
+export const publicSlugRedirects = sqliteTable(
+  "public_slug_redirects",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    entityType: text("entity_type", {
+      enum: ["page", "club_public_profile", "program_public_profile"],
+    }).notNull(),
+    entityId: text("entity_id").notNull(),
+    fromSlug: text("from_slug").notNull(),
+    toSlug: text("to_slug").notNull(),
+    state: text("state", { enum: ["active", "superseded"] })
+      .notNull()
+      .default("active"),
+    createdByProfileId: text("created_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    retiredAt: integer("retired_at"),
+  },
+  (table) => [
+    uniqueIndex("public_slug_redirects_active_from_unique")
+      .on(table.organizationId, table.entityType, table.fromSlug)
+      .where(sql`${table.state} = 'active'`),
+    index("public_slug_redirects_entity_idx").on(
+      table.organizationId,
+      table.entityType,
+      table.entityId,
+      table.state,
+    ),
+    check(
+      "public_slug_redirects_entity_type_check",
+      sql`${table.entityType} IN (
+        'page', 'club_public_profile', 'program_public_profile'
+      )`,
+    ),
+    check(
+      "public_slug_redirects_state_shape_check",
+      sql`(
+        ${table.state} = 'active' AND ${table.retiredAt} IS NULL
+      ) OR (
+        ${table.state} = 'superseded'
+        AND ${table.retiredAt} IS NOT NULL
+      )`,
+    ),
+    check(
+      "public_slug_redirects_slug_check",
+      sql`length(${table.fromSlug}) BETWEEN 1 AND 160
+          AND length(${table.toSlug}) BETWEEN 1 AND 160
+          AND ${table.fromSlug} <> ${table.toSlug}`,
+    ),
+  ],
+);
+
+/**
+ * Published-only page metadata. Draft SEO values remain inside an immutable
+ * private revision until an authorized publish materializes them here.
+ */
+export const pagePublicMetadata = sqliteTable(
+  "page_public_metadata",
+  {
+    pageId: text("page_id")
+      .primaryKey()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    seoTitle: text("seo_title"),
+    metaDescription: text("meta_description"),
+    ogMediaAssetId: text("og_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("page_public_metadata_org_page_unique").on(
+      table.organizationId,
+      table.pageId,
+    ),
+    index("page_public_metadata_org_updated_idx").on(
+      table.organizationId,
+      table.updatedAt,
+    ),
+    check(
+      "page_public_metadata_seo_title_check",
+      sql`${table.seoTitle} IS NULL
+          OR length(${table.seoTitle}) BETWEEN 1 AND 60`,
+    ),
+    check(
+      "page_public_metadata_description_check",
+      sql`${table.metaDescription} IS NULL
+          OR length(${table.metaDescription}) BETWEEN 1 AND 160`,
+    ),
+  ],
+);
+
+/**
+ * Optional published-facing SEO overrides for canonical organizer events.
+ * The event title, summary, slug, and artwork remain authoritative elsewhere;
+ * null values deliberately fall back to those canonical public facts.
+ */
+export const organizerEventPublicMetadata = sqliteTable(
+  "organizer_event_public_metadata",
+  {
+    organizerEventId: text("organizer_event_id")
+      .primaryKey()
+      .references(() => organizerEvents.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    seoTitle: text("seo_title"),
+    metaDescription: text("meta_description"),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_event_public_metadata_org_event_unique").on(
+      table.organizationId,
+      table.organizerEventId,
+    ),
+    index("organizer_event_public_metadata_org_updated_idx").on(
+      table.organizationId,
+      table.updatedAt,
+    ),
+    check(
+      "organizer_event_public_metadata_seo_title_check",
+      sql`${table.seoTitle} IS NULL
+          OR length(trim(${table.seoTitle})) BETWEEN 1 AND 60`,
+    ),
+    check(
+      "organizer_event_public_metadata_description_check",
+      sql`${table.metaDescription} IS NULL
+          OR length(trim(${table.metaDescription})) BETWEEN 1 AND 160`,
+    ),
+  ],
+);
+
+/**
+ * Rich published club content is separated from private CMS revisions. The
+ * established `club_public_profiles` record remains authoritative for lane,
+ * publication state, confirmed Meetup group URL, and featured ordering.
+ */
+export const clubPublicProfileDetails = sqliteTable(
+  "club_public_profile_details",
+  {
+    clubId: text("club_id")
+      .primaryKey()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    publicDisplayName: text("public_display_name").notNull(),
+    shortSummary: text("short_summary").notNull(),
+    fullDescription: text("full_description").notNull(),
+    programType: text("program_type", {
+      enum: ["club", "program", "circle", "series", "other"],
+    })
+      .notNull()
+      .default("club"),
+    coverMediaAssetId: text("cover_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    thumbnailMediaAssetId: text("thumbnail_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    imageAltText: text("image_alt_text"),
+    themeColor: text("theme_color"),
+    seoTitle: text("seo_title"),
+    metaDescription: text("meta_description"),
+    ogMediaAssetId: text("og_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    participantExpectations: text("participant_expectations"),
+    preparationInformation: text("preparation_information"),
+    typicalFormat: text("typical_format"),
+    confirmedSocialLinksJson: text("confirmed_social_links_json")
+      .notNull()
+      .default("[]"),
+    relatedResourcesJson: text("related_resources_json")
+      .notNull()
+      .default("[]"),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("club_public_profile_details_org_club_unique").on(
+      table.organizationId,
+      table.clubId,
+    ),
+    index("club_public_profile_details_org_updated_idx").on(
+      table.organizationId,
+      table.updatedAt,
+    ),
+    index("club_public_profile_details_org_og_media_idx").on(
+      table.organizationId,
+      table.ogMediaAssetId,
+    ),
+    check(
+      "club_public_profile_details_display_name_check",
+      sql`length(trim(${table.publicDisplayName})) BETWEEN 1 AND 120`,
+    ),
+    check(
+      "club_public_profile_details_summary_check",
+      sql`length(${table.shortSummary}) BETWEEN 1 AND 500`,
+    ),
+    check(
+      "club_public_profile_details_description_check",
+      sql`length(${table.fullDescription}) BETWEEN 1 AND 20000`,
+    ),
+    check(
+      "club_public_profile_details_program_type_check",
+      sql`${table.programType} IN ('club', 'program', 'circle', 'series', 'other')`,
+    ),
+    check(
+      "club_public_profile_details_alt_check",
+      sql`${table.imageAltText} IS NULL
+          OR length(${table.imageAltText}) BETWEEN 1 AND 300`,
+    ),
+    check(
+      "club_public_profile_details_theme_check",
+      sql`${table.themeColor} IS NULL
+          OR (
+            length(${table.themeColor}) = 7
+            AND substr(${table.themeColor}, 1, 1) = '#'
+            AND substr(${table.themeColor}, 2)
+                NOT GLOB '*[^0-9A-Fa-f]*'
+          )`,
+    ),
+    check(
+      "club_public_profile_details_seo_title_check",
+      sql`${table.seoTitle} IS NULL
+          OR length(trim(${table.seoTitle})) BETWEEN 1 AND 60`,
+    ),
+    check(
+      "club_public_profile_details_meta_description_check",
+      sql`${table.metaDescription} IS NULL
+          OR length(trim(${table.metaDescription})) BETWEEN 1 AND 160`,
+    ),
+    check(
+      "club_public_profile_details_social_links_check",
+      sql`json_valid(${table.confirmedSocialLinksJson})
+          AND json_type(${table.confirmedSocialLinksJson}) = 'array'
+          AND length(CAST(${table.confirmedSocialLinksJson} AS BLOB)) <= 16384`,
+    ),
+    check(
+      "club_public_profile_details_resources_check",
+      sql`json_valid(${table.relatedResourcesJson})
+          AND json_type(${table.relatedResourcesJson}) = 'array'
+          AND length(CAST(${table.relatedResourcesJson} AS BLOB)) <= 16384`,
+    ),
+  ],
+);
+
+/**
+ * Published recurring-program content remains a sidecar of the canonical
+ * private `programs` scheduling identity. CMS revisions are the private draft
+ * source; this table is only the allowlisted materialized public projection.
+ */
+export const programPublicProfileDetails = sqliteTable(
+  "program_public_profile_details",
+  {
+    programId: text("program_id")
+      .primaryKey()
+      .references(() => programs.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    clubId: text("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "restrict" }),
+    primaryEventLaneId: text("primary_event_lane_id")
+      .notNull()
+      .references(() => eventLanes.id, { onDelete: "restrict" }),
+    publicationStatus: text("publication_status", {
+      enum: ["draft", "published", "archived"],
+    })
+      .notNull()
+      .default("draft"),
+    isFeatured: integer("is_featured", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    displayOrder: integer("display_order").notNull().default(1000),
+    publicDisplayName: text("public_display_name").notNull(),
+    publicSlug: text("public_slug").notNull(),
+    shortSummary: text("short_summary").notNull(),
+    fullDescription: text("full_description").notNull(),
+    programType: text("program_type", {
+      enum: ["program", "circle", "series", "other"],
+    })
+      .notNull()
+      .default("program"),
+    publicGroupUrl: text("public_group_url"),
+    coverMediaAssetId: text("cover_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    thumbnailMediaAssetId: text("thumbnail_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    themeColor: text("theme_color"),
+    participantExpectations: text("participant_expectations"),
+    preparationInformation: text("preparation_information"),
+    typicalFormat: text("typical_format"),
+    confirmedSocialLinksJson: text("confirmed_social_links_json")
+      .notNull()
+      .default("[]"),
+    relatedResourcesJson: text("related_resources_json")
+      .notNull()
+      .default("[]"),
+    seoTitle: text("seo_title"),
+    metaDescription: text("meta_description"),
+    ogMediaAssetId: text("og_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    publishedAt: integer("published_at"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    deletedAt: integer("deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("program_public_profile_details_org_program_unique").on(
+      table.organizationId,
+      table.programId,
+    ),
+    uniqueIndex("program_public_profile_details_org_slug_unique").on(
+      table.organizationId,
+      table.publicSlug,
+    ),
+    index("program_public_profile_details_org_club_status_idx").on(
+      table.organizationId,
+      table.clubId,
+      table.publicationStatus,
+      table.isFeatured,
+      table.displayOrder,
+      table.deletedAt,
+    ),
+    index("program_public_profile_details_org_og_media_idx").on(
+      table.organizationId,
+      table.ogMediaAssetId,
+    ),
+    check(
+      "program_public_profile_details_status_check",
+      sql`${table.publicationStatus} IN ('draft', 'published', 'archived')`,
+    ),
+    check(
+      "program_public_profile_details_published_at_check",
+      sql`${table.publicationStatus} <> 'published'
+          OR ${table.publishedAt} IS NOT NULL`,
+    ),
+    check(
+      "program_public_profile_details_order_check",
+      sql`${table.displayOrder} BETWEEN 0 AND 100000`,
+    ),
+    check(
+      "program_public_profile_details_program_type_check",
+      sql`${table.programType} IN ('program', 'circle', 'series', 'other')`,
+    ),
+    check(
+      "program_public_profile_details_name_check",
+      sql`length(trim(${table.publicDisplayName})) BETWEEN 1 AND 120`,
+    ),
+    check(
+      "program_public_profile_details_slug_check",
+      sql`length(trim(${table.publicSlug})) BETWEEN 1 AND 120`,
+    ),
+    check(
+      "program_public_profile_details_summary_check",
+      sql`length(${table.shortSummary}) BETWEEN 0 AND 500`,
+    ),
+    check(
+      "program_public_profile_details_description_check",
+      sql`length(${table.fullDescription}) BETWEEN 0 AND 20000`,
+    ),
+    check(
+      "program_public_profile_details_theme_check",
+      sql`${table.themeColor} IS NULL
+          OR (
+            length(${table.themeColor}) = 7
+            AND substr(${table.themeColor}, 1, 1) = '#'
+            AND substr(${table.themeColor}, 2)
+                NOT GLOB '*[^0-9A-Fa-f]*'
+          )`,
+    ),
+    check(
+      "program_public_profile_details_seo_title_check",
+      sql`${table.seoTitle} IS NULL
+          OR length(trim(${table.seoTitle})) BETWEEN 1 AND 60`,
+    ),
+    check(
+      "program_public_profile_details_meta_description_check",
+      sql`${table.metaDescription} IS NULL
+          OR length(trim(${table.metaDescription})) BETWEEN 1 AND 160`,
+    ),
+    check(
+      "program_public_profile_details_social_links_check",
+      sql`json_valid(${table.confirmedSocialLinksJson})
+          AND json_type(${table.confirmedSocialLinksJson}) = 'array'
+          AND length(CAST(${table.confirmedSocialLinksJson} AS BLOB)) <= 16384`,
+    ),
+    check(
+      "program_public_profile_details_resources_check",
+      sql`json_valid(${table.relatedResourcesJson})
+          AND json_type(${table.relatedResourcesJson}) = 'array'
+          AND length(CAST(${table.relatedResourcesJson} AS BLOB)) <= 16384`,
+    ),
+  ],
+);
+
+export const communityLinkPublicDetails = sqliteTable(
+  "community_link_public_details",
+  {
+    communityLinkId: text("community_link_id")
+      .primaryKey()
+      .references(() => communityLinks.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    description: text("description").notNull(),
+    destinationType: text("destination_type", {
+      enum: [
+        "meetup_group",
+        "meetup_discussion",
+        "social_profile",
+        "community_platform",
+        "resource",
+        "other",
+      ],
+    }).notNull(),
+    confirmedByProfileId: text("confirmed_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    confirmedAt: integer("confirmed_at").notNull(),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("community_link_public_details_org_link_unique").on(
+      table.organizationId,
+      table.communityLinkId,
+    ),
+    index("community_link_public_details_org_type_idx").on(
+      table.organizationId,
+      table.destinationType,
+      table.confirmedAt,
+    ),
+    check(
+      "community_link_public_details_description_check",
+      sql`length(${table.description}) BETWEEN 1 AND 240`,
+    ),
+    check(
+      "community_link_public_details_destination_check",
+      sql`${table.destinationType} IN (
+        'meetup_group', 'meetup_discussion', 'social_profile',
+        'community_platform', 'resource', 'other'
+      )`,
+    ),
+  ],
+);
+
+/**
+ * Existing `media_assets` remains the private original metadata record.
+ * Processing, provenance, variants, and usage are normalized in additive
+ * sidecars so object bytes stay in R2 and are never embedded in D1.
+ */
+export const mediaAssetDetails = sqliteTable(
+  "media_asset_details",
+  {
+    assetId: text("asset_id")
+      .primaryKey()
+      .references(() => mediaAssets.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    uploadState: text("upload_state", {
+      enum: ["pending", "ready", "failed", "deleting"],
+    })
+      .notNull()
+      .default("pending"),
+    caption: text("caption"),
+    privateRightsSourceNote: text("private_rights_source_note"),
+    privateParticipantConsentNote: text(
+      "private_participant_consent_note",
+    ),
+    focalPointX: integer("focal_point_x").notNull().default(5000),
+    focalPointY: integer("focal_point_y").notNull().default(5000),
+    informative: integer("informative", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    contentVersion: integer("content_version").notNull().default(1),
+    originalSha256: text("original_sha256"),
+    width: integer("width"),
+    height: integer("height"),
+    pixelCount: integer("pixel_count"),
+    failureCode: text("failure_code"),
+    finalizedAt: integer("finalized_at"),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("media_asset_details_org_asset_unique").on(
+      table.organizationId,
+      table.assetId,
+    ),
+    index("media_asset_details_org_state_idx").on(
+      table.organizationId,
+      table.uploadState,
+      table.updatedAt,
+    ),
+    check(
+      "media_asset_details_state_check",
+      sql`${table.uploadState} IN ('pending', 'ready', 'failed', 'deleting')`,
+    ),
+    check(
+      "media_asset_details_state_shape_check",
+      sql`(
+        ${table.uploadState} = 'pending'
+        AND ${table.originalSha256} IS NULL
+        AND ${table.width} IS NULL
+        AND ${table.height} IS NULL
+        AND ${table.pixelCount} IS NULL
+        AND ${table.failureCode} IS NULL
+        AND ${table.finalizedAt} IS NULL
+      ) OR (
+        ${table.uploadState} = 'ready'
+        AND ${table.originalSha256} IS NOT NULL
+        AND ${table.width} IS NOT NULL
+        AND ${table.height} IS NOT NULL
+        AND ${table.pixelCount} IS NOT NULL
+        AND ${table.failureCode} IS NULL
+        AND ${table.finalizedAt} IS NOT NULL
+      ) OR (
+        ${table.uploadState} = 'failed'
+        AND length(trim(${table.failureCode})) BETWEEN 1 AND 64
+        AND ${table.finalizedAt} IS NULL
+      ) OR (
+        ${table.uploadState} = 'deleting'
+        AND ${table.failureCode} IS NULL
+        AND ${table.finalizedAt} IS NOT NULL
+      )`,
+    ),
+    check(
+      "media_asset_details_bounds_check",
+      sql`${table.focalPointX} BETWEEN 0 AND 10000
+          AND ${table.focalPointY} BETWEEN 0 AND 10000
+          AND ${table.informative} IN (0, 1)
+          AND ${table.contentVersion} >= 1
+          AND (${table.caption} IS NULL OR length(${table.caption}) <= 1000)
+          AND (
+            ${table.privateRightsSourceNote} IS NULL
+            OR length(${table.privateRightsSourceNote}) <= 1000
+          )
+          AND (
+            ${table.privateParticipantConsentNote} IS NULL
+            OR length(${table.privateParticipantConsentNote}) <= 1000
+          )`,
+    ),
+    check(
+      "media_asset_details_image_check",
+      sql`(
+        ${table.originalSha256} IS NULL
+        OR (
+          length(${table.originalSha256}) = 64
+          AND ${table.originalSha256} = lower(${table.originalSha256})
+          AND ${table.originalSha256} NOT GLOB '*[^0-9a-f]*'
+        )
+      ) AND (
+        ${table.width} IS NULL
+        OR (
+          ${table.width} BETWEEN 1 AND 8000
+          AND ${table.height} BETWEEN 1 AND 8000
+          AND ${table.pixelCount} =
+              ${table.width} * ${table.height}
+          AND ${table.pixelCount} BETWEEN 1 AND 20000000
+        )
+      )`,
+    ),
+  ],
+);
+
+export const mediaAssetVariants = sqliteTable(
+  "media_asset_variants",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => mediaAssets.id, { onDelete: "cascade" }),
+    variantKind: text("variant_kind", {
+      enum: ["original", "webp_480", "webp_960", "webp_1600"],
+    }).notNull(),
+    objectKey: text("object_key").notNull(),
+    mimeType: text("mime_type", {
+      enum: ["image/jpeg", "image/png", "image/webp"],
+    }).notNull(),
+    byteSize: integer("byte_size").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    pixelCount: integer("pixel_count").notNull(),
+    sha256: text("sha256").notNull(),
+    state: text("state", {
+      enum: ["pending", "ready", "failed"],
+    })
+      .notNull()
+      .default("pending"),
+    failureCode: text("failure_code"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    finalizedAt: integer("finalized_at"),
+  },
+  (table) => [
+    uniqueIndex("media_asset_variants_asset_kind_unique").on(
+      table.assetId,
+      table.variantKind,
+    ),
+    uniqueIndex("media_asset_variants_org_object_key_unique").on(
+      table.organizationId,
+      table.objectKey,
+    ),
+    index("media_asset_variants_org_asset_state_idx").on(
+      table.organizationId,
+      table.assetId,
+      table.state,
+    ),
+    check(
+      "media_asset_variants_kind_check",
+      sql`${table.variantKind} IN (
+        'original', 'webp_480', 'webp_960', 'webp_1600'
+      )`,
+    ),
+    check(
+      "media_asset_variants_mime_check",
+      sql`${table.mimeType} IN ('image/jpeg', 'image/png', 'image/webp')
+          AND (
+            ${table.variantKind} = 'original'
+            OR ${table.mimeType} = 'image/webp'
+          )`,
+    ),
+    check(
+      "media_asset_variants_image_check",
+      sql`${table.byteSize} BETWEEN 1 AND 8388608
+          AND ${table.width} BETWEEN 1 AND 8000
+          AND ${table.height} BETWEEN 1 AND 8000
+          AND ${table.pixelCount} = ${table.width} * ${table.height}
+          AND ${table.pixelCount} BETWEEN 1 AND 20000000
+          AND length(${table.sha256}) = 64
+          AND ${table.sha256} = lower(${table.sha256})
+          AND ${table.sha256} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "media_asset_variants_state_shape_check",
+      sql`(
+        ${table.state} = 'pending'
+        AND ${table.failureCode} IS NULL
+        AND ${table.finalizedAt} IS NULL
+      ) OR (
+        ${table.state} = 'ready'
+        AND ${table.failureCode} IS NULL
+        AND ${table.finalizedAt} IS NOT NULL
+      ) OR (
+        ${table.state} = 'failed'
+        AND length(trim(${table.failureCode})) BETWEEN 1 AND 64
+        AND ${table.finalizedAt} IS NULL
+      )`,
+    ),
+  ],
+);
+
+/**
+ * One bounded write envelope authorizes an exact self-confirmation, revocation,
+ * or one-time legacy adoption. It prevents a syntactically valid receipt from
+ * being inserted outside the atomic profile/state/audit transaction.
+ */
+export const organizerPublicAttributionWriteIntents = sqliteTable(
+  "organizer_public_attribution_write_intents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    operation: text("operation", {
+      enum: ["adopted", "confirmed", "revoked"],
+    }).notNull(),
+    expectedDraftVersion: integer("expected_draft_version").notNull(),
+    expectedPublishedVersion: integer(
+      "expected_published_version",
+    ).notNull(),
+    proposedPublishedVersion: integer(
+      "proposed_published_version",
+    ).notNull(),
+    snapshotHash: text("snapshot_hash").notNull(),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    completedAt: integer("completed_at"),
+  },
+  (table) => [
+    uniqueIndex(
+      "organizer_public_attribution_intents_profile_version_unique",
+    ).on(
+      table.organizationId,
+      table.profileId,
+      table.proposedPublishedVersion,
+    ),
+    index("organizer_public_attribution_intents_open_idx").on(
+      table.organizationId,
+      table.completedAt,
+      table.createdAt,
+    ),
+    check(
+      "organizer_public_attribution_intents_operation_check",
+      sql`${table.operation} IN ('adopted', 'confirmed', 'revoked')`,
+    ),
+    check(
+      "organizer_public_attribution_intents_version_check",
+      sql`${table.expectedDraftVersion} >= 1
+          AND ${table.expectedPublishedVersion} >= 0
+          AND ${table.proposedPublishedVersion} =
+              ${table.expectedPublishedVersion} + 1`,
+    ),
+    check(
+      "organizer_public_attribution_intents_hash_check",
+      sql`length(${table.snapshotHash}) = 64
+          AND ${table.snapshotHash} = lower(${table.snapshotHash})
+          AND ${table.snapshotHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
+/**
+ * Immutable self-attribution receipts bind an organizer's explicit public
+ * consent or revocation to the exact bounded public name, biography, and
+ * approved profile-photo selection. Administrators cannot consent for another
+ * person; runtime guards enforce that the actor and subject are identical.
+ */
+export const organizerPublicAttributionReceipts = sqliteTable(
+  "organizer_public_attribution_receipts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    action: text("action", {
+      enum: ["adopted", "confirmed", "revoked"],
+    }).notNull(),
+    attributionVersion: integer("attribution_version").notNull(),
+    displayName: text("display_name"),
+    biography: text("biography"),
+    photoMediaAssetId: text("photo_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    consent: integer("consent", { mode: "boolean" }).notNull(),
+    draftVersion: integer("draft_version").notNull(),
+    legacyAdopted: integer("legacy_adopted", {
+      mode: "boolean",
+    }).notNull(),
+    priorPublishedVersion: integer("prior_published_version"),
+    snapshotJson: text("snapshot_json").notNull(),
+    snapshotHash: text("snapshot_hash").notNull(),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    writeIntentId: text("write_intent_id")
+      .notNull()
+      .references(() => organizerPublicAttributionWriteIntents.id, {
+        onDelete: "restrict",
+      }),
+    relatedReceiptId: text("related_receipt_id"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_public_attribution_receipts_profile_version_unique")
+      .on(
+        table.organizationId,
+        table.profileId,
+        table.attributionVersion,
+      ),
+    index("organizer_public_attribution_receipts_org_profile_idx").on(
+      table.organizationId,
+      table.profileId,
+      table.createdAt,
+    ),
+    uniqueIndex("organizer_public_attribution_receipts_intent_unique").on(
+      table.writeIntentId,
+    ),
+    check(
+      "organizer_public_attribution_receipts_action_check",
+      sql`${table.action} IN ('adopted', 'confirmed', 'revoked')`,
+    ),
+    check(
+      "organizer_public_attribution_receipts_version_check",
+      sql`${table.attributionVersion} >= 1
+          AND ${table.draftVersion} >= 1
+          AND (
+            ${table.priorPublishedVersion} IS NULL
+            OR ${table.priorPublishedVersion} >= 1
+          )`,
+    ),
+    check(
+      "organizer_public_attribution_receipts_fields_check",
+      sql`(
+        ${table.action} = 'adopted'
+        AND ${table.consent} = 1
+        AND ${table.legacyAdopted} = 1
+        AND ${table.displayName} IS NOT NULL
+        AND length(trim(${table.displayName})) BETWEEN 1 AND 120
+        AND ${table.biography} IS NULL
+        AND ${table.photoMediaAssetId} IS NULL
+        AND ${table.priorPublishedVersion} IS NULL
+      ) OR (
+        ${table.action} = 'confirmed'
+        AND ${table.consent} = 1
+        AND ${table.legacyAdopted} = 0
+        AND ${table.displayName} IS NOT NULL
+        AND length(trim(${table.displayName})) BETWEEN 1 AND 120
+        AND (
+          ${table.biography} IS NULL
+          OR length(${table.biography}) BETWEEN 1 AND 800
+        )
+        AND ${table.priorPublishedVersion} IS NULL
+      ) OR (
+        ${table.action} = 'revoked'
+        AND ${table.consent} = 0
+        AND ${table.legacyAdopted} = 0
+        AND ${table.displayName} IS NULL
+        AND ${table.biography} IS NULL
+        AND ${table.photoMediaAssetId} IS NULL
+        AND ${table.priorPublishedVersion} IS NOT NULL
+      )`,
+    ),
+    check(
+      "organizer_public_attribution_receipts_snapshot_check",
+      sql`json_valid(${table.snapshotJson})
+          AND json_type(${table.snapshotJson}) = 'object'
+          AND length(CAST(${table.snapshotJson} AS BLOB)) BETWEEN 2 AND 4096`,
+    ),
+    check(
+      "organizer_public_attribution_receipts_hash_check",
+      sql`length(${table.snapshotHash}) = 64
+          AND ${table.snapshotHash} = lower(${table.snapshotHash})
+          AND ${table.snapshotHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "organizer_public_attribution_receipts_relationship_check",
+      sql`(
+        ${table.action} IN ('adopted', 'confirmed')
+      ) OR (
+        ${table.action} = 'revoked'
+        AND ${table.relatedReceiptId} IS NOT NULL
+      )`,
+    ),
+  ],
+);
+
+/**
+ * Private profile drafts remain separate from the one exact materialized
+ * public attribution. The monotonic attribution version is the optimistic
+ * compare-and-swap token for draft saves, confirmation, and revocation.
+ */
+export const organizerPublicAttributionStates = sqliteTable(
+  "organizer_public_attribution_states",
+  {
+    profileId: text("profile_id")
+      .primaryKey()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    attributionVersion: integer("attribution_version").notNull().default(1),
+    publishedAttributionVersion: integer(
+      "published_attribution_version",
+    )
+      .notNull()
+      .default(0),
+    workflowStatus: text("workflow_status", {
+      enum: ["unconfirmed", "confirmed", "revoked"],
+    })
+      .notNull()
+      .default("unconfirmed"),
+    draftPhotoMediaAssetId: text("draft_photo_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    publicDisplayName: text("public_display_name"),
+    publicBiography: text("public_biography"),
+    publicPhotoMediaAssetId: text("public_photo_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "restrict" },
+    ),
+    currentReceiptId: text("current_receipt_id").references(
+      () => organizerPublicAttributionReceipts.id,
+      { onDelete: "restrict" },
+    ),
+    confirmedAt: integer("confirmed_at"),
+    revokedAt: integer("revoked_at"),
+    updatedByProfileId: text("updated_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("organizer_public_attribution_states_org_profile_unique").on(
+      table.organizationId,
+      table.profileId,
+    ),
+    index("organizer_public_attribution_states_org_status_idx").on(
+      table.organizationId,
+      table.workflowStatus,
+      table.updatedAt,
+    ),
+    index("organizer_public_attribution_states_org_photo_idx").on(
+      table.organizationId,
+      table.publicPhotoMediaAssetId,
+    ),
+    check(
+      "organizer_public_attribution_states_version_check",
+      sql`${table.attributionVersion} >= 1
+          AND ${table.publishedAttributionVersion} >= 0`,
+    ),
+    check(
+      "organizer_public_attribution_states_status_check",
+      sql`${table.workflowStatus} IN ('unconfirmed', 'confirmed', 'revoked')`,
+    ),
+    check(
+      "organizer_public_attribution_states_shape_check",
+      sql`(
+        ${table.workflowStatus} = 'unconfirmed'
+        AND ${table.currentReceiptId} IS NULL
+        AND ${table.publicDisplayName} IS NULL
+        AND ${table.publicBiography} IS NULL
+        AND ${table.publicPhotoMediaAssetId} IS NULL
+        AND ${table.confirmedAt} IS NULL
+        AND ${table.revokedAt} IS NULL
+        AND ${table.publishedAttributionVersion} = 0
+      ) OR (
+        ${table.workflowStatus} = 'confirmed'
+        AND length(trim(${table.publicDisplayName})) BETWEEN 1 AND 120
+        AND ${table.currentReceiptId} IS NOT NULL
+        AND ${table.confirmedAt} IS NOT NULL
+        AND ${table.revokedAt} IS NULL
+        AND ${table.publishedAttributionVersion} >= 1
+      ) OR (
+        ${table.workflowStatus} = 'revoked'
+        AND ${table.currentReceiptId} IS NOT NULL
+        AND ${table.publicDisplayName} IS NULL
+        AND ${table.publicBiography} IS NULL
+        AND ${table.publicPhotoMediaAssetId} IS NULL
+        AND ${table.revokedAt} IS NOT NULL
+        AND ${table.publishedAttributionVersion} >= 1
+      )`,
+    ),
+    check(
+      "organizer_public_attribution_states_biography_check",
+      sql`${table.publicBiography} IS NULL
+          OR length(${table.publicBiography}) BETWEEN 1 AND 800`,
+    ),
+  ],
+);
+
+export const mediaUsageReferences = sqliteTable(
+  "media_usage_references",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => mediaAssets.id, { onDelete: "restrict" }),
+    entityType: text("entity_type", {
+      enum: [
+        "page",
+        "club_public_profile",
+        "program_public_profile",
+        "organizer_event",
+        "organizer_profile",
+        "site_logo",
+        "site_og",
+        "footer",
+        "community_link",
+      ],
+    }).notNull(),
+    entityId: text("entity_id").notNull(),
+    revisionId: text("revision_id").notNull(),
+    usageKind: text("usage_kind").notNull(),
+    publicationScope: text("publication_scope", {
+      enum: ["draft", "published"],
+    }).notNull(),
+    createdByProfileId: text("created_by_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    deletedAt: integer("deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("media_usage_references_active_usage_unique")
+      .on(
+        table.organizationId,
+        table.entityType,
+        table.entityId,
+        table.revisionId,
+        table.usageKind,
+        table.publicationScope,
+      )
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("media_usage_references_asset_scope_idx").on(
+      table.organizationId,
+      table.assetId,
+      table.publicationScope,
+      table.deletedAt,
+    ),
+    index("media_usage_references_entity_idx").on(
+      table.organizationId,
+      table.entityType,
+      table.entityId,
+      table.deletedAt,
+    ),
+    check(
+      "media_usage_references_entity_type_check",
+      sql`${table.entityType} IN (
+        'page', 'club_public_profile', 'program_public_profile',
+        'organizer_event', 'organizer_profile',
+        'site_logo', 'site_og', 'footer', 'community_link'
+      )`,
+    ),
+    check(
+      "media_usage_references_scope_check",
+      sql`${table.publicationScope} IN ('draft', 'published')`,
+    ),
+    check(
+      "media_usage_references_identity_check",
+      sql`length(trim(${table.entityId})) BETWEEN 1 AND 160
+          AND length(trim(${table.usageKind})) BETWEEN 1 AND 64
+          AND length(trim(${table.revisionId})) BETWEEN 1 AND 160`,
+    ),
+  ],
+);
+
+/**
+ * An immutable receipt binds Owner confirmation or revocation to the exact
+ * private legal-status revision hash. Public legal wording still requires a
+ * separate CMS publication state transition.
+ */
+export const legalStatusConfirmationReceipts = sqliteTable(
+  "legal_status_confirmation_receipts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    revisionId: text("revision_id")
+      .notNull()
+      .references(() => cmsEntityRevisions.id, { onDelete: "restrict" }),
+    revisionHash: text("revision_hash").notNull(),
+    action: text("action", { enum: ["confirmed", "revoked"] }).notNull(),
+    actorProfileId: text("actor_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    revokesReceiptId: text("revokes_receipt_id"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("legal_status_confirmation_receipts_confirm_unique")
+      .on(table.organizationId, table.revisionId)
+      .where(sql`${table.action} = 'confirmed'`),
+    uniqueIndex("legal_status_confirmation_receipts_revoke_unique")
+      .on(table.revokesReceiptId)
+      .where(sql`${table.revokesReceiptId} IS NOT NULL`),
+    index("legal_status_confirmation_receipts_org_created_idx").on(
+      table.organizationId,
+      table.createdAt,
+    ),
+    check(
+      "legal_status_confirmation_receipts_action_shape_check",
+      sql`(
+        ${table.action} = 'confirmed'
+        AND ${table.revokesReceiptId} IS NULL
+      ) OR (
+        ${table.action} = 'revoked'
+        AND ${table.revokesReceiptId} IS NOT NULL
+      )`,
+    ),
+    check(
+      "legal_status_confirmation_receipts_hash_check",
+      sql`length(${table.revisionHash}) = 64
+          AND ${table.revisionHash} = lower(${table.revisionHash})
+          AND ${table.revisionHash} NOT GLOB '*[^0-9a-f]*'`,
     ),
   ],
 );

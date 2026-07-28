@@ -13,6 +13,8 @@ import {
   hashInvitationToken,
   trustedIdentityFromSites,
 } from "../../lib/server/auth/index.ts";
+import { ensureCmsAdoption } from "../../lib/server/organizer/cms-adoption.ts";
+import { ensurePublicCatalog } from "../../lib/server/public/catalog.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { SqliteD1TestDatabase } from "./sqlite-d1.mjs";
 
@@ -392,6 +394,20 @@ test("auth and public projections execute against the generated Phase 1 schema",
     0,
   );
 
+  await ensurePublicCatalog(database, ownerIdentity, now + 2);
+  await ensureCmsAdoption(database, ownerMembership, now + 3);
+  const publicClubId = await database
+    .prepare(
+      `SELECT id
+       FROM clubs
+       WHERE organization_id = ?
+         AND slug = 'vancouver-curiosity-club'
+         AND deleted_at IS NULL`,
+    )
+    .bind(ownerMembership.organizationId)
+    .first("id");
+  assert.equal(typeof publicClubId, "string");
+
   database.exec(`
     INSERT INTO categories (
       id, organization_id, name, slug, color_token, created_at, updated_at
@@ -416,7 +432,7 @@ test("auth and public projections execute against the generated Phase 1 schema",
       published_at, created_by_profile_id, updated_by_profile_id,
       created_at, updated_at
     ) VALUES (
-      'event_public', 'org_vcc', 'club_books', 'category_ideas',
+      'event_public', 'org_vcc', '${publicClubId}', 'category_ideas',
       'venue_reading', '${organizerMembership.profileId}',
       'Ideas After Dark', 'ideas-after-dark', 'A public summary.',
       'A public description.', 'confirmed', 'public', 'timed',
@@ -457,9 +473,11 @@ test("auth and public projections execute against the generated Phase 1 schema",
     todayDate: "1970-01-01",
   });
   assert.equal(publicEvents.length, 1);
-  assert.deepEqual(publicEvents[0].organizers, [
-    { displayName: "Public Host" },
-  ]);
+  assert.deepEqual(
+    publicEvents[0].organizers,
+    [],
+    "unbacked canonical consent must not bypass the Phase 6 attribution receipt",
+  );
   const serialized = JSON.stringify(publicEvents);
   assert.equal(serialized.includes("PRIVATE_NOTE"), false);
   assert.equal(serialized.includes("PRIVATE_MEETING"), false);

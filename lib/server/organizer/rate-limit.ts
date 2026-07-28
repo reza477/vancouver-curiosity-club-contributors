@@ -7,7 +7,8 @@ import { SafeApplicationError } from "../../validation/server-observability";
 
 export type OrganizerRateLimitAction =
   | "invitation_accept"
-  | "invitation_create";
+  | "invitation_create"
+  | "media_upload";
 
 export async function consumeOrganizerRateLimit(
   database: D1DatabaseLike,

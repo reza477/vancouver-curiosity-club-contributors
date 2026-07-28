@@ -13,9 +13,25 @@ export const ORGANIZER_AUDIT_ACTIONS = [
   "club.archived_private",
   "club.created_private",
   "club.private_settings_updated",
+  "cms.club_profile_archived",
+  "cms.program_profile_archived",
+  "cms.program_profile_deleted",
+  "cms.entity_created",
+  "cms.entity_draft_saved",
+  "cms.entity_published",
+  "cms.entity_restored_as_draft",
+  "cms.entity_unpublished",
+  "cms.legal_status_confirmed",
+  "cms.legal_status_revoked",
   "invitation.accepted",
   "invitation.created",
   "invitation.revoked",
+  "media.cleanup_completed",
+  "media.deleted",
+  "media.metadata_updated",
+  "media.upload_failed",
+  "media.upload_finalized",
+  "media.upload_started",
   "membership.ownership_transferred",
   "membership.updated",
   "organization.settings_updated",
@@ -26,9 +42,20 @@ export const ORGANIZER_AUDIT_ACTIONS = [
   "organizer_event.updated",
   "profile.notification_preference_changed",
   "profile.updated",
+  "taxonomy.category_archived",
+  "taxonomy.category_created",
+  "taxonomy.category_deleted",
+  "taxonomy.category_reordered",
+  "taxonomy.category_updated",
+  "taxonomy.lane_archived",
+  "taxonomy.lane_created",
+  "taxonomy.lane_deleted",
+  "taxonomy.lane_reordered",
+  "taxonomy.lane_updated",
 ] as const;
 
-type OrganizerAuditAction = (typeof ORGANIZER_AUDIT_ACTIONS)[number];
+export type OrganizerAuditAction =
+  (typeof ORGANIZER_AUDIT_ACTIONS)[number];
 
 export type ActivityHistoryItem = Readonly<{
   action: OrganizerAuditAction;
@@ -37,11 +64,21 @@ export type ActivityHistoryItem = Readonly<{
   entityId: string;
   entityType:
     | "club"
+    | "club_public_profile"
+    | "community_link"
+    | "event_category"
+    | "event_lane"
     | "invitation"
+    | "legal_status"
+    | "media_asset"
     | "membership"
+    | "navigation"
     | "organization"
     | "organizer_event"
-    | "profile";
+    | "page"
+    | "profile"
+    | "program_public_profile"
+    | "site_identity";
   id: string;
 }>;
 
@@ -155,11 +192,21 @@ function readEntityType(
   value: unknown,
 ): ActivityHistoryItem["entityType"] | null {
   return value === "club" ||
+    value === "club_public_profile" ||
+    value === "community_link" ||
+    value === "event_category" ||
+    value === "event_lane" ||
     value === "invitation" ||
+    value === "legal_status" ||
+    value === "media_asset" ||
     value === "membership" ||
+    value === "navigation" ||
     value === "organization" ||
     value === "organizer_event" ||
-    value === "profile"
+    value === "page" ||
+    value === "profile" ||
+    value === "program_public_profile" ||
+    value === "site_identity"
     ? value
     : null;
 }

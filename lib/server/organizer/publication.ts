@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  OrganizerAccessDeniedError,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type D1PreparedStatementLike,
@@ -13,6 +14,8 @@ import {
 } from "../public/events";
 import {
   assertOnlyKeys,
+  InputValidationError,
+  parseBoundedString,
   parseEnum,
   parseFiniteInteger,
   parseHttpsUrl,
@@ -21,6 +24,10 @@ import {
   parseOptionalBoundedString,
   validationIssue,
 } from "../../validation";
+import {
+  assertNoProtectedLegalClaim,
+  containsProtectedLegalClaim,
+} from "../../validation/protected-legal-claims";
 import { SafeApplicationError } from "../../validation/server-observability";
 import {
   localDateTimeToUtcMs,
@@ -32,7 +39,7 @@ import {
   getOrganizerEventForAuthorizedWorkspaceViewer,
   type OrganizerEventDto,
 } from "./events";
-import { prepareNotificationInsert } from "./notifications";
+import { prepareNotificationFanout } from "./notifications";
 import {
   currentD1Time,
 } from "./conflicts";
@@ -44,6 +51,7 @@ import {
 } from "./scheduling";
 import type { EventPublicationStatus } from "./lifecycle";
 import { ORGANIZER_PUBLIC_SLUG_COLLISION_QUERY_SQL } from "./publication-invariant-sql";
+import { assertNoHistoricalOrganizerEmail } from "../public-content-safety";
 
 export const ORGANIZER_PUBLICATION_ACTIONS = [
   "publish",
@@ -51,6 +59,15 @@ export const ORGANIZER_PUBLICATION_ACTIONS = [
   "cancel_scheduled_publication",
   "unpublish",
 ] as const;
+
+export const ORGANIZER_PUBLICATION_RECONCILIATION_JOB_LIMIT = 1;
+
+/**
+ * The hardest stabilized one-job reconciliation trace is the
+ * Administrator-approved overlap path: 29 D1 statements in the service,
+ * plus the separate two-statement invariant fast path at Worker dispatch.
+ */
+export const ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM = 29;
 
 export type OrganizerPublicationAction =
   (typeof ORGANIZER_PUBLICATION_ACTIONS)[number];
@@ -61,10 +78,12 @@ export type OrganizerPublicationDetailsDto = Readonly<{
     | "in_person"
     | "location_undecided"
     | "online";
+  artworkAssetId: string | null;
   availabilityState: "full" | "open" | "waitlist";
   capacity: number | null;
   costText: string | null;
   externalMapUrl: string | null;
+  metaDescription: string | null;
   meetupUrlConfirmed: boolean;
   preparationInformation: string | null;
   publicAccessNote: string | null;
@@ -73,6 +92,7 @@ export type OrganizerPublicationDetailsDto = Readonly<{
   publicLocationName: string | null;
   publicOnlineUrl: string | null;
   rsvpMode: "coming_soon" | "meetup";
+  seoTitle: string | null;
   verifiedAccessibilityNotes: string | null;
   weatherNote: string | null;
   whatToBring: string | null;
@@ -86,6 +106,12 @@ export type OrganizerPublicationHostOptionDto = Readonly<{
   selected: boolean;
 }>;
 
+export type OrganizerPublicationArtworkOptionDto = Readonly<{
+  assetId: string;
+  label: string;
+  selected: boolean;
+}>;
+
 export type OrganizerPublicationReadinessIssue = Readonly<{
   code: string;
   field?: string;
@@ -93,6 +119,7 @@ export type OrganizerPublicationReadinessIssue = Readonly<{
 }>;
 
 export type OrganizerPublicationWorkspaceDto = Readonly<{
+  artworkOptions: readonly OrganizerPublicationArtworkOptionDto[];
   details: OrganizerPublicationDetailsDto;
   event: Readonly<{
     contentVersion: number;
@@ -139,11 +166,13 @@ export type OrganizerPublicationActionResult = Readonly<{
 
 type ParsedPublicDetails = Readonly<{
   attendanceMode: OrganizerPublicationDetailsDto["attendanceMode"];
+  artworkAssetId: string | null;
   availabilityState: OrganizerPublicationDetailsDto["availabilityState"];
   capacity: number | null;
   confirmedMeetupEventUrl: string | null;
   costText: string | null;
   externalMapUrl: string | null;
+  metaDescription: string | null;
   meetupEventUrl: string | null;
   preparationInformation: string | null;
   publicAccessNote: string | null;
@@ -152,6 +181,7 @@ type ParsedPublicDetails = Readonly<{
   publicLocationName: string | null;
   publicOnlineUrl: string | null;
   rsvpMode: OrganizerPublicationDetailsDto["rsvpMode"];
+  seoTitle: string | null;
   selectedHostProfileIds: readonly string[];
   verifiedAccessibilityNotes: string | null;
   weatherNote: string | null;
@@ -194,6 +224,11 @@ type DuePublicationJob = Readonly<{
   requestedPublicationAtUtc: number;
 }>;
 
+type SelectedArtworkState = Readonly<{
+  assetId: string | null;
+  eligible: boolean;
+}>;
+
 export type PublicationReconciliationResult = Readonly<{
   executed: number;
   invalidated: number;
@@ -204,10 +239,12 @@ export type PublicationReconciliationResult = Readonly<{
 const DEFAULT_DETAILS: OrganizerPublicationDetailsDto = Object.freeze({
   arrivalInstructions: null,
   attendanceMode: "location_undecided",
+  artworkAssetId: null,
   availabilityState: "open",
   capacity: null,
   costText: null,
   externalMapUrl: null,
+  metaDescription: null,
   meetupUrlConfirmed: false,
   preparationInformation: null,
   publicAccessNote: null,
@@ -216,6 +253,7 @@ const DEFAULT_DETAILS: OrganizerPublicationDetailsDto = Object.freeze({
   publicLocationName: null,
   publicOnlineUrl: null,
   rsvpMode: "coming_soon",
+  seoTitle: null,
   verifiedAccessibilityNotes: null,
   weatherNote: null,
   whatToBring: null,
@@ -233,38 +271,83 @@ export async function readOrganizerPublicationWorkspace(
     actor,
     eventId,
   );
-  const canEditPublicDetails = await canActorEditPublicationEvent(
-    database,
-    actor,
-    event,
-  );
-  const [detailsRow, hostOptions, pendingJob, policy, hasPreviewProjection] =
+  // Owner and Administrator publication authority is role-derived. Only an
+  // Organizer needs the optional organization policy row, so avoid spending a
+  // D1 read (and one concurrent connection) on a value those roles never use.
+  const policyPromise =
+    actor.role === "organizer"
+      ? readPublicationPolicyByActor(database, actor)
+      : Promise.resolve(
+          Object.freeze({ organizerSelfPublishEnabled: false }),
+        );
+  const [
+    readDetailsRow,
+    readArtworkOptionRows,
+    readHostOptionRows,
+    readPendingPublicationJob,
+    policy,
+    readHasPreviewProjection,
+  ] =
     await Promise.all([
       readPublicDetailsRow(database, actor, eventId),
+      readArtworkOptions(database, actor, event),
       readHostOptions(database, actor, event),
       readPendingJob(database, actor, eventId),
-      readPublicationPolicyByActor(database, actor),
+      policyPromise,
       hasAuthorizedOrganizerEventPublicPreview(database, {
+        membershipId: actor.membershipId,
         organizationId: actor.organizationId,
         organizerEventId: event.id,
+        profileId: actor.profileId,
       }),
     ]);
-  const details = detailsRow ? detailsDto(detailsRow, event) : null;
+  const finalAccess = await readPublicationAccess(database, actor, event);
+  if (!finalAccess.active) {
+    throw new OrganizerAccessDeniedError();
+  }
+  const finalCanEditPublicDetails = finalAccess.canEdit;
+  const detailsRow = finalCanEditPublicDetails ? readDetailsRow : null;
+  const artworkOptions = finalCanEditPublicDetails
+    ? readArtworkOptionRows
+    : Object.freeze([]);
+  const selectedArtwork = finalCanEditPublicDetails
+    ? selectedArtworkState(readDetailsRow)
+    : Object.freeze({ assetId: null, eligible: true });
+  const selectedArtworkAssetId = selectedArtwork.assetId;
+  const hostOptions = finalCanEditPublicDetails
+    ? readHostOptionRows
+    : Object.freeze([]);
+  const pendingJob = finalCanEditPublicDetails
+    ? readPendingPublicationJob
+    : null;
+  const hasPreviewProjection =
+    finalCanEditPublicDetails && readHasPreviewProjection;
+  const details = detailsRow
+    ? detailsDto(detailsRow, event, selectedArtworkAssetId)
+    : null;
   const missing = await publicationReadinessIssues(
     database,
     actor,
     event,
     detailsRow,
     hostOptions,
-    canEditPublicDetails,
+    finalCanEditPublicDetails,
   );
   const canPublish =
-    canEditPublicDetails &&
+    finalCanEditPublicDetails &&
     (actor.role === "owner" ||
       actor.role === "administrator" ||
       (actor.role === "organizer" &&
         policy.organizerSelfPublishEnabled));
   return Object.freeze({
+    artworkOptions: Object.freeze(
+      artworkOptions.map((option) =>
+        Object.freeze({
+          ...option,
+          selected: option.assetId === selectedArtworkAssetId,
+        }),
+      ),
+    ),
     details: details ?? DEFAULT_DETAILS,
     event: Object.freeze({
       contentVersion: event.contentVersion,
@@ -281,19 +364,24 @@ export async function readOrganizerPublicationWorkspace(
     permissions: Object.freeze({
       canCancelScheduledPublication:
         event.publicationStatus === "scheduled" &&
-        canPublish,
-      canEditPublicDetails,
-      canPreview: canEditPublicDetails && hasPreviewProjection,
+        canPublish &&
+        finalCanEditPublicDetails,
+      canEditPublicDetails: finalCanEditPublicDetails,
+      canPreview: finalCanEditPublicDetails && hasPreviewProjection,
       canPublish:
         canPublish &&
+        finalCanEditPublicDetails &&
         event.publicationStatus !== "published" &&
         missing.length === 0,
       canSchedule:
         canPublish &&
+        finalCanEditPublicDetails &&
         event.publicationStatus !== "published" &&
         missing.length === 0,
       canUnpublish:
-        canPublish && event.publicationStatus === "published",
+        canPublish &&
+        finalCanEditPublicDetails &&
+        event.publicationStatus === "published",
     }),
     publicPath:
       event.publicationStatus === "published"
@@ -322,8 +410,10 @@ export async function readOrganizerPublicationPreview(
     return null;
   }
   return getAuthorizedOrganizerEventPublicPreview(database, {
+    membershipId: actor.membershipId,
     organizationId: actor.organizationId,
     organizerEventId: event.id,
+    profileId: actor.profileId,
   });
 }
 
@@ -436,12 +526,37 @@ export async function updateOrganizerEventPublicDetails(
     },
     now,
   );
+  if (
+    event.publicationStatus === "scheduled" ||
+    event.publicationStatus === "published"
+  ) {
+    await assertNoHistoricalOrganizerEmail(
+      database,
+      guard.event.actor.organizationId,
+      [
+        event.title,
+        event.summary,
+        event.description,
+        JSON.stringify(input),
+      ],
+      "publicDetails",
+    );
+  }
   const selectedHosts = await validateSelectedHosts(
     database,
     guard.event.actor,
     event,
     input.selectedHostProfileIds,
   );
+  const artworkAssetId =
+    input.artworkAssetId === null
+      ? null
+      : await validateEventArtworkAsset(
+          database,
+          guard.event.actor,
+          event,
+          input.artworkAssetId,
+        );
   const nextPublicationStatus =
     event.publicationStatus === "scheduled"
       ? ("unpublished" as const)
@@ -469,6 +584,7 @@ export async function updateOrganizerEventPublicDetails(
     selectedHosts,
   });
   const publicationIntentId = `publication-intent:${crypto.randomUUID()}`;
+  const revisionId = `organizer-event-revision:${crypto.randomUUID()}`;
   const statements: D1PreparedStatementLike[] = [
     guard.intentStatement,
     ...guard.authorizationStatements,
@@ -488,6 +604,13 @@ export async function updateOrganizerEventPublicDetails(
   ) - 1;
   statements.push(
     publicDetailsUpsertStatement(
+      database,
+      guard.event.actor,
+      event,
+      input,
+      now,
+    ),
+    publicMetadataUpsertStatement(
       database,
       guard.event.actor,
       event,
@@ -514,15 +637,17 @@ export async function updateOrganizerEventPublicDetails(
            AND organizer_event_id = ?`,
       )
       .bind(guard.event.organizationId, event.id),
-    ...selectedHosts.map((profileId) =>
-      publicHostInsertStatement(
-        database,
-        guard.event.actor,
-        event,
-        profileId,
-        now,
-      ),
-    ),
+    ...(selectedHosts.length === 0
+      ? []
+      : [
+          publicHostsInsertStatement(
+            database,
+            guard.event.actor,
+            event,
+            selectedHosts,
+            now,
+          ),
+        ]),
   );
   if (event.publicationStatus === "scheduled") {
     if (!previousJobId) throw stalePublication();
@@ -550,7 +675,19 @@ export async function updateOrganizerEventPublicDetails(
       database,
       guard.event.actor,
       mutation,
-      publicRevisionSnapshot(event, mutation, input),
+      publicRevisionSnapshot(event, mutation, input, artworkAssetId),
+      revisionId,
+    ),
+    ...eventArtworkUsageStatements(
+      database,
+      guard.event.actor,
+      event.id,
+      revisionId,
+      artworkAssetId,
+      event.publicationStatus === "published"
+        ? ["draft", "published"]
+        : ["draft"],
+      now,
     ),
     publicationAuditStatement(
       database,
@@ -607,13 +744,20 @@ export async function performOrganizerPublicationAction(
 ): Promise<OrganizerPublicationActionResult> {
   const eventId = parseIdentifier(eventIdValue, "eventId");
   const input = parsePublicationAction(value);
-  const event = await getOrganizerEvent(database, identity, eventId);
-  requireExpectedVersions(event, input);
   const actor = await authorizeMembership(database, identity);
-  const policy = await readPublicationPolicyByActor(database, actor);
+  const event = await getOrganizerEventForAuthorizedActor(
+    database,
+    actor,
+    eventId,
+  );
+  requireExpectedVersions(event, input);
+  const policy =
+    actor.role === "organizer"
+      ? await readPublicationPolicyByActor(database, actor)
+      : null;
   if (
     actor.role === "organizer" &&
-    !policy.organizerSelfPublishEnabled
+    !policy?.organizerSelfPublishEnabled
   ) {
     throw new SafeApplicationError(
       "authorization_denied",
@@ -624,10 +768,30 @@ export async function performOrganizerPublicationAction(
   const now = await currentD1Time(database);
   const detailsRow = await readPublicDetailsRow(database, actor, event.id);
   const hostOptions = await readHostOptions(database, actor, event);
+  const selectedArtwork = selectedArtworkState(detailsRow);
+  const selectedArtworkAssetId = selectedArtwork.assetId;
   if (
     input.action === "publish" ||
     input.action === "schedule_publication"
   ) {
+    await assertNoHistoricalOrganizerEmail(
+      database,
+      actor.organizationId,
+      [
+        event.title,
+        event.summary,
+        event.description,
+        detailsRow === null ? null : JSON.stringify(detailsRow),
+      ],
+      "publicDetails",
+    );
+    if (!selectedArtwork.eligible) {
+      throw validationIssue(
+        "artworkAssetId",
+        "media_not_eligible",
+        "Select only approved artwork from this workspace.",
+      );
+    }
     const missing = await publicationReadinessIssues(
       database,
       actor,
@@ -702,6 +866,7 @@ export async function performOrganizerPublicationAction(
     scheduleVersion: event.scheduleVersion,
   });
   const publicationIntentId = `publication-intent:${crypto.randomUUID()}`;
+  const revisionId = `organizer-event-revision:${crypto.randomUUID()}`;
   const statements: D1PreparedStatementLike[] = [
     guard.intentStatement,
     ...guard.authorizationStatements,
@@ -831,8 +996,33 @@ export async function performOrganizerPublicationAction(
       database,
       actor,
       mutation,
-      publicRevisionSnapshot(event, mutation, null),
+      publicRevisionSnapshot(
+        event,
+        mutation,
+        null,
+        selectedArtworkAssetId,
+      ),
+      revisionId,
     ),
+    ...(input.action === "publish"
+      ? eventArtworkUsageStatements(
+          database,
+          actor,
+          event.id,
+          revisionId,
+          selectedArtworkAssetId,
+          ["draft", "published"],
+          now,
+        )
+      : input.action === "unpublish" ||
+          input.action === "cancel_scheduled_publication"
+        ? [clearPublishedEventArtworkUsageStatement(
+            database,
+            actor,
+            event.id,
+            now,
+          )]
+        : []),
     publicationAuditStatement(
       database,
       actor,
@@ -907,11 +1097,11 @@ export async function reconcileDueOrganizerPublications(
 ): Promise<PublicationReconciliationResult> {
   const limit =
     options.limit === undefined
-      ? 1
+      ? ORGANIZER_PUBLICATION_RECONCILIATION_JOB_LIMIT
       : parseFiniteInteger(options.limit, {
           path: "limit",
           minimum: 1,
-          maximum: 1,
+          maximum: ORGANIZER_PUBLICATION_RECONCILIATION_JOB_LIMIT,
         });
   const now =
     options.now === undefined
@@ -994,6 +1184,7 @@ export async function reconcileDueOrganizerPublications(
         event.id,
       );
       const hosts = await readHostOptions(database, originalActor, event);
+      const selectedArtwork = selectedArtworkState(detailsRow);
       const missing = await publicationReadinessIssues(
         database,
         originalActor,
@@ -1028,6 +1219,7 @@ export async function reconcileDueOrganizerPublications(
           event,
           job,
           now,
+          selectedArtwork.assetId,
         )
       ) {
         executed += 1;
@@ -1071,6 +1263,7 @@ async function executeDuePublicationJob(
   event: OrganizerEventDto,
   job: DuePublicationJob,
   now: number,
+  selectedArtworkAssetId: string | null,
 ): Promise<boolean> {
   const proposedContentVersion = event.contentVersion + 1;
   const guard =
@@ -1105,6 +1298,7 @@ async function executeDuePublicationJob(
     scheduleVersion: event.scheduleVersion,
   });
   const publicationIntentId = `publication-intent:${crypto.randomUUID()}`;
+  const revisionId = `organizer-event-revision:${crypto.randomUUID()}`;
   const statements: D1PreparedStatementLike[] = [
     guard.intentStatement,
     ...guard.authorizationStatements,
@@ -1166,7 +1360,22 @@ async function executeDuePublicationJob(
       database,
       actor,
       mutation,
-      publicRevisionSnapshot(event, mutation, null),
+      publicRevisionSnapshot(
+        event,
+        mutation,
+        null,
+        selectedArtworkAssetId,
+      ),
+      revisionId,
+    ),
+    ...eventArtworkUsageStatements(
+      database,
+      actor,
+      event.id,
+      revisionId,
+      selectedArtworkAssetId,
+      ["draft", "published"],
+      now,
     ),
     publicationAuditStatement(
       database,
@@ -1516,8 +1725,9 @@ async function dueJobIsPending(
 
 function isDeterministicPublicationFailure(error: unknown): boolean {
   return (
-    error instanceof SafeApplicationError &&
-    [403, 404, 409, 422].includes(error.status)
+    error instanceof InputValidationError ||
+    (error instanceof SafeApplicationError &&
+      [403, 404, 409, 422].includes(error.status))
   );
 }
 
@@ -1527,12 +1737,26 @@ async function readPublicationPolicyByActor(
 ): Promise<OrganizationPublicationPolicyDto> {
   const row = await database
     .prepare(
-      `SELECT organizer_self_publish_enabled
-       FROM organization_publication_policies
-       WHERE organization_id = ?
+      `SELECT policy.organizer_self_publish_enabled
+       FROM organization_publication_policies AS policy
+       JOIN organization_memberships AS current_membership
+         ON current_membership.id = ?
+        AND current_membership.organization_id = policy.organization_id
+        AND current_membership.profile_id = ?
+        AND current_membership.status = 'active'
+        AND current_membership.deleted_at IS NULL
+       JOIN profiles AS current_profile
+         ON current_profile.id = current_membership.profile_id
+        AND current_profile.status = 'active'
+        AND current_profile.deleted_at IS NULL
+       WHERE policy.organization_id = ?
        LIMIT 1`,
     )
-    .bind(actor.organizationId)
+    .bind(
+      actor.membershipId,
+      actor.profileId,
+      actor.organizationId,
+    )
     .first<Record<string, unknown>>();
   return Object.freeze({
     organizerSelfPublishEnabled:
@@ -1553,14 +1777,375 @@ async function readPublicDetailsRow(
               preparation_information, what_to_bring, arrival_instructions,
               weather_note, verified_accessibility_notes,
               public_hosts_enabled, rsvp_mode,
-              confirmed_meetup_event_url
-       FROM organizer_event_public_details
-       WHERE organization_id = ?
-         AND organizer_event_id = ?
+              confirmed_meetup_event_url,
+              public_metadata.seo_title,
+              public_metadata.meta_description,
+              artwork.asset_id AS artwork_asset_id,
+              COALESCE(artwork.usage_count, 0) AS artwork_usage_count,
+              COALESCE(artwork.eligible_count, 0)
+                AS artwork_eligible_count
+       FROM organizer_event_public_details AS public_detail
+       JOIN organizer_events AS event
+         ON event.id = public_detail.organizer_event_id
+        AND event.organization_id = public_detail.organization_id
+       JOIN organization_memberships AS current_membership
+         ON current_membership.id = ?
+        AND current_membership.organization_id =
+            public_detail.organization_id
+        AND current_membership.profile_id = ?
+        AND current_membership.status = 'active'
+        AND current_membership.deleted_at IS NULL
+       JOIN profiles AS current_profile
+         ON current_profile.id = current_membership.profile_id
+        AND current_profile.status = 'active'
+        AND current_profile.deleted_at IS NULL
+       LEFT JOIN organizer_event_public_metadata AS public_metadata
+         ON public_metadata.organizer_event_id =
+              public_detail.organizer_event_id
+        AND public_metadata.organization_id =
+              public_detail.organization_id
+       LEFT JOIN (
+         SELECT usage.organization_id,
+                usage.entity_id AS organizer_event_id,
+                min(usage.asset_id) AS asset_id,
+                count(*) AS usage_count,
+                sum(
+                  CASE
+                    WHEN asset.id IS NOT NULL
+                     AND asset.deleted_at IS NULL
+                     AND detail.upload_state = 'ready'
+                     AND asset.rights_status = 'approved'
+                     AND asset.participant_consent_status IN (
+                       'not_applicable', 'confirmed'
+                     )
+                     AND length(trim(COALESCE(asset.credit, '')))
+                         BETWEEN 1 AND 300
+                     AND length(trim(COALESCE(asset.alt_text, '')))
+                         BETWEEN 1 AND 300
+                     AND (
+                       SELECT count(*)
+                       FROM media_asset_variants AS variant
+                       WHERE variant.organization_id =
+                               usage.organization_id
+                         AND variant.asset_id = usage.asset_id
+                         AND variant.state = 'ready'
+                         AND variant.variant_kind IN (
+                           'original', 'webp_480',
+                           'webp_960', 'webp_1600'
+                         )
+                     ) = 4
+                    THEN 1
+                    ELSE 0
+                  END
+                ) AS eligible_count
+         FROM media_usage_references AS usage
+         LEFT JOIN media_assets AS asset
+           ON asset.id = usage.asset_id
+          AND asset.organization_id = usage.organization_id
+         LEFT JOIN media_asset_details AS detail
+           ON detail.asset_id = asset.id
+          AND detail.organization_id = asset.organization_id
+         WHERE usage.entity_type = 'organizer_event'
+           AND usage.usage_kind = 'event_artwork'
+           AND usage.publication_scope = 'draft'
+           AND usage.deleted_at IS NULL
+         GROUP BY usage.organization_id, usage.entity_id
+       ) AS artwork
+         ON artwork.organization_id = public_detail.organization_id
+        AND artwork.organizer_event_id =
+            public_detail.organizer_event_id
+       WHERE public_detail.organization_id = ?
+         AND public_detail.organizer_event_id = ?
+         AND (
+           current_membership.role IN ('owner', 'administrator')
+           OR (
+             current_membership.role = 'organizer'
+             AND (
+               event.primary_organizer_profile_id =
+                   current_membership.profile_id
+               OR EXISTS (
+                 SELECT 1
+                 FROM organizer_event_organizers AS association
+                 WHERE association.organization_id = event.organization_id
+                   AND association.organizer_event_id = event.id
+                   AND association.profile_id =
+                       current_membership.profile_id
+                   AND association.deleted_at IS NULL
+               )
+             )
+             AND EXISTS (
+               SELECT 1
+               FROM club_memberships AS assignment
+               WHERE assignment.organization_id = event.organization_id
+                 AND assignment.club_id = event.club_id
+                 AND assignment.organization_membership_id =
+                     current_membership.id
+                 AND assignment.profile_id =
+                     current_membership.profile_id
+                 AND assignment.role = 'organizer'
+                 AND assignment.status = 'active'
+                 AND assignment.deleted_at IS NULL
+             )
+           )
+         )
        LIMIT 1`,
     )
-    .bind(actor.organizationId, eventId)
+    .bind(
+      actor.membershipId,
+      actor.profileId,
+      actor.organizationId,
+      eventId,
+    )
     .first<Record<string, unknown>>();
+}
+
+async function readArtworkOptions(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  event: OrganizerEventDto,
+): Promise<readonly OrganizerPublicationArtworkOptionDto[]> {
+  const result = await database
+    .prepare(
+      `SELECT asset.id,
+              COALESCE(
+                NULLIF(trim(asset.alt_text), ''),
+                NULLIF(trim(detail.caption), ''),
+                'Approved artwork'
+              ) AS label
+       FROM media_assets AS asset
+       JOIN media_asset_details AS detail
+         ON detail.asset_id = asset.id
+        AND detail.organization_id = asset.organization_id
+       JOIN organization_memberships AS current_membership
+         ON current_membership.id = ?
+        AND current_membership.organization_id = asset.organization_id
+        AND current_membership.profile_id = ?
+        AND current_membership.status = 'active'
+        AND current_membership.deleted_at IS NULL
+       JOIN profiles AS current_profile
+         ON current_profile.id = current_membership.profile_id
+        AND current_profile.status = 'active'
+        AND current_profile.deleted_at IS NULL
+       JOIN organizer_events AS scoped_event
+         ON scoped_event.id = ?
+        AND scoped_event.organization_id = asset.organization_id
+        AND scoped_event.deleted_at IS NULL
+       WHERE asset.organization_id = ?
+         AND asset.deleted_at IS NULL
+         AND detail.upload_state = 'ready'
+         AND asset.rights_status = 'approved'
+         AND asset.participant_consent_status
+             IN ('not_applicable', 'confirmed')
+         AND length(trim(COALESCE(asset.credit, ''))) BETWEEN 1 AND 300
+         AND length(trim(COALESCE(asset.alt_text, ''))) BETWEEN 1 AND 300
+         AND (
+           SELECT count(*)
+           FROM media_asset_variants AS variant
+           WHERE variant.organization_id = asset.organization_id
+             AND variant.asset_id = asset.id
+             AND variant.state = 'ready'
+             AND variant.variant_kind IN (
+               'original', 'webp_480', 'webp_960', 'webp_1600'
+             )
+         ) = 4
+         AND (
+           current_membership.role IN ('owner', 'administrator')
+           OR (
+             current_membership.role = 'organizer'
+             AND (
+               scoped_event.primary_organizer_profile_id =
+                   current_membership.profile_id
+               OR EXISTS (
+                 SELECT 1
+                 FROM organizer_event_organizers AS association
+                 WHERE association.organization_id =
+                         scoped_event.organization_id
+                   AND association.organizer_event_id = scoped_event.id
+                   AND association.profile_id =
+                         current_membership.profile_id
+                   AND association.deleted_at IS NULL
+               )
+             )
+             AND EXISTS (
+               SELECT 1
+               FROM club_memberships AS assignment
+               WHERE assignment.organization_id =
+                       scoped_event.organization_id
+                 AND assignment.club_id = scoped_event.club_id
+                 AND assignment.organization_membership_id =
+                       current_membership.id
+                 AND assignment.profile_id =
+                       current_membership.profile_id
+                 AND assignment.role = 'organizer'
+                 AND assignment.status = 'active'
+                 AND assignment.deleted_at IS NULL
+             )
+           )
+         )
+       ORDER BY label COLLATE NOCASE, asset.id
+       LIMIT 100`,
+    )
+    .bind(
+      actor.membershipId,
+      actor.profileId,
+      event.id,
+      actor.organizationId,
+    )
+    .all<Record<string, unknown>>();
+  return Object.freeze(
+    (result.results ?? []).map((row) =>
+      Object.freeze({
+        assetId: parseIdentifier(row.id, "artwork.assetId"),
+        label: parseBoundedString(row.label, {
+          path: "artwork.label",
+          maxLength: 1_000,
+        }),
+        selected: false,
+      }),
+    ),
+  );
+}
+
+function selectedArtworkState(
+  detailsRow: Record<string, unknown> | null,
+): SelectedArtworkState {
+  const usageCount = parseFiniteInteger(
+    detailsRow?.artwork_usage_count ?? 0,
+    {
+      path: "artwork.usageCount",
+      minimum: 0,
+      maximum: 2,
+    },
+  );
+  if (usageCount > 1) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The event artwork selection needs organizer review.",
+    );
+  }
+  if (usageCount === 0) {
+    return Object.freeze({ assetId: null, eligible: true });
+  }
+  const eligibleCount = parseFiniteInteger(
+    detailsRow?.artwork_eligible_count ?? 0,
+    {
+      path: "artwork.eligibleCount",
+      minimum: 0,
+      maximum: 1,
+    },
+  );
+  return Object.freeze({
+    assetId: parseIdentifier(
+      detailsRow?.artwork_asset_id,
+      "artwork.assetId",
+    ),
+    eligible: eligibleCount === 1,
+  });
+}
+
+async function validateEventArtworkAsset(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  event: OrganizerEventDto,
+  assetIdValue: unknown,
+): Promise<string> {
+  const assetId = parseIdentifier(assetIdValue, "artworkAssetId");
+  const row = await database
+    .prepare(
+      `SELECT asset.id
+       FROM media_assets AS asset
+       JOIN media_asset_details AS detail
+         ON detail.asset_id = asset.id
+        AND detail.organization_id = asset.organization_id
+       JOIN organization_memberships AS current_membership
+         ON current_membership.id = ?
+        AND current_membership.organization_id = asset.organization_id
+        AND current_membership.profile_id = ?
+        AND current_membership.status = 'active'
+        AND current_membership.deleted_at IS NULL
+       JOIN profiles AS current_profile
+         ON current_profile.id = current_membership.profile_id
+        AND current_profile.status = 'active'
+        AND current_profile.deleted_at IS NULL
+       JOIN organizer_events AS scoped_event
+         ON scoped_event.id = ?
+        AND scoped_event.organization_id = asset.organization_id
+        AND scoped_event.deleted_at IS NULL
+       WHERE asset.id = ?
+         AND asset.organization_id = ?
+         AND asset.deleted_at IS NULL
+         AND detail.upload_state = 'ready'
+         AND asset.rights_status = 'approved'
+         AND asset.participant_consent_status
+             IN ('not_applicable', 'confirmed')
+         AND length(trim(COALESCE(asset.credit, ''))) BETWEEN 1 AND 300
+         AND (
+           detail.informative = 0
+           OR length(trim(COALESCE(asset.alt_text, ''))) BETWEEN 1 AND 300
+         )
+         AND (
+           SELECT count(*)
+           FROM media_asset_variants AS variant
+           WHERE variant.organization_id = asset.organization_id
+             AND variant.asset_id = asset.id
+             AND variant.state = 'ready'
+             AND variant.variant_kind IN (
+               'original', 'webp_480', 'webp_960', 'webp_1600'
+             )
+         ) = 4
+         AND (
+           current_membership.role IN ('owner', 'administrator')
+           OR (
+             current_membership.role = 'organizer'
+             AND (
+               scoped_event.primary_organizer_profile_id =
+                   current_membership.profile_id
+               OR EXISTS (
+                 SELECT 1
+                 FROM organizer_event_organizers AS association
+                 WHERE association.organization_id =
+                         scoped_event.organization_id
+                   AND association.organizer_event_id = scoped_event.id
+                   AND association.profile_id =
+                         current_membership.profile_id
+                   AND association.deleted_at IS NULL
+               )
+             )
+             AND EXISTS (
+               SELECT 1
+               FROM club_memberships AS assignment
+               WHERE assignment.organization_id =
+                       scoped_event.organization_id
+                 AND assignment.club_id = scoped_event.club_id
+                 AND assignment.organization_membership_id =
+                       current_membership.id
+                 AND assignment.profile_id =
+                       current_membership.profile_id
+                 AND assignment.role = 'organizer'
+                 AND assignment.status = 'active'
+                 AND assignment.deleted_at IS NULL
+             )
+           )
+         )
+       LIMIT 1`,
+    )
+    .bind(
+      actor.membershipId,
+      actor.profileId,
+      event.id,
+      assetId,
+      actor.organizationId,
+    )
+    .first<Record<string, unknown>>();
+  if (!row) {
+    throw validationIssue(
+      "artworkAssetId",
+      "media_not_eligible",
+      "Select only approved artwork from this workspace.",
+    );
+  }
+  return parseIdentifier(row.id, "artworkAssetId");
 }
 
 async function readHostOptions(
@@ -1575,8 +2160,21 @@ async function readHostOptions(
               CASE WHEN selected.profile_id IS NULL THEN 0 ELSE 1 END
                 AS selected
        FROM profiles AS profile
+       JOIN organization_memberships AS current_membership
+         ON current_membership.id = ?
+        AND current_membership.organization_id = ?
+        AND current_membership.profile_id = ?
+        AND current_membership.status = 'active'
+        AND current_membership.deleted_at IS NULL
+       JOIN profiles AS current_profile
+         ON current_profile.id = current_membership.profile_id
+        AND current_profile.status = 'active'
+        AND current_profile.deleted_at IS NULL
+       JOIN organizer_events AS event
+         ON event.id = ?
+        AND event.organization_id = current_membership.organization_id
        JOIN organization_memberships AS membership
-         ON membership.organization_id = ?
+         ON membership.organization_id = current_membership.organization_id
         AND membership.profile_id = profile.id
         AND membership.status = 'active'
         AND membership.deleted_at IS NULL
@@ -1603,11 +2201,47 @@ async function readHostOptions(
                AND association.deleted_at IS NULL
            )
          )
+         AND (
+           current_membership.role IN ('owner', 'administrator')
+           OR (
+             current_membership.role = 'organizer'
+             AND (
+               event.primary_organizer_profile_id =
+                   current_membership.profile_id
+               OR EXISTS (
+                 SELECT 1
+                 FROM organizer_event_organizers AS actor_association
+                 WHERE actor_association.organization_id =
+                         event.organization_id
+                   AND actor_association.organizer_event_id = event.id
+                   AND actor_association.profile_id =
+                         current_membership.profile_id
+                   AND actor_association.deleted_at IS NULL
+               )
+             )
+             AND EXISTS (
+               SELECT 1
+               FROM club_memberships AS assignment
+               WHERE assignment.organization_id = event.organization_id
+                 AND assignment.club_id = event.club_id
+                 AND assignment.organization_membership_id =
+                     current_membership.id
+                 AND assignment.profile_id =
+                     current_membership.profile_id
+                 AND assignment.role = 'organizer'
+                 AND assignment.status = 'active'
+                 AND assignment.deleted_at IS NULL
+             )
+           )
+         )
        ORDER BY profile.display_name COLLATE NOCASE, profile.id
        LIMIT 100`,
     )
     .bind(
+      actor.membershipId,
       actor.organizationId,
+      actor.profileId,
+      event.id,
       event.id,
       event.primaryOrganizerProfileId,
       event.id,
@@ -1633,13 +2267,63 @@ async function readPendingJob(
   const row = await database
     .prepare(
       `SELECT requested_publication_at_utc, original_timezone
-       FROM organizer_event_publication_jobs
-       WHERE organization_id = ?
-         AND organizer_event_id = ?
-         AND state = 'pending'
+       FROM organizer_event_publication_jobs AS job
+       JOIN organizer_events AS event
+         ON event.id = job.organizer_event_id
+        AND event.organization_id = job.organization_id
+       JOIN organization_memberships AS current_membership
+         ON current_membership.id = ?
+        AND current_membership.organization_id = job.organization_id
+        AND current_membership.profile_id = ?
+        AND current_membership.status = 'active'
+        AND current_membership.deleted_at IS NULL
+       JOIN profiles AS current_profile
+         ON current_profile.id = current_membership.profile_id
+        AND current_profile.status = 'active'
+        AND current_profile.deleted_at IS NULL
+       WHERE job.organization_id = ?
+         AND job.organizer_event_id = ?
+         AND (
+           current_membership.role IN ('owner', 'administrator')
+           OR (
+             current_membership.role = 'organizer'
+             AND (
+               event.primary_organizer_profile_id =
+                   current_membership.profile_id
+               OR EXISTS (
+                 SELECT 1
+                 FROM organizer_event_organizers AS association
+                 WHERE association.organization_id = event.organization_id
+                   AND association.organizer_event_id = event.id
+                   AND association.profile_id =
+                       current_membership.profile_id
+                   AND association.deleted_at IS NULL
+               )
+             )
+             AND EXISTS (
+               SELECT 1
+               FROM club_memberships AS assignment
+               WHERE assignment.organization_id = event.organization_id
+                 AND assignment.club_id = event.club_id
+                 AND assignment.organization_membership_id =
+                     current_membership.id
+                 AND assignment.profile_id =
+                     current_membership.profile_id
+                 AND assignment.role = 'organizer'
+                 AND assignment.status = 'active'
+                 AND assignment.deleted_at IS NULL
+             )
+           )
+         )
+         AND job.state = 'pending'
        LIMIT 1`,
     )
-    .bind(actor.organizationId, eventId)
+    .bind(
+      actor.membershipId,
+      actor.profileId,
+      actor.organizationId,
+      eventId,
+    )
     .first<Record<string, unknown>>();
   return row
     ? Object.freeze({
@@ -1675,60 +2359,76 @@ async function canActorEditPublicationEvent(
   actor: AuthorizedMembership,
   event: OrganizerEventDto,
 ): Promise<boolean> {
-  if (
-    actor.role === "owner" ||
-    actor.role === "administrator"
-  ) {
-    return true;
-  }
-  const allowed = await database
+  return (await readPublicationAccess(database, actor, event)).canEdit;
+}
+
+async function readPublicationAccess(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  event: OrganizerEventDto,
+): Promise<Readonly<{ active: boolean; canEdit: boolean }>> {
+  const row = await database
     .prepare(
-      `SELECT 1 AS allowed
+      `SELECT membership.role,
+              CASE
+                WHEN membership.role IN ('owner', 'administrator') THEN 1
+                WHEN membership.role = 'organizer'
+                 AND (
+                   event.primary_organizer_profile_id =
+                       membership.profile_id
+                   OR EXISTS (
+                     SELECT 1
+                     FROM organizer_event_organizers AS association
+                     WHERE association.organization_id =
+                             event.organization_id
+                       AND association.organizer_event_id = event.id
+                       AND association.profile_id = membership.profile_id
+                       AND association.deleted_at IS NULL
+                   )
+                 )
+                 AND EXISTS (
+                   SELECT 1
+                   FROM club_memberships AS club_membership
+                   WHERE club_membership.organization_id =
+                           membership.organization_id
+                     AND club_membership.club_id = event.club_id
+                     AND club_membership.organization_membership_id =
+                           membership.id
+                     AND club_membership.profile_id =
+                           membership.profile_id
+                     AND club_membership.role = 'organizer'
+                     AND club_membership.status = 'active'
+                     AND club_membership.deleted_at IS NULL
+                 )
+                THEN 1
+                ELSE 0
+              END AS can_edit
        FROM organization_memberships AS membership
        JOIN profiles AS profile
          ON profile.id = membership.profile_id
         AND profile.status = 'active'
         AND profile.deleted_at IS NULL
-       JOIN club_memberships AS club_membership
-         ON club_membership.organization_id = membership.organization_id
-        AND club_membership.club_id = ?
-        AND club_membership.organization_membership_id = membership.id
-        AND club_membership.profile_id = membership.profile_id
-        AND club_membership.role = 'organizer'
-        AND club_membership.status = 'active'
-        AND club_membership.deleted_at IS NULL
+       JOIN organizer_events AS event
+         ON event.id = ?
+        AND event.organization_id = membership.organization_id
        WHERE membership.id = ?
          AND membership.organization_id = ?
          AND membership.profile_id = ?
-         AND membership.role = 'organizer'
          AND membership.status = 'active'
          AND membership.deleted_at IS NULL
-         AND (
-           ? = ?
-           OR EXISTS (
-             SELECT 1
-             FROM organizer_event_organizers AS association
-             WHERE association.organization_id = ?
-               AND association.organizer_event_id = ?
-               AND association.profile_id = ?
-               AND association.deleted_at IS NULL
-           )
-         )
        LIMIT 1`,
     )
     .bind(
-      event.clubId,
+      event.id,
       actor.membershipId,
       actor.organizationId,
       actor.profileId,
-      event.primaryOrganizerProfileId,
-      actor.profileId,
-      actor.organizationId,
-      event.id,
-      actor.profileId,
     )
     .first<Record<string, unknown>>();
-  return allowed !== null;
+  return Object.freeze({
+    active: row !== null,
+    canEdit: row?.can_edit === 1,
+  });
 }
 
 async function publicationReadinessIssues(
@@ -1757,6 +2457,11 @@ async function publicationReadinessIssues(
       issue("description_required", "Add a public description.", "description"),
     );
   }
+  addProtectedLegalClaimIssues(issues, [
+    ["title", event.title],
+    ["summary", event.summary],
+    ["description", event.description],
+  ]);
   const publicClub = await database
     .prepare(
       `SELECT 1 AS valid
@@ -1787,7 +2492,29 @@ async function publicationReadinessIssues(
     );
     return issues;
   }
-  const details = detailsDto(detailsRow, event);
+  const details = detailsDto(detailsRow, event, null);
+  addProtectedLegalClaimIssues(issues, [
+    ["publicLocationName", details.publicLocationName],
+    ["publicAddress", details.publicAddress],
+    ["publicAccessNote", details.publicAccessNote],
+    ["costText", details.costText],
+    ["preparationInformation", details.preparationInformation],
+    ["whatToBring", details.whatToBring],
+    ["arrivalInstructions", details.arrivalInstructions],
+    ["weatherNote", details.weatherNote],
+    ["verifiedAccessibilityNotes", details.verifiedAccessibilityNotes],
+    ["seoTitle", details.seoTitle],
+    ["metaDescription", details.metaDescription],
+  ]);
+  if (!selectedArtworkState(detailsRow).eligible) {
+    issues.push(
+      issue(
+        "event_artwork_not_eligible",
+        "Select approved artwork with complete public metadata.",
+        "artworkAssetId",
+      ),
+    );
+  }
   if (details.attendanceMode === "location_undecided") {
     issues.push(
       issue(
@@ -1908,6 +2635,7 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
     [
       "arrivalInstructions",
       "attendanceMode",
+      "artworkAssetId",
       "availabilityState",
       "capacity",
       "confirmMeetupEventUrl",
@@ -1915,6 +2643,7 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
       "expectedContentVersion",
       "expectedScheduleVersion",
       "externalMapUrl",
+      "metaDescription",
       "meetupEventUrl",
       "preparationInformation",
       "publicAccessNote",
@@ -1923,6 +2652,7 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
       "publicLocationName",
       "publicOnlineUrl",
       "rsvpMode",
+      "seoTitle",
       "selectedHostProfileIds",
       "verifiedAccessibilityNotes",
       "weatherNote",
@@ -1963,7 +2693,7 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
     "selectedHostProfileIds",
   );
   return Object.freeze({
-    arrivalInstructions: optionalText(
+    arrivalInstructions: optionalPublicClaimSafeText(
       input.arrivalInstructions,
       "arrivalInstructions",
       4_000,
@@ -1973,6 +2703,12 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
       ["in_person", "online", "hybrid", "location_undecided"] as const,
       "attendanceMode",
     ),
+    artworkAssetId:
+      input.artworkAssetId === null ||
+      input.artworkAssetId === undefined ||
+      input.artworkAssetId === ""
+        ? null
+        : parseIdentifier(input.artworkAssetId, "artworkAssetId"),
     availabilityState: parseEnum(
       input.availabilityState,
       ["open", "full", "waitlist"] as const,
@@ -1990,7 +2726,7 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
           }),
     confirmedMeetupEventUrl:
       rsvpMode === "meetup" ? meetupEventUrl : null,
-    costText: optionalText(input.costText, "costText", 500),
+    costText: optionalPublicClaimSafeText(input.costText, "costText", 500),
     expectedContentVersion: parseFiniteInteger(
       input.expectedContentVersion,
       { path: "expectedContentVersion", minimum: 1 },
@@ -2003,18 +2739,23 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
       input.externalMapUrl,
       "externalMapUrl",
     ),
+    metaDescription: optionalPublicClaimSafeText(
+      input.metaDescription,
+      "metaDescription",
+      160,
+    ),
     meetupEventUrl,
-    preparationInformation: optionalText(
+    preparationInformation: optionalPublicClaimSafeText(
       input.preparationInformation,
       "preparationInformation",
       4_000,
     ),
-    publicAccessNote: optionalText(
+    publicAccessNote: optionalPublicClaimSafeText(
       input.publicAccessNote,
       "publicAccessNote",
       2_000,
     ),
-    publicAddress: optionalText(
+    publicAddress: optionalPublicClaimSafeText(
       input.publicAddress,
       "publicAddress",
       500,
@@ -2023,7 +2764,7 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
       input.publicHostsEnabled ?? false,
       "publicHostsEnabled",
     ),
-    publicLocationName: optionalText(
+    publicLocationName: optionalPublicClaimSafeText(
       input.publicLocationName,
       "publicLocationName",
       250,
@@ -2033,14 +2774,23 @@ function parsePublicDetailsInput(value: unknown): ParsedPublicDetails &
       "publicOnlineUrl",
     ),
     rsvpMode,
+    seoTitle: optionalPublicClaimSafeText(input.seoTitle, "seoTitle", 60),
     selectedHostProfileIds,
-    verifiedAccessibilityNotes: optionalText(
+    verifiedAccessibilityNotes: optionalPublicClaimSafeText(
       input.verifiedAccessibilityNotes,
       "verifiedAccessibilityNotes",
       4_000,
     ),
-    weatherNote: optionalText(input.weatherNote, "weatherNote", 2_000),
-    whatToBring: optionalText(input.whatToBring, "whatToBring", 4_000),
+    weatherNote: optionalPublicClaimSafeText(
+      input.weatherNote,
+      "weatherNote",
+      2_000,
+    ),
+    whatToBring: optionalPublicClaimSafeText(
+      input.whatToBring,
+      "whatToBring",
+      4_000,
+    ),
   });
 }
 
@@ -2238,11 +2988,41 @@ function publicDetailsUpsertStatement(
     );
 }
 
-function publicHostInsertStatement(
+function publicMetadataUpsertStatement(
   database: D1DatabaseLike,
   actor: AuthorizedMembership,
   event: OrganizerEventDto,
-  profileId: string,
+  input: ParsedPublicDetails,
+  now: number,
+): D1PreparedStatementLike {
+  return database
+    .prepare(
+      `INSERT INTO organizer_event_public_metadata (
+         organizer_event_id, organization_id, seo_title, meta_description,
+         updated_by_profile_id, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(organizer_event_id) DO UPDATE SET
+         seo_title = excluded.seo_title,
+         meta_description = excluded.meta_description,
+         updated_by_profile_id = excluded.updated_by_profile_id,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      event.id,
+      actor.organizationId,
+      input.seoTitle,
+      input.metaDescription,
+      actor.profileId,
+      now,
+      now,
+    );
+}
+
+function publicHostsInsertStatement(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  event: OrganizerEventDto,
+  profileIds: readonly string[],
   now: number,
 ): D1PreparedStatementLike {
   return database
@@ -2250,16 +3030,90 @@ function publicHostInsertStatement(
       `INSERT INTO organizer_event_public_hosts (
          id, organization_id, organizer_event_id, profile_id,
          selected_by_profile_id, selected_at
-       ) VALUES (?, ?, ?, ?, ?, ?)`,
+       )
+       SELECT 'public-host:' || lower(hex(randomblob(16))),
+              ?, ?, CAST(profile.value AS TEXT), ?, ?
+       FROM json_each(?) AS profile
+       ORDER BY CAST(profile.key AS INTEGER)`,
     )
     .bind(
-      `public-host:${crypto.randomUUID()}`,
       actor.organizationId,
       event.id,
-      profileId,
       actor.profileId,
       now,
+      JSON.stringify(profileIds),
     );
+}
+
+function eventArtworkUsageStatements(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  eventId: string,
+  revisionId: string,
+  assetId: string | null,
+  publicationScopes: readonly ("draft" | "published")[],
+  now: number,
+): D1PreparedStatementLike[] {
+  const statements: D1PreparedStatementLike[] = [
+    database
+      .prepare(
+        `UPDATE media_usage_references
+         SET deleted_at = ?
+         WHERE organization_id = ?
+           AND entity_type = 'organizer_event'
+           AND entity_id = ?
+           AND usage_kind = 'event_artwork'
+           AND publication_scope IN ('draft', 'published')
+           AND deleted_at IS NULL`,
+      )
+      .bind(now, actor.organizationId, eventId),
+  ];
+  if (assetId === null) return statements;
+  statements.push(
+    database
+      .prepare(
+        `INSERT INTO media_usage_references (
+           id, organization_id, asset_id, entity_type, entity_id,
+           revision_id, usage_kind, publication_scope,
+           created_by_profile_id, created_at, deleted_at
+         )
+         SELECT 'media-usage:' || lower(hex(randomblob(16))),
+                ?, ?, 'organizer_event', ?, ?,
+                'event_artwork', CAST(scope.value AS TEXT), ?, ?, NULL
+         FROM json_each(?) AS scope
+         ORDER BY CAST(scope.key AS INTEGER)`,
+      )
+      .bind(
+        actor.organizationId,
+        assetId,
+        eventId,
+        revisionId,
+        actor.profileId,
+        now,
+        JSON.stringify(publicationScopes),
+      ),
+  );
+  return statements;
+}
+
+function clearPublishedEventArtworkUsageStatement(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  eventId: string,
+  now: number,
+): D1PreparedStatementLike {
+  return database
+    .prepare(
+      `UPDATE media_usage_references
+       SET deleted_at = ?
+       WHERE organization_id = ?
+         AND entity_type = 'organizer_event'
+         AND entity_id = ?
+         AND usage_kind = 'event_artwork'
+         AND publication_scope = 'published'
+         AND deleted_at IS NULL`,
+    )
+    .bind(now, actor.organizationId, eventId);
 }
 
 function eventContentUpdateStatement(
@@ -2419,6 +3273,7 @@ function publicationRevisionStatement(
   actor: AuthorizedMembership,
   mutation: PublicationMutation,
   snapshot: Readonly<Record<string, unknown>>,
+  revisionId = `organizer-event-revision:${crypto.randomUUID()}`,
 ): D1PreparedStatementLike {
   return database
     .prepare(
@@ -2433,7 +3288,7 @@ function publicationRevisionStatement(
        )`,
     )
     .bind(
-      `organizer-event-revision:${crypto.randomUUID()}`,
+      revisionId,
       actor.organizationId,
       mutation.event.id,
       mutation.proposedContentVersion,
@@ -2512,21 +3367,24 @@ function publicationNotificationStatements(
     event.primaryOrganizerProfileId,
     ...event.coOrganizerProfileIds,
   ];
-  return [...new Set(recipients)]
-    .filter((profileId) => includeActor || profileId !== actor.profileId)
-    .map((profileId) =>
-      prepareNotificationInsert(database, {
+  const recipientProfileIds = [...new Set(recipients)]
+    .filter((profileId) => includeActor || profileId !== actor.profileId);
+  return recipientProfileIds.length === 0
+    ? []
+    : [
+      prepareNotificationFanout(database, {
         createdAt: now,
-        id: `notification:${type}:${event.id}:${event.contentVersion + 1}:${profileId}`,
+        idPrefix:
+          `notification:${type}:${event.id}:${event.contentVersion + 1}:`,
         organizationId: actor.organizationId,
         payload: {
           eventId: event.id,
           title: event.title.slice(0, 160),
           type,
         },
-        recipientProfileId: profileId,
+        recipientProfileIds,
       }),
-    );
+    ];
 }
 
 async function runPublicationBatch(
@@ -2550,16 +3408,60 @@ async function runPublicationBatch(
     }
   } catch (error) {
     if (error instanceof SafeApplicationError) throw error;
-    const schedulingError = mapSchedulingDatabaseError(error);
-    if (schedulingError instanceof SafeApplicationError) {
-      throw schedulingError;
-    }
     const message =
       error instanceof Error
         ? `${error.message} ${String(
             (error as Error & { cause?: unknown }).cause ?? "",
           )}`
         : String(error);
+    if (
+      /phase6_media_asset_not_(?:public_)?ready/iu.test(message)
+    ) {
+      throw new SafeApplicationError(
+        "validation_failed",
+        422,
+        "The selected event artwork is no longer eligible for public use.",
+      );
+    }
+    if (/phase6_event_public_legal_claim_unconfirmed/iu.test(message)) {
+      throw new SafeApplicationError(
+        "validation_failed",
+        422,
+        "Legal or charity claims must use the confirmed legal-status workflow.",
+      );
+    }
+    if (/phase6_public_organizer_email_forbidden/iu.test(message)) {
+      throw new SafeApplicationError(
+        "validation_failed",
+        422,
+        "Public content cannot include a current or historical organizer sign-in email.",
+      );
+    }
+    if (/phase6_event_public_metadata_unauthorized/iu.test(message)) {
+      throw new SafeApplicationError(
+        "authorization_denied",
+        403,
+        "Your current organizer access does not allow this metadata change.",
+      );
+    }
+    if (/phase6_media_usage_actor_unauthorized/iu.test(message)) {
+      throw new SafeApplicationError(
+        "authorization_denied",
+        403,
+        "Your current organizer access does not allow this artwork change.",
+      );
+    }
+    if (
+      /phase6_media_usage_(?:identity_immutable|target_mismatch)/iu.test(
+        message,
+      )
+    ) {
+      throw stalePublication();
+    }
+    const schedulingError = mapSchedulingDatabaseError(error);
+    if (schedulingError instanceof SafeApplicationError) {
+      throw schedulingError;
+    }
     if (
       /phase5_|organizer_event_revision_mismatch|UNIQUE constraint failed: organizer_event_publication_jobs.organizer_event_id/iu.test(
         message,
@@ -2588,6 +3490,7 @@ async function runPublicationBatch(
 function detailsDto(
   row: Record<string, unknown>,
   event: OrganizerEventDto,
+  artworkAssetId: string | null,
 ): OrganizerPublicationDetailsDto {
   const attendanceMode = parseEnum(
     row.attendance_mode,
@@ -2608,10 +3511,12 @@ function detailsDto(
   return Object.freeze({
     arrivalInstructions: optionalString(row.arrival_instructions),
     attendanceMode,
+    artworkAssetId,
     availabilityState,
     capacity: optionalInteger(row.capacity),
     costText: optionalString(row.cost_text),
     externalMapUrl: optionalString(row.external_map_url),
+    metaDescription: optionalString(row.meta_description),
     meetupUrlConfirmed:
       rsvpMode === "meetup" &&
       confirmed !== null &&
@@ -2625,6 +3530,7 @@ function detailsDto(
     publicLocationName: optionalString(row.public_location_name),
     publicOnlineUrl: optionalString(row.public_online_url),
     rsvpMode,
+    seoTitle: optionalString(row.seo_title),
     verifiedAccessibilityNotes: optionalString(
       row.verified_accessibility_notes,
     ),
@@ -2637,15 +3543,19 @@ function publicRevisionSnapshot(
   event: OrganizerEventDto,
   mutation: PublicationMutation,
   details: ParsedPublicDetails | null,
+  artworkAssetId: string | null = null,
 ): Readonly<Record<string, unknown>> {
   return Object.freeze({
     attendanceMode: details?.attendanceMode ?? null,
+    artworkAssetId,
     availabilityState: details?.availabilityState ?? null,
     contentVersion: mutation.proposedContentVersion,
     eventId: event.id,
+    metaDescription: details?.metaDescription ?? null,
     planningStatus: event.planningStatus,
     publicationStatus: mutation.nextPublicationStatus,
     rsvpMode: details?.rsvpMode ?? null,
+    seoTitle: details?.seoTitle ?? null,
     scheduleVersion: event.scheduleVersion,
     selectedPublicHostCount:
       details?.selectedHostProfileIds.length ?? null,
@@ -2775,6 +3685,15 @@ function optionalText(
   return parseOptionalBoundedString(value, { path, maxLength });
 }
 
+function optionalPublicClaimSafeText(
+  value: unknown,
+  path: string,
+  maxLength: number,
+): string | null {
+  const parsed = optionalText(value, path, maxLength);
+  return parsed === null ? null : assertNoProtectedLegalClaim(parsed, path);
+}
+
 function optionalHttpsUrl(value: unknown, path: string): string | null {
   if (value === null || value === undefined || value === "") return null;
   return parseHttpsUrl(value, path);
@@ -2785,6 +3704,23 @@ function parseBoolean(value: unknown, path: string): boolean {
     throw validationIssue(path, "invalid_boolean", "Expected true or false.");
   }
   return value;
+}
+
+function addProtectedLegalClaimIssues(
+  issues: OrganizerPublicationReadinessIssue[],
+  fields: readonly (readonly [field: string, value: string | null])[],
+): void {
+  for (const [field, value] of fields) {
+    if (value && containsProtectedLegalClaim(value)) {
+      issues.push(
+        issue(
+          "protected_legal_claim",
+          "Legal or charity claims must use the confirmed legal-status workflow.",
+          field,
+        ),
+      );
+    }
+  }
 }
 
 function issue(

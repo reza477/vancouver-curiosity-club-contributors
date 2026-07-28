@@ -7,6 +7,10 @@ import {
   DATABASE_INVARIANT_TRIGGER_NAMES,
   ensureDatabaseInvariants,
 } from "../lib/server/database/invariants.ts";
+import {
+  applyD1MigrationBatches,
+  productionMigrationFragments,
+} from "./d1-migration-batches.mjs";
 
 const projectRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const migrationsDirectory = resolve(projectRoot, "drizzle");
@@ -19,7 +23,10 @@ const migrationFiles = (await readdir(migrationsDirectory))
   .filter((name) => name.endsWith(".sql"))
   .sort();
 
-async function ensureDatabaseInvariantsReady(database, maxAttempts = 8) {
+// One legacy public-attribution record is adopted per fail-closed request.
+// This setup-only ceiling is bounded for the planned organizer count and the
+// function still fails unless a final `ready` response is observed.
+async function ensureDatabaseInvariantsReady(database, maxAttempts = 64) {
   const statuses = [];
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const status = await ensureDatabaseInvariants(database);
@@ -76,24 +83,21 @@ try {
       continue;
     }
 
-    const statements = sql
-      .split("--> statement-breakpoint")
-      .map((statement) => statement.trim())
-      .filter(Boolean)
-      .map((statement) => database.prepare(statement));
-    statements.push(
-      database
+    const statements = productionMigrationFragments(sql);
+    const application = await applyD1MigrationBatches({
+      database,
+      statements,
+      finalStatement: database
         .prepare(
           "INSERT INTO _phase1_migrations (name, sha256) VALUES (?, ?)",
         )
         .bind(name, sha256),
+      failureMessage: `D1 rejected one or more statements in ${name}.`,
+    });
+    console.log(
+      `applied: ${name} (${application.migrationStatementCount} statements; ` +
+        `D1 batches ${application.batchStatementCounts.join("+")})`,
     );
-
-    const results = await database.batch(statements);
-    if (results.some((result) => !result.success)) {
-      throw new Error(`D1 rejected one or more statements in ${name}.`);
-    }
-    console.log(`applied: ${name} (${statements.length - 1} statements)`);
   }
 
   const invariantStatuses =

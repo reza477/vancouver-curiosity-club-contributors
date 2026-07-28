@@ -6,13 +6,19 @@ import { PHASE4_INVARIANT_COUNT_SQL } from "../../lib/server/conflicts/organizer
 import { PHASE3_INVARIANT_COUNT_SQL } from "../../lib/server/organizer/invariant-sql.ts";
 import { PHASE5_INVARIANT_COUNT_SQL } from "../../lib/server/organizer/publication-invariant-sql.ts";
 
+export const MAX_DATABASE_INVARIANT_READY_ATTEMPTS = 64;
+
 /**
  * Simulates successive fail-closed Worker requests until the durable marker
  * and exact invariant definitions are ready for application dispatch.
  */
 export async function ensureDatabaseInvariantsReady(
   database,
-  maxAttempts = 8,
+  // Phase 6 upgrades adopt at most one legacy public-attribution record per
+  // fail-closed request. Keep setup bounded for the planned organizer count
+  // while requiring an observed final `ready` response.
+  maxAttempts = MAX_DATABASE_INVARIANT_READY_ATTEMPTS,
+  expectedVersion = DATABASE_INVARIANT_VERSION,
 ) {
   const statuses = [];
   const underlyingErrors = [];
@@ -74,7 +80,7 @@ export async function ensureDatabaseInvariantsReady(
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let status;
     try {
-      status = await ensureDatabaseInvariants(binding);
+      status = await ensureDatabaseInvariants(binding, expectedVersion);
     } catch (error) {
       if (error?.name !== "DatabaseInvariantError") throw error;
       statuses.push("failed_closed");
@@ -91,7 +97,7 @@ export async function ensureDatabaseInvariantsReady(
       .first();
     if (
       status === "ready" &&
-      marker?.version === DATABASE_INVARIANT_VERSION
+      marker?.version === expectedVersion
     ) {
       return Object.freeze(statuses);
     }

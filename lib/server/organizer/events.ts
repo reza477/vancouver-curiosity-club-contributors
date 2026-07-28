@@ -14,6 +14,7 @@ import {
   parseOptionalBoundedString,
   validationIssue,
 } from "../../validation";
+import { assertNoProtectedLegalClaim } from "../../validation/protected-legal-claims";
 import { SafeApplicationError } from "../../validation/server-observability";
 import {
   parseCalendarDate,
@@ -524,6 +525,21 @@ export async function updateOrganizerEvent(
   assertEditable(existing);
   await authorizeEventEdit(database, actor, existing);
   const requestedInput = parseOrganizerEventEditInput(rawInput, existing);
+  if (
+    existing.publicationStatus === "published"
+    || existing.publicationStatus === "scheduled"
+  ) {
+    assertNoProtectedLegalClaim(requestedInput.title, "title");
+    if (requestedInput.summary !== null) {
+      assertNoProtectedLegalClaim(requestedInput.summary, "summary");
+    }
+    if (requestedInput.description !== null) {
+      assertNoProtectedLegalClaim(
+        requestedInput.description,
+        "description",
+      );
+    }
+  }
   const conflictReason = parseOptionalBoundedString(conflictReasonValue, {
     path: "conflictReason",
     maxLength: 1_000,
@@ -1646,6 +1662,15 @@ async function validateEventReferences(
            WHERE club.id = ?
              AND club.organization_id = ?
              AND club.deleted_at IS NULL
+             AND NOT EXISTS (
+               SELECT 1
+               FROM club_public_profiles AS archived_profile
+               WHERE archived_profile.club_id = club.id
+                 AND archived_profile.organization_id =
+                     club.organization_id
+                 AND archived_profile.publication_status = 'archived'
+                 AND archived_profile.deleted_at IS NULL
+             )
          ) AS club_ok,
          (? IS NULL OR EXISTS (
            SELECT 1 FROM programs AS program
@@ -1653,18 +1678,33 @@ async function validateEventReferences(
              AND program.organization_id = ?
              AND (program.club_id IS NULL OR program.club_id = ?)
              AND program.deleted_at IS NULL
+             AND NOT EXISTS (
+               SELECT 1
+               FROM program_public_profile_details AS public_profile
+               WHERE public_profile.program_id = program.id
+                 AND public_profile.organization_id =
+                     program.organization_id
+                 AND public_profile.publication_status = 'archived'
+                 AND public_profile.deleted_at IS NULL
+             )
          )) AS program_ok,
          (? IS NULL OR EXISTS (
            SELECT 1 FROM event_lanes AS lane
            WHERE lane.id = ?
              AND lane.organization_id = ?
-             AND lane.deleted_at IS NULL
+             AND (
+               lane.deleted_at IS NULL
+               OR lane.id = ?
+             )
          )) AS lane_ok,
          (? IS NULL OR EXISTS (
            SELECT 1 FROM categories AS category
            WHERE category.id = ?
              AND category.organization_id = ?
-             AND category.deleted_at IS NULL
+             AND (
+               category.deleted_at IS NULL
+               OR category.id = ?
+             )
          )) AS category_ok,
          (? IS NULL OR EXISTS (
            SELECT 1 FROM venues AS venue
@@ -1737,9 +1777,11 @@ async function validateEventReferences(
       input.eventLaneId,
       input.eventLaneId,
       actor.organizationId,
+      existing?.eventLaneId ?? null,
       input.categoryId,
       input.categoryId,
       actor.organizationId,
+      existing?.categoryId ?? null,
       input.venueId,
       input.venueId,
       actor.organizationId,
@@ -1885,14 +1927,26 @@ async function runStaleGuardedBatch(
     }
     return results;
   } catch (error) {
+    const message =
+      error instanceof Error
+        ? `${error.message} ${
+            (error as Error & { cause?: unknown }).cause ?? ""
+          }`
+        : String(error);
     if (
       error instanceof StaleOrganizerEventEditError ||
-      (error instanceof Error &&
-        /organizer_event_revision_mismatch|NOT NULL constraint failed: organizer_event_revisions\.organizer_event_id|phase4_intent_version_mismatch|phase4_intent_finalization_mismatch|phase4_reservation_state_identity_immutable/iu.test(
-          `${error.message} ${(error as Error & { cause?: unknown }).cause ?? ""}`,
-        ))
+      /organizer_event_revision_mismatch|NOT NULL constraint failed: organizer_event_revisions\.organizer_event_id|phase4_intent_version_mismatch|phase4_intent_finalization_mismatch|phase4_reservation_state_identity_immutable/iu.test(
+        message,
+      )
     ) {
       throw new StaleOrganizerEventEditError();
+    }
+    if (/phase6_event_public_legal_claim_unconfirmed/iu.test(message)) {
+      throw new SafeApplicationError(
+        "validation_failed",
+        422,
+        "Legal or charity claims must use the confirmed legal-status workflow.",
+      );
     }
     throw error;
   }

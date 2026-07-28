@@ -660,10 +660,27 @@ export function EventEditorForm({
               value={value.laneId}
             >
               <option value="">No lane selected</option>
-              {options.lanes.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
+              {selectableTaxonomyOptions(options.lanes, value.laneId).map(
+                (option) => (
+                  <option
+                    disabled={option.archived}
+                    key={option.id}
+                    value={option.id}
+                  >
+                    {option.label}
+                  </option>
+                ),
+              )}
             </select>
+            {selectedArchivedTaxonomyOption(
+              options.lanes,
+              value.laneId,
+            ) ? (
+              <small>
+                This archived lane is retained for the existing event. Choose
+                an active lane to replace it.
+              </small>
+            ) : null}
           </label>
           <label>
             <span>Category</span>
@@ -672,10 +689,28 @@ export function EventEditorForm({
               value={value.categoryId}
             >
               <option value="">No category selected</option>
-              {options.categories.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
+              {selectableTaxonomyOptions(
+                options.categories,
+                value.categoryId,
+              ).map((option) => (
+                <option
+                  disabled={option.archived}
+                  key={option.id}
+                  value={option.id}
+                >
+                  {option.label}
+                </option>
               ))}
             </select>
+            {selectedArchivedTaxonomyOption(
+              options.categories,
+              value.categoryId,
+            ) ? (
+              <small>
+                This archived category is retained for the existing event.
+                Choose an active category to replace it.
+              </small>
+            ) : null}
           </label>
           <label className={styles.fieldFull}>
             <span>Private organizer notes</span>
@@ -730,6 +765,27 @@ export function EventEditorForm({
         <p aria-live="polite">{notice}</p>
       </footer>
     </form>
+  );
+}
+
+function selectableTaxonomyOptions(
+  options: OrganizerEventFormOptions["categories"],
+  selectedId: string,
+) {
+  return options.filter(
+    (option) => !option.archived || option.id === selectedId,
+  );
+}
+
+function selectedArchivedTaxonomyOption(
+  options: OrganizerEventFormOptions["categories"],
+  selectedId: string,
+) {
+  return (
+    selectedId.length > 0 &&
+    options.some(
+      (option) => option.id === selectedId && option.archived === true,
+    )
   );
 }
 

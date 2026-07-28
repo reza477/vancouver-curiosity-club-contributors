@@ -1,21 +1,32 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import { SiteFooter } from "@/app/_components/SiteFooter";
 import { SiteHeader } from "@/app/_components/SiteHeader";
 import {
   getTrustedRequestOrigin,
   getTrustedRequestPathname,
-  publicUrl,
 } from "@/lib/server/public/origin";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
-import { loadPublicCatalog } from "@/lib/server/public/catalog";
+import {
+  getPublicSiteContext,
+  loadPublicCatalog,
+  resolvePublicOrganization,
+  type PublicNavigationItemDto,
+  type PublicSiteContextDto,
+} from "@/lib/server/public/catalog";
+import {
+  resolveMediaAssetsForRendering,
+  type ResponsiveMediaAssetDto,
+} from "@/lib/server/media/usage";
+import {
+  buildRootMetadataIcons,
+  SHIPPED_BRAND_NAME,
+} from "@/lib/brand";
 import "./globals.css";
 
-const title = "Vancouver Curiosity Club";
+const title = SHIPPED_BRAND_NAME;
 const description =
   "Talks, walks, workshops, and odd little investigations for people who like learning out loud.";
-const socialImageAlt =
-  "Vancouver Curiosity Club — A social calendar with a brain.";
-
 const exactApplicationPaths = new Set([
   "/",
   "/about",
@@ -31,6 +42,7 @@ const exactApplicationPaths = new Set([
   "/host-an-event",
   "/organizer",
   "/privacy",
+  "/resources",
 ]);
 
 function isKnownApplicationPath(pathname: string | null): boolean {
@@ -41,6 +53,7 @@ function isKnownApplicationPath(pathname: string | null): boolean {
     "/auth/",
     "/clubs/",
     "/events/",
+    "/media/",
     "/organizer/",
     "/preview/",
     "/signin-with-chatgpt/",
@@ -65,84 +78,94 @@ export async function generateMetadata(): Promise<Metadata> {
   ]);
   const isUnknownPath = !isKnownApplicationPath(requestPathname);
   const isPrivatePath = isPrivateApplicationPath(requestPathname);
-  const documentTitle = isUnknownPath ? `Page not found · ${title}` : title;
-  const canonicalUrl = metadataBase && !isUnknownPath && !isPrivatePath
-    ? publicUrl("/", metadataBase)
-    : undefined;
-  const socialImage = metadataBase && !isPrivatePath
-    ? publicUrl("/og.png", metadataBase)
-    : undefined;
-
+  let brandName = title;
+  let siteTitle = title;
+  let siteDescription = description;
+  let publishedThemeColor = "#061a3a";
+  let publicSite: PublicSiteContextDto | null = null;
+  let publicLogo: ResponsiveMediaAssetDto | null = null;
+  if (!isPrivatePath) {
+    try {
+      const { database } = getRuntimeAuthConfiguration();
+      const [site, organization] = await Promise.all([
+        getPublicSiteContext(database),
+        resolvePublicOrganization(database),
+      ]);
+      publicSite = site;
+      if (site) {
+        brandName = site.brandName;
+        siteTitle = site.seoTitle ?? site.brandName;
+        siteDescription = site.metaDescription ?? site.mission;
+        publishedThemeColor =
+          site.palette?.foreground ?? publishedThemeColor;
+        if (organization && site.logoAssetId) {
+          publicLogo =
+            (
+              await resolveMediaAssetsForRendering(database, {
+                organizationId: organization.id,
+                publicationScope: "published",
+                usages: [
+                  {
+                    assetId: site.logoAssetId,
+                    entityKey: organization.id,
+                    entityType: "site_logo",
+                    usageKind: "logo",
+                  },
+                ],
+              })
+            )[0] ?? null;
+        }
+      }
+    } catch {
+      // Keep the truthful shipped metadata baseline if D1 is unavailable.
+    }
+  }
+  const documentTitle = isUnknownPath
+    ? `Page not found · ${siteTitle}`
+    : siteTitle;
   return {
     metadataBase: metadataBase ?? undefined,
     title: isUnknownPath
       ? documentTitle
       : {
-          default: title,
-          template: `%s · ${title}`,
+          default: siteTitle,
+          template: `%s · ${siteTitle}`,
         },
-    description,
-    applicationName: title,
-    alternates: canonicalUrl ? { canonical: canonicalUrl } : undefined,
-    manifest: "/site.webmanifest",
-    icons: {
-      icon: [
-        { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
-        { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
-        { url: "/favicon-48.png", sizes: "48x48", type: "image/png" },
-        { url: "/icon.png", sizes: "64x64", type: "image/png" },
-        { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      ],
-      apple: [
-        {
-          url: "/apple-touch-icon.png",
-          sizes: "180x180",
-          type: "image/png",
-        },
-      ],
-    },
-    openGraph: isPrivatePath
-      ? null
-      : {
-          description,
-          images: socialImage
-            ? [
-                {
-                  alt: socialImageAlt,
-                  height: 630,
-                  url: socialImage,
-                  width: 1200,
-                },
-              ]
-            : undefined,
-          locale: "en_CA",
-          siteName: title,
-          title: documentTitle,
-          type: "website",
-          url: canonicalUrl,
-        },
-    twitter: isPrivatePath
-      ? null
-      : {
-          card: "summary_large_image",
-          description,
-          images: socialImage
-            ? [{ alt: socialImageAlt, url: socialImage }]
-            : undefined,
-          title: documentTitle,
-        },
-    themeColor: "#061a3a",
-    robots: isUnknownPath || isPrivatePath
-      ? {
-          index: false,
-          follow: false,
-          noarchive: true,
-          nocache: true,
-          noimageindex: true,
-        }
-      : undefined,
+    description: siteDescription,
+    applicationName: brandName,
+    manifest: "/manifest.webmanifest",
+    icons: buildRootMetadataIcons(publicSite, publicLogo),
+    themeColor: publishedThemeColor,
+    robots:
+      isUnknownPath || isPrivatePath
+        ? {
+            index: false,
+            follow: false,
+            noarchive: true,
+            nocache: true,
+            noimageindex: true,
+          }
+        : undefined,
   };
 }
+
+type PublicShell = Readonly<{
+  brandName: string;
+  externalLinks: readonly Readonly<{ href: string; label: string }>[];
+  footerNavigation: readonly PublicNavigationItemDto[];
+  headerNavigation: readonly PublicNavigationItemDto[];
+  legalFooter: string | null;
+  location: string;
+  logoAssetId: string | null;
+  mission: string;
+  palette: Readonly<{
+    accent: string;
+    background: string;
+    foreground: string;
+    secondary: string;
+  }> | null;
+  typography: "editorial" | "humanist" | "system";
+}>;
 
 export default async function RootLayout({
   children,
@@ -151,27 +174,47 @@ export default async function RootLayout({
 }>) {
   const requestPathname = await getTrustedRequestPathname();
   const isPrivatePath = isPrivateApplicationPath(requestPathname);
-  let footer:
-    | Readonly<{
-        brandName: string;
-        externalLinks: readonly Readonly<{ href: string; label: string }>[];
-        location: string;
-        mission: string;
-      }>
-    | undefined;
+  let shell: PublicShell | undefined;
   if (!isPrivatePath) {
     try {
       const { database } = getRuntimeAuthConfiguration();
-      const catalog = await loadPublicCatalog(database);
+      const [catalog, organization] = await Promise.all([
+        loadPublicCatalog(database),
+        resolvePublicOrganization(database),
+      ]);
       if (catalog) {
-        footer = {
+        let logoAssetId: string | null = null;
+        if (organization && catalog.site.logoAssetId) {
+          logoAssetId =
+            (
+              await resolveMediaAssetsForRendering(database, {
+                organizationId: organization.id,
+                publicationScope: "published",
+                usages: [
+                  {
+                    assetId: catalog.site.logoAssetId,
+                    entityKey: organization.id,
+                    entityType: "site_logo",
+                    usageKind: "logo",
+                  },
+                ],
+              })
+            )[0]?.assetId ?? null;
+        }
+        shell = {
           brandName: catalog.site.brandName,
-          location: catalog.site.locationLabel,
-          mission: catalog.site.mission,
           externalLinks: catalog.communityLinks.map((link) => ({
             href: link.url,
             label: link.label,
           })),
+          footerNavigation: catalog.navigation.footer,
+          headerNavigation: catalog.navigation.header,
+          legalFooter: catalog.site.legalFooter,
+          location: catalog.site.locationLabel,
+          logoAssetId,
+          mission: catalog.site.footerMission,
+          palette: catalog.site.palette,
+          typography: catalog.site.typography,
         };
       }
     } catch {
@@ -179,21 +222,48 @@ export default async function RootLayout({
       // catalog content. Route-level states report D1 availability.
     }
   }
+  const publicStyle = shell?.palette
+    ? ({
+        "--cms-accent": shell.palette.accent,
+        "--cms-background": shell.palette.background,
+        "--cms-foreground": shell.palette.foreground,
+        "--cms-secondary": shell.palette.secondary,
+      } as CSSProperties)
+    : undefined;
 
   return (
     <html lang="en-CA">
-      <body data-surface={isPrivatePath ? "organizer" : "public"}>
+      <body
+        data-surface={isPrivatePath ? "organizer" : "public"}
+        data-typography={isPrivatePath ? undefined : shell?.typography}
+        style={isPrivatePath ? undefined : publicStyle}
+      >
         <a
           className="skip-link"
           href={isPrivatePath ? "#organizer-main" : "#page-content"}
         >
           Skip to main content
         </a>
-        {isPrivatePath ? null : <SiteHeader />}
+        {isPrivatePath ? null : (
+          <SiteHeader
+            brandName={shell?.brandName}
+            logoAssetId={shell?.logoAssetId}
+            navigation={shell?.headerNavigation}
+          />
+        )}
         <div className="site-content" id="page-content" tabIndex={-1}>
           {children}
         </div>
-        {isPrivatePath ? null : <SiteFooter {...footer} />}
+        {isPrivatePath ? null : (
+          <SiteFooter
+            brandName={shell?.brandName}
+            externalLinks={shell?.externalLinks}
+            legalFooter={shell?.legalFooter}
+            location={shell?.location}
+            mission={shell?.mission}
+            navigation={shell?.footerNavigation}
+          />
+        )}
       </body>
     </html>
   );

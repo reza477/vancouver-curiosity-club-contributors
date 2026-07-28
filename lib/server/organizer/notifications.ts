@@ -6,6 +6,7 @@ import {
   type TrustedServerIdentity,
 } from "../auth";
 import {
+  parseBoundedString,
   parseEnum,
   parseFiniteInteger,
   parseIdentifier,
@@ -415,6 +416,111 @@ export function prepareNotificationInsert(
       parseIdentifier(input.organizationId, "organizationId"),
       parseIdentifier(input.recipientProfileId, "recipientProfileId"),
       parseIdentifier(input.organizationId, "organizationId"),
+      important,
+    );
+}
+
+/**
+ * Creates one set-based prepared insert for a bounded recipient fan-out.
+ * Eligibility and notification preferences are evaluated from current D1
+ * state for every recipient inside the caller-owned atomic batch.
+ */
+export function prepareNotificationFanout(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    createdAt: number;
+    idPrefix: string;
+    organizationId: string;
+    payload: SafeNotificationPayload;
+    recipientProfileIds: readonly string[];
+  }>,
+): D1PreparedStatementLike {
+  const payload = normalizeNotificationPayload(input.payload);
+  const important = IMPORTANT_NOTIFICATION_TYPES.has(payload.type) ? 1 : 0;
+  const organizationId = parseIdentifier(
+    input.organizationId,
+    "organizationId",
+  );
+  const recipientProfileIds = [
+    ...new Set(
+      input.recipientProfileIds.map((profileId, index) =>
+        parseIdentifier(profileId, `recipientProfileIds.${index}`),
+      ),
+    ),
+  ];
+  if (
+    recipientProfileIds.length === 0 ||
+    recipientProfileIds.length > 100
+  ) {
+    throw new SafeApplicationError(
+      "validation_failed",
+      422,
+      "The notification recipients could not be validated.",
+    );
+  }
+  const idPrefix = parseBoundedString(input.idPrefix, {
+    path: "idPrefix",
+    minLength: 1,
+    maxLength: 384,
+  });
+  if (!/^[A-Za-z0-9][A-Za-z0-9:_-]*:$/u.test(idPrefix)) {
+    throw new SafeApplicationError(
+      "validation_failed",
+      422,
+      "The notification identifier could not be validated.",
+    );
+  }
+  return database
+    .prepare(
+      `WITH requested_recipient AS (
+         SELECT DISTINCT CAST(value AS TEXT) AS profile_id
+         FROM json_each(?)
+       )
+       INSERT INTO notifications (
+         id, organization_id, recipient_profile_id, type,
+         payload_json, read_at, created_at, deleted_at
+       )
+       SELECT ? || profile.id, ?, profile.id, ?, ?, NULL, ?, NULL
+       FROM requested_recipient AS requested
+       JOIN profiles AS profile
+         ON profile.id = requested.profile_id
+        AND profile.status = 'active'
+        AND profile.deleted_at IS NULL
+       LEFT JOIN organizer_profile_preferences AS preference
+         ON preference.profile_id = profile.id
+        AND preference.organization_id = ?
+       WHERE EXISTS (
+         SELECT 1
+         FROM organization_memberships AS recipient_membership
+         WHERE recipient_membership.organization_id = ?
+           AND recipient_membership.profile_id = profile.id
+           AND recipient_membership.status = 'active'
+           AND recipient_membership.deleted_at IS NULL
+       )
+         AND (
+           COALESCE(
+             preference.notification_preference_mode,
+             'all_relevant'
+           ) = 'all_relevant'
+           OR (
+             preference.notification_preference_mode = 'important_only'
+             AND ? = 1
+           )
+         )
+       ORDER BY profile.id`,
+    )
+    .bind(
+      JSON.stringify(recipientProfileIds),
+      idPrefix,
+      organizationId,
+      payload.type,
+      JSON.stringify(withoutType(payload)),
+      parseFiniteInteger(input.createdAt, {
+        path: "createdAt",
+        minimum: 0,
+      }),
+      organizationId,
+      organizationId,
       important,
     );
 }
