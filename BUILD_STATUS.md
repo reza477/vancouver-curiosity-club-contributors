@@ -10,10 +10,10 @@ Last updated: 2026-07-29 (America/Vancouver)
 - Phase 7 implementation and the complete local repository, migration,
   production-build, rendered-Worker, browser, archive, source-readback, and
   unpublished Sites-version matrix are **Completed and verified**.
-- Phase 8 implementation is complete and its pre-freeze security, dependency,
-  migration, D1-budget, accessibility, responsive, performance, link/content,
-  and complete repository gates are green. The final exact-commit
-  rebuild/readback gate is **in progress** and is recorded below.
+- Phase 8 is **Completed and verified** for its authorized scope. Its
+  security, dependency, migration, D1-budget, accessibility, responsive,
+  performance, link/content, complete repository, exact-source build,
+  archive, pushed-source, and unpublished Sites-version gates are green.
 - **Phase 9 — Not started.**
 - No Phase 8 deployment, preview deployment, access-policy change, domain
   change, binding change, runtime-value change, or hosted D1/R2 data mutation
@@ -151,24 +151,26 @@ established two-statement invariant fast path explicitly.
 
 Target: WCAG 2.2 AA.
 
-- axe-core 4.12.1 with Chrome 150 reported zero violations, including zero
-  serious and zero critical, at 390 CSS pixels on Home, Events, one synthetic
-  published event detail, Contact, organizer Events, event create, Imports,
-  and Submissions. Home, Events, and event detail also reported zero violations
-  at 1280.
+- axe-core 4.12.1 with Chrome 150 completed 15 exact-artifact runs: 12
+  representative public/private pages at 390 CSS pixels plus Home, Events, and
+  one synthetic published event detail at 1280. It reported zero violations:
+  zero critical, serious, moderate, or minor.
 - The original diagnostic detail page exposed one serious 1.01:1 selector
   collision. The public detail article now restores `var(--ink)` and a
   1rem base size; the rebuilt rerun reports zero violations. A source contract
   pins the fix.
-- axe incomplete/manual contrast nodes remain a manual-review category rather
-  than being relabelled as passes. Manual computed-style and rendered checks
-  found no remaining text or functional-control contrast failure in the
-  tested routes.
+- The 161 axe incomplete/manual contrast nodes remain a manual-review category
+  rather than being relabelled as passes. Sampled nodes were pseudo-element
+  background indeterminacy or non-text arrows; manual computed-style and
+  rendered checks found no remaining text or functional-control contrast
+  failure in the tested routes.
 - Keyboard checks verified the first Tab reaches “Skip to main content” and
   Enter moves focus to `#page-content`; event-card navigation opens the exact
   detail; the calendar download is reachable; public-form and organizer-event
-  validation focus their error summaries and exact invalid fields; and no
-  success state appears for an invalid normal submission.
+  validation focus their error summaries and exact invalid fields; genuine
+  form success focuses the exact no-email confirmation; and Submissions
+  assignment/status/note, Imports, CMS, Media, and Export controls remain
+  operable by keyboard.
 - Calendar roving focus supports arrows, Home/End, and Page Up/Down. Error
   summaries, row-local import errors, destructive confirmations, form success,
   and dialog restoration retain explicit focus behavior.
@@ -179,53 +181,61 @@ Target: WCAG 2.2 AA.
 
 Synthetic `.invalid` identities/data only:
 
-- Public Home, Events, and published event detail at exactly 320, 390, 768,
-  1280, and 1440 CSS pixels: zero essential horizontal overflow, 16px body
-  text, one main/H1, and no visible interactive control smaller than 44 pixels
-  in both dimensions.
-- Private event-create, Imports, and Submissions at 390 have zero horizontal
-  overflow. Event create and Imports also pass the 200%-zoom reflow equivalent.
+- Twelve pages—Home, Events, published event detail, Contact, organizer
+  Events, event create, Imports, Submissions, Content, Media, Calendar, and
+  Exports—passed at exactly 320, 390, 768, 1280, and 1440 CSS pixels: 60/60
+  combinations with zero essential horizontal overflow, 16px body text, and
+  one main/H1.
+- All 12 pages passed the 200%-zoom reflow equivalent with zero overflow.
+  The only raw control below 44px was a 20px native checkbox whose associated
+  clickable label measured 309x59px.
 - Keyboard browser flows cover the public browse/detail/download path, public
   validation, organizer sign-in boundary, organizer event create/validation,
   and safe error recovery. The remaining real Owner, approved-artwork, and
   hosted second-identity checks stay Owner-gated below.
-- A healthy-fixture crawl covered 26 unique visible internal targets: 25
-  returned 200 and `/organizer` returned the expected 307 Sign in with ChatGPT
-  redirect. Filtered ICS, public CSV, and one-event ICS returned 200 with their
-  correct content types.
-- Visible Meetup destinations are exactly the three confirmed group URLs. The
-  audit verified href truth; it did not claim third-party network availability.
-- The tested browser emitted no hydration or application error on the healthy
-  routes. Deliberate malformed/denial probes remain expected negative cases.
+- A 14-page crawl covered 284 visible links and 26 unique internal targets:
+  25 returned 200 and `/organizer` returned the expected 307 Sign in with
+  ChatGPT redirect. Filtered ICS, public CSV, one-event ICS, the CSV template,
+  and the field guide returned their correct content types and nonzero bytes.
+- Visible Meetup destinations are exactly the three confirmed group URLs.
+  Separate read-only network verification resolved all three to their intended
+  Meetup group pages on 2026-07-29.
+- Public same-origin console auditing on Home, Events, and detail found zero
+  runtime exceptions, console logs, HTTP errors, or load failures. Deliberate
+  malformed/denial probes remain expected negative cases.
 
 ### Local production performance
 
 Environment: Windows 10/11 x64, Node 24.18.0, Lighthouse 13.4.1, Headless
-Chrome 150.0.0.0, disposable fresh Miniflare D1, one rebuilt-artifact run per
+Chrome 150.0.0.0, disposable synthetic Miniflare D1, one rebuilt-artifact run per
 route/form factor. Mobile uses Lighthouse simulated throttling (150ms RTT,
 1,638.4 Kbps, 4x CPU, 412x823); desktop uses 40ms RTT, 10,240 Kbps, 1x CPU,
 1350x940.
 
 Scores are Performance / Accessibility / Best Practices / SEO:
 
-- Home mobile: 98/100/100/100; FCP/LCP/Speed Index 1,854ms; TBT 0ms;
-  CLS 0; 180,034 bytes / 19 requests.
-- Home desktop: 100/100/100/100; FCP/LCP/Speed Index 451ms; TBT 0ms;
-  CLS 0.
-- Events mobile: 98/100/100/100; FCP/LCP/Speed Index 1,810ms; TBT 0ms;
-  CLS 0; 179,504 bytes / 20 requests.
-- Events desktop: 100/100/100/100; FCP/LCP/Speed Index 448ms; TBT 0ms;
-  CLS 0.
-- Published event detail mobile: 97/100/100/100; FCP 1,960ms; LCP 2,110ms;
-  Speed Index 1,960ms; TBT 0ms; CLS 0; 180,875 bytes / 20 requests.
-- Published event detail desktop: 100/100/100/100; FCP 450ms; LCP 490ms;
-  Speed Index 450ms; TBT 0ms; CLS 0.
+- Home mobile: exit 0; 98/100/100/100; FCP/LCP/Speed Index 1,958.8ms;
+  TBT 0ms; CLS 0; TTFB 165ms; 180,061 bytes / 19 requests.
+- Home desktop: valid report, cleanup exit 1; 100/100/100/100;
+  FCP/LCP/Speed Index 448.1ms; TBT 0ms; CLS 0; TTFB 159ms;
+  180,061 bytes / 19 requests.
+- Events mobile: valid report, cleanup exit 1; 98/100/100/100;
+  FCP/LCP/Speed Index 1,808.4ms; TBT 0ms; CLS 0; TTFB 120ms;
+  179,522 bytes / 20 requests.
+- Events desktop: exit 0; 100/100/100/100; FCP/LCP/Speed Index 447.1ms;
+  TBT 0ms; CLS 0; TTFB 122ms; 170,377 bytes / 18 requests.
+- Published event detail mobile: valid report, cleanup exit 1;
+  98/100/100/100; FCP/LCP/Speed Index 1,811.1ms; TBT 0ms; CLS 0;
+  TTFB 169ms; 180,923 bytes / 20 requests.
+- Published event detail desktop: valid report, cleanup exit 1;
+  100/100/100/100; FCP/LCP/Speed Index 409.3ms; TBT 0ms; CLS 0;
+  TTFB 127ms; 180,923 bytes / 20 requests.
 
-Four Lighthouse commands exited 0. Two Events commands wrote valid complete
-JSON but returned exit 1 only when Windows blocked temporary Chrome-profile
-cleanup after the audit; no Lighthouse/headless Chrome process or audit helper
-remained. The final exact-commit run must supersede that cleanup limitation
-before Sites save.
+All six Lighthouse audits completed and wrote valid hash-verified JSON before
+process exit. Two commands exited 0; four returned exit 1 only when Windows
+blocked Lighthouse's post-report temporary-profile removal with `EPERM`.
+No retry was used, no metric was inferred, and no Lighthouse/headless Chrome
+process or audit helper remained.
 
 ### Dependency and supply-chain result
 
@@ -257,18 +267,20 @@ before Sites save.
 
 - Required clean `npm.cmd ci`: exit 0; 504 packages installed from the exact
   lockfile.
-- `npm.cmd ls --omit=dev --all`, `npm.cmd ls --all`, and signature
-  verification: exit 0.
+- `npm.cmd ls --omit=dev --all` and `npm.cmd ls --all`: exit 0.
+  `npm.cmd audit signatures`: exit 0; 504/504 registry signatures verified
+  with 120 attestations.
 - `npm.cmd run typecheck`: exit 0.
-- Zero-warning `npm.cmd run lint`: exit 0 before and after the diagnostic
+- Zero-warning `npm.cmd run lint`: exit 0 before and after the exact-source
   production build.
-- Deterministic serial `npm.cmd test`: exit 0; 849 passed, zero failed,
-  skipped, cancelled, or todo; 79 files; 585,627ms.
-- Diagnostic `npm.cmd run build`: exit 0. It intentionally remains
-  non-release evidence because it embeds the old pre-Phase-8 HEAD while the
-  worktree is dirty.
-- Diagnostic `npm.cmd run test:rendered`: exit 0; 25 passed, zero failed or
-  skipped.
+- Deterministic serial `npm.cmd test` on source commit
+  `aaeb6a648e93a7dd2e41f329085b611b8b7d10b1`: exit 0; 849 passed,
+  zero failed, skipped, cancelled, or todo; 79 files; 694,572ms.
+- Exact-source `npm.cmd run build`: exit 0 with Vite 8.0.16. The resulting
+  `dist/server/index.js` embeds the exact source commit and has SHA-256
+  `a636ee02be41e3dbf7174b5cf7408a9736d9ed4bfc370fb87ad090e49a6bdc59`.
+- Exact-artifact `npm.cmd run test:rendered`: exit 0; 25 passed, zero failed
+  or skipped.
 - Phase 8 source/artifact interface/leakage contracts: 15/15.
 - Migration/invariant/real-D1 focused matrix: 53/53; security/path/media/export
   matrix: 45/45; exact-actor/events/portal matrix: 67/67; Meetup
@@ -280,9 +292,13 @@ before Sites save.
   marker, and zero foreign-key violations.
 - `git diff --check`: exit 0; line-ending conversion notices are not whitespace
   errors.
-- Final exact-source `npm test`, build, post-build lint, rendered Worker,
-  artifact/package parity, axe/Lighthouse/browser checks, and archive readback:
-  **Not run until the substantive source commit exists.**
+- Exact build inventory: 168 files / 10,171,557 bytes, zero source maps, one
+  exact-source SHA embedding, and 9/9 packaged migration hashes equal to
+  source.
+- Final exact-source test, build, post-build lint, rendered Worker,
+  artifact/package parity, axe/Lighthouse/browser checks, pushed-source
+  readback, and one unpublished Sites-version readback are **Completed and
+  verified**.
 
 ### Development-only behavior, links, and honest content
 
@@ -625,24 +641,39 @@ Required immutable Sites identity:
 - preview URL: none;
 - runtime revision: 1 with only the redacted `INITIAL_OWNER_EMAIL` value.
 
-At most one new unpublished Sites version may be saved after every final gate
-is green. It must not be deployed.
+Exactly one new unpublished Phase 8 Sites version was saved after every final
+gate was green. It was not deployed.
 
 ### Phase 8 source/save checkpoint
 
-- Phase 8 substantive source commit: **Pending final source freeze**
-- Phase 8 pushed `refs/heads/main` readback: **Not run**
-- Exact Phase 8 production archive hash/count/bytes: **Not run**
-- New unpublished Sites version 14: **Not run**
-- Phase 8 status-only ledger commit: **Not available until the source save
-  readback exists**
+- Phase 8 substantive source commit: `aaeb6a648e93a7dd2e41f329085b611b8b7d10b1`
+- Phase 8 pushed `refs/heads/main` readback:
+  `aaeb6a648e93a7dd2e41f329085b611b8b7d10b1`
+- Exact Phase 8 production archive: SHA-256
+  `50ae0f49e078da9f44488fe4a115b4b5670b7f70f13c435013e310e097fbcbb0`,
+  2,494,040 compressed bytes, 168 files / 10,171,557 staged bytes, 184 tar
+  entries, one `dist/` root, and 9/9 source-equal migrations.
+- New unpublished Sites version 14: `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_69aafba5ef148191b00042bce388a678`
+- Version 14 source commit:
+  `aaeb6a648e93a7dd2e41f329085b611b8b7d10b1`
+- Version 14 content hash:
+  `sha256:0b65ec790f59acd1ceb1d8ac62350e8914352c6b251aa78ecefbf743c81505d1`
+- Version 14 readback: 168 files / 10,311,680 stored bytes / null
+  screenshot / no preview URL.
+- Phase 8 status-only ledger commit: this final ledger payload; its exact SHA
+  is reported in the terminal handoff because a commit cannot contain its own
+  hash.
 - Deployment: **Not run**
 - Preview deployment: **Not run**
 - Live-access/domain/binding/runtime/D1/R2 change: **Not run**
 
-These fields must be replaced with exact readback values after—and only
-after—the final committed-source build, complete matrix, package equality, and
-single unpublished save succeed. Saving does not authorize deployment.
+Pre/post-save readback confirmed exactly versions 1–14 with one version 14,
+the unchanged live URL, no preview URL, no custom domains, custom access
+revision 1 with exactly one allowed owner and zero groups, and runtime revision
+1 with only the redacted `INITIAL_OWNER_EMAIL` key. No deploy, preview, access,
+domain, binding, runtime, D1, or R2 mutation was invoked. The connector exposes
+the live URL but not its deployed-version number; the established ledger
+records live version 8, and this unpublished save did not alter production.
 
 ## Five-minute Phase 8 Owner smoke-test card
 
@@ -676,9 +707,7 @@ local implementation or an unpublished Sites save.
 ## Exact next phase and stop condition
 
 - Phase 7 is completed and verified for its authorized scope.
-- Phase 8 remains **in progress** until the exact committed-source build,
-  single unpublished save/readback, and final ledger checkpoint above are
-  complete.
+- Phase 8 is **Completed and verified** for its authorized scope.
 - Do not deploy.
 - Owner smoke status remains **Awaiting owner smoke test**.
 - **Phase 9 — Not started.**
