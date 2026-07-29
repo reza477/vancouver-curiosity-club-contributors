@@ -8,6 +8,7 @@ import {
   invitationTokenCookie,
   isInvitationToken,
 } from "../lib/server/organizer/invitation-token-cookie";
+import { normalizeEncodedRequestPathname } from "../lib/request-pathname";
 
 interface Env {
   ASSETS: Fetcher;
@@ -45,9 +46,25 @@ const TRUSTED_REQUEST_PATHNAME_HEADER = "x-vcc-request-pathname";
 const TRUSTED_CSP_NONCE_HEADER = "x-vcc-csp-nonce";
 
 function isPrivateOrIdentityPath(pathname: string): boolean {
-  return PRIVATE_OR_IDENTITY_PATHS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  return (
+    isPrivateCalendarSubscriptionPath(pathname) ||
+    PRIVATE_OR_IDENTITY_PATHS.some(
+      (path) => pathname === path || pathname.startsWith(`${path}/`),
+    )
   );
+}
+
+function isPrivateCalendarSubscriptionPath(pathname: string): boolean {
+  return (
+    pathname === "/api/calendar/private" ||
+    pathname.startsWith("/api/calendar/private/")
+  );
+}
+
+function safeRequestPathname(pathname: string): string {
+  return isPrivateCalendarSubscriptionPath(pathname)
+    ? "/api/calendar/private/[token]"
+    : pathname;
 }
 
 function isLocalRequest(requestUrl: URL): boolean {
@@ -143,10 +160,13 @@ function secureResponse(
   request: Request,
   response: Response,
   contentSecurityPolicyValue: string,
+  requestPathname: string | null,
 ): Response {
   const requestUrl = new URL(request.url);
   const headers = new Headers(response.headers);
-  const isPrivateRequest = isPrivateOrIdentityPath(requestUrl.pathname);
+  const isPrivateRequest =
+    requestPathname === null ||
+    isPrivateOrIdentityPath(requestPathname);
 
   headers.set("Content-Security-Policy", contentSecurityPolicyValue);
   headers.delete("Content-Security-Policy-Report-Only");
@@ -155,8 +175,10 @@ function secureResponse(
   headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
   headers.set(
     "Referrer-Policy",
-    requestUrl.pathname === "/accept-invitation" ||
-      requestUrl.pathname.startsWith("/accept-invitation/")
+    requestPathname === null ||
+      requestPathname === "/accept-invitation" ||
+      requestPathname.startsWith("/accept-invitation/") ||
+      isPrivateCalendarSubscriptionPath(requestPathname)
       ? "no-referrer"
       : "strict-origin-when-cross-origin",
   );
@@ -172,7 +194,7 @@ function secureResponse(
 
   if (
     isPrivateRequest ||
-    requestUrl.pathname === "/calendar" ||
+    requestPathname === "/calendar" ||
     response.status >= 400
   ) {
     headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
@@ -224,10 +246,11 @@ function databaseInvariantUnavailableResponse(
 function captureInvitationToken(
   request: Request,
   requestUrl: URL,
+  requestPathname: string,
 ): Response | null {
   if (
     request.method !== "GET" ||
-    requestUrl.pathname !== "/accept-invitation" ||
+    requestPathname !== "/accept-invitation" ||
     !requestUrl.searchParams.has("token")
   ) {
     return null;
@@ -262,12 +285,33 @@ const worker = {
     const url = new URL(request.url);
     const nonce = isLocalRequest(url) ? null : createCspNonce();
     const policy = contentSecurityPolicy(url, nonce);
-    const invitationCapture = captureInvitationToken(request, url);
+    const normalizedPathname = normalizeEncodedRequestPathname(url.pathname);
+    if (normalizedPathname === null) {
+      return secureResponse(
+        request,
+        new Response("The request path is invalid.", { status: 400 }),
+        policy,
+        null,
+      );
+    }
+    const requestPathname = safeRequestPathname(normalizedPathname);
+    const canonicalUrl = new URL(url);
+    canonicalUrl.pathname = normalizedPathname;
+    const invitationCapture = captureInvitationToken(
+      request,
+      canonicalUrl,
+      normalizedPathname,
+    );
     if (invitationCapture) {
-      return secureResponse(request, invitationCapture, policy);
+      return secureResponse(
+        request,
+        invitationCapture,
+        policy,
+        normalizedPathname,
+      );
     }
 
-    if (url.pathname === "/_vinext/image") {
+    if (normalizedPathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
       const response = await handleImageOptimization(request, {
         fetchAsset: (path) =>
@@ -277,7 +321,12 @@ const worker = {
           return result.response();
         },
       }, allowedWidths);
-      return secureResponse(request, response, policy);
+      return secureResponse(
+        request,
+        response,
+        policy,
+        normalizedPathname,
+      );
     }
 
     try {
@@ -296,6 +345,7 @@ const worker = {
             "The database safety checks were updated. Please try again shortly so the fresh state can be verified.",
           ),
           policy,
+          normalizedPathname,
         );
       }
     } catch {
@@ -310,6 +360,7 @@ const worker = {
         request,
         databaseInvariantUnavailableResponse(),
         policy,
+        normalizedPathname,
       );
     }
 
@@ -317,7 +368,7 @@ const worker = {
       env.DB,
       {
         method: request.method,
-        pathname: url.pathname,
+        pathname: requestPathname,
       },
     );
     if (maintenance.kind === "unavailable") {
@@ -342,13 +393,15 @@ const worker = {
         request,
         maintenanceUnavailableResponse(),
         policy,
+        normalizedPathname,
       );
     }
     if (maintenance.kind === "redirect") {
       return secureResponse(
         request,
-        maintenanceRedirect(url),
+        maintenanceRedirect(canonicalUrl),
         policy,
+        normalizedPathname,
       );
     }
 
@@ -357,10 +410,15 @@ const worker = {
       policy,
       nonce,
       url.origin,
-      url.pathname,
+      requestPathname,
     );
     const response = await handler.fetch(securedRequest, env, ctx);
-    return secureResponse(request, response, policy);
+    return secureResponse(
+      request,
+      response,
+      policy,
+      normalizedPathname,
+    );
   },
 };
 

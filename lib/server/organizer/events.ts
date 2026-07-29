@@ -35,6 +35,7 @@ import {
 } from "./calendar";
 import { currentD1Time } from "./conflicts";
 import {
+  prepareOrganizerScheduleCreateGuard,
   prepareOrganizerScheduleEditGuard,
   prepareNonReservingScheduleGuard,
   prepareOrganizerPublicationScheduleGuard,
@@ -42,11 +43,31 @@ import {
 import { prepareCanonicalEventPublicationMutationGuard } from "./publication-bridge";
 import type { Phase4PlanningStatus } from "./conflict-domain";
 
-type OrganizerEditableEventInput = Omit<
+export type OrganizerEditableEventInput = Omit<
   Phase3ManualEventInput,
   "planningStatus"
 > &
   Readonly<{ planningStatus: Phase4PlanningStatus }>;
+
+export type CanonicalImportOrganizerEventInput = OrganizerEditableEventInput &
+  Readonly<{
+    conflictReason: string | null;
+    expectedConflictPolicyMode:
+      | "block"
+      | "require_admin_approval"
+      | "warn_reason"
+      | null;
+    planningStatus:
+      | Phase3WritablePlanningStatus
+      | "tentative_hold"
+      | "confirmed";
+  }>;
+
+export type CanonicalImportOrganizerEventResult = Readonly<{
+  eventId: string;
+  outcome: "imported" | "pending_approval";
+  reviewRequestId: string | null;
+}>;
 
 export type OrganizerEventDto = Readonly<{
   id: string;
@@ -92,6 +113,19 @@ export type OrganizerEventUpdateResult =
       outcome: "pending_approval";
       reviewRequestId: string;
     }>;
+
+export type OrganizerEventCreateTransactionContext = Readonly<{
+  actorProfileId: string;
+  eventId: string;
+  organizationId: string;
+  occurredAt: number;
+  reviewRequestId: string | null;
+  scheduleOutcome: "applied" | "pending_approval";
+}>;
+
+export type OrganizerEventCreateTransactionExtension = (
+  context: OrganizerEventCreateTransactionContext,
+) => readonly D1PreparedStatementLike[];
 
 export type OrganizerEventRevisionDto = Readonly<{
   id: string;
@@ -300,6 +334,34 @@ INSERT INTO organizer_events (
   ?, ?, ?, 1, 1, ?, ?, ?, ?
 )`;
 
+const UPDATE_IMPORTED_RESERVING_EVENT_SQL = `
+UPDATE organizer_events
+SET planning_status = ?,
+    content_version = 2,
+    schedule_version = 2,
+    updated_by_profile_id = ?,
+    updated_at = ?
+WHERE id = ?
+  AND organization_id = ?
+  AND planning_status = 'draft'
+  AND publication_status = 'private'
+  AND content_version = 1
+  AND schedule_version = 1
+  AND deleted_at IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM organizer_schedule_write_intents AS intent
+    WHERE intent.id = ?
+      AND intent.organization_id = organizer_events.organization_id
+      AND intent.organizer_event_id = organizer_events.id
+      AND intent.expected_content_version = 1
+      AND intent.expected_schedule_version = 1
+      AND intent.proposed_content_version = 2
+      AND intent.proposed_schedule_version = 2
+      AND intent.planning_status = ?
+      AND intent.completed_at IS NULL
+  )`;
+
 const INSERT_DUPLICATED_EVENT_SQL = `
 INSERT INTO organizer_events (
   id, organization_id, club_id, program_id, event_lane_id, category_id,
@@ -385,14 +447,83 @@ export async function createOrganizerEvent(
   database: D1DatabaseLike,
   identity: TrustedServerIdentity,
   rawInput: unknown,
+  transactionExtension?: OrganizerEventCreateTransactionExtension,
 ): Promise<OrganizerEventDto> {
   const input = parsePhase3ManualEventInput(rawInput);
+  return createOrganizerEventFromValidatedInput(
+    database,
+    identity,
+    input,
+    transactionExtension,
+  );
+}
+
+/**
+ * Phase 7 CSV imports call the same authoritative event/conflict envelope
+ * after the CSV parser and database mapping layer have produced the canonical
+ * private event input. This is not a browser-facing alternate write path.
+ */
+export async function createOrganizerEventFromCanonicalImport(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  input: CanonicalImportOrganizerEventInput,
+  transactionExtension: OrganizerEventCreateTransactionExtension,
+  occurredAt: number,
+): Promise<CanonicalImportOrganizerEventResult> {
+  if (!Number.isSafeInteger(occurredAt) || occurredAt < 0) {
+    throw new Error("Invalid trusted import occurrence time.");
+  }
+  if (
+    input.planningStatus === "idea" ||
+    input.planningStatus === "draft"
+  ) {
+    const nonReservingInput: Phase3ManualEventInput = Object.freeze({
+      ...input,
+      planningStatus: input.planningStatus,
+    });
+    const event = await createOrganizerEventFromValidatedInput(
+        database,
+        identity,
+        nonReservingInput,
+        transactionExtension,
+        true,
+        occurredAt,
+      );
+    return Object.freeze({
+      eventId: event.id,
+      outcome: "imported" as const,
+      reviewRequestId: null,
+    });
+  }
+  const reservingInput = Object.freeze({
+    ...input,
+    planningStatus: input.planningStatus,
+  }) as CanonicalImportOrganizerEventInput & Readonly<{
+    planningStatus: "tentative_hold" | "confirmed";
+  }>;
+  return createReservingOrganizerEventFromCanonicalImport(
+    database,
+    identity,
+    reservingInput,
+    transactionExtension,
+    occurredAt,
+  );
+}
+
+async function createOrganizerEventFromValidatedInput(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  input: Phase3ManualEventInput,
+  transactionExtension?: OrganizerEventCreateTransactionExtension,
+  bulkAssignmentNotifications = false,
+  occurredAt?: number,
+): Promise<OrganizerEventDto> {
   const actor = await authorizeMembership(database, identity, {
     clubId: input.clubId,
   });
   await validateEventReferences(database, actor, input, null);
 
-  const now = await currentD1Time(database);
+  const now = occurredAt ?? await currentD1Time(database);
   const id = createId("organizer-event");
   const slug = createStableSlug(input.title, id);
   const snapshot = eventSnapshot({
@@ -435,6 +566,17 @@ export async function createOrganizerEvent(
     },
     now,
   );
+  const extensionStatements =
+    transactionExtension?.(
+      Object.freeze({
+        actorProfileId: actor.profileId,
+        eventId: id,
+        organizationId: actor.organizationId,
+        occurredAt: now,
+        reviewRequestId: null,
+        scheduleOutcome: "applied",
+      }),
+    ) ?? [];
   const statements: D1PreparedStatementLike[] = [
     ...scheduleGuard.invalidationStatements,
     scheduleGuard.intentStatement,
@@ -486,16 +628,28 @@ export async function createOrganizerEvent(
       publicationStatus: "private",
       scheduleVersion: 1,
     }, now),
-    ...assignmentNotificationStatements(
-      database,
-      actor,
-      id,
-      input.title,
-      [],
-      organizerScope(input),
-      false,
-      now,
-    ),
+    ...(bulkAssignmentNotifications
+      ? [
+          importAssignmentNotificationStatement(
+            database,
+            actor,
+            id,
+            input.title,
+            organizerScope(input),
+            now,
+          ),
+        ]
+      : assignmentNotificationStatements(
+          database,
+          actor,
+          id,
+          input.title,
+          [],
+          organizerScope(input),
+          false,
+          now,
+        )),
+    ...extensionStatements,
     scheduleGuard.completionStatement,
   ];
   const createInsertIndex =
@@ -505,6 +659,385 @@ export async function createOrganizerEvent(
     statements.length - 1,
   ]);
   return requireManualEvent(database, actor, id, true);
+}
+
+async function createReservingOrganizerEventFromCanonicalImport(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  input: CanonicalImportOrganizerEventInput & Readonly<{
+    planningStatus: "tentative_hold" | "confirmed";
+  }>,
+  transactionExtension: OrganizerEventCreateTransactionExtension,
+  occurredAt: number,
+): Promise<CanonicalImportOrganizerEventResult> {
+  const actor = await authorizeMembership(database, identity, {
+    allowedRoles: ["owner", "administrator"],
+    clubId: input.clubId,
+  });
+  await validateEventReferences(database, actor, input, null);
+
+  const now = occurredAt;
+  const id = createId("organizer-event");
+  const slug = createStableSlug(input.title, id);
+  if (input.schedule.shape === "unscheduled") {
+    throw validationIssue(
+      "schedule",
+      "reserving_event_requires_schedule",
+      "A tentative hold or confirmed event needs a real schedule.",
+    );
+  }
+  const reservingGuard = await prepareOrganizerScheduleCreateGuard(
+    database,
+    identity,
+    actor,
+    {
+      allDayEndDateExclusive: input.schedule.allDayEndDateExclusive,
+      allDayStartDate: input.schedule.allDayStartDate,
+      bufferAfterMinutes: input.bufferAfterMinutes,
+      bufferBeforeMinutes: input.bufferBeforeMinutes,
+      clubId: input.clubId,
+      endsAtUtc: input.schedule.endsAtUtc,
+      eventId: id,
+      expectedPolicyMode: input.expectedConflictPolicyMode,
+      organizerScope: organizerScope(input),
+      planningStatus: input.planningStatus,
+      primaryOrganizerProfileId: input.primaryOrganizerProfileId,
+      reason: input.conflictReason,
+      scheduleShape: input.schedule.shape,
+      startsAtUtc: input.schedule.startsAtUtc,
+      timeZone: input.schedule.timeZone,
+      title: input.title,
+      venueId: input.venueId,
+    },
+    now,
+  );
+  if (
+    reservingGuard.outcome === "apply" &&
+    !reservingGuard.requiresDraftStaging
+  ) {
+    const directSnapshot = eventSnapshot({
+      id,
+      organizationId: actor.organizationId,
+      slug,
+      input,
+      contentVersion: 1,
+      scheduleVersion: 1,
+      createdByProfileId: actor.profileId,
+      updatedByProfileId: actor.profileId,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+    const directExtensionStatements = transactionExtension(
+      Object.freeze({
+        actorProfileId: actor.profileId,
+        eventId: id,
+        organizationId: actor.organizationId,
+        occurredAt: now,
+        reviewRequestId: null,
+        scheduleOutcome: "applied",
+      }),
+    );
+    const directStatements: D1PreparedStatementLike[] = [
+      reservingGuard.intentStatement,
+      database.prepare(INSERT_EVENT_SQL).bind(
+        id,
+        actor.organizationId,
+        input.clubId,
+        input.programId,
+        input.eventLaneId,
+        input.categoryId,
+        input.venueId,
+        input.primaryOrganizerProfileId,
+        input.title,
+        slug,
+        input.summary,
+        input.description,
+        input.privateNotes,
+        input.privateMeetingDetails,
+        input.meetupEventUrl,
+        input.planningStatus,
+        input.schedule.shape,
+        input.schedule.startsAtUtc,
+        input.schedule.endsAtUtc,
+        input.schedule.timeZone,
+        input.schedule.allDayStartDate,
+        input.schedule.allDayEndDateExclusive,
+        input.bufferBeforeMinutes,
+        input.bufferAfterMinutes,
+        actor.profileId,
+        actor.profileId,
+        now,
+        now,
+      ),
+      ...coOrganizerInsertStatements(database, actor, id, input),
+      reservingGuard.incidentStatement,
+      database.prepare(INSERT_REVISION_SQL).bind(
+        createId("organizer-event-revision"),
+        actor.organizationId,
+        id,
+        1,
+        1,
+        "created",
+        JSON.stringify(directSnapshot),
+        actor.profileId,
+      ),
+      auditStatement(
+        database,
+        actor,
+        id,
+        input.planningStatus === "tentative_hold"
+          ? "organizer_event.hold_placed"
+          : "organizer_event.confirmed",
+        {
+          contentVersion: 1,
+          imported: 1,
+          planningStatus: input.planningStatus,
+          publicationStatus: "private",
+          scheduleVersion: 1,
+        },
+        now,
+      ),
+      importAssignmentNotificationStatement(
+        database,
+        actor,
+        id,
+        input.title,
+        organizerScope(input),
+        now,
+      ),
+      ...directExtensionStatements,
+      reservingGuard.finalizationStatement,
+      reservingGuard.completionStatement,
+    ];
+    await runStaleGuardedBatch(database, directStatements, [
+      0,
+      1,
+      directStatements.length - 1,
+    ]);
+    return Object.freeze({
+      eventId: id,
+      outcome: "imported" as const,
+      reviewRequestId: null,
+    });
+  }
+  const draftInput: OrganizerEditableEventInput = Object.freeze({
+    ...input,
+    planningStatus: "draft" as const,
+  });
+  const draftSnapshot = eventSnapshot({
+    id,
+    organizationId: actor.organizationId,
+    slug,
+    input: draftInput,
+    contentVersion: 1,
+    scheduleVersion: 1,
+    createdByProfileId: actor.profileId,
+    updatedByProfileId: actor.profileId,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  });
+  const appliedSnapshot =
+    reservingGuard.outcome === "apply"
+      ? eventSnapshot({
+          id,
+          organizationId: actor.organizationId,
+          slug,
+          input,
+          contentVersion: 2,
+          scheduleVersion: 2,
+          createdByProfileId: actor.profileId,
+          updatedByProfileId: actor.profileId,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        })
+      : null;
+  const nonReservingGuard = await prepareNonReservingScheduleGuard(
+    database,
+    identity,
+    actor,
+    {
+      allDayEndDateExclusive:
+        draftInput.schedule.allDayEndDateExclusive,
+      allDayStartDate: draftInput.schedule.allDayStartDate,
+      bufferAfterMinutes: draftInput.bufferAfterMinutes,
+      bufferBeforeMinutes: draftInput.bufferBeforeMinutes,
+      clubId: draftInput.clubId,
+      endsAtUtc: draftInput.schedule.endsAtUtc,
+      eventId: id,
+      expectedContentVersion: 0,
+      expectedScheduleVersion: 0,
+      operation: "create",
+      organizerScope: organizerScope(draftInput),
+      planningStatus: "draft",
+      primaryOrganizerProfileId: draftInput.primaryOrganizerProfileId,
+      proposedContentVersion: 1,
+      proposedScheduleVersion: 1,
+      scheduleShape: draftInput.schedule.shape,
+      startsAtUtc: draftInput.schedule.startsAtUtc,
+      timeZone: draftInput.schedule.timeZone,
+      venueId: draftInput.venueId,
+    },
+    now,
+  );
+  const extensionStatements = transactionExtension(
+    Object.freeze({
+      actorProfileId: actor.profileId,
+      eventId: id,
+      organizationId: actor.organizationId,
+      occurredAt: now,
+      reviewRequestId:
+        reservingGuard.outcome === "pending_approval"
+          ? reservingGuard.reviewRequestId
+          : null,
+      scheduleOutcome:
+        reservingGuard.outcome === "apply"
+          ? "applied"
+          : "pending_approval",
+    }),
+  );
+  const statements: D1PreparedStatementLike[] = [];
+  const guardedIndexes: number[] = [];
+  statements.push(nonReservingGuard.intentStatement);
+  guardedIndexes.push(0);
+  statements.push(
+    database.prepare(INSERT_EVENT_SQL).bind(
+      id,
+      actor.organizationId,
+      draftInput.clubId,
+      draftInput.programId,
+      draftInput.eventLaneId,
+      draftInput.categoryId,
+      draftInput.venueId,
+      draftInput.primaryOrganizerProfileId,
+      draftInput.title,
+      slug,
+      draftInput.summary,
+      draftInput.description,
+      draftInput.privateNotes,
+      draftInput.privateMeetingDetails,
+      draftInput.meetupEventUrl,
+      "draft",
+      draftInput.schedule.shape,
+      draftInput.schedule.startsAtUtc,
+      draftInput.schedule.endsAtUtc,
+      draftInput.schedule.timeZone,
+      draftInput.schedule.allDayStartDate,
+      draftInput.schedule.allDayEndDateExclusive,
+      draftInput.bufferBeforeMinutes,
+      draftInput.bufferAfterMinutes,
+      actor.profileId,
+      actor.profileId,
+      now,
+      now,
+    ),
+  );
+  statements.push(
+    ...coOrganizerInsertStatements(
+      database,
+      actor,
+      id,
+      draftInput,
+    ),
+  );
+  statements.push(
+    nonReservingGuard.incidentStatement,
+    database.prepare(INSERT_REVISION_SQL).bind(
+      createId("organizer-event-revision"),
+      actor.organizationId,
+      id,
+      1,
+      1,
+      "created",
+      JSON.stringify(draftSnapshot),
+      actor.profileId,
+    ),
+    auditStatement(database, actor, id, "organizer_event.created", {
+      contentVersion: 1,
+      planningStatus: "draft",
+      publicationStatus: "private",
+      requestedPlanningStatus: input.planningStatus,
+      scheduleVersion: 1,
+    }, now),
+  );
+  guardedIndexes.push(statements.length);
+  statements.push(nonReservingGuard.completionStatement);
+  if (reservingGuard.outcome === "apply") {
+    statements.push(
+      ...reservingGuard.invalidationStatements,
+      reservingGuard.intentStatement,
+      reservingGuard.incidentStatement,
+      reservingGuard.overrideStatement,
+    );
+    guardedIndexes.push(statements.length);
+    statements.push(
+      database.prepare(UPDATE_IMPORTED_RESERVING_EVENT_SQL).bind(
+        input.planningStatus,
+        actor.profileId,
+        now,
+        id,
+        actor.organizationId,
+        reservingGuard.intentId,
+        input.planningStatus,
+      ),
+      database.prepare(INSERT_GUARDED_REVISION_SQL).bind(
+        createId("organizer-event-revision"),
+        actor.organizationId,
+        id,
+        2,
+        2,
+        "updated",
+        JSON.stringify(appliedSnapshot),
+        actor.profileId,
+      ),
+      auditStatement(
+        database,
+        actor,
+        id,
+        input.planningStatus === "tentative_hold"
+          ? "organizer_event.hold_placed"
+          : "organizer_event.confirmed",
+        {
+          contentVersion: 2,
+          imported: 1,
+          planningStatus: input.planningStatus,
+          scheduleVersion: 2,
+        },
+        now,
+      ),
+      reservingGuard.finalizationStatement,
+    );
+    guardedIndexes.push(statements.length);
+    statements.push(reservingGuard.completionStatement);
+  } else {
+    guardedIndexes.push(statements.length);
+    statements.push(...reservingGuard.reviewStatements);
+  }
+  statements.push(
+    importAssignmentNotificationStatement(
+      database,
+      actor,
+      id,
+      draftInput.title,
+      organizerScope(draftInput),
+      now,
+    ),
+    ...extensionStatements,
+  );
+  await runStaleGuardedBatch(database, statements, guardedIndexes);
+  return Object.freeze({
+    eventId: id,
+    outcome:
+      reservingGuard.outcome === "pending_approval"
+        ? ("pending_approval" as const)
+        : ("imported" as const),
+    reviewRequestId:
+      reservingGuard.outcome === "pending_approval"
+        ? reservingGuard.reviewRequestId
+        : null,
+  });
 }
 
 export async function updateOrganizerEvent(
@@ -1813,22 +2346,31 @@ function coOrganizerInsertStatements(
   eventId: string,
   input: OrganizerEditableEventInput,
 ): D1PreparedStatementLike[] {
-  return input.coOrganizerProfileIds.map((profileId) =>
+  if (input.coOrganizerProfileIds.length === 0) return [];
+  const rows = input.coOrganizerProfileIds.map((profileId) => ({
+    id: createId("organizer-event-organizer"),
+    profileId,
+  }));
+  return [
     database
       .prepare(
         `INSERT INTO organizer_event_organizers (
            id, organization_id, organizer_event_id, profile_id,
            created_by_profile_id
-         ) VALUES (?, ?, ?, ?, ?)`,
+         )
+         SELECT json_extract(row.value, '$.id'),
+                ?, ?,
+                json_extract(row.value, '$.profileId'),
+                ?
+         FROM json_each(?) AS row`,
       )
       .bind(
-        createId("organizer-event-organizer"),
         actor.organizationId,
         eventId,
-        profileId,
         actor.profileId,
+        JSON.stringify(rows),
       ),
-  );
+  ];
 }
 
 function auditStatement(
@@ -1878,6 +2420,62 @@ function assignmentNotificationStatements(
         },
       });
     });
+}
+
+function importAssignmentNotificationStatement(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  eventId: string,
+  title: string,
+  nextScope: readonly string[],
+  createdAt: number,
+): D1PreparedStatementLike {
+  const recipients = Object.freeze(
+    [...new Set(nextScope)]
+      .filter((profileId) => profileId !== actor.profileId)
+      .sort(),
+  );
+  return database
+    .prepare(
+      `INSERT INTO notifications (
+         id, organization_id, recipient_profile_id, type,
+         payload_json, read_at, created_at, deleted_at
+       )
+       SELECT 'notification:' || lower(hex(randomblob(16))),
+              ?, profile.id, 'event_assignment',
+              json_object('eventId', ?, 'title', ?),
+              NULL, ?, NULL
+       FROM json_each(?) AS recipient
+       INNER JOIN profiles AS profile
+         ON profile.id = CAST(recipient.value AS TEXT)
+        AND profile.status = 'active'
+        AND profile.deleted_at IS NULL
+       LEFT JOIN organizer_profile_preferences AS preference
+         ON preference.profile_id = profile.id
+        AND preference.organization_id = ?
+       WHERE recipient.type = 'text'
+         AND EXISTS (
+           SELECT 1
+           FROM organization_memberships AS membership
+           WHERE membership.organization_id = ?
+             AND membership.profile_id = profile.id
+             AND membership.status = 'active'
+             AND membership.deleted_at IS NULL
+         )
+         AND COALESCE(
+               preference.notification_preference_mode,
+               'all_relevant'
+             ) = 'all_relevant'`,
+    )
+    .bind(
+      actor.organizationId,
+      eventId,
+      title,
+      createdAt,
+      JSON.stringify(recipients),
+      actor.organizationId,
+      actor.organizationId,
+    );
 }
 
 function organizerScope(

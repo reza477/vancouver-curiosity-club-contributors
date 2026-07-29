@@ -35,6 +35,9 @@ export const NOTIFICATION_TYPES = [
   "publication_failed",
   "public_event_cancelled",
   "public_schedule_changed",
+  "form_submission_received",
+  "form_submission_assigned",
+  "cms_starter_copy_skipped",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -87,6 +90,18 @@ export type SafeNotificationPayload =
         | "publication_failed"
         | "public_event_cancelled"
         | "public_schedule_changed";
+    }>
+  | Readonly<{
+      formKey: string;
+      publicReference: string;
+      status: "new" | "in_review" | "responded" | "archived";
+      submissionId: string;
+      type: "form_submission_assigned" | "form_submission_received";
+    }>
+  | Readonly<{
+      pageId: string;
+      pageSlug: "contact" | "get-involved" | "host-an-event" | "privacy";
+      type: "cms_starter_copy_skipped";
     }>;
 
 export type NotificationDto = Readonly<{
@@ -121,6 +136,9 @@ const IMPORTANT_NOTIFICATION_TYPES = new Set<NotificationType>([
   "publication_failed",
   "public_event_cancelled",
   "public_schedule_changed",
+  "form_submission_received",
+  "form_submission_assigned",
+  "cms_starter_copy_skipped",
 ]);
 
 export async function listNotifications(
@@ -532,6 +550,40 @@ export function normalizeNotificationPayload(
     throw validationError();
   }
   const type = parseEnum(payload.type, NOTIFICATION_TYPES, "type");
+  if (type === "cms_starter_copy_skipped") {
+    return Object.freeze({
+      type,
+      pageId: parseIdentifier(payload.pageId, "pageId"),
+      pageSlug: parseEnum(
+        payload.pageSlug,
+        ["contact", "get-involved", "host-an-event", "privacy"] as const,
+        "pageSlug",
+      ),
+    });
+  }
+  if (
+    type === "form_submission_assigned" ||
+    type === "form_submission_received"
+  ) {
+    return Object.freeze({
+      type,
+      formKey: safeDisplayText(payload.formKey, "formKey", 64),
+      publicReference: safeDisplayText(
+        payload.publicReference,
+        "publicReference",
+        96,
+      ),
+      status: parseEnum(
+        payload.status,
+        ["new", "in_review", "responded", "archived"] as const,
+        "status",
+      ),
+      submissionId: parseIdentifier(
+        payload.submissionId,
+        "submissionId",
+      ),
+    });
+  }
   if (
     type === "conflict_approved" ||
     type === "conflict_created" ||
@@ -705,6 +757,12 @@ function parseBoolean(value: unknown, path: string): boolean {
 function withoutType(
   payload: SafeNotificationPayload,
 ): Readonly<Record<string, string>> {
+  if (payload.type === "cms_starter_copy_skipped") {
+    return Object.freeze({
+      pageId: payload.pageId,
+      pageSlug: payload.pageSlug,
+    });
+  }
   if (
     payload.type === "conflict_approved" ||
     payload.type === "conflict_created" ||

@@ -8,7 +8,7 @@ import {
   DATABASE_INVARIANT_TRIGGER_NAMES,
   DATABASE_INVARIANT_TRIGGER_STATEMENTS,
   DATABASE_INVARIANT_VERSION,
-  PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES,
+  PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_NAMES,
   ensureDatabaseInvariants,
   getExpectedDatabaseInvariantFingerprint,
   normalizeTriggerDefinition,
@@ -20,8 +20,10 @@ import {
 } from "../../lib/server/organizer/publication-invariant-sql.ts";
 import {
   PHASE6_INVARIANT_COUNT_SQL,
-  PHASE6_INVARIANT_TRIGGER_STATEMENTS,
 } from "../../lib/server/database/phase6-invariant-sql.ts";
+import {
+  PHASE7_INVARIANT_TRIGGER_STATEMENTS,
+} from "../../lib/server/database/phase7-invariant-sql.ts";
 import { MAX_DATABASE_INVARIANT_READY_ATTEMPTS } from "./invariant-ready.mjs";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
@@ -153,17 +155,17 @@ test("concurrent isolate initialization installs one exact durable guard set", a
   const database = newDatabase();
   t.after(() => database.close());
   const expectedTriggerCount =
-    PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES.length +
-    PHASE6_INVARIANT_TRIGGER_STATEMENTS.length;
+    PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_NAMES.length +
+    PHASE7_INVARIANT_TRIGGER_STATEMENTS.length;
   assert.equal(
     DATABASE_INVARIANT_TRIGGER_NAMES.length,
     expectedTriggerCount,
-    "the v6 contract retains every prior guard and adds every Phase 6 guard",
+    "the v7 contract retains every prior guard and adds every Phase 7 guard",
   );
   assert.equal(
     new Set(DATABASE_INVARIANT_TRIGGER_NAMES).size,
     expectedTriggerCount,
-    "the composed v6 trigger contract contains no duplicate names",
+    "the composed v7 trigger contract contains no duplicate names",
   );
   const firstCounter = countedBinding(database);
   const secondCounter = countedBinding(database);
@@ -206,18 +208,18 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
   );
   const expectedEmptyTrace = [
     ...Array.from(
-      { length: 5 },
+      { length: 6 },
       () => ({
         counts: { batchLengths: [39], statementCount: 46 },
         status: "repaired",
       }),
     ),
     {
-      counts: { batchLengths: [24], statementCount: 31 },
+      counts: { batchLengths: [21], statementCount: 28 },
       status: "repaired",
     },
     {
-      counts: { batchLengths: [24], statementCount: 33 },
+      counts: { batchLengths: [25], statementCount: 34 },
       status: "repaired",
     },
     {
@@ -228,7 +230,7 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
   assert.deepEqual(
     emptyAttempts,
     expectedEmptyTrace,
-    "empty v6 initialization uses seven bounded repair responses before the terminal ready response",
+    "empty v7 initialization uses eight bounded repair responses before the terminal ready response",
   );
   assert.equal(emptyAttempts.at(-1)?.status, "ready");
   assert.ok(
@@ -372,18 +374,18 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
       status: "repaired",
     },
     ...Array.from(
-      { length: 5 },
+      { length: 6 },
       () => ({
         counts: { batchLengths: [39], statementCount: 46 },
         status: "repaired",
       }),
     ),
     {
-      counts: { batchLengths: [24], statementCount: 31 },
+      counts: { batchLengths: [21], statementCount: 28 },
       status: "repaired",
     },
     {
-      counts: { batchLengths: [24], statementCount: 33 },
+      counts: { batchLengths: [25], statementCount: 34 },
       status: "repaired",
     },
     {
@@ -394,7 +396,7 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
   assert.deepEqual(
     legacyAttempts,
     expectedLegacyTrace,
-    "one policy repair, twelve one-record attribution adoptions, one set-based taxonomy adoption, five full guard-repair batches, two tail repair batches, and one final ready request are required",
+    "one policy repair, twelve one-record attribution adoptions, one set-based taxonomy adoption, six full guard-repair batches, two tail repair batches, and one final ready request are required",
   );
   assert.equal(legacyAttempts.at(-1)?.status, "ready");
   assert.ok(
@@ -572,8 +574,9 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
     { batchLengths: [39], statementCount: 46 },
     { batchLengths: [39], statementCount: 46 },
     { batchLengths: [39], statementCount: 46 },
-    { batchLengths: [24], statementCount: 31 },
-    { batchLengths: [24], statementCount: 33 },
+    { batchLengths: [39], statementCount: 46 },
+    { batchLengths: [21], statementCount: 28 },
+    { batchLengths: [25], statementCount: 34 },
   ];
   for (const [index, expectedCounts] of expectedColdTrace.entries()) {
     const request = countedBinding(database);
@@ -611,8 +614,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(missing.binding), "repaired");
   assertWithinD1StatementCap(missing, "missing-trigger repair");
   assert.deepEqual(missing.counts(), {
-    batchLengths: [25],
-    statementCount: 30,
+    batchLengths: [26],
+    statementCount: 31,
   });
 
   database.exec(`
@@ -627,8 +630,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(mismatch.binding), "repaired");
   assertWithinD1StatementCap(mismatch, "single-mismatch repair");
   assert.deepEqual(mismatch.counts(), {
-    batchLengths: [26],
-    statementCount: 31,
+    batchLengths: [27],
+    statementCount: 32,
   });
   assert.deepEqual(
     await normalizedTriggerDefinitions(database),
@@ -700,8 +703,8 @@ test("a resolved same-isolate result never masks another isolate's invalidation"
     "repaired",
   );
   assert.deepEqual(firstIsolate.counts(), {
-    batchLengths: [25],
-    statementCount: 34,
+    batchLengths: [26],
+    statementCount: 35,
   });
   assertWithinD1StatementCap(
     firstIsolate,

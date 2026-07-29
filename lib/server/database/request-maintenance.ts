@@ -7,16 +7,20 @@ import {
   reconcileDueOrganizerPublications,
   type PublicationReconciliationResult,
 } from "../organizer/publication";
+import {
+  reconcilePhase7StarterPageCopy,
+  type Phase7StarterCopyReconciliationResult,
+} from "../organizer/cms";
 
 export type RequestMaintenanceResult =
   | Readonly<{ kind: "continue" }>
   | Readonly<{
       kind: "redirect";
-      source: "meetup" | "publication";
+      source: "cms" | "meetup" | "publication";
     }>
   | Readonly<{
       kind: "unavailable";
-      source: "meetup" | "publication";
+      source: "cms" | "meetup" | "publication";
     }>;
 
 type RequestMaintenanceServices = Readonly<{
@@ -26,6 +30,9 @@ type RequestMaintenanceServices = Readonly<{
   refreshMeetup: (
     database: D1DatabaseLike,
   ) => Promise<MeetupRefreshResult>;
+  reconcileStarterCopy?: (
+    database: D1DatabaseLike,
+  ) => Promise<Phase7StarterCopyReconciliationResult>;
 }>;
 
 const DEFAULT_SERVICES: RequestMaintenanceServices = Object.freeze({
@@ -33,6 +40,8 @@ const DEFAULT_SERVICES: RequestMaintenanceServices = Object.freeze({
     reconcileDueOrganizerPublications(database, { limit: 1 }),
   refreshMeetup: (database) =>
     refreshMeetupCalendarSourceIfDue(database),
+  reconcileStarterCopy: (database) =>
+    reconcilePhase7StarterPageCopy(database),
 });
 
 const CONTINUE = Object.freeze({
@@ -47,6 +56,26 @@ export async function runRequestMaintenance(
   }>,
   services: RequestMaintenanceServices = DEFAULT_SERVICES,
 ): Promise<RequestMaintenanceResult> {
+  if (
+    shouldReconcilePhase7StarterCopy(
+      request.method,
+      request.pathname,
+    )
+  ) {
+    let reconciliation: Phase7StarterCopyReconciliationResult;
+    try {
+      reconciliation = await (
+        services.reconcileStarterCopy ??
+        DEFAULT_SERVICES.reconcileStarterCopy!
+      )(database);
+    } catch {
+      return unavailable("cms");
+    }
+    if (reconciliation === "processed") {
+      return redirect("cms");
+    }
+  }
+
   if (
     shouldReconcileScheduledPublication(
       request.method,
@@ -94,6 +123,19 @@ export async function runRequestMaintenance(
   return CONTINUE;
 }
 
+export function shouldReconcilePhase7StarterCopy(
+  method: string,
+  pathname: string,
+): boolean {
+  if (method !== "GET" && method !== "HEAD") return false;
+  return (
+    pathname === "/contact" ||
+    pathname === "/get-involved" ||
+    pathname === "/host-an-event" ||
+    pathname === "/privacy"
+  );
+}
+
 export function shouldReconcileScheduledPublication(
   method: string,
   pathname: string,
@@ -133,13 +175,13 @@ function attemptedMeetupRefresh(
 }
 
 function redirect(
-  source: "meetup" | "publication",
+  source: "cms" | "meetup" | "publication",
 ): RequestMaintenanceResult {
   return Object.freeze({ kind: "redirect", source });
 }
 
 function unavailable(
-  source: "meetup" | "publication",
+  source: "cms" | "meetup" | "publication",
 ): RequestMaintenanceResult {
   return Object.freeze({ kind: "unavailable", source });
 }

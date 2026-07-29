@@ -61,6 +61,7 @@ test("Phase 6 is exactly one additive retry-safe tokenizer migration", () => {
     [
       { idx: 14, tag: "0014_phase5_publication" },
       { idx: 15, tag: "0015_phase6_cms_media" },
+      { idx: 16, tag: "0016_phase7_import_export_forms" },
     ],
   );
   assert.equal(

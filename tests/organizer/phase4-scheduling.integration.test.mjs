@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
+import { authorizeOrganizerAccess } from "../../lib/server/auth/index.ts";
+import { runRequestMaintenance } from "../../lib/server/database/request-maintenance.ts";
 import {
   getOrganizerConflictPolicy,
   updateOrganizerConflictPolicy,
@@ -19,6 +21,15 @@ import {
   softDeleteOrganizerEvent,
   updateOrganizerEvent,
 } from "../../lib/server/organizer/events.ts";
+import {
+  applyNextCsvImportRow,
+  approveCsvImportBatch,
+  createCsvImportPreview,
+  getCsvImportBatch,
+  inspectCsvImportUpload,
+  listCsvImportBatches,
+  redactCsvImportSourcePayload,
+} from "../../lib/server/phase7/imports.ts";
 import {
   decideOrganizerConflictReview,
   performOrganizerLifecycleAction,
@@ -114,6 +125,1195 @@ test("a timed Draft becomes an active hold through the authoritative D1 write pa
       "organizer_event_id = ? AND schedule_version = ?",
       draft.id,
       draft.scheduleVersion + 1,
+    ),
+    1,
+  );
+});
+
+test("CSV inspection is rate-admitted once and consumed by only its exact authorized actor and file", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const ownerUpload = importUploadFixture(
+    "Owner inspected Draft",
+    "owner-inspection.csv",
+  );
+  const eventCountBefore = await countWhere(
+    database,
+    "organizer_events",
+    "organization_id = ?",
+    "org-main",
+  );
+  const ownerInspection = await inspectCsvImportUpload(
+    database,
+    ownerIdentity,
+    ownerUpload,
+  );
+  assert.equal(ownerInspection.dataRowCount, 1);
+  assert.equal(ownerInspection.headers.length, ownerUpload.headers.length);
+  assert.equal(ownerInspection.fileSha256.length, 64);
+  await assert.rejects(
+    createCsvImportPreview(database, administratorIdentity, {
+      ...ownerUpload,
+      headerSelections: ownerUpload.headers,
+      inspectionBatchId: ownerInspection.inspectionBatchId,
+    }),
+    (error) => error?.code === "stale_edit",
+  );
+  const ownerPreview = await createCsvImportPreview(
+    database,
+    ownerIdentity,
+    {
+      ...ownerUpload,
+      headerSelections: ownerUpload.headers,
+      inspectionBatchId: ownerInspection.inspectionBatchId,
+    },
+  );
+  assert.equal(
+    ownerPreview.batch.batchId,
+    ownerInspection.inspectionBatchId,
+  );
+  assert.equal(ownerPreview.batch.phase, "previewed");
+  assert.equal(ownerPreview.rows[0].matchSummary.club, "Main Club");
+  assert.equal(
+    ownerPreview.rows[0].matchSummary.primaryOrganizer,
+    "Owner",
+  );
+  assert.equal(ownerPreview.rows[0].mappingFields.includes("title"), true);
+  assert.equal(ownerPreview.rows[0].canSelect, true);
+  assert.equal(
+    await countWhere(
+      database,
+      "audit_logs",
+      "entity_id = ? AND action = 'import.batch_created'",
+      ownerInspection.inspectionBatchId,
+    ),
+    1,
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_rate_limits",
+      "organization_id = ? AND profile_id = ? AND action IN (?, ?) AND request_count = 1",
+      "org-main",
+      "profile-owner",
+      "csv_import_preview_15m",
+      "csv_import_batch_day",
+    ),
+    2,
+  );
+  await assert.rejects(
+    createCsvImportPreview(database, ownerIdentity, {
+      ...ownerUpload,
+      headerSelections: ownerUpload.headers,
+      inspectionBatchId: ownerInspection.inspectionBatchId,
+    }),
+    (error) => error?.code === "stale_edit",
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_events",
+      "organization_id = ?",
+      "org-main",
+    ),
+    eventCountBefore,
+  );
+
+  const adminUpload = importUploadFixture(
+    "Administrator inspected Draft",
+    "administrator-inspection.csv",
+  );
+  const adminInspection = await inspectCsvImportUpload(
+    database,
+    administratorIdentity,
+    adminUpload,
+  );
+  const adminPreview = await createCsvImportPreview(
+    database,
+    administratorIdentity,
+    {
+      ...adminUpload,
+      headerSelections: adminUpload.headers,
+      inspectionBatchId: adminInspection.inspectionBatchId,
+    },
+  );
+  assert.equal(adminPreview.batch.phase, "previewed");
+  await assert.rejects(
+    inspectCsvImportUpload(
+      database,
+      assignedOrganizerIdentity,
+      importUploadFixture("Denied Organizer Draft", "denied.csv"),
+    ),
+    (error) => error?.code === "authorization_denied",
+  );
+});
+
+test("CSV inspection permits custom headers before explicit required-field mapping", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const canonical = importUploadFixture(
+    "Custom mapped Draft",
+    "custom-mapping.csv",
+  );
+  const customHeaders = Object.freeze([
+    "Event title supplied by board",
+    ...canonical.headers.slice(1),
+  ]);
+  const lines = new TextDecoder().decode(canonical.bytes).split("\r\n");
+  const upload = Object.freeze({
+    ...canonical,
+    bytes: new TextEncoder().encode(
+      `${customHeaders.join(",")}\r\n${lines[1]}\r\n`,
+    ),
+    headers: customHeaders,
+  });
+  const inspection = await inspectCsvImportUpload(
+    database,
+    ownerIdentity,
+    upload,
+  );
+  assert.equal(inspection.suggestedSelections[0], "ignore");
+  const preview = await createCsvImportPreview(database, ownerIdentity, {
+    ...upload,
+    headerSelections: Object.freeze([
+      "title",
+      ...inspection.suggestedSelections.slice(1),
+    ]),
+    inspectionBatchId: inspection.inspectionBatchId,
+  });
+  assert.equal(preview.rows[0].normalized.title, "Custom mapped Draft");
+  assert.deepEqual(preview.mappingDecisions[0], {
+    canonicalField: "title",
+    sourceHeader: "Event title supplied by board",
+  });
+});
+
+test("CSV import history uses stable bounded cursor pagination and safe provenance fields", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const previews = [];
+  for (const sequence of [1, 2, 3]) {
+    previews.push(
+      await createCsvRowsPreview(database, [{
+        attendance_mode: "in_person",
+        club: "main-club",
+        planning_status: "draft",
+        primary_organizer_email: "owner@example.test",
+        publication_status: "private",
+        schedule_type: "unscheduled",
+        title: `History Draft ${sequence}`,
+      }], `history-${sequence}`),
+    );
+  }
+  const first = await listCsvImportBatches(
+    database,
+    ownerIdentity,
+    { limit: 2 },
+  );
+  assert.equal(first.total, 3);
+  assert.equal(first.items.length, 2);
+  assert.equal(first.hasMore, true);
+  assert.equal(typeof first.nextCursor, "string");
+  assert.equal(first.items[0].actorDisplayName, "Owner");
+  assert.equal(first.items[0].templateVersion, 1);
+  assert.equal(first.items[0].parserVersion, 1);
+  assert.equal(first.items[0].mappingFingerprint.length, 64);
+  assert.equal(first.items[0].approvedAt, null);
+  assert.equal(first.items[0].startedAt, null);
+  assert.equal(first.items[0].completedAt, null);
+  assert.equal(first.items[0].redactionEligible, false);
+  const second = await listCsvImportBatches(
+    database,
+    ownerIdentity,
+    {
+      cursor: first.nextCursor,
+      limit: 2,
+    },
+  );
+  assert.equal(second.total, 3);
+  assert.equal(second.items.length, 1);
+  assert.equal(second.hasMore, false);
+  assert.equal(second.nextCursor, null);
+  assert.equal(
+    new Set([
+      ...first.items.map((item) => item.batchId),
+      ...second.items.map((item) => item.batchId),
+    ]).size,
+    3,
+  );
+  const filtered = await listCsvImportBatches(
+    database,
+    administratorIdentity,
+    {
+      limit: 10,
+      phase: "previewed",
+      sourceNamespace: "history-2",
+    },
+  );
+  assert.equal(filtered.total, 1);
+  assert.equal(filtered.items[0].batchId, previews[1].batch.batchId);
+  await assert.rejects(
+    listCsvImportBatches(database, assignedOrganizerIdentity),
+    (error) => error?.code === "authorization_denied",
+  );
+});
+
+test("CSV import detail rows use stable bounded pagination instead of one aggregate", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const preview = await createCsvRowsPreview(
+    database,
+    [1, 2, 3].map((sequence) => ({
+      attendance_mode: "undecided",
+      club: "main-club",
+      planning_status: "idea",
+      primary_organizer_email: "owner@example.test",
+      publication_status: "private",
+      schedule_type: "unscheduled",
+      title: `Paged private idea ${sequence}`,
+    })),
+    "phase7-paged-detail",
+  );
+  const first = await getCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    { limit: 2 },
+  );
+  assert.equal(first.rows.length, 2);
+  assert.deepEqual(first.rows.map((row) => row.sourceRowNumber), [2, 3]);
+  assert.deepEqual(first.rowPage, {
+    hasMore: true,
+    nextCursor: first.rowPage.nextCursor,
+    total: 3,
+  });
+  assert.equal(typeof first.rowPage.nextCursor, "string");
+  const second = await getCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    { cursor: first.rowPage.nextCursor, limit: 2 },
+  );
+  assert.deepEqual(second.rows.map((row) => row.sourceRowNumber), [4]);
+  assert.deepEqual(second.rowPage, {
+    hasMore: false,
+    nextCursor: null,
+    total: 3,
+  });
+  assert.deepEqual(
+    [...first.rows, ...second.rows].map((row) => row.rowId),
+    preview.rows.map((row) => row.rowId),
+  );
+  await assert.rejects(
+    getCsvImportBatch(
+      database,
+      ownerIdentity,
+      preview.batch.batchId,
+      { cursor: "not-a-cursor", limit: 2 },
+    ),
+    (error) => error?.code === "validation_failed",
+  );
+});
+
+test("CSV source redaction is Owner-only, terminal-only, and age-gated", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const nonterminal = await createImportPreview(database, {
+    planningStatus: "draft",
+    title: "Nonterminal redaction fixture",
+  });
+  await assert.rejects(
+    redactCsvImportSourcePayload(
+      database,
+      ownerIdentity,
+      nonterminal.batch.batchId,
+      nonterminal.batch.version,
+    ),
+    (error) => error?.code === "stale_edit",
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "audit_logs",
+      "entity_id = ? AND action = 'import.source_payload_redacted'",
+      nonterminal.batch.batchId,
+    ),
+    0,
+  );
+
+  const preview = await createImportPreview(database, {
+    planningStatus: "draft",
+    title: "Terminal redaction fixture",
+  });
+  const completed = await approveCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    {
+      decisions: [{
+        action: "skip",
+        rowId: preview.rows[0].rowId,
+      }],
+      expectedVersion: preview.batch.version,
+      previewFingerprint: preview.previewFingerprint,
+    },
+  );
+  assert.equal(completed.batch.phase, "completed");
+  await assert.rejects(
+    redactCsvImportSourcePayload(
+      database,
+      administratorIdentity,
+      completed.batch.batchId,
+      completed.batch.version,
+    ),
+    (error) => error?.code === "authorization_denied",
+  );
+  await assert.rejects(
+    redactCsvImportSourcePayload(
+      database,
+      ownerIdentity,
+      completed.batch.batchId,
+      completed.batch.version,
+    ),
+    (error) => error?.code === "stale_edit",
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "audit_logs",
+      "entity_id = ? AND action = 'import.source_payload_redacted'",
+      completed.batch.batchId,
+    ),
+    0,
+  );
+
+  setD1Now(
+    database,
+    completed.batch.createdAt + 90 * 24 * 60 * 60_000,
+  );
+  const redacted = await redactCsvImportSourcePayload(
+    database,
+    ownerIdentity,
+    completed.batch.batchId,
+    completed.batch.version,
+  );
+  assert.equal(redacted.batch.phase, "redacted");
+  assert.equal(redacted.batch.sourcePayloadRedactedAt !== null, true);
+  assert.equal(redacted.rows[0].normalized, null);
+  assert.equal(
+    await countWhere(
+      database,
+      "import_rows",
+      "import_batch_id = ? AND source_payload_json = ? AND normalized_payload_json = ?",
+      completed.batch.batchId,
+      '{"redacted":true}',
+      '{"redacted":true}',
+    ),
+    1,
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "audit_logs",
+      "entity_id = ? AND action = 'import.source_payload_redacted' AND metadata_json = '{}'",
+      completed.batch.batchId,
+    ),
+    1,
+  );
+});
+
+test("CSV source redaction accepts an exact zero-row terminal envelope without false stale residue", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const createdAt = Date.UTC(2031, 0, 1);
+  setD1Now(database, createdAt);
+  const headers = importUploadFixture(
+    "Unused zero-row title",
+    "zero-row-redaction.csv",
+  ).headers;
+  const inspection = await inspectCsvImportUpload(
+    database,
+    ownerIdentity,
+    {
+      bytes: new TextEncoder().encode(`${headers.join(",")}\r\n`),
+      contentType: "text/csv",
+      fileName: "zero-row-redaction.csv",
+      sourceLabel: "Zero-row redaction fixture",
+      sourceNamespace: "zero-row-redaction",
+    },
+  );
+  assert.equal(inspection.dataRowCount, 0);
+  setD1Now(database, createdAt + 1);
+  const failed = await database
+    .prepare(
+      `UPDATE import_batch_details
+       SET phase = 'failed',
+           outcome_code = 'failed_before_any_row_application',
+           version = version + 1,
+           updated_at = ?,
+           updated_by_profile_id = 'profile-owner'
+       WHERE import_batch_id = ?
+         AND organization_id = 'org-main'
+         AND phase = 'uploaded'
+         AND version = 1
+         AND total_row_count = 0`,
+    )
+    .bind(createdAt + 1, inspection.inspectionBatchId)
+    .run();
+  assert.equal(failed.meta.changes, 1);
+  await ensureReady(database);
+
+  await assert.rejects(
+    redactCsvImportSourcePayload(
+      database,
+      administratorIdentity,
+      inspection.inspectionBatchId,
+      2,
+    ),
+    (error) => error?.code === "authorization_denied",
+  );
+  await assert.rejects(
+    redactCsvImportSourcePayload(
+      database,
+      ownerIdentity,
+      inspection.inspectionBatchId,
+      2,
+    ),
+    (error) => error?.code === "stale_edit",
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "audit_logs",
+      "entity_id = ? AND action = 'import.source_payload_redacted'",
+      inspection.inspectionBatchId,
+    ),
+    0,
+  );
+
+  setD1Now(database, createdAt + 90 * 24 * 60 * 60_000);
+  const redacted = await redactCsvImportSourcePayload(
+    database,
+    ownerIdentity,
+    inspection.inspectionBatchId,
+    2,
+  );
+  assert.equal(redacted.batch.phase, "redacted");
+  assert.equal(redacted.batch.version, 3);
+  assert.equal(redacted.batch.totalRowCount, 0);
+  assert.equal(redacted.rows.length, 0);
+  assert.equal(
+    await countWhere(
+      database,
+      "audit_logs",
+      "entity_id = ? AND action = 'import.source_payload_redacted' AND metadata_json = '{}'",
+      inspection.inspectionBatchId,
+    ),
+    1,
+  );
+});
+
+test("CSV approval rejects stale envelopes and two-row application resumes durably without duplication", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const preview = await createCsvRowsPreview(database, [
+    {
+      attendance_mode: "undecided",
+      club: "main-club",
+      planning_status: "idea",
+      primary_organizer_email: "owner@example.test",
+      publication_status: "private",
+      schedule_type: "unscheduled",
+      title: "Resumable imported idea one",
+    },
+    {
+      attendance_mode: "undecided",
+      club: "main-club",
+      planning_status: "idea",
+      primary_organizer_email: "owner@example.test",
+      publication_status: "private",
+      schedule_type: "unscheduled",
+      title: "Resumable imported idea two",
+    },
+  ], "phase7-resumable");
+  const decisions = preview.rows.map((row) => ({
+    action: "selected",
+    rowId: row.rowId,
+  }));
+  await assert.rejects(
+    approveCsvImportBatch(
+      database,
+      ownerIdentity,
+      preview.batch.batchId,
+      {
+        decisions,
+        expectedVersion: preview.batch.version + 1,
+        previewFingerprint: preview.previewFingerprint,
+      },
+    ),
+    (error) => error?.code === "stale_edit",
+  );
+  await assert.rejects(
+    approveCsvImportBatch(
+      database,
+      ownerIdentity,
+      preview.batch.batchId,
+      {
+        decisions,
+        expectedVersion: preview.batch.version,
+        previewFingerprint: "0".repeat(64),
+      },
+    ),
+    (error) => error?.code === "stale_edit",
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_events",
+      "organization_id = ? AND title LIKE 'Resumable imported idea %'",
+      "org-main",
+    ),
+    0,
+  );
+  const approved = await approveCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    {
+      decisions,
+      expectedVersion: preview.batch.version,
+      previewFingerprint: preview.previewFingerprint,
+    },
+  );
+  const first = await applyNextCsvImportRow(
+    database,
+    ownerIdentity,
+    approved.batch.batchId,
+    approved.batch.version,
+  );
+  assert.equal(first.row.resultCode, "imported_private");
+  assert.equal(first.batch.batch.phase, "applying");
+  assert.equal(first.batch.batch.importedRowCount, 1);
+  assert.equal(first.batch.batch.pendingRowCount, 1);
+  const reopened = await getCsvImportBatch(
+    database,
+    administratorIdentity,
+    approved.batch.batchId,
+  );
+  assert.equal(reopened.batch.importedRowCount, 1);
+  assert.equal(reopened.batch.pendingRowCount, 1);
+  const second = await applyNextCsvImportRow(
+    database,
+    administratorIdentity,
+    reopened.batch.batchId,
+    reopened.batch.version,
+  );
+  assert.equal(second.row.resultCode, "imported_private");
+  assert.equal(second.batch.batch.phase, "completed");
+  assert.equal(second.batch.batch.importedRowCount, 2);
+  assert.equal(second.batch.batch.pendingRowCount, 0);
+  const retry = await applyNextCsvImportRow(
+    database,
+    ownerIdentity,
+    second.batch.batch.batchId,
+    second.batch.batch.version,
+  );
+  assert.equal(retry.row.resultCode, "already_completed");
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_events",
+      "organization_id = ? AND title LIKE 'Resumable imported idea %'",
+      "org-main",
+    ),
+    2,
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "external_source_links",
+      "organization_id = ? AND sync_source_id = ?",
+      "org-main",
+      "phase7-resumable",
+    ),
+    2,
+  );
+});
+
+for (const planningStatus of ["tentative_hold", "confirmed"]) {
+  test(`CSV import applies an overlapping ${planningStatus} through Draft v1 and an authorized reserving v2 transition`, async (t) => {
+    const database = await newDatabase();
+    t.after(() => database.close());
+    await createConfirmedEvent(
+      database,
+      "Existing protected reservation",
+      "2032-08-15T18:30",
+      "2032-08-15T20:30",
+    );
+
+    const preview = await createImportPreview(database, {
+      planningStatus,
+      title: `Imported ${planningStatus}`,
+    });
+    assert.equal(preview.batch.phase, "previewed");
+    assert.equal(preview.rows.length, 1);
+    assert.equal(
+      preview.rows[0].warningCodes.includes(
+        "existing_schedule_conflict",
+      ),
+      true,
+    );
+    assert.equal(preview.conflictPolicyMode, "warn_reason");
+    assert.equal(preview.rows[0].conflictDetails.length, 1);
+    assert.equal(
+      preview.rows[0].conflictDetails[0].title,
+      "Existing protected reservation",
+    );
+    assert.equal(
+      preview.rows[0].conflictDetails[0].source,
+      "existing_organizer",
+    );
+    const approved = await approveCsvImportBatch(
+      database,
+      ownerIdentity,
+      preview.batch.batchId,
+      {
+        decisions: [{
+          action: "selected",
+          conflictReason: "Coordinated overlap for import test",
+          rowId: preview.rows[0].rowId,
+        }],
+        expectedVersion: preview.batch.version,
+        previewFingerprint: preview.previewFingerprint,
+      },
+    );
+    const applied = await applyNextCsvImportRow(
+      database,
+      ownerIdentity,
+      approved.batch.batchId,
+      approved.batch.version,
+    );
+    assert.equal(applied.row.resultCode, "imported_private");
+    assert.equal(applied.batch.batch.phase, "completed");
+    assert.equal(applied.batch.batch.importedRowCount, 1);
+    assert.equal(applied.batch.batch.failedRowCount, 0);
+    assert.equal(applied.batch.batch.pendingRowCount, 0);
+
+    const event = await getOrganizerEvent(
+      database,
+      ownerIdentity,
+      applied.row.eventId,
+    );
+    assert.equal(event.planningStatus, planningStatus);
+    assert.equal(event.publicationStatus, "private");
+    assert.equal(event.contentVersion, 2);
+    assert.equal(event.scheduleVersion, 2);
+    assert.equal(
+      await countWhere(
+        database,
+        "organizer_event_revisions",
+        "organizer_event_id = ?",
+        event.id,
+      ),
+      2,
+    );
+    assert.equal(
+      await countWhere(
+        database,
+        "organizer_conflict_overrides",
+        "organizer_event_id = ? AND proposed_schedule_version = 2",
+        event.id,
+      ),
+      1,
+    );
+    assert.equal(
+      await countWhere(
+        database,
+        "import_row_applications",
+        "target_organizer_event_id = ? AND application_state = 'imported'",
+        event.id,
+      ),
+      1,
+    );
+  });
+}
+
+test("CSV import approval terminally completes an all-skipped mixed preview without creating an event", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const existing = await createOrganizerEvent(
+    database,
+    ownerIdentity,
+    timedDraftInput({
+      meetupEventUrl:
+        "https://www.meetup.com/main-group/events/123456789/",
+      title: "Existing duplicate source",
+    }),
+  );
+  const beforeEvents = await countWhere(
+    database,
+    "organizer_events",
+    "organization_id = ?",
+    "org-main",
+  );
+  const preview = await createCsvRowsPreview(database, [
+    {
+      attendance_mode: "undecided",
+      club: "main-club",
+      planning_status: "idea",
+      publication_status: "private",
+      primary_organizer_email: "owner@example.test",
+      schedule_type: "unscheduled",
+      title: "Valid but skipped idea",
+    },
+    {
+      attendance_mode: "in_person",
+      club: "main-club",
+      end_date: "2032-08-16",
+      end_time: "20:30",
+      planning_status: "cancelled",
+      publication_status: "private",
+      primary_organizer_email: "owner@example.test",
+      schedule_type: "timed",
+      start_date: "2032-08-16",
+      start_time: "18:30",
+      title: "Invalid lifecycle",
+    },
+    {
+      attendance_mode: "in_person",
+      club: "main-club",
+      end_date: "2032-08-17",
+      end_time: "20:30",
+      meetup_url: existing.meetupEventUrl,
+      planning_status: "draft",
+      publication_status: "private",
+      primary_organizer_email: "owner@example.test",
+      schedule_type: "timed",
+      start_date: "2032-08-17",
+      start_time: "18:30",
+      title: "Hard Meetup duplicate",
+    },
+  ], "phase7-all-skipped");
+  assert.deepEqual(
+    preview.rows.map((row) => row.previewResultCode).sort(),
+    ["hard_duplicate", "invalid", "valid"],
+  );
+  const hardDuplicateRow = preview.rows.find(
+    (row) => row.previewResultCode === "hard_duplicate",
+  );
+  assert.ok(hardDuplicateRow);
+  assert.deepEqual(hardDuplicateRow.duplicateDetails, [
+    {
+      code: "hard_duplicate_meetup_url",
+      referenceId: existing.id,
+      source: "existing_event",
+      sourceRowNumber: null,
+      title: "Existing duplicate source",
+    },
+  ]);
+  const completed = await approveCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    {
+      decisions: preview.rows.map((row) => ({
+        action: "skip",
+        rowId: row.rowId,
+      })),
+      expectedVersion: preview.batch.version,
+      previewFingerprint: preview.previewFingerprint,
+    },
+  );
+  assert.equal(completed.batch.phase, "completed");
+  assert.equal(completed.batch.selectedRowCount, 0);
+  assert.equal(completed.batch.pendingRowCount, 0);
+  assert.equal(completed.batch.importedRowCount, 0);
+  assert.equal(completed.batch.failedRowCount, 0);
+  assert.equal(completed.batch.skippedRowCount, 3);
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_events",
+      "organization_id = ?",
+      "org-main",
+    ),
+    beforeEvents,
+  );
+  const retry = await applyNextCsvImportRow(
+    database,
+    ownerIdentity,
+    completed.batch.batchId,
+    completed.batch.version,
+  );
+  assert.equal(retry.row.resultCode, "already_completed");
+  assert.equal(retry.row.eventId, null);
+  assert.equal(
+    await countWhere(
+      database,
+      "audit_logs",
+      "entity_id = ? AND action = 'import.completed'",
+      completed.batch.batchId,
+    ),
+    1,
+  );
+});
+
+test("CSV import requiring administrator review stores one private Draft and one exact pending review", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  await setPolicy(database, "require_admin_approval");
+  await createConfirmedEvent(
+    database,
+    "Existing review collision",
+    "2032-08-15T18:30",
+    "2032-08-15T20:30",
+  );
+  const preview = await createImportPreview(database, {
+    planningStatus: "confirmed",
+    title: "Imported review Draft",
+  });
+  const approved = await approveCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    {
+      decisions: [{
+        action: "selected",
+        conflictReason: "Request Administrator review",
+        rowId: preview.rows[0].rowId,
+      }],
+      expectedVersion: preview.batch.version,
+      previewFingerprint: preview.previewFingerprint,
+    },
+  );
+  const applied = await applyNextCsvImportRow(
+    database,
+    ownerIdentity,
+    approved.batch.batchId,
+    approved.batch.version,
+  );
+  assert.equal(
+    applied.row.resultCode,
+    "imported_private_pending_administrator_review",
+  );
+  const event = await getOrganizerEvent(
+    database,
+    ownerIdentity,
+    applied.row.eventId,
+  );
+  assert.equal(event.planningStatus, "draft");
+  assert.equal(event.publicationStatus, "private");
+  assert.equal(event.contentVersion, 1);
+  assert.equal(event.scheduleVersion, 1);
+  assert.equal(
+    (
+      await row(
+        database,
+        `SELECT planning_status
+         FROM organizer_reservation_states
+         WHERE organizer_event_id = ?`,
+        event.id,
+      )
+    ).planning_status,
+    "draft",
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_conflict_review_requests",
+      "organizer_event_id = ? AND state = 'pending' AND requested_schedule_version = 2",
+      event.id,
+    ),
+    1,
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "import_row_applications",
+      "target_organizer_event_id = ? AND conflict_decision = 'administrator_review' AND result_code = 'imported_private_pending_administrator_review'",
+      event.id,
+    ),
+    1,
+  );
+});
+
+test("CSV direct-create path fails closed when a collision commits after the no-conflict read", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const preview = await createCsvRowsPreview(database, [{
+    attendance_mode: "in_person",
+    club: "main-club",
+    end_date: "2032-09-12",
+    end_time: "20:30",
+    planning_status: "confirmed",
+    publication_status: "private",
+    primary_organizer_email: "owner@example.test",
+    schedule_type: "timed",
+    start_date: "2032-09-12",
+    start_time: "18:30",
+    title: "Racing direct import",
+  }], "phase7-direct-race");
+  assert.equal(preview.rows[0].warningCodes.length, 0);
+  const approved = await approveCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    {
+      decisions: [{
+        action: "selected",
+        rowId: preview.rows[0].rowId,
+      }],
+      expectedVersion: preview.batch.version,
+      previewFingerprint: preview.previewFingerprint,
+    },
+  );
+
+  const originalBatch = database.batch.bind(database);
+  let batchCalls = 0;
+  let collisionCommitted = false;
+  const interceptedBatch = async (statements) => {
+    batchCalls += 1;
+    if (batchCalls === 2) {
+      database.batch = originalBatch;
+      await createConfirmedEvent(
+        database,
+        "Interleaved collision",
+        "2032-09-12T18:30",
+        "2032-09-12T20:30",
+      );
+      collisionCommitted = true;
+      database.batch = interceptedBatch;
+    }
+    return originalBatch(statements);
+  };
+  database.batch = interceptedBatch;
+  let applied;
+  try {
+    applied = await applyNextCsvImportRow(
+      database,
+      ownerIdentity,
+      approved.batch.batchId,
+      approved.batch.version,
+    );
+  } finally {
+    database.batch = originalBatch;
+  }
+  assert.equal(collisionCommitted, true);
+  assert.equal(applied.row.eventId, null);
+  assert.equal(applied.row.resultCode, "conflict_reason_required");
+  assert.equal(applied.batch.batch.phase, "completed_with_errors");
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_events",
+      "organization_id = ? AND title = 'Racing direct import'",
+      "org-main",
+    ),
+    0,
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "external_source_links",
+      "organization_id = ? AND sync_source_id = 'phase7-direct-race'",
+      "org-main",
+    ),
+    0,
+  );
+});
+
+test("CSV import rejects approval-policy drift without event or scheduling residue", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  await createConfirmedEvent(
+    database,
+    "Policy drift collision",
+    "2032-08-15T18:30",
+    "2032-08-15T20:30",
+  );
+  const preview = await createImportPreview(database, {
+    planningStatus: "confirmed",
+    title: "Policy drift import",
+  });
+  const approved = await approveCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    {
+      decisions: [{
+        action: "selected",
+        conflictReason: "Approved under warn policy",
+        rowId: preview.rows[0].rowId,
+      }],
+      expectedVersion: preview.batch.version,
+      previewFingerprint: preview.previewFingerprint,
+    },
+  );
+  await setPolicy(database, "require_admin_approval");
+  const applied = await applyNextCsvImportRow(
+    database,
+    ownerIdentity,
+    approved.batch.batchId,
+    approved.batch.version,
+  );
+  assert.equal(applied.row.eventId, null);
+  assert.equal(applied.row.resultCode, "stale_preview");
+  assert.equal(applied.batch.batch.phase, "completed_with_errors");
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_events",
+      "organization_id = ? AND title = 'Policy drift import'",
+      "org-main",
+    ),
+    0,
+  );
+});
+
+test("CSV max-organizer apply route stays below the whole Worker D1 statement cap", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const coOrganizerEmails = seedImportCoOrganizers(database, 12);
+  await createConfirmedEvent(
+    database,
+    "Existing max-organizer collision",
+    "2032-10-10T18:30",
+    "2032-10-10T20:30",
+  );
+  const preview = await createCsvRowsPreview(database, [{
+    attendance_mode: "in_person",
+    club: "main-club",
+    co_organizer_emails: coOrganizerEmails.join("|"),
+    end_date: "2032-10-10",
+    end_time: "20:30",
+    planning_status: "confirmed",
+    publication_status: "private",
+    primary_organizer_email: "owner@example.test",
+    schedule_type: "timed",
+    start_date: "2032-10-10",
+    start_time: "18:30",
+    title: "Max-organizer imported collision",
+  }], "phase7-max-organizer");
+  const approved = await approveCsvImportBatch(
+    database,
+    ownerIdentity,
+    preview.batch.batchId,
+    {
+      decisions: [{
+        action: "selected",
+        conflictReason: "Max-organizer coordinated overlap",
+        rowId: preview.rows[0].rowId,
+      }],
+      expectedVersion: preview.batch.version,
+      previewFingerprint: preview.previewFingerprint,
+    },
+  );
+  const originalPrepare = database.prepare.bind(database);
+  let statementCount = 0;
+  database.prepare = (sql) => {
+    statementCount += 1;
+    return originalPrepare(sql);
+  };
+  let applied;
+  try {
+    assert.equal(await ensureDatabaseInvariants(database), "ready");
+    assert.deepEqual(
+      await runRequestMaintenance(database, {
+        method: "POST",
+        pathname:
+          `/api/organizer/imports/${approved.batch.batchId}/apply-next`,
+      }),
+      { kind: "continue" },
+    );
+    await authorizeOrganizerAccess(database, ownerIdentity);
+    applied = await applyNextCsvImportRow(
+      database,
+      ownerIdentity,
+      approved.batch.batchId,
+      approved.batch.version,
+    );
+  } finally {
+    database.prepare = originalPrepare;
+  }
+  assert.equal(applied.row.resultCode, "imported_private");
+  assert.equal(statementCount, 47);
+  assert.ok(statementCount < 50);
+});
+
+test("two synchronized blocking import applications permit at most one unreviewed reservation", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  await setPolicy(database, "block");
+  const previews = await Promise.all([
+    createImportPreview(database, {
+      planningStatus: "confirmed",
+      title: "Synchronized import A",
+    }),
+    createImportPreview(database, {
+      planningStatus: "confirmed",
+      title: "Synchronized import B",
+    }),
+  ]);
+  assert.deepEqual(
+    previews.map((preview) => preview.rows[0].warningCodes),
+    [[], []],
+  );
+  const approved = await Promise.all(
+    previews.map((preview) =>
+      approveCsvImportBatch(
+        database,
+        ownerIdentity,
+        preview.batch.batchId,
+        {
+          decisions: [{
+            action: "selected",
+            rowId: preview.rows[0].rowId,
+          }],
+          expectedVersion: preview.batch.version,
+          previewFingerprint: preview.previewFingerprint,
+        },
+      ),
+    ),
+  );
+  const results = await Promise.all(
+    approved.map((batch) =>
+      applyNextCsvImportRow(
+        database,
+        ownerIdentity,
+        batch.batch.batchId,
+        batch.batch.version,
+      ),
+    ),
+  );
+  assert.equal(
+    results.filter(
+      (result) => result.row.resultCode === "imported_private",
+    ).length,
+    1,
+  );
+  assert.equal(
+    results.filter(
+      (result) => result.row.resultCode === "conflict_blocked",
+    ).length,
+    1,
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_events",
+      "organization_id = ? AND title IN (?, ?)",
+      "org-main",
+      "Synchronized import A",
+      "Synchronized import B",
+    ),
+    1,
+  );
+  assert.equal(
+    await countWhere(
+      database,
+      "organizer_reservation_states",
+      "organization_id = ? AND planning_status = 'confirmed'",
+      "org-main",
     ),
     1,
   );
@@ -1985,9 +3185,12 @@ test("soft deletion seals an exact scheduling intent, removes reservation state,
         `SELECT operation, completed_at
          FROM organizer_schedule_write_intents
          WHERE organizer_event_id = ?
-         ORDER BY created_at DESC
+           AND proposed_content_version = ?
+           AND proposed_schedule_version = ?
          LIMIT 1`,
         draft.id,
+        deleted.contentVersion,
+        deleted.scheduleVersion,
       );
       assert.equal(deleteIntent.operation, "soft_delete");
       assert.equal(typeof deleteIntent.completed_at, "number");
@@ -2178,6 +3381,201 @@ function timedDraftInput(overrides = {}) {
     bufferAfterMinutes: 0,
     ...overrides,
   };
+}
+
+function importUploadFixture(title, fileName) {
+  const headers = [
+    "title",
+    "club",
+    "schedule_type",
+    "start_date",
+    "start_time",
+    "end_date",
+    "end_time",
+    "timezone",
+    "planning_status",
+    "publication_status",
+    "primary_organizer_email",
+    "co_organizer_emails",
+    "attendance_mode",
+    "location",
+  ];
+  const values = [
+    title,
+    "main-club",
+    "timed",
+    "2032-08-15",
+    "15:00",
+    "2032-08-15",
+    "16:00",
+    "America/Vancouver",
+    "draft",
+    "private",
+    "owner@example.test",
+    "",
+    "in_person",
+    "main-private-venue",
+  ];
+  return Object.freeze({
+    bytes: new TextEncoder().encode(
+      `${headers.join(",")}\r\n${values.join(",")}\r\n`,
+    ),
+    contentType: "text/csv",
+    fileName,
+    headers: Object.freeze(headers),
+    sourceLabel: "Phase 7 inspection integration",
+    sourceNamespace: fileName.replace(/\.csv$/u, ""),
+  });
+}
+
+function createImportPreview(
+  database,
+  {
+    planningStatus,
+    title,
+  },
+) {
+  const headers = [
+    "title",
+    "club",
+    "schedule_type",
+    "start_date",
+    "start_time",
+    "end_date",
+    "end_time",
+    "timezone",
+    "planning_status",
+    "publication_status",
+    "primary_organizer_email",
+    "co_organizer_emails",
+    "attendance_mode",
+    "location",
+  ];
+  const values = [
+    title,
+    "main-club",
+    "timed",
+    "2032-08-15",
+    "18:30",
+    "2032-08-15",
+    "20:30",
+    "America/Vancouver",
+    planningStatus,
+    "private",
+    "owner@example.test",
+    "",
+    "in_person",
+    "main-private-venue",
+  ];
+  return createCsvImportPreview(database, ownerIdentity, {
+    bytes: new TextEncoder().encode(
+      `${headers.join(",")}\r\n${values.join(",")}\r\n`,
+    ),
+    contentType: "text/csv",
+    fileName: `${planningStatus}.csv`,
+    headerSelections: headers,
+    sourceLabel: "Phase 7 scheduling integration",
+    sourceNamespace: `phase7-${planningStatus.replaceAll("_", "-")}`,
+  });
+}
+
+function createCsvRowsPreview(database, rows, sourceNamespace) {
+  const headers = [
+    "title",
+    "club",
+    "schedule_type",
+    "start_date",
+    "start_time",
+    "end_date",
+    "end_time",
+    "timezone",
+    "planning_status",
+    "publication_status",
+    "primary_organizer_email",
+    "co_organizer_emails",
+    "attendance_mode",
+    "location",
+    "meetup_url",
+  ];
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) =>
+      headers.map((header) => csvCell(row[header] ?? "")).join(","),
+    ),
+    "",
+  ].join("\r\n");
+  return createCsvImportPreview(database, ownerIdentity, {
+    bytes: new TextEncoder().encode(csv),
+    contentType: "text/csv",
+    fileName: `${sourceNamespace}.csv`,
+    headerSelections: headers,
+    sourceLabel: "Phase 7 approval integration",
+    sourceNamespace,
+  });
+}
+
+function csvCell(value) {
+  const text = String(value);
+  return /[",\r\n]/u.test(text)
+    ? `"${text.replaceAll('"', '""')}"`
+    : text;
+}
+
+function seedImportCoOrganizers(database, count) {
+  const values = Array.from({ length: count }, (_, index) => {
+    const sequence = index + 1;
+    return {
+      email: `phase7-co-${sequence}@example.invalid`,
+      membershipId: `phase7-membership-co-${sequence}`,
+      profileId: `phase7-profile-co-${sequence}`,
+    };
+  });
+  for (const item of values) {
+    database
+      .prepare(
+        `INSERT INTO profiles (
+           id, siwc_subject, normalized_email, display_name, status,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, ?, 'active', 1, 1)`,
+      )
+      .bind(
+        item.profileId,
+        `subject:${item.profileId}`,
+        item.email,
+        item.profileId,
+      )
+      .run();
+    database
+      .prepare(
+        `INSERT INTO organization_memberships (
+           id, organization_id, profile_id, normalized_email, role,
+           status, created_by_profile_id, created_at, updated_at
+         ) VALUES (
+           ?, 'org-main', ?, ?, 'organizer', 'active',
+           'profile-owner', 1, 1
+         )`,
+      )
+      .bind(item.membershipId, item.profileId, item.email)
+      .run();
+    database
+      .prepare(
+        `INSERT INTO club_memberships (
+           id, organization_id, club_id, organization_membership_id,
+           profile_id, role, status, created_by_profile_id,
+           created_at, updated_at
+         ) VALUES (
+           ?, 'org-main', 'club-main', ?, ?, 'organizer', 'active',
+           'profile-owner', 1, 1
+         )`,
+      )
+      .bind(
+        `phase7-club-membership-co-${item.profileId}`,
+        item.membershipId,
+        item.profileId,
+      )
+      .run();
+  }
+  return values.map((item) => item.email);
 }
 
 function allDayDraftInput(overrides = {}) {

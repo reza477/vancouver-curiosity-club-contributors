@@ -1,0 +1,1 @@
+external_id,title,club,program,lane,category,schedule_type,start_date,start_time,start_utc_offset,end_date,end_time,end_utc_offset,end_date_exclusive,timezone,planning_status,publication_status,primary_organizer_email,co_organizer_emails,location,attendance_mode,meetup_url,notes,buffer_before_minutes,buffer_after_minutes

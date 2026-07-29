@@ -1,0 +1,371 @@
+.stack {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.introGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0.75rem;
+  color: var(--ink);
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.card h2,
+.card h3,
+.card p {
+  margin: 0;
+}
+
+.fields {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.fieldFull {
+  grid-column: 1 / -1;
+}
+
+.field span,
+.fieldFull > span {
+  font-weight: 700;
+}
+
+.field small,
+.fieldFull small {
+  display: block;
+}
+
+.field input,
+.field select,
+.field textarea,
+.fieldFull input,
+.fieldFull select,
+.fieldFull textarea {
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0.35rem;
+  color: var(--ink);
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+  width: 100%;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.actions button,
+.actions a {
+  align-items: center;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  color: var(--paper);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  text-decoration: none;
+}
+
+.actions a + a,
+.actions button + a,
+.secondary {
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+}
+
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.notice {
+  border-left: 0.35rem solid var(--ink);
+  margin: 0;
+  min-height: 1.5rem;
+  padding-left: 0.75rem;
+}
+
+.summaryGrid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+
+.summaryGrid div {
+  border-top: 1px solid var(--ink);
+  display: grid;
+  gap: 0.15rem;
+  padding-top: 0.55rem;
+}
+
+.summaryGrid dt {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.summaryGrid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mappingList {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.mappingList div {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: minmax(8rem, 0.4fr) minmax(0, 1fr);
+}
+
+.mappingList dt {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.mappingList dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  min-width: 64rem;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--ink);
+  padding: 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.table tbody tr,
+.rowDetails details {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 12rem;
+}
+
+.table select,
+.table input {
+  max-width: 18rem;
+}
+
+.rowDetails {
+  display: none;
+}
+
+.rowDetails details {
+  border: 1px solid var(--ink);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.rowDetails details + details {
+  margin-top: 0.75rem;
+}
+
+.rowDetails summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.codeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+}
+
+.codeList li {
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.45rem;
+}
+
+.normalized {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0;
+}
+
+.normalized div {
+  display: grid;
+  gap: 0.15rem;
+  grid-template-columns: minmax(7rem, 0.35fr) 1fr;
+}
+
+.normalized dt {
+  font-weight: 700;
+}
+
+.normalized dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.matchSummary {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.75rem 0 0;
+}
+
+.matchSummary div {
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: minmax(7rem, 0.45fr) 1fr;
+}
+
+.matchSummary dt {
+  font-weight: 700;
+}
+
+.matchSummary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.conflictList {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.conflictList li {
+  border-left: 0.25rem solid var(--ink);
+  display: grid;
+  gap: 0.15rem;
+  padding-left: 0.6rem;
+}
+
+.historyList {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.historyFilters {
+  align-items: end;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns:
+    minmax(9rem, 0.75fr)
+    minmax(14rem, 1fr)
+    minmax(9rem, 0.5fr)
+    auto;
+  padding: 1rem;
+}
+
+.historyResultBar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.historyResultBar p {
+  margin: 0;
+}
+
+.historyList a {
+  border: 1px solid var(--ink);
+  border-radius: 0.5rem;
+  color: var(--ink);
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  text-decoration: none;
+}
+
+.historyList small,
+.historyList span {
+  overflow-wrap: anywhere;
+}
+
+.historyList a:hover,
+.historyList a:focus-visible {
+  background: var(--paper-deep);
+}
+
+.historyMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.sensitive {
+  background: var(--paper-deep);
+  border: 2px solid var(--ink);
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+@media (max-width: 52rem) {
+  .introGrid,
+  .fields,
+  .historyFilters,
+  .summaryGrid,
+  .mappingList div {
+    grid-template-columns: 1fr;
+  }
+
+  .tableScroll {
+    display: none;
+  }
+
+  .rowDetails {
+    display: block;
+  }
+}

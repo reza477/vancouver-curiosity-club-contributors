@@ -92,6 +92,7 @@ export default async function OrganizerEventPreviewPage({
       <PublicEventDetailRenderer
         canonicalUrl={null}
         event={event}
+        showCalendarDownload={false}
         showShareControls={false}
       />
     </>

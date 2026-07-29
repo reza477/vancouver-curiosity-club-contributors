@@ -23,6 +23,23 @@ export const ORGANIZER_AUDIT_ACTIONS = [
   "cms.entity_unpublished",
   "cms.legal_status_confirmed",
   "cms.legal_status_revoked",
+  "calendar_subscription.created",
+  "calendar_subscription.revoked",
+  "event_export.operational_csv",
+  "form_submission.assigned",
+  "form_submission.created",
+  "form_submission.note_added",
+  "form_submission.personal_content_redacted",
+  "form_submission.status_changed",
+  "import.approved",
+  "import.batch_created",
+  "import.completed",
+  "import.conflict_linked",
+  "import.duplicate_override",
+  "import.mapping_confirmed",
+  "import.resumed",
+  "import.row_applied",
+  "import.source_payload_redacted",
   "invitation.accepted",
   "invitation.created",
   "invitation.revoked",
@@ -32,6 +49,8 @@ export const ORGANIZER_AUDIT_ACTIONS = [
   "media.upload_failed",
   "media.upload_finalized",
   "media.upload_started",
+  "media_export.manifest",
+  "media_export.original_downloaded",
   "membership.ownership_transferred",
   "membership.updated",
   "organization.settings_updated",
@@ -40,6 +59,7 @@ export const ORGANIZER_AUDIT_ACTIONS = [
   "organizer_event.duplicated",
   "organizer_event.restored",
   "organizer_event.updated",
+  "owner_backup.generated",
   "profile.notification_preference_changed",
   "profile.updated",
   "taxonomy.category_archived",
@@ -66,9 +86,13 @@ export type ActivityHistoryItem = Readonly<{
     | "club"
     | "club_public_profile"
     | "community_link"
+    | "data_export"
     | "event_category"
     | "event_lane"
     | "invitation"
+    | "form_submission"
+    | "ics_subscription_token"
+    | "import_batch"
     | "legal_status"
     | "media_asset"
     | "membership"
@@ -184,7 +208,11 @@ function activityFromRow(
     entityType,
     entityId,
     createdAt,
-    actorDisplayName: safeActorName(row.actor_display_name),
+    actorDisplayName:
+      action === "form_submission.created" &&
+      row.actor_display_name == null
+        ? "Public form"
+        : safeActorName(row.actor_display_name),
   });
 }
 
@@ -194,8 +222,12 @@ function readEntityType(
   return value === "club" ||
     value === "club_public_profile" ||
     value === "community_link" ||
+    value === "data_export" ||
     value === "event_category" ||
     value === "event_lane" ||
+    value === "form_submission" ||
+    value === "ics_subscription_token" ||
+    value === "import_batch" ||
     value === "invitation" ||
     value === "legal_status" ||
     value === "media_asset" ||

@@ -17,6 +17,10 @@ import {
   PHASE6_INVARIANT_TRIGGER_STATEMENTS,
 } from "./phase6-invariant-sql";
 import {
+  PHASE7_INVARIANT_COUNT_SQL,
+  PHASE7_INVARIANT_TRIGGER_STATEMENTS,
+} from "./phase7-invariant-sql";
+import {
   externalReservationSemanticFingerprint,
   externalReservationStateFingerprint,
   normalizeAllDayConflictInterval,
@@ -28,12 +32,14 @@ import { publicOrganizerEmailExposureSql } from "../../validation/public-organiz
 export const DATABASE_INVARIANT_MARKER_KEY = "database-guards";
 export const PRE_PHASE5_DATABASE_INVARIANT_VERSION = 4;
 export const PRE_PHASE6_DATABASE_INVARIANT_VERSION = 5;
-export const DATABASE_INVARIANT_VERSION = 6;
+export const PRE_PHASE7_DATABASE_INVARIANT_VERSION = 6;
+export const DATABASE_INVARIANT_VERSION = 7;
 export const DATABASE_INVARIANT_STATEMENT_LIMIT = 50;
 
 export type DatabaseInvariantVersion =
   | typeof PRE_PHASE5_DATABASE_INVARIANT_VERSION
   | typeof PRE_PHASE6_DATABASE_INVARIANT_VERSION
+  | typeof PRE_PHASE7_DATABASE_INVARIANT_VERSION
   | typeof DATABASE_INVARIANT_VERSION;
 
 const PUBLIC_INTEGRITY_TRIGGER_STATEMENTS = [
@@ -188,9 +194,14 @@ const PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
   ...PHASE5_INVARIANT_TRIGGER_STATEMENTS,
 ]);
 
-export const DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
+export const PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
   ...PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_STATEMENTS,
   ...PHASE6_INVARIANT_TRIGGER_STATEMENTS,
+]);
+
+export const DATABASE_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
+  ...PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_STATEMENTS,
+  ...PHASE7_INVARIANT_TRIGGER_STATEMENTS,
 ]);
 
 export const PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
@@ -199,6 +210,12 @@ export const PRE_PHASE5_DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
 
 export const PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
   PRE_PHASE6_DATABASE_INVARIANT_TRIGGER_STATEMENTS.map(
+    readTriggerName,
+  ).sort(),
+);
+
+export const PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_NAMES = Object.freeze(
+  PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_STATEMENTS.map(
     readTriggerName,
   ).sort(),
 );
@@ -219,9 +236,14 @@ const PRE_PHASE6_INTEGRITY_COUNT_SQL = Object.freeze([
   ...PHASE5_INVARIANT_COUNT_SQL,
 ]);
 
-const INTEGRITY_COUNT_SQL = Object.freeze([
+const PRE_PHASE7_INTEGRITY_COUNT_SQL = Object.freeze([
   ...PRE_PHASE6_INTEGRITY_COUNT_SQL,
   ...PHASE6_INVARIANT_COUNT_SQL,
+]);
+
+const INTEGRITY_COUNT_SQL = Object.freeze([
+  ...PRE_PHASE7_INTEGRITY_COUNT_SQL,
+  ...PHASE7_INVARIANT_COUNT_SQL,
 ]);
 
 // Leave material headroom below D1's 100 KiB prepared-statement limit. The
@@ -292,6 +314,8 @@ const PRE_PHASE6_COMBINED_INTEGRITY_COUNT_SQL =
   combineIntegrityCountSql(PRE_PHASE6_INTEGRITY_COUNT_SQL);
 export const DATABASE_INVARIANT_COMBINED_COUNT_SQL =
   combineIntegrityCountSql(INTEGRITY_COUNT_SQL);
+const PRE_PHASE7_COMBINED_INTEGRITY_COUNT_SQL =
+  combineIntegrityCountSql(PRE_PHASE7_INTEGRITY_COUNT_SQL);
 
 /**
  * `database_invariant_state` rejects version zero and an empty fingerprint.
@@ -321,6 +345,8 @@ const PRE_PHASE6_ABORTING_INTEGRITY_PROBE_SQL =
   abortingIntegrityProbeSql(PRE_PHASE6_COMBINED_INTEGRITY_COUNT_SQL);
 export const DATABASE_INVARIANT_ABORTING_INTEGRITY_PROBE_SQL =
   abortingIntegrityProbeSql(DATABASE_INVARIANT_COMBINED_COUNT_SQL);
+const PRE_PHASE7_ABORTING_INTEGRITY_PROBE_SQL =
+  abortingIntegrityProbeSql(PRE_PHASE7_COMBINED_INTEGRITY_COUNT_SQL);
 
 // A mismatched durable marker may require the three bounded Phase 4 adoption
 // scans, the Phase 6 legacy public-attribution scan, and one taxonomy coverage
@@ -405,6 +431,18 @@ const PRE_PHASE6_DATABASE_INVARIANT_CONTRACT =
     version: PRE_PHASE6_DATABASE_INVARIANT_VERSION,
   });
 
+const PRE_PHASE7_DATABASE_INVARIANT_CONTRACT =
+  createDatabaseInvariantContract({
+    abortingIntegrityProbeSql:
+      PRE_PHASE7_ABORTING_INTEGRITY_PROBE_SQL,
+    combinedIntegrityCountSql:
+      PRE_PHASE7_COMBINED_INTEGRITY_COUNT_SQL,
+    triggerNames: PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_NAMES,
+    triggerStatements:
+      PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_STATEMENTS,
+    version: PRE_PHASE7_DATABASE_INVARIANT_VERSION,
+  });
+
 const DATABASE_INVARIANT_CONTRACT = createDatabaseInvariantContract({
   abortingIntegrityProbeSql:
     DATABASE_INVARIANT_ABORTING_INTEGRITY_PROBE_SQL,
@@ -421,8 +459,11 @@ function databaseInvariantContract(
   if (version === PRE_PHASE5_DATABASE_INVARIANT_VERSION) {
     return PRE_PHASE5_DATABASE_INVARIANT_CONTRACT;
   }
-  return version === PRE_PHASE6_DATABASE_INVARIANT_VERSION
-    ? PRE_PHASE6_DATABASE_INVARIANT_CONTRACT
+  if (version === PRE_PHASE6_DATABASE_INVARIANT_VERSION) {
+    return PRE_PHASE6_DATABASE_INVARIANT_CONTRACT;
+  }
+  return version === PRE_PHASE7_DATABASE_INVARIANT_VERSION
+    ? PRE_PHASE7_DATABASE_INVARIANT_CONTRACT
     : DATABASE_INVARIANT_CONTRACT;
 }
 const MAX_POLICY_ADOPTIONS_PER_REQUEST = 24;

@@ -106,6 +106,20 @@ export async function EventsPageRenderer({
         resultCount={eventPage.totalCount}
         values={values}
       />
+      {!privatePreview && !invalidFilters ? (
+        <nav
+          aria-label="Download filtered public events"
+          className="public-export-actions"
+        >
+          <span>Download this public view</span>
+          <Link href={exportHref("/events/calendar.ics", values)}>
+            iCalendar (.ics)
+          </Link>
+          <Link href={exportHref("/events/events.csv", values)}>
+            Spreadsheet (.csv)
+          </Link>
+        </nav>
+      ) : null}
       {!invalidFilters ? (
         <>
           <EventCollection
@@ -260,4 +274,24 @@ function pageHref(values: EventFilterValues, page: number): string {
   }
   params.set("page", String(page));
   return `/events?${params.toString()}`;
+}
+
+function exportHref(
+  pathname: "/events/calendar.ics" | "/events/events.csv",
+  values: EventFilterValues,
+): string {
+  const params = new URLSearchParams();
+  params.set("state", values.state);
+  for (const [key, value] of [
+    ["q", values.q],
+    ["from", values.from],
+    ["to", values.to],
+    ["club", values.club],
+    ["lane", values.lane],
+    ["category", values.category],
+    ["format", values.format],
+  ] as const) {
+    if (value) params.set(key, value);
+  }
+  return `${pathname}?${params.toString()}`;
 }

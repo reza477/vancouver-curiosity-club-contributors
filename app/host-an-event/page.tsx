@@ -7,6 +7,9 @@ import {
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { HostAnEventRouteBody } from "@/app/_components/EditorialRouteBodies";
+import { PublicSubmissionForm } from "@/app/_components/PublicSubmissionForm";
+import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
+import { listPublicFormClubProgramChoices } from "@/lib/server/phase7/public-forms";
 
 const route = "/host-an-event";
 const slug = "host-an-event";
@@ -32,5 +35,19 @@ export default async function HostAnEventPage() {
   const destinations = hasCommunityLinksBlock(loaded.page)
     ? null
     : await loadCommunityDestinations(route);
-  return <HostAnEventRouteBody destinations={destinations} page={loaded.page} />;
+  let choices: Awaited<
+    ReturnType<typeof listPublicFormClubProgramChoices>
+  > = [];
+  try {
+    choices = await listPublicFormClubProgramChoices(
+      getRuntimeAuthConfiguration().database,
+    );
+  } catch {
+    choices = [];
+  }
+  return (
+    <HostAnEventRouteBody destinations={destinations} page={loaded.page}>
+      <PublicSubmissionForm choices={choices} formKey="host_event" />
+    </HostAnEventRouteBody>
+  );
 }

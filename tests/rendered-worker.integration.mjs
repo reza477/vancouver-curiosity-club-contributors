@@ -11,6 +11,28 @@ import {
   DATABASE_INVARIANT_VERSION,
   getExpectedDatabaseInvariantFingerprint,
 } from "../lib/server/database/invariants.ts";
+import {
+  createOrganizerEvent,
+} from "../lib/server/organizer/events.ts";
+import {
+  performOrganizerLifecycleAction,
+} from "../lib/server/organizer/scheduling.ts";
+import {
+  createOwnCalendarSubscription,
+} from "../lib/server/phase7/calendar-subscriptions.ts";
+import {
+  createCsvImportPreview,
+  inspectCsvImportUpload,
+} from "../lib/server/phase7/imports.ts";
+import {
+  ensurePublicFormProtectionKey,
+} from "../lib/server/phase7/public-form-protection.ts";
+import {
+  submitPublicForm,
+} from "../lib/server/phase7/public-forms.ts";
+import {
+  appendFormSubmissionNote,
+} from "../lib/server/phase7/submissions.ts";
 import { ensurePublicCatalog } from "../lib/server/public/catalog.ts";
 import {
   applyD1MigrationBatches,
@@ -19,6 +41,18 @@ import {
   productionMigrationFragments,
 } from "../scripts/d1-migration-batches.mjs";
 import { MAX_DATABASE_INVARIANT_READY_ATTEMPTS } from "./database/invariant-ready.mjs";
+
+class CapturingLog extends Log {
+  #messages = [];
+
+  log(message) {
+    this.#messages.push(message);
+  }
+
+  output() {
+    return this.#messages.join("\n");
+  }
+}
 
 const FIXTURE_NOW = Date.UTC(2026, 6, 24, 19, 0, 0);
 const ORGANIZATION_ID = "phase2-org";
@@ -49,7 +83,28 @@ const PRIVATE_SENTINELS = [
   "PRIVATE_INVITATION_EMAIL_SENTINEL",
   "RENDERED_PHASE5_PRIVATE_NOTES_SENTINEL",
   "RENDERED_PHASE5_PRIVATE_MEETING_SENTINEL",
+  "PHASE7_PRIVATE_FORM_NAME_SENTINEL",
+  "PHASE7_PRIVATE_FORM_MESSAGE_SENTINEL",
+  "phase7-private-form@example.invalid",
+  "PHASE7_PRIVATE_NETWORK_FACTS_SENTINEL",
+  "PHASE7_PRIVATE_SUBMISSION_NOTE_SENTINEL",
+  "PHASE7_PRIVATE_IMPORT_TITLE_SENTINEL",
+  "PHASE7_PRIVATE_IMPORT_ERROR_SENTINEL",
+  "private_mapping_header_sentinel",
+  "PHASE7_PRIVATE_IMPORT_LABEL_SENTINEL",
+  "PHASE7_PRIVATE_EVENT_NOTES_SENTINEL",
+  "PHASE7_PRIVATE_EVENT_MEETING_SENTINEL",
+  "PHASE7_PRIVATE_CONFLICT_REASON_SENTINEL",
+  "PHASE7_PRIVATE_CALENDAR_LABEL_SENTINEL",
+  "PHASE7_PRIVATE_MEETUP_FEED_SENTINEL",
+  "PHASE7_PRIVATE_R2_OBJECT_KEY_SENTINEL",
 ];
+const phase7DynamicPrivateSentinels = [];
+const phase7PrivateIds = Object.seal({
+  importBatchId: null,
+  mediaAssetId: "phase7-private-media",
+  submissionId: null,
+});
 const OWNER_AUTH_HEADERS = Object.freeze({
   "oai-authenticated-user-email":
     "private_owner_email_sentinel@example.invalid",
@@ -74,12 +129,16 @@ const PUBLIC_PATHS = [
 
 const serverRoot = resolve("dist/server");
 const moduleFiles = await collectJavaScriptModules(serverRoot);
+const clientAssetFiles = await collectTextAssetFiles(resolve("dist/client"));
 const entrypoint = resolve(serverRoot, "index.js");
-const runtime = createBuiltRuntime();
+const runtimeLog = new CapturingLog(LogLevel.WARN);
+const runtime = createBuiltRuntime(runtimeLog);
 await applyPackagedProductionMigrations(runtime);
 await seedPublicCatalog(runtime);
 await initializePackagedDatabaseInvariants(runtime);
 await initializePackagedCmsAdoption(runtime);
+await initializePackagedDatabaseInvariants(runtime, false);
+await seedPhase7PrivateSentinels(runtime);
 await initializePackagedDatabaseInvariants(runtime, false);
 
 test.after(async () => {
@@ -212,6 +271,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0013_phase4_conflict_engine.sql",
     "0014_phase5_publication.sql",
     "0015_phase6_cms_media.sql",
+    "0016_phase7_import_export_forms.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -283,7 +343,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    78,
+    86,
   );
   assert.equal(
     await database
@@ -294,7 +354,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    184,
+    199,
   );
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
@@ -826,6 +886,187 @@ test("robots and sitemap contain only public canonical routes", async () => {
     /<loc>[^<]*(?:\/calendar|\/organizer|\/api\/|\?|off-radar-eats|draft-private)[^<]*<\/loc>/u,
   );
   assertNoPrivateSentinels(sitemap);
+});
+
+test("Phase 7 private state never reaches rendered public surfaces or guessed routes", async () => {
+  const database = await runtime.getD1Database("DB");
+  const privateFacts = await database
+    .prepare(
+      `SELECT
+         (SELECT count(*)
+          FROM form_submissions AS submission
+          JOIN form_submission_workflows AS workflow
+            ON workflow.submission_id = submission.id
+           AND workflow.organization_id = submission.organization_id
+          JOIN form_submission_write_intents AS intent
+            ON intent.id = workflow.write_intent_id
+           AND intent.completed_at IS NOT NULL
+           AND intent.completion_audit_log_id IS NOT NULL
+          WHERE submission.id = ?
+            AND submission.organization_id = ?) AS submission_count,
+         (SELECT count(*)
+          FROM form_submission_notes
+          WHERE submission_id = ?
+            AND organization_id = ?) AS note_count,
+         (SELECT count(*)
+          FROM public_form_rate_windows
+          WHERE organization_id = ?) AS rate_window_count,
+         (SELECT count(*)
+          FROM import_batch_details AS detail
+          JOIN import_rows AS row
+            ON row.import_batch_id = detail.import_batch_id
+           AND row.organization_id = detail.organization_id
+          JOIN import_row_applications AS application
+            ON application.import_row_id = row.id
+           AND application.import_batch_id = row.import_batch_id
+           AND application.organization_id = row.organization_id
+          WHERE detail.import_batch_id = ?
+            AND detail.phase = 'previewed') AS preview_row_count,
+         (SELECT count(*)
+          FROM ics_subscription_tokens
+          WHERE organization_id = ?
+            AND revoked_at IS NULL
+            AND length(token_hash) = 64) AS calendar_token_count,
+         (SELECT count(*)
+          FROM organizer_conflict_overrides
+          WHERE organization_id = ?
+            AND reason = ?) AS conflict_reason_count,
+         (SELECT count(*)
+          FROM sync_sources
+          WHERE id = 'phase7-private-meetup-source'
+            AND organization_id = ?
+            AND enabled = 0
+            AND deleted_at IS NULL) AS meetup_source_count,
+         (SELECT count(*)
+          FROM media_assets AS asset
+          JOIN media_asset_details AS detail
+            ON detail.asset_id = asset.id
+           AND detail.organization_id = asset.organization_id
+           AND detail.upload_state = 'ready'
+          JOIN media_asset_variants AS variant
+            ON variant.asset_id = asset.id
+           AND variant.organization_id = asset.organization_id
+           AND variant.variant_kind = 'original'
+           AND variant.state = 'ready'
+          WHERE asset.id = ?
+            AND asset.organization_id = ?
+            AND asset.is_public = 0
+            AND asset.deleted_at IS NULL) AS media_count`,
+    )
+    .bind(
+      phase7PrivateIds.submissionId,
+      ORGANIZATION_ID,
+      phase7PrivateIds.submissionId,
+      ORGANIZATION_ID,
+      ORGANIZATION_ID,
+      phase7PrivateIds.importBatchId,
+      ORGANIZATION_ID,
+      ORGANIZATION_ID,
+      "PHASE7_PRIVATE_CONFLICT_REASON_SENTINEL",
+      ORGANIZATION_ID,
+      phase7PrivateIds.mediaAssetId,
+      ORGANIZATION_ID,
+    )
+    .first();
+  assert.deepEqual({ ...privateFacts }, {
+    calendar_token_count: 1,
+    conflict_reason_count: 1,
+    media_count: 1,
+    meetup_source_count: 1,
+    note_count: 1,
+    preview_row_count: 2,
+    rate_window_count: 3,
+    submission_count: 1,
+  });
+
+  for (const path of [
+    ...PUBLIC_PATHS,
+    "/robots.txt",
+    "/sitemap.xml",
+    "/events/calendar.ics",
+    "/events/events.csv",
+    "/events/private-phase3-idea-sentinel",
+    "/events/private-phase3-idea-sentinel/calendar.ics",
+    "/events/guessed-private-event",
+    "/events/guessed-private-event/calendar.ics",
+    "/events/events.csv?unknown=private-filter-sentinel",
+    "/events/calendar.ics?from=not-a-date",
+  ]) {
+    const response = await fetchPath(path);
+    assert.ok(
+      [200, 404, 422].includes(response.status),
+      `${path} returned ${response.status}`,
+    );
+    assertNoPrivateSentinels(await response.text());
+  }
+
+  const privatePairs = [
+    [
+      `/api/organizer/submissions/${encodeURIComponent(
+        phase7PrivateIds.submissionId,
+      )}`,
+      "/api/organizer/submissions/guessed-submission",
+    ],
+    [
+      `/api/organizer/imports/${encodeURIComponent(
+        phase7PrivateIds.importBatchId,
+      )}`,
+      "/api/organizer/imports/guessed-import",
+    ],
+    [
+      `/api/organizer/exports/media/${encodeURIComponent(
+        phase7PrivateIds.mediaAssetId,
+      )}/original`,
+      "/api/organizer/exports/media/guessed-media/original",
+    ],
+    [
+      "/api/organizer/events/phase3-private-idea",
+      "/api/organizer/events/guessed-private-event",
+    ],
+  ];
+  for (const [existingPath, guessedPath] of privatePairs) {
+    const [existing, guessed] = await Promise.all([
+      fetchPath(existingPath, { redirect: "manual" }),
+      fetchPath(guessedPath, { redirect: "manual" }),
+    ]);
+    assert.equal(existing.status, guessed.status, existingPath);
+    assertOrganizerPrivateResponse(existing);
+    assertOrganizerPrivateResponse(guessed);
+    assert.equal(
+      existing.headers.get("cache-control"),
+      guessed.headers.get("cache-control"),
+      existingPath,
+    );
+    assert.equal(
+      existing.headers.get("x-robots-tag"),
+      guessed.headers.get("x-robots-tag"),
+      existingPath,
+    );
+    const [existingBody, guessedBody] = await Promise.all([
+      existing.text(),
+      guessed.text(),
+    ]);
+    assert.equal(existingBody, guessedBody, existingPath);
+    assertNoPrivateSentinels(existingBody);
+  }
+
+  const backup = await fetchPath(
+    "/api/organizer/exports/backup.json",
+    {
+      body: JSON.stringify({ confirm: true }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      redirect: "manual",
+    },
+  );
+  assert.ok([401, 403].includes(backup.status));
+  assertOrganizerPrivateResponse(backup);
+  assertNoPrivateSentinels(await backup.text());
+
+  for (const file of clientAssetFiles) {
+    assertNoPrivateValues(await readFile(file, "utf8"));
+  }
+  assertNoPrivateValues(runtimeLog.output());
 });
 
 test("unknown, guessed, and draft routes use the custom noindex 404", async () => {
@@ -1919,6 +2160,98 @@ test("signed-out private API responses are safe, private, and noindexed", async 
   });
 });
 
+test("percent-encoded private paths use one canonical security classification", async () => {
+  for (const path of [
+    "/org%61nizer",
+    "/organ%69zer/events",
+    "/%61pi/organizer/session",
+  ]) {
+    const response = await fetchPath(path, { redirect: "manual" });
+    assert.ok(
+      [200, 302, 303, 307, 401, 403, 404].includes(response.status),
+      `${path} returned ${response.status}`,
+    );
+    assertOrganizerPrivateResponse(response);
+    const body = await response.text();
+    assert.doesNotMatch(body, /aria-label="Primary navigation"/u, path);
+    assert.doesNotMatch(body, /aria-label="Footer navigation"/u, path);
+  }
+
+  const privateCalendarToken = "Z".repeat(43);
+  const privateCalendar = await fetchPath(
+    `/api/calendar/pr%69vate/${privateCalendarToken}`,
+    { redirect: "manual" },
+  );
+  assert.ok([400, 404].includes(privateCalendar.status));
+  assertOrganizerPrivateResponse(privateCalendar);
+  assert.equal(
+    privateCalendar.headers.get("referrer-policy"),
+    "no-referrer",
+  );
+  assert.doesNotMatch(
+    await privateCalendar.text(),
+    new RegExp(privateCalendarToken, "u"),
+  );
+
+  const invitation = await fetchPath(
+    `/accept-invit%61tion?token=${INVITATION_TOKEN}`,
+    { redirect: "manual" },
+  );
+  assert.equal(invitation.status, 303);
+  assert.equal(
+    invitation.headers.get("location"),
+    "https://preview.example/accept-invitation",
+  );
+  assert.equal(invitation.headers.get("referrer-policy"), "no-referrer");
+  assertOrganizerPrivateResponse(invitation);
+  assert.doesNotMatch(
+    invitation.headers.get("location") ?? "",
+    new RegExp(INVITATION_TOKEN, "u"),
+  );
+
+  for (const path of [
+    "/organizer%2fevents",
+    "/organizer%5cevents",
+    "/organizer%3fevents",
+    "/organizer%23events",
+    "/org%2561nizer",
+    "/%252e%252e/organizer",
+    "/organizer//events",
+    "/organizer%",
+    `/organizer/events/${"x".repeat(2_100)}`,
+  ]) {
+    const response = await fetchPath(path, { redirect: "manual" });
+    assert.equal(response.status, 400, `${path.slice(0, 80)} status`);
+    assertOrganizerPrivateResponse(response);
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+    const body = await response.text();
+    assert.doesNotMatch(body, /aria-label="Primary navigation"/u, path);
+    assert.doesNotMatch(body, /aria-label="Footer navigation"/u, path);
+    assert.doesNotMatch(body, /x-vcc-request-pathname/iu, path);
+  }
+
+  const dotSegment = await fetchPath(
+    "/public/%2e%2e/organizer",
+    { redirect: "manual" },
+  );
+  assertOrganizerPrivateResponse(dotSegment);
+  assert.doesNotMatch(
+    await dotSegment.text(),
+    /aria-label="Primary navigation"/u,
+  );
+
+  const decomposedNfc = await fetchPath("/cafe%CC%81", {
+    redirect: "manual",
+  });
+  assert.equal(decomposedNfc.status, 404);
+  assert.equal(
+    decomposedNfc.headers.get("x-robots-tag"),
+    "noindex, nofollow, noarchive",
+  );
+
+  assert.doesNotMatch(runtimeLog.output(), new RegExp(privateCalendarToken, "u"));
+});
+
 test("local development keeps only the HMR-required relaxed script policy", async () => {
   const response = await runtime.dispatchFetch("http://localhost/");
   const policy = response.headers.get("content-security-policy") ?? "";
@@ -1944,11 +2277,22 @@ function assertSharedChrome(html) {
 }
 
 function assertNoPrivateSentinels(value, allowed = new Set()) {
-  for (const sentinel of PRIVATE_SENTINELS) {
-    if (allowed.has(sentinel)) continue;
-    assert.doesNotMatch(value, new RegExp(sentinel, "iu"), sentinel);
-  }
+  assertNoPrivateValues(value, allowed);
   assert.doesNotMatch(value, /events\/ical|source_url|sourceUrl/iu);
+}
+
+function assertNoPrivateValues(value, allowed = new Set()) {
+  for (const sentinel of [
+    ...PRIVATE_SENTINELS,
+    ...phase7DynamicPrivateSentinels,
+  ]) {
+    if (allowed.has(sentinel)) continue;
+    assert.doesNotMatch(
+      value,
+      new RegExp(escapeRegex(sentinel), "iu"),
+      sentinel,
+    );
+  }
 }
 
 function assertOrganizerPrivateResponse(response) {
@@ -1985,6 +2329,23 @@ async function collectJavaScriptModules(directory) {
   return files.sort();
 }
 
+async function collectTextAssetFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await collectTextAssetFiles(path)));
+    } else if (
+      entry.isFile() &&
+      /\.(?:css|html|js|json|map|txt)$/iu.test(entry.name)
+    ) {
+      files.push(path);
+    }
+  }
+  return files.sort();
+}
+
 function robotsMetaContents(html) {
   return [...html.matchAll(/<meta\b[^>]*>/giu)].flatMap(([tag]) => {
     if (!/\bname=(["'])robots\1/iu.test(tag)) return [];
@@ -2000,7 +2361,7 @@ function robotsTokens(content) {
     .map((token) => token.trim());
 }
 
-function createBuiltRuntime() {
+function createBuiltRuntime(log = new Log(LogLevel.WARN)) {
   return new Miniflare({
     modules: [
       { path: entrypoint, type: "ESModule" },
@@ -2020,7 +2381,7 @@ function createBuiltRuntime() {
         has_user_worker: true,
       },
     },
-    log: new Log(LogLevel.WARN),
+    log,
   });
 }
 
@@ -2061,9 +2422,9 @@ async function initializePackagedDatabaseInvariants(
       if (requireRepair) {
         assert.equal(
           repairResponses,
-          9,
-          "the bounded populated path must fail closed for nine setup requests " +
-            "and dispatch only after the tenth request observes ready",
+          10,
+          "the bounded populated v7 path must fail closed for ten setup " +
+            "requests and dispatch only after the eleventh observes ready",
         );
       }
       await response.arrayBuffer();
@@ -2466,6 +2827,376 @@ async function seedPublicCatalog(targetRuntime) {
     FIXTURE_NOW,
     FIXTURE_NOW,
   );
+  await run(
+    database,
+    `INSERT INTO sync_sources (
+       id, organization_id, club_id, source_type, source_url, enabled,
+       refresh_interval_minutes, next_refresh_at, lease_token,
+       lease_expires_at, last_attempt_at, last_success_at, last_error_at,
+       last_error_code, etag, http_last_modified, active_generation_id,
+       pending_generation_id, pending_snapshot_hash, pending_cursor,
+       created_by_profile_id, updated_by_profile_id, created_at, updated_at,
+       deleted_at
+     ) VALUES (
+       ?, ?, ?, 'meetup_ics', ?, 0, 15, NULL, NULL, NULL, NULL, NULL, NULL,
+       NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, NULL
+     )`,
+    "phase7-private-meetup-source",
+    ORGANIZATION_ID,
+    "club-curiosity",
+    "https://www.meetup.com/vancouver-meetup-group/events/ical/" +
+      "?token=PHASE7_PRIVATE_MEETUP_FEED_SENTINEL",
+    PROFILE_ID,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO media_assets (
+       id, organization_id, object_key, file_name, mime_type, byte_size,
+       alt_text, credit, rights_status, participant_consent_status,
+       is_public, uploaded_by_profile_id, created_at, updated_at, deleted_at
+     ) VALUES (
+       ?, ?, ?, 'phase7-private.png', 'image/png', 4,
+       'Private media test asset', NULL, 'approved', 'not_applicable',
+       0, ?, ?, ?, NULL
+     )`,
+    phase7PrivateIds.mediaAssetId,
+    ORGANIZATION_ID,
+    "PHASE7_PRIVATE_R2_OBJECT_KEY_SENTINEL",
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO media_asset_details (
+       asset_id, organization_id, upload_state, caption,
+       private_rights_source_note, private_participant_consent_note,
+       focal_point_x, focal_point_y, informative, content_version,
+       original_sha256, width, height, pixel_count, failure_code,
+       finalized_at, updated_by_profile_id, created_at, updated_at
+     ) VALUES (
+       ?, ?, 'ready', NULL, 'Private rights provenance', NULL,
+       5000, 5000, 1, 1, ?, 2, 2, 4, NULL, ?, ?, ?, ?
+     )`,
+    phase7PrivateIds.mediaAssetId,
+    ORGANIZATION_ID,
+    "d".repeat(64),
+    FIXTURE_NOW,
+    PROFILE_ID,
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+  await run(
+    database,
+    `INSERT INTO media_asset_variants (
+       id, organization_id, asset_id, variant_kind, object_key,
+       mime_type, byte_size, width, height, pixel_count, sha256,
+       state, failure_code, created_at, finalized_at
+     ) VALUES (
+       'phase7-private-media-original', ?, ?, 'original', ?,
+       'image/png', 4, 2, 2, 4, ?, 'ready', NULL, ?, ?
+     )`,
+    ORGANIZATION_ID,
+    phase7PrivateIds.mediaAssetId,
+    "PHASE7_PRIVATE_R2_OBJECT_KEY_SENTINEL",
+    "d".repeat(64),
+    FIXTURE_NOW,
+    FIXTURE_NOW,
+  );
+}
+
+async function seedPhase7PrivateSentinels(targetRuntime) {
+  const database = await targetRuntime.getD1Database("DB");
+  const now = Number(
+    await database
+      .prepare("SELECT unixepoch() * 1000 AS now_ms")
+      .first("now_ms"),
+  );
+  assert.equal(Number.isSafeInteger(now), true);
+
+  const protectionKey = await ensurePublicFormProtectionKey(
+    database,
+    ORGANIZATION_ID,
+    now,
+  );
+  phase7DynamicPrivateSentinels.push(protectionKey);
+  const submission = await submitPublicForm(database, {
+    anonymousClientId: "phase7-private-rendered-client",
+    formInstance: {
+      formKey: "contact",
+      issuedAt: now - 4_000,
+      nonce: "phase7-private-rendered-form-nonce",
+    },
+    formKey: "contact",
+    honeypot: "",
+    keyHex: protectionKey,
+    networkFacts:
+      "PHASE7_PRIVATE_NETWORK_FACTS_SENTINEL",
+    nowUtcMs: now,
+    organizationId: ORGANIZATION_ID,
+    payload: {
+      message: "PHASE7_PRIVATE_FORM_MESSAGE_SENTINEL",
+      name: "PHASE7_PRIVATE_FORM_NAME_SENTINEL",
+      replyEmail: "phase7-private-form@example.invalid",
+      topic: "Privacy",
+    },
+  });
+  const submissionRow = await database
+    .prepare(
+      `SELECT submission.id
+       FROM form_submissions AS submission
+       JOIN form_submission_workflows AS workflow
+         ON workflow.submission_id = submission.id
+        AND workflow.organization_id = submission.organization_id
+       WHERE submission.organization_id = ?
+         AND workflow.public_reference = ?
+       LIMIT 1`,
+    )
+    .bind(ORGANIZATION_ID, submission.publicReference)
+    .first();
+  assert.equal(typeof submissionRow?.id, "string");
+  phase7PrivateIds.submissionId = submissionRow.id;
+  phase7DynamicPrivateSentinels.push(
+    submission.publicReference,
+    submissionRow.id,
+  );
+  await appendFormSubmissionNote(database, OWNER_IDENTITY, {
+    body: "PHASE7_PRIVATE_SUBMISSION_NOTE_SENTINEL",
+    submissionId: submissionRow.id,
+  });
+  const rateScopeRows = await database
+    .prepare(
+      `SELECT scope_key
+       FROM public_form_rate_windows
+       WHERE organization_id = ?
+       ORDER BY action`,
+    )
+    .bind(ORGANIZATION_ID)
+    .all();
+  for (const row of rateScopeRows.results ?? []) {
+    if (typeof row.scope_key === "string") {
+      phase7DynamicPrivateSentinels.push(row.scope_key);
+    }
+  }
+
+  const importHeaders = [
+    "private_mapping_header_sentinel",
+    "club",
+    "schedule_type",
+    "timezone",
+    "planning_status",
+    "publication_status",
+    "primary_organizer_email",
+    "attendance_mode",
+    "notes",
+  ];
+  const importSelections = [
+    "title",
+    "club",
+    "schedule_type",
+    "timezone",
+    "planning_status",
+    "publication_status",
+    "primary_organizer_email",
+    "attendance_mode",
+    "notes",
+  ];
+  const importBytes = new TextEncoder().encode(
+    [
+      importHeaders.join(","),
+      [
+        "PHASE7_PRIVATE_IMPORT_TITLE_SENTINEL",
+        "vancouver-curiosity-club",
+        "unscheduled",
+        "America/Vancouver",
+        "idea",
+        "private",
+        "private_owner_email_sentinel@example.invalid",
+        "undecided",
+        "PHASE7_PRIVATE_EVENT_NOTES_SENTINEL",
+      ].join(","),
+      [
+        "PHASE7_PRIVATE_IMPORT_ERROR_SENTINEL",
+        "vancouver-curiosity-club",
+        "unscheduled",
+        "America/Vancouver",
+        "idea",
+        "published",
+        "private_owner_email_sentinel@example.invalid",
+        "undecided",
+        "PHASE7_PRIVATE_EVENT_NOTES_SENTINEL",
+      ].join(","),
+      "",
+    ].join("\r\n"),
+  );
+  const importInput = {
+    bytes: importBytes,
+    contentType: "text/csv",
+    fileName: "phase7-private-rendered.csv",
+    sourceLabel: "PHASE7_PRIVATE_IMPORT_LABEL_SENTINEL",
+    sourceNamespace: "phase7-private-rendered",
+  };
+  const inspection = await inspectCsvImportUpload(
+    database,
+    OWNER_IDENTITY,
+    importInput,
+  );
+  const preview = await createCsvImportPreview(
+    database,
+    OWNER_IDENTITY,
+    {
+      ...importInput,
+      headerSelections: importSelections,
+      inspectionBatchId: inspection.inspectionBatchId,
+    },
+  );
+  assert.equal(preview.batch.phase, "previewed");
+  assert.equal(typeof preview.previewFingerprint, "string");
+  phase7PrivateIds.importBatchId = preview.batch.batchId;
+  phase7DynamicPrivateSentinels.push(
+    preview.batch.batchId,
+    inspection.fileSha256,
+    preview.previewFingerprint,
+  );
+  const importPrivateFacts = await database
+    .prepare(
+      `SELECT detail.mapping_fingerprint,
+              application.normalized_row_fingerprint,
+              application.idempotency_key
+       FROM import_batch_details AS detail
+       JOIN import_rows AS row
+         ON row.import_batch_id = detail.import_batch_id
+        AND row.organization_id = detail.organization_id
+       JOIN import_row_applications AS application
+         ON application.import_row_id = row.id
+        AND application.import_batch_id = row.import_batch_id
+        AND application.organization_id = row.organization_id
+       WHERE detail.import_batch_id = ?
+       ORDER BY row.row_number`,
+    )
+    .bind(preview.batch.batchId)
+    .all();
+  for (const row of importPrivateFacts.results ?? []) {
+    for (const value of [
+      row.mapping_fingerprint,
+      row.normalized_row_fingerprint,
+      row.idempotency_key,
+    ]) {
+      if (typeof value === "string") {
+        phase7DynamicPrivateSentinels.push(value);
+      }
+    }
+  }
+
+  const calendar = await createOwnCalendarSubscription(
+    database,
+    OWNER_IDENTITY,
+    "PHASE7_PRIVATE_CALENDAR_LABEL_SENTINEL",
+    now,
+  );
+  const calendarRow = await database
+    .prepare(
+      `SELECT token_hash
+       FROM ics_subscription_tokens
+       WHERE id = ?
+         AND organization_id = ?
+       LIMIT 1`,
+    )
+    .bind(calendar.subscription.id, ORGANIZATION_ID)
+    .first();
+  assert.equal(typeof calendarRow?.token_hash, "string");
+  phase7DynamicPrivateSentinels.push(
+    calendar.token,
+    calendar.subscription.id,
+    calendarRow.token_hash,
+  );
+
+  const conflictInput = {
+    bufferAfterMinutes: 0,
+    bufferBeforeMinutes: 0,
+    clubId: "club-curiosity",
+    coOrganizerProfileIds: [],
+    endLocal: "2037-08-15T20:00",
+    planningStatus: "draft",
+    primaryOrganizerProfileId: PROFILE_ID,
+    privateMeetingDetails:
+      "PHASE7_PRIVATE_EVENT_MEETING_SENTINEL",
+    privateNotes: "PHASE7_PRIVATE_EVENT_NOTES_SENTINEL",
+    publicationStatus: "private",
+    scheduleShape: "timed",
+    startLocal: "2037-08-15T18:00",
+    timeZone: "America/Vancouver",
+    venueId: null,
+  };
+  const firstDraft = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    {
+      ...conflictInput,
+      title: "Phase 7 private conflict anchor",
+    },
+  );
+  await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    firstDraft.id,
+    {
+      action: "place_hold",
+      expectedContentVersion: firstDraft.contentVersion,
+      expectedScheduleVersion: firstDraft.scheduleVersion,
+      holdDurationHours: 72,
+    },
+  );
+  const secondDraft = await createOrganizerEvent(
+    database,
+    OWNER_IDENTITY,
+    {
+      ...conflictInput,
+      title: "Phase 7 private conflict candidate",
+    },
+  );
+  await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    secondDraft.id,
+    {
+      action: "place_hold",
+      expectedContentVersion: secondDraft.contentVersion,
+      expectedScheduleVersion: secondDraft.scheduleVersion,
+      holdDurationHours: 72,
+      reason: "PHASE7_PRIVATE_CONFLICT_REASON_SENTINEL",
+    },
+  );
+  phase7DynamicPrivateSentinels.push(
+    firstDraft.id,
+    firstDraft.slug,
+    secondDraft.id,
+    secondDraft.slug,
+  );
+
+  const basePrivateFacts = await database
+    .prepare(
+      `SELECT
+         (SELECT token_hash
+          FROM invitations
+          WHERE id = 'phase3-private-invitation') AS invitation_hash,
+         (SELECT source_url
+          FROM sync_sources
+          WHERE id = 'phase7-private-meetup-source') AS source_url`,
+    )
+    .first();
+  for (const value of [
+    basePrivateFacts?.invitation_hash,
+    basePrivateFacts?.source_url,
+    phase7PrivateIds.mediaAssetId,
+  ]) {
+    if (typeof value === "string") {
+      phase7DynamicPrivateSentinels.push(value);
+    }
+  }
 }
 
 async function run(database, sql, ...bindings) {

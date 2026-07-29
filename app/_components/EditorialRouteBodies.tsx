@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { ClubDirectory } from "./ClubDirectory";
 import {
   CommunityDestinations,
@@ -14,6 +15,7 @@ import type {
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 
 type EditorialRoutePreviewProps = Readonly<{
+  children?: ReactNode;
   previewCommunityLinks?: readonly PublicCommunityLinkDto[];
   previewMediaAssets?: readonly ResponsiveMediaAssetDto[];
   privatePreview?: boolean;
@@ -46,6 +48,7 @@ export function ClubsRouteBody({
 }
 
 export function GetInvolvedRouteBody({
+  children,
   destinations,
   page,
   ...preview
@@ -67,11 +70,13 @@ export function GetInvolvedRouteBody({
         </div>
       </section>
       <Destinations state={destinations} />
+      {children}
     </EditorialPage>
   );
 }
 
 export function ContactRouteBody({
+  children,
   destinations,
   page,
   ...preview
@@ -90,11 +95,13 @@ export function ContactRouteBody({
       ) : destinations ? (
         <CommunityDestinationsUnavailable />
       ) : null}
+      {children}
     </EditorialPage>
   );
 }
 
 export function HostAnEventRouteBody({
+  children,
   destinations,
   page,
   ...preview
@@ -113,6 +120,7 @@ export function HostAnEventRouteBody({
       ) : destinations ? (
         <CommunityDestinationsUnavailable />
       ) : null}
+      {children}
     </EditorialPage>
   );
 }

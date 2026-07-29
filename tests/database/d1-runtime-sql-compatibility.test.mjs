@@ -5,6 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 import { Miniflare } from "miniflare";
 import {
+  trustedIdentityFromSites,
+} from "../../lib/server/auth/index.ts";
+import {
   DATABASE_INVARIANT_ABORTING_INTEGRITY_PROBE_SQL,
   DATABASE_INVARIANT_COMBINED_COUNT_SQL,
   DATABASE_INVARIANT_TRIGGER_NAMES,
@@ -13,6 +16,15 @@ import {
 import {
   PHASE6_INVARIANT_COUNT_SQL,
 } from "../../lib/server/database/phase6-invariant-sql.ts";
+import {
+  PHASE7_INVARIANT_COUNT_SQL,
+  PHASE7_INVARIANT_TRIGGER_STATEMENTS,
+} from "../../lib/server/database/phase7-invariant-sql.ts";
+import { submitPublicForm } from "../../lib/server/phase7/public-forms.ts";
+import {
+  appendFormSubmissionNote,
+  redactFormSubmissionPersonalContent,
+} from "../../lib/server/phase7/submissions.ts";
 import {
   protectedLegalClaimSql,
 } from "../../lib/validation/protected-legal-claims.ts";
@@ -27,7 +39,16 @@ export default {
   async fetch(request, env) {
     const input = await request.json();
     try {
-      const statement = env.DB.prepare(input.sql);
+      if (input.mode === "batch") {
+        const statements = input.statements.map((item) => {
+          let statement = env.DB.prepare(item.sql);
+          if (item.bindings.length) statement = statement.bind(...item.bindings);
+          return statement;
+        });
+        return Response.json({ ok: true, result: await env.DB.batch(statements) });
+      }
+      let statement = env.DB.prepare(input.sql);
+      if (input.bindings?.length) statement = statement.bind(...input.bindings);
       const result =
         input.mode === "run"
           ? await statement.run()
@@ -323,7 +344,11 @@ test("runtime invariant SQL compiles and executes through real D1", async () => 
       }
       await request(explainSql);
     }
-    assert.equal(operations.size, 132);
+    assert.equal(
+      operations.size,
+      165,
+      "Phase 7 adds 33 new guarded table-operation activation families",
+    );
 
     await request(
       `INSERT INTO profiles (
@@ -394,4 +419,330 @@ test("runtime invariant SQL compiles and executes through real D1", async () => 
   } finally {
     await miniflare.dispose();
   }
+});
+
+test("Owner submission redaction scrubs every retained intent payload through real D1", async (t) => {
+  const miniflare = new Miniflare({
+    d1Databases: { DB: randomUUID() },
+    modules: true,
+    script: workerScript,
+  });
+  t.after(async () => {
+    await miniflare.dispose();
+  });
+  const dispatch = async (payload) => {
+    const response = await miniflare.dispatchFetch("http://d1.test/", {
+      body: JSON.stringify(payload),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    return response.json();
+  };
+  const request = async (payload) => {
+    const body = await dispatch(payload);
+    if (!body.ok) throw new Error(body.error);
+    return body.result;
+  };
+  const database = {
+    prepare(sql) {
+      assert.ok(
+        byteLength(sql) < MAX_D1_STATEMENT_BYTES,
+        `D1 statement is ${byteLength(sql)} bytes`,
+      );
+      return prepared(sql, []);
+    },
+    batch(statements) {
+      return request({
+        mode: "batch",
+        statements: statements.map((statement) => ({
+          bindings: statement.bindings,
+          sql: statement.sql,
+        })),
+      });
+    },
+  };
+  function prepared(sql, bindings) {
+    return {
+      bindings,
+      sql,
+      bind(...nextBindings) {
+        return prepared(sql, nextBindings);
+      },
+      all() {
+        return request({ bindings, mode: "all", sql });
+      },
+      async first(column) {
+        const row = await request({ bindings, mode: "first", sql });
+        return typeof column === "string" ? (row?.[column] ?? null) : row;
+      },
+      run() {
+        return request({ bindings, mode: "run", sql });
+      },
+    };
+  }
+
+  for (
+    const name of (await readdir(join(process.cwd(), "drizzle")))
+      .filter((candidate) => candidate.endsWith(".sql"))
+      .sort()
+  ) {
+    const sql = await readFile(join(process.cwd(), "drizzle", name), "utf8");
+    for (const statement of productionMigrationFragments(sql)) {
+      await database.prepare(statement).run();
+    }
+  }
+  for (const statement of PHASE7_INVARIANT_TRIGGER_STATEMENTS) {
+    await database.prepare(statement).run();
+  }
+
+  const now = Date.now();
+  const ownerEmail = "d1-redaction-owner@example.invalid";
+  const organizationId = "org-d1-redaction";
+  const ownerProfileId = "profile-d1-redaction-owner";
+  const visitorEmail = "d1-private-visitor@example.invalid";
+  const visitorMessage = "D1 retained intent payload sentinel.";
+  const visitorName = "D1 Private Visitor";
+  const noteBody = "D1 private note sentinel.";
+  await database.batch([
+    database
+      .prepare(
+        `INSERT INTO profiles (
+           id, siwc_subject, normalized_email, display_name, status,
+           created_at, updated_at, deleted_at
+         ) VALUES (?, ?, ?, 'D1 redaction owner', 'active', ?, ?, NULL)`,
+      )
+      .bind(
+        ownerProfileId,
+        `email:${ownerEmail}`,
+        ownerEmail,
+        now,
+        now,
+      ),
+    database
+      .prepare(
+        `INSERT INTO organizations (
+           id, name, slug, timezone, owner_bootstrap_closed_at,
+           owner_bootstrap_claimed_by_profile_id, created_by_profile_id,
+           created_at, updated_at, deleted_at
+         ) VALUES (
+           ?, 'D1 redaction organization', 'd1-redaction-organization',
+           'America/Vancouver', ?, ?, ?, ?, ?, NULL
+         )`,
+      )
+      .bind(
+        organizationId,
+        now,
+        ownerProfileId,
+        ownerProfileId,
+        now,
+        now,
+      ),
+    database
+      .prepare(
+        `INSERT INTO organization_memberships (
+           id, organization_id, profile_id, normalized_email,
+           role, status, created_by_profile_id,
+           created_at, updated_at, deleted_at
+         ) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, NULL)`,
+      )
+      .bind(
+        "membership-d1-redaction-owner",
+        organizationId,
+        ownerProfileId,
+        ownerEmail,
+        ownerProfileId,
+        now,
+        now,
+      ),
+  ]);
+  const identity = trustedIdentityFromSites({
+    displayName: "D1 redaction owner",
+    email: ownerEmail,
+  });
+  const submitted = await submitPublicForm(database, {
+    anonymousClientId: "d1-redaction-client",
+    formInstance: {
+      formKey: "contact",
+      issuedAt: now - 4_000,
+      nonce: "d1-redaction-nonce",
+    },
+    formKey: "contact",
+    honeypot: "",
+    keyHex: "c".repeat(64),
+    networkFacts: "d1-redaction-network",
+    nowUtcMs: now,
+    organizationId,
+    payload: {
+      message: visitorMessage,
+      name: visitorName,
+      replyEmail: visitorEmail,
+      topic: "Privacy",
+    },
+  });
+  const submissionId = await database
+    .prepare(
+      `SELECT submission_id
+       FROM form_submission_workflows
+       WHERE organization_id = ?
+         AND public_reference = ?`,
+    )
+    .bind(organizationId, submitted.publicReference)
+    .first("submission_id");
+  assert.equal(typeof submissionId, "string");
+  const withNote = await appendFormSubmissionNote(database, identity, {
+    body: noteBody,
+    submissionId,
+  });
+  const redacted = await redactFormSubmissionPersonalContent(
+    database,
+    identity,
+    {
+      confirmationReference: submitted.publicReference,
+      expectedVersion: withNote.version,
+      submissionId,
+    },
+  );
+  assert.deepEqual(redacted.fields, { redacted: true });
+
+  const retained = await database
+    .prepare(
+      `SELECT 'submission' AS source, payload_json AS retained_text
+       FROM form_submissions
+       WHERE organization_id = ?
+         AND id = ?
+       UNION ALL
+       SELECT 'note', body_text
+       FROM form_submission_notes
+       WHERE organization_id = ?
+         AND submission_id = ?
+       UNION ALL
+       SELECT 'intent', proposed_payload_json
+       FROM form_submission_write_intents
+       WHERE organization_id = ?
+         AND submission_id = ?
+       UNION ALL
+       SELECT 'audit', metadata_json
+       FROM audit_logs
+       WHERE organization_id = ?
+         AND entity_type = 'form_submission'
+         AND entity_id = ?
+       UNION ALL
+       SELECT 'notification', payload_json
+       FROM notifications
+       WHERE organization_id = ?
+         AND json_extract(payload_json, '$.submissionId') = ?`,
+    )
+    .bind(
+      organizationId,
+      submissionId,
+      organizationId,
+      submissionId,
+      organizationId,
+      submissionId,
+      organizationId,
+      submissionId,
+      organizationId,
+      submissionId,
+    )
+    .all();
+  const retainedText = JSON.stringify(retained);
+  for (const sentinel of [
+    visitorEmail,
+    visitorMessage,
+    visitorName,
+    noteBody,
+  ]) {
+    assert.doesNotMatch(retainedText, new RegExp(sentinel, "u"));
+    assert.doesNotMatch(JSON.stringify(redacted), new RegExp(sentinel, "u"));
+  }
+  const intentPayloads = retained.results
+    .filter((row) => row.source === "intent")
+    .map((row) => row.retained_text);
+  assert.ok(intentPayloads.length >= 2);
+  assert.ok(
+    intentPayloads.every((payload) => payload === '{"redacted":true}'),
+  );
+
+  const tamper = await dispatch({
+    bindings: [visitorMessage, organizationId, submissionId],
+    mode: "run",
+    sql: `UPDATE form_submission_write_intents
+          SET proposed_payload_json = json_object('message', ?)
+          WHERE organization_id = ?
+            AND submission_id = ?
+            AND action = 'create'`,
+  });
+  assert.equal(tamper.ok, false);
+  assert.match(tamper.error, /phase7_form_intent_completion_invalid/iu);
+
+  for (let index = 0; index < 5; index += 1) {
+    await assert.rejects(
+      submitPublicForm(database, {
+        anonymousClientId: "d1-invalid-rate-client",
+        formInstance: {
+          formKey: "contact",
+          issuedAt: now - 4_000,
+          nonce: `d1-invalid-rate-${index}`,
+        },
+        formKey: "contact",
+        honeypot: "",
+        keyHex: "c".repeat(64),
+        networkFacts: "d1-invalid-rate-network",
+        nowUtcMs: now + index,
+        organizationId,
+        payload: {
+          message: "short",
+          name: "x",
+          replyEmail: "not-an-email",
+          topic: "Privacy",
+        },
+      }),
+      (error) => error?.name === "PublicFormValidationError",
+    );
+  }
+  await assert.rejects(
+    submitPublicForm(database, {
+      anonymousClientId: "d1-invalid-rate-client",
+      formInstance: {
+        formKey: "contact",
+        issuedAt: now - 4_000,
+        nonce: "d1-invalid-rate-six",
+      },
+      formKey: "contact",
+      honeypot: "",
+      keyHex: "c".repeat(64),
+      networkFacts: "d1-invalid-rate-network",
+      nowUtcMs: now + 10,
+      organizationId,
+      payload: {
+        message: "short",
+        name: "x",
+        replyEmail: "not-an-email",
+        topic: "Privacy",
+      },
+    }),
+    (error) => error?.code === "rate_limited" && error?.status === 429,
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT request_count
+         FROM public_form_rate_windows
+         WHERE organization_id = ?
+           AND action = 'public_form_scope_15m'
+           AND request_count = 5
+         LIMIT 1`,
+      )
+      .bind(organizationId)
+      .first("request_count"),
+    5,
+  );
+  assert.deepEqual(
+    await Promise.all(
+      PHASE7_INVARIANT_COUNT_SQL.map((sql) =>
+        database.prepare(sql).first("violation_count"),
+      ),
+    ),
+    PHASE7_INVARIANT_COUNT_SQL.map(() => 0),
+  );
 });

@@ -19,14 +19,15 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0013_phase4_conflict_engine.sql",
   "0014_phase5_publication.sql",
   "0015_phase6_cms_media.sql",
+  "0016_phase7_import_export_forms.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
-  checks: 194,
-  explicitIndexes: 184,
-  foreignKeys: 273,
-  tables: 78,
+  checks: 243,
+  explicitIndexes: 199,
+  foreignKeys: 298,
+  tables: 86,
   triggers: 0,
-  uniqueIndexes: 73,
+  uniqueIndexes: 79,
 });
 
 test("the normalized migration chain is safe for the Sites production tokenizer", () => {
@@ -44,9 +45,10 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0013_snapshot.json",
       "0014_snapshot.json",
       "0015_snapshot.json",
+      "0016_snapshot.json",
       "_journal.json",
     ],
-    "the normalized chain must end exactly at the single Phase 6 migration 0015",
+    "the normalized chain must end exactly at the single Phase 7 migration 0016",
   );
 
   const journal = JSON.parse(
@@ -63,10 +65,21 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 13, tag: "0013_phase4_conflict_engine" },
       { idx: 14, tag: "0014_phase5_publication" },
       { idx: 15, tag: "0015_phase6_cms_media" },
+      { idx: 16, tag: "0016_phase7_import_export_forms" },
     ],
   );
   assert.deepEqual(
-    ["0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015"].map((prefix) => {
+    [
+      "0008",
+      "0009",
+      "0010",
+      "0011",
+      "0012",
+      "0013",
+      "0014",
+      "0015",
+      "0016",
+    ].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
           join(MIGRATION_DIRECTORY, "meta", `${prefix}_snapshot.json`),
@@ -79,7 +92,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131, 184],
+    [0, 0, 38, 75, 90, 117, 131, 184, 199],
     "migration snapshots must match the cumulative packaged index state",
   );
 
@@ -124,6 +137,21 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
           (index === phase6Batches.length - 1 ? 1 : 0) <=
         MAX_D1_MIGRATION_BATCH_STATEMENTS_WITH_LEDGER,
     ),
+  );
+
+  const phase7Fragments = productionFragments(
+    migrationSql("0016_phase7_import_export_forms.sql"),
+  );
+  const phase7Batches = migrationStatementBatches(phase7Fragments);
+  assert.equal(phase7Fragments.length, 23);
+  assert.deepEqual(
+    phase7Batches.map((batch) => batch.length),
+    [23],
+  );
+  assert.equal(
+    phase7Batches[0].length + 1,
+    24,
+    "the Phase 7 migration and final ledger remain in one bounded request",
   );
 
   const database = new DatabaseSync(":memory:");

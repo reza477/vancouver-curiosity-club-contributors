@@ -8,10 +8,12 @@ import type { PublicEventDetailDto } from "@/lib/server/public/events";
 export function PublicEventDetailRenderer({
   canonicalUrl,
   event,
+  showCalendarDownload = true,
   showShareControls = true,
 }: Readonly<{
   canonicalUrl: string | null;
   event: PublicEventDetailDto;
+  showCalendarDownload?: boolean;
   showShareControls?: boolean;
 }>) {
   const schedule = formatEventSchedule(event);
@@ -196,6 +198,14 @@ export function PublicEventDetailRenderer({
               <p className="event-detail__rsvp-note">
                 RSVP information coming soon.
               </p>
+            ) : null}
+            {showCalendarDownload ? (
+              <Link
+                className="event-detail__calendar-link"
+                href={`/events/${event.slug}/calendar.ics`}
+              >
+                Download this event (.ics)
+              </Link>
             ) : null}
           </section>
 

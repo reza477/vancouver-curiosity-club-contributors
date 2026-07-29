@@ -7,6 +7,7 @@ import {
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { GetInvolvedRouteBody } from "@/app/_components/EditorialRouteBodies";
+import { PublicSubmissionForm } from "@/app/_components/PublicSubmissionForm";
 
 const route = "/get-involved";
 const slug = "get-involved";
@@ -32,5 +33,10 @@ export default async function GetInvolvedPage() {
   const destinations = hasCommunityLinksBlock(loaded.page)
     ? null
     : await loadCommunityDestinations(route);
-  return <GetInvolvedRouteBody destinations={destinations} page={loaded.page} />;
+  return (
+    <GetInvolvedRouteBody destinations={destinations} page={loaded.page}>
+      <PublicSubmissionForm formKey="volunteer" id="volunteer" />
+      <PublicSubmissionForm formKey="partnership" id="partner" />
+    </GetInvolvedRouteBody>
+  );
 }

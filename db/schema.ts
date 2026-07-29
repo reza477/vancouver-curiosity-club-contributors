@@ -4652,6 +4652,355 @@ export const formSubmissions = sqliteTable(
   ],
 );
 
+/**
+ * Single-transaction proof for every Phase 7 submission create, workflow
+ * mutation, assignment, and owner redaction. The intent is inserted before
+ * either side of the legacy-base/companion update and is completed only after
+ * both rows and the minimum-safe audit receipt agree. Completed intent payload
+ * copies are immutable except for the exact Owner redaction envelope, which
+ * replaces every historical copy with the canonical redaction marker.
+ */
+export const formSubmissionWriteIntents = sqliteTable(
+  "form_submission_write_intents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    submissionId: text("submission_id").notNull(),
+    action: text("action", {
+      enum: ["create", "assign", "status", "redact"],
+    }).notNull(),
+    expectedWorkflowVersion: integer("expected_workflow_version").notNull(),
+    proposedWorkflowVersion: integer("proposed_workflow_version").notNull(),
+    proposedCanonicalStatus: text("proposed_canonical_status", {
+      enum: ["new", "in_review", "responded", "archived", "spam"],
+    }).notNull(),
+    proposedAssignedToProfileId: text(
+      "proposed_assigned_to_profile_id",
+    ).references(() => profiles.id, { onDelete: "restrict" }),
+    proposedPayloadJson: text("proposed_payload_json").notNull(),
+    proposedPublicReference: text("proposed_public_reference"),
+    proposedRequestIdempotencyHash: text(
+      "proposed_request_idempotency_hash",
+    ),
+    proposedRetentionReviewAt: integer("proposed_retention_review_at"),
+    actorProfileId: text("actor_profile_id").references(() => profiles.id, {
+      onDelete: "restrict",
+    }),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    completedAt: integer("completed_at"),
+    completionAuditLogId: text("completion_audit_log_id"),
+  },
+  (table) => [
+    uniqueIndex("form_submission_write_intents_open_unique")
+      .on(table.organizationId, table.submissionId)
+      .where(sql`${table.completedAt} IS NULL`),
+    index("form_submission_write_intents_submission_idx").on(
+      table.organizationId,
+      table.submissionId,
+      table.createdAt,
+    ),
+    check(
+      "form_submission_write_intents_action_check",
+      sql`${table.action} IN ('create', 'assign', 'status', 'redact')`,
+    ),
+    check(
+      "form_submission_write_intents_version_check",
+      sql`(
+        ${table.action} = 'create'
+        AND ${table.expectedWorkflowVersion} = 0
+        AND ${table.proposedWorkflowVersion} = 1
+      ) OR (
+        ${table.action} <> 'create'
+        AND ${table.expectedWorkflowVersion} >= 1
+        AND ${table.proposedWorkflowVersion} =
+            ${table.expectedWorkflowVersion} + 1
+      )`,
+    ),
+    check(
+      "form_submission_write_intents_status_check",
+      sql`${table.proposedCanonicalStatus} IN (
+        'new', 'in_review', 'responded', 'archived', 'spam'
+      )`,
+    ),
+    check(
+      "form_submission_write_intents_payload_check",
+      sql`json_valid(${table.proposedPayloadJson})
+          AND length(${table.proposedPayloadJson}) BETWEEN 2 AND 16384`,
+    ),
+    check(
+      "form_submission_write_intents_create_shape_check",
+      sql`(
+        ${table.action} = 'create'
+        AND ${table.actorProfileId} IS NULL
+        AND ${table.proposedAssignedToProfileId} IS NULL
+        AND ${table.proposedPublicReference} IS NOT NULL
+        AND ${table.proposedRequestIdempotencyHash} IS NOT NULL
+        AND ${table.proposedRetentionReviewAt} IS NOT NULL
+      ) OR (
+        ${table.action} <> 'create'
+        AND ${table.actorProfileId} IS NOT NULL
+        AND ${table.proposedPublicReference} IS NULL
+        AND ${table.proposedRequestIdempotencyHash} IS NULL
+        AND ${table.proposedRetentionReviewAt} IS NULL
+      )`,
+    ),
+    check(
+      "form_submission_write_intents_reference_check",
+      sql`${table.proposedPublicReference} IS NULL OR (
+        length(${table.proposedPublicReference}) BETWEEN 12 AND 64
+        AND substr(${table.proposedPublicReference}, 1, 4) = 'VCC-'
+        AND substr(${table.proposedPublicReference}, 5)
+            NOT GLOB '*[^A-Z0-9-]*'
+      )`,
+    ),
+    check(
+      "form_submission_write_intents_idempotency_check",
+      sql`${table.proposedRequestIdempotencyHash} IS NULL OR (
+        length(${table.proposedRequestIdempotencyHash}) = 64
+        AND ${table.proposedRequestIdempotencyHash} =
+            lower(${table.proposedRequestIdempotencyHash})
+        AND ${table.proposedRequestIdempotencyHash}
+            NOT GLOB '*[^0-9a-f]*'
+      )`,
+    ),
+    check(
+      "form_submission_write_intents_completion_check",
+      sql`(
+        ${table.completedAt} IS NULL
+        AND ${table.completionAuditLogId} IS NULL
+      ) OR (
+        ${table.completedAt} IS NOT NULL
+        AND ${table.completionAuditLogId} IS NOT NULL
+        AND ${table.completedAt} >= ${table.createdAt}
+      )`,
+    ),
+  ],
+);
+
+export const formSubmissionWorkflows = sqliteTable(
+  "form_submission_workflows",
+  {
+    submissionId: text("submission_id")
+      .primaryKey()
+      .references(() => formSubmissions.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    publicReference: text("public_reference").notNull(),
+    canonicalStatus: text("canonical_status", {
+      enum: ["new", "in_review", "responded", "archived", "spam"],
+    })
+      .notNull()
+      .default("new"),
+    requestIdempotencyHash: text("request_idempotency_hash").notNull(),
+    retentionReviewAt: integer("retention_review_at").notNull(),
+    version: integer("version").notNull().default(1),
+    writeIntentId: text("write_intent_id").notNull(),
+    updatedByProfileId: text("updated_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    redactedAt: integer("redacted_at"),
+    redactedByProfileId: text("redacted_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "restrict" },
+    ),
+  },
+  (table) => [
+    uniqueIndex("form_submission_workflows_public_reference_unique").on(
+      table.publicReference,
+    ),
+    uniqueIndex("form_submission_workflows_idempotency_unique").on(
+      table.requestIdempotencyHash,
+    ),
+    index("form_submission_workflows_org_status_retention_idx").on(
+      table.organizationId,
+      table.canonicalStatus,
+      table.retentionReviewAt,
+      table.createdAt,
+    ),
+    check(
+      "form_submission_workflows_public_reference_check",
+      sql`length(${table.publicReference}) BETWEEN 12 AND 64
+          AND substr(${table.publicReference}, 1, 4) = 'VCC-'
+          AND substr(${table.publicReference}, 5) NOT GLOB '*[^A-Z0-9-]*'`,
+    ),
+    check(
+      "form_submission_workflows_status_check",
+      sql`${table.canonicalStatus} IN ('new', 'in_review', 'responded', 'archived', 'spam')`,
+    ),
+    check(
+      "form_submission_workflows_idempotency_hash_check",
+      sql`length(${table.requestIdempotencyHash}) = 64
+          AND ${table.requestIdempotencyHash} = lower(${table.requestIdempotencyHash})
+          AND ${table.requestIdempotencyHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "form_submission_workflows_version_check",
+      sql`${table.version} >= 1`,
+    ),
+    check(
+      "form_submission_workflows_retention_check",
+      sql`${table.retentionReviewAt} >= ${table.createdAt}`,
+    ),
+    check(
+      "form_submission_workflows_redaction_check",
+      sql`(${table.redactedAt} IS NULL AND ${table.redactedByProfileId} IS NULL)
+          OR (${table.redactedAt} IS NOT NULL AND ${table.redactedByProfileId} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const formSubmissionNotes = sqliteTable(
+  "form_submission_notes",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => formSubmissions.id, { onDelete: "cascade" }),
+    authorProfileId: text("author_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    bodyText: text("body_text").notNull(),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    redactedAt: integer("redacted_at"),
+    redactedByProfileId: text("redacted_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "restrict" },
+    ),
+  },
+  (table) => [
+    index("form_submission_notes_submission_created_idx").on(
+      table.organizationId,
+      table.submissionId,
+      table.createdAt,
+    ),
+    check(
+      "form_submission_notes_body_check",
+      sql`length(${table.bodyText}) BETWEEN 1 AND 4000`,
+    ),
+    check(
+      "form_submission_notes_redaction_check",
+      sql`(${table.redactedAt} IS NULL AND ${table.redactedByProfileId} IS NULL)
+          OR (${table.redactedAt} IS NOT NULL AND ${table.redactedByProfileId} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const publicFormProtectionKeys = sqliteTable(
+  "public_form_protection_keys",
+  {
+    organizationId: text("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    keyHex: text("key_hex").notNull(),
+    version: integer("version").notNull().default(1),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    check(
+      "public_form_protection_keys_material_check",
+      sql`length(${table.keyHex}) = 64
+          AND ${table.keyHex} = lower(${table.keyHex})
+          AND ${table.keyHex} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "public_form_protection_keys_version_check",
+      sql`${table.version} >= 1`,
+    ),
+  ],
+);
+
+export const publicFormRateWindows = sqliteTable(
+  "public_form_rate_windows",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    action: text("action", {
+      enum: [
+        "public_form_scope_15m",
+        "public_form_scope_day",
+        "public_form_organization_hour",
+      ],
+    }).notNull(),
+    scopeKey: text("scope_key").notNull(),
+    windowStartedAt: integer("window_started_at").notNull(),
+    windowEndsAt: integer("window_ends_at").notNull(),
+    requestCount: integer("request_count").notNull().default(1),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("public_form_rate_windows_scope_unique").on(
+      table.organizationId,
+      table.action,
+      table.scopeKey,
+      table.windowStartedAt,
+    ),
+    index("public_form_rate_windows_active_idx").on(
+      table.organizationId,
+      table.action,
+      table.windowEndsAt,
+    ),
+    check(
+      "public_form_rate_windows_action_check",
+      sql`${table.action} IN (
+        'public_form_scope_15m',
+        'public_form_scope_day',
+        'public_form_organization_hour'
+      )`,
+    ),
+    check(
+      "public_form_rate_windows_scope_hash_check",
+      sql`length(${table.scopeKey}) = 64
+          AND ${table.scopeKey} = lower(${table.scopeKey})
+          AND ${table.scopeKey} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "public_form_rate_windows_window_check",
+      sql`(
+        ${table.action} = 'public_form_scope_15m'
+        AND ${table.windowEndsAt} =
+            ${table.windowStartedAt} + 900000
+        AND ${table.windowStartedAt} % 900000 = 0
+      ) OR (
+        ${table.action} = 'public_form_scope_day'
+        AND ${table.windowEndsAt} =
+            ${table.windowStartedAt} + 86400000
+        AND ${table.windowStartedAt} % 86400000 = 0
+      ) OR (
+        ${table.action} = 'public_form_organization_hour'
+        AND ${table.windowEndsAt} =
+            ${table.windowStartedAt} + 3600000
+        AND ${table.windowStartedAt} % 3600000 = 0
+      )`,
+    ),
+    check(
+      "public_form_rate_windows_count_check",
+      sql`(
+        ${table.action} = 'public_form_scope_15m'
+        AND ${table.requestCount} BETWEEN 1 AND 5
+      ) OR (
+        ${table.action} = 'public_form_scope_day'
+        AND ${table.requestCount} BETWEEN 1 AND 20
+      ) OR (
+        ${table.action} = 'public_form_organization_hour'
+        AND ${table.requestCount} BETWEEN 1 AND 500
+      )`,
+    ),
+  ],
+);
+
 export const auditLogs = sqliteTable(
   "audit_logs",
   {
@@ -4754,6 +5103,337 @@ export const importRows = sqliteTable(
     check(
       "import_rows_normalized_payload_json_check",
       sql`${table.normalizedPayloadJson} IS NULL OR json_valid(${table.normalizedPayloadJson})`,
+    ),
+  ],
+);
+
+export const importBatchDetails = sqliteTable(
+  "import_batch_details",
+  {
+    importBatchId: text("import_batch_id")
+      .primaryKey()
+      .references(() => importBatches.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fileSha256: text("file_sha256").notNull(),
+    sourceNamespace: text("source_namespace").notNull(),
+    templateVersion: integer("template_version").notNull(),
+    parserVersion: integer("parser_version").notNull(),
+    encoding: text("encoding", { enum: ["utf-8"] }).notNull(),
+    delimiter: text("delimiter", { enum: [","] }).notNull(),
+    columnMappingJson: text("column_mapping_json").notNull(),
+    mappingFingerprint: text("mapping_fingerprint").notNull(),
+    previewFingerprint: text("preview_fingerprint"),
+    previewVersion: integer("preview_version").notNull().default(0),
+    totalRowCount: integer("total_row_count").notNull().default(0),
+    validRowCount: integer("valid_row_count").notNull().default(0),
+    invalidRowCount: integer("invalid_row_count").notNull().default(0),
+    warningRowCount: integer("warning_row_count").notNull().default(0),
+    selectedRowCount: integer("selected_row_count").notNull().default(0),
+    importedRowCount: integer("imported_row_count").notNull().default(0),
+    skippedRowCount: integer("skipped_row_count").notNull().default(0),
+    failedRowCount: integer("failed_row_count").notNull().default(0),
+    pendingRowCount: integer("pending_row_count").notNull().default(0),
+    phase: text("phase", {
+      enum: [
+        "uploaded",
+        "previewed",
+        "approved",
+        "applying",
+        "completed",
+        "completed_with_errors",
+        "interrupted",
+        "failed",
+        "redacted",
+      ],
+    })
+      .notNull()
+      .default("uploaded"),
+    outcomeCode: text("outcome_code"),
+    applicationCursor: integer("application_cursor").notNull().default(0),
+    version: integer("version").notNull().default(1),
+    approvedByProfileId: text("approved_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "restrict" },
+    ),
+    approvedAt: integer("approved_at"),
+    startedAt: integer("started_at"),
+    completedAt: integer("completed_at"),
+    activeRunnerVersion: integer("active_runner_version"),
+    activeRunnerLeaseHash: text("active_runner_lease_hash"),
+    activeRunnerExpiresAt: integer("active_runner_expires_at"),
+    sourcePayloadRedactedAt: integer("source_payload_redacted_at"),
+    redactedByProfileId: text("redacted_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "restrict" },
+    ),
+    updatedByProfileId: text("updated_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "restrict" },
+    ),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    index("import_batch_details_org_phase_idx").on(
+      table.organizationId,
+      table.phase,
+      table.updatedAt,
+    ),
+    index("import_batch_details_runner_idx").on(
+      table.organizationId,
+      table.activeRunnerExpiresAt,
+    ),
+    check(
+      "import_batch_details_file_hash_check",
+      sql`length(${table.fileSha256}) = 64
+          AND ${table.fileSha256} = lower(${table.fileSha256})
+          AND ${table.fileSha256} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "import_batch_details_source_namespace_check",
+      sql`length(trim(${table.sourceNamespace})) BETWEEN 1 AND 100
+          AND ${table.sourceNamespace} = lower(trim(${table.sourceNamespace}))`,
+    ),
+    check(
+      "import_batch_details_versions_check",
+      sql`${table.templateVersion} >= 1
+          AND ${table.parserVersion} >= 1
+          AND ${table.previewVersion} >= 0
+          AND ${table.version} >= 1`,
+    ),
+    check(
+      "import_batch_details_format_check",
+      sql`${table.encoding} = 'utf-8' AND ${table.delimiter} = ','`,
+    ),
+    check(
+      "import_batch_details_mapping_json_check",
+      sql`json_valid(${table.columnMappingJson})
+          AND json_type(${table.columnMappingJson}) = 'object'`,
+    ),
+    check(
+      "import_batch_details_mapping_hash_check",
+      sql`length(${table.mappingFingerprint}) = 64
+          AND ${table.mappingFingerprint} = lower(${table.mappingFingerprint})
+          AND ${table.mappingFingerprint} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "import_batch_details_preview_hash_check",
+      sql`${table.previewFingerprint} IS NULL OR (
+        length(${table.previewFingerprint}) = 64
+        AND ${table.previewFingerprint} = lower(${table.previewFingerprint})
+        AND ${table.previewFingerprint} NOT GLOB '*[^0-9a-f]*'
+      )`,
+    ),
+    check(
+      "import_batch_details_counts_check",
+      sql`${table.totalRowCount} BETWEEN 0 AND 2000
+          AND ${table.validRowCount} BETWEEN 0 AND ${table.totalRowCount}
+          AND ${table.invalidRowCount} BETWEEN 0 AND ${table.totalRowCount}
+          AND ${table.warningRowCount} BETWEEN 0 AND ${table.totalRowCount}
+          AND ${table.selectedRowCount} BETWEEN 0 AND ${table.totalRowCount}
+          AND ${table.importedRowCount} BETWEEN 0 AND ${table.totalRowCount}
+          AND ${table.skippedRowCount} BETWEEN 0 AND ${table.totalRowCount}
+          AND ${table.failedRowCount} BETWEEN 0 AND ${table.totalRowCount}
+          AND ${table.pendingRowCount} BETWEEN 0 AND ${table.totalRowCount}
+          AND ${table.validRowCount} + ${table.invalidRowCount} =
+              ${table.totalRowCount}
+          AND ${table.selectedRowCount} <= ${table.validRowCount}
+          AND ${table.selectedRowCount} + ${table.skippedRowCount} <=
+              ${table.totalRowCount}
+          AND ${table.importedRowCount} + ${table.failedRowCount}
+              + ${table.pendingRowCount} =
+              ${table.selectedRowCount}`,
+    ),
+    check(
+      "import_batch_details_phase_check",
+      sql`${table.phase} IN (
+        'uploaded', 'previewed', 'approved', 'applying', 'completed',
+        'completed_with_errors', 'interrupted', 'failed', 'redacted'
+      )`,
+    ),
+    check(
+      "import_batch_details_cursor_check",
+      sql`${table.applicationCursor} BETWEEN 0 AND ${table.totalRowCount}`,
+    ),
+    check(
+      "import_batch_details_approval_shape_check",
+      sql`(
+        ${table.approvedAt} IS NULL
+        AND ${table.approvedByProfileId} IS NULL
+      ) OR (
+        ${table.approvedAt} IS NOT NULL
+        AND ${table.approvedByProfileId} IS NOT NULL
+        AND ${table.previewFingerprint} IS NOT NULL
+        AND ${table.previewVersion} >= 1
+      )`,
+    ),
+    check(
+      "import_batch_details_runner_shape_check",
+      sql`(
+        ${table.activeRunnerVersion} IS NULL
+        AND ${table.activeRunnerLeaseHash} IS NULL
+        AND ${table.activeRunnerExpiresAt} IS NULL
+      ) OR (
+        ${table.activeRunnerVersion} IS NOT NULL
+        AND ${table.activeRunnerVersion} >= 1
+        AND length(${table.activeRunnerLeaseHash}) = 64
+        AND ${table.activeRunnerLeaseHash} =
+            lower(${table.activeRunnerLeaseHash})
+        AND ${table.activeRunnerLeaseHash} NOT GLOB '*[^0-9a-f]*'
+        AND ${table.activeRunnerExpiresAt} IS NOT NULL
+      )`,
+    ),
+    check(
+      "import_batch_details_redaction_shape_check",
+      sql`(
+        ${table.sourcePayloadRedactedAt} IS NULL
+        AND ${table.redactedByProfileId} IS NULL
+      ) OR (
+        ${table.sourcePayloadRedactedAt} IS NOT NULL
+        AND ${table.redactedByProfileId} IS NOT NULL
+      )`,
+    ),
+  ],
+);
+
+export const importRowApplications = sqliteTable(
+  "import_row_applications",
+  {
+    importRowId: text("import_row_id")
+      .primaryKey()
+      .references(() => importRows.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    importBatchId: text("import_batch_id")
+      .notNull()
+      .references(() => importBatches.id, { onDelete: "cascade" }),
+    normalizedRowFingerprint: text("normalized_row_fingerprint").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    previewResultCode: text("preview_result_code").notNull(),
+    previewErrorCodesJson: text("preview_error_codes_json").notNull().default("[]"),
+    previewWarningCodesJson: text("preview_warning_codes_json")
+      .notNull()
+      .default("[]"),
+    approvalAction: text("approval_action", {
+      enum: ["pending", "selected", "skip", "create_separate"],
+    })
+      .notNull()
+      .default("pending"),
+    duplicateDecision: text("duplicate_decision", {
+      enum: ["skip", "create_separate"],
+    }),
+    duplicateReason: text("duplicate_reason"),
+    conflictDecision: text("conflict_decision", {
+      enum: ["none", "reason_recorded", "administrator_review", "blocked"],
+    }),
+    conflictReason: text("conflict_reason"),
+    targetOrganizerEventId: text("target_organizer_event_id").references(
+      () => organizerEvents.id,
+      { onDelete: "restrict" },
+    ),
+    applicationState: text("application_state", {
+      enum: [
+        "previewed",
+        "approved",
+        "applying",
+        "imported",
+        "skipped",
+        "failed",
+        "redacted",
+      ],
+    })
+      .notNull()
+      .default("previewed"),
+    resultCode: text("result_code"),
+    approvedByProfileId: text("approved_by_profile_id").references(
+      () => profiles.id,
+      { onDelete: "restrict" },
+    ),
+    applyActorProfileId: text("apply_actor_profile_id").references(
+      () => profiles.id,
+      { onDelete: "restrict" },
+    ),
+    approvedAt: integer("approved_at"),
+    appliedAt: integer("applied_at"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("import_row_applications_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
+    index("import_row_applications_batch_state_idx").on(
+      table.organizationId,
+      table.importBatchId,
+      table.applicationState,
+      table.importRowId,
+    ),
+    index("import_row_applications_target_event_idx").on(
+      table.organizationId,
+      table.targetOrganizerEventId,
+    ),
+    check(
+      "import_row_applications_fingerprint_check",
+      sql`length(${table.normalizedRowFingerprint}) = 64
+          AND ${table.normalizedRowFingerprint} =
+              lower(${table.normalizedRowFingerprint})
+          AND ${table.normalizedRowFingerprint} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "import_row_applications_idempotency_check",
+      sql`length(${table.idempotencyKey}) = 64
+          AND ${table.idempotencyKey} = lower(${table.idempotencyKey})
+          AND ${table.idempotencyKey} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "import_row_applications_preview_json_check",
+      sql`json_valid(${table.previewErrorCodesJson})
+          AND json_type(${table.previewErrorCodesJson}) = 'array'
+          AND json_valid(${table.previewWarningCodesJson})
+          AND json_type(${table.previewWarningCodesJson}) = 'array'`,
+    ),
+    check(
+      "import_row_applications_approval_check",
+      sql`${table.approvalAction} IN (
+        'pending', 'selected', 'skip', 'create_separate'
+      )`,
+    ),
+    check(
+      "import_row_applications_state_check",
+      sql`${table.applicationState} IN (
+        'previewed', 'approved', 'applying', 'imported', 'skipped',
+        'failed', 'redacted'
+      )`,
+    ),
+    check(
+      "import_row_applications_approval_shape_check",
+      sql`(
+        ${table.approvalAction} = 'pending'
+        AND ${table.approvedByProfileId} IS NULL
+        AND ${table.approvedAt} IS NULL
+      ) OR (
+        ${table.approvalAction} <> 'pending'
+        AND ${table.approvedByProfileId} IS NOT NULL
+        AND ${table.approvedAt} IS NOT NULL
+      )`,
+    ),
+    check(
+      "import_row_applications_target_shape_check",
+      sql`${table.targetOrganizerEventId} IS NULL
+          OR ${table.applicationState} IN ('applying', 'imported', 'skipped')`,
+    ),
+    check(
+      "import_row_applications_duplicate_reason_check",
+      sql`${table.duplicateDecision} <> 'create_separate'
+          OR length(trim(${table.duplicateReason})) BETWEEN 1 AND 1000`,
+    ),
+    check(
+      "import_row_applications_conflict_reason_check",
+      sql`${table.conflictDecision} <> 'reason_recorded'
+          OR length(trim(${table.conflictReason})) BETWEEN 1 AND 1000`,
     ),
   ],
 );
@@ -5097,6 +5777,66 @@ export const icsSubscriptionTokens = sqliteTable(
     check(
       "ics_subscription_tokens_hash_check",
       sql`length(${table.tokenHash}) = 64`,
+    ),
+  ],
+);
+
+export const eventCalendarComponentRevisions = sqliteTable(
+  "event_calendar_component_revisions",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    scope: text("scope", { enum: ["public", "private"] }).notNull(),
+    eventKey: text("event_key").notNull(),
+    canonicalFingerprint: text("canonical_fingerprint").notNull(),
+    sequence: integer("sequence").notNull().default(0),
+    lastModifiedAt: integer("last_modified_at").notNull(),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    uniqueIndex("event_calendar_component_revisions_identity_unique").on(
+      table.organizationId,
+      table.scope,
+      table.eventKey,
+    ),
+    index("event_calendar_component_revisions_updated_idx").on(
+      table.organizationId,
+      table.scope,
+      table.updatedAt,
+    ),
+    check(
+      "event_calendar_component_revisions_scope_check",
+      sql`${table.scope} IN ('public', 'private')`,
+    ),
+    check(
+      "event_calendar_component_revisions_event_key_check",
+      sql`length(${table.eventKey}) BETWEEN 1 AND 255
+          AND ${table.eventKey} = trim(${table.eventKey})`,
+    ),
+    check(
+      "event_calendar_component_revisions_fingerprint_check",
+      sql`length(${table.canonicalFingerprint}) = 64
+          AND ${table.canonicalFingerprint} =
+              lower(${table.canonicalFingerprint})
+          AND ${table.canonicalFingerprint} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "event_calendar_component_revisions_sequence_check",
+      sql`${table.sequence} BETWEEN 0 AND 2147483647`,
+    ),
+    check(
+      "event_calendar_component_revisions_timestamp_check",
+      sql`${table.lastModifiedAt} BETWEEN 0 AND 8640000000000000
+          AND ${table.createdAt} BETWEEN 0 AND 8640000000000000
+          AND ${table.updatedAt} BETWEEN ${table.createdAt}
+              AND 8640000000000000
+          AND ${table.lastModifiedAt} >=
+              ${table.createdAt} + (${table.sequence} * 1000)
+          AND ${table.lastModifiedAt} >= ${table.updatedAt}
+          AND ${table.lastModifiedAt} <=
+              ${table.updatedAt} + (${table.sequence} * 1000)`,
     ),
   ],
 );

@@ -1223,6 +1223,34 @@
   text-align: right;
 }
 
+.simpleList {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.simpleList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--ow-line);
+  background: var(--ow-paper);
+}
+
+.simpleList li > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.simpleList li small {
+  overflow-wrap: anywhere;
+}
+
 .eventIndex {
   display: grid;
   gap: 1rem;
@@ -3515,6 +3543,96 @@
   .policyPanel,
   .venueWorkspace {
     padding: 1rem;
+  }
+}
+
+.submissionWorkspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.submissionFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+}
+
+.submissionFacts > div,
+.submissionFields > div,
+.submissionNotes li,
+.submissionHistory li {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0.75rem;
+  background: var(--ow-surface);
+}
+
+.submissionFacts dt,
+.submissionFields strong {
+  color: var(--ow-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.submissionFacts dd {
+  margin: 0.3rem 0 0;
+}
+
+.submissionFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.submissionFields p,
+.submissionNotes p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.submissionNotes,
+.submissionHistory {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.submissionHistory li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dangerPanel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem;
+  border: 2px solid var(--ow-danger, #8b2f24);
+  border-radius: 0.9rem;
+  background: var(--ow-surface);
+}
+
+.dangerPanel label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+@media (max-width: 44rem) {
+  .submissionFacts,
+  .submissionFields {
+    grid-template-columns: 1fr;
+  }
+
+  .submissionHistory li {
+    display: grid;
+    gap: 0.25rem;
   }
 }
 

@@ -1002,6 +1002,39 @@ export type QueryPublicEventsInput = Readonly<{
   view?: unknown;
 }>;
 
+export type QueryPublicEventExportsInput = Omit<
+  QueryPublicEventsInput,
+  "page" | "pageSize"
+> &
+  Readonly<{
+    maxEvents: unknown;
+  }>;
+
+export type PublicEventExportDto = Readonly<{
+  attendanceMode: PublicEventAttendanceMode;
+  availabilityState: "full" | "open" | "waitlist" | null;
+  category: PublicEventCardDto["category"];
+  club: PublicEventCardDto["club"];
+  costText: string | null;
+  description: string | null;
+  isCancelled: boolean;
+  lane: PublicEventCardDto["lane"];
+  program: PublicEventCardDto["program"];
+  rsvpUrl: string | null;
+  schedule: PublicEventCardDto["schedule"];
+  slug: string;
+  status: PublicEventStatus;
+  summary: string | null;
+  title: string;
+  venue: PublicEventCardDto["venue"];
+}>;
+
+export type PublicEventExportRecord = Readonly<{
+  event: PublicEventExportDto;
+  sourceIdentity: string;
+  sourceVersion: number;
+}>;
+
 export type PublicEventPageDto = Readonly<{
   events: readonly PublicEventCardDto[];
   hasMore: boolean;
@@ -3103,6 +3136,42 @@ const PUBLIC_EVENT_CARD_COLUMNS_SQL = `
   public_event.public_slug_count AS public_slug_count
 `;
 
+const PUBLIC_EVENT_EXPORT_COLUMNS_SQL = `
+  public_event.source_identity_key AS public_source_identity_key,
+  public_event.public_updated_at AS public_source_version,
+  public_event.club_projection_token AS public_club_projection_token,
+  public_event.program_projection_token AS public_program_projection_token,
+  public_event.slug AS slug,
+  public_event.title AS title,
+  public_event.summary AS summary,
+  public_event.description AS description,
+  public_event.event_status AS event_status,
+  public_event.rsvp_url AS rsvp_url,
+  public_event.rsvp_mode AS rsvp_mode,
+  public_event.time_kind AS time_kind,
+  public_event.starts_at_utc AS starts_at_utc,
+  public_event.ends_at_utc AS ends_at_utc,
+  public_event.timezone AS timezone,
+  public_event.all_day_start_date AS all_day_start_date,
+  public_event.all_day_end_date_exclusive AS all_day_end_date_exclusive,
+  public_event.attendance_mode AS attendance_mode,
+  public_event.club_slug AS club_slug,
+  public_event.club_name AS club_name,
+  public_event.program_slug AS program_slug,
+  public_event.program_name AS program_name,
+  public_event.lane_slug AS lane_slug,
+  public_event.lane_name AS lane_name,
+  public_event.category_slug AS category_slug,
+  public_event.category_name AS category_name,
+  public_event.category_color_token AS category_color_token,
+  public_event.venue_public_name AS venue_public_name,
+  public_event.venue_public_address AS venue_public_address,
+  public_event.cost_text AS cost_text,
+  public_event.availability_state AS availability_state,
+  public_event.event_id AS artwork_event_id,
+  public_event.public_slug_count AS public_slug_count
+`;
+
 export const LEGACY_PUBLIC_EVENT_ORGANIZER_ENRICHMENT_SQL = `
   SELECT event.id AS artwork_event_id,
          ${legacyPublicOrganizersSql(
@@ -4003,6 +4072,80 @@ export async function queryPublicEvents(
   });
 }
 
+/**
+ * Bounded export projection.
+ *
+ * This deliberately reuses the exact unified public-event projection,
+ * collision proof and source/Club/Program revalidation used by the rendered
+ * event routes. The export-specific select excludes artwork and rich host
+ * joins because neither is part of an event-file allowlist. A limit-plus-one
+ * read rejects oversized exports instead of truncating or paging into D1's
+ * per-invocation statement ceiling.
+ */
+export async function queryPublicEventsForExport(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: QueryPublicEventExportsInput,
+): Promise<readonly PublicEventExportRecord[]> {
+  const maxEvents = parseFiniteInteger(input.maxEvents, {
+    path: "maxEvents",
+    minimum: 1,
+    maximum: 2_000,
+  });
+  const parsed = parsePublicEventQuery({
+    ...input,
+    page: 1,
+    pageSize: 1,
+  });
+  const filter = buildPublicEventFilter(parsed, {
+    includeCancelled: true,
+  });
+  const commonBindings: D1Value[] = [
+    parsed.organizationId,
+    parsed.organizationId,
+    parsed.organizationId,
+    ...filter.bindings,
+  ];
+  const result = await database
+    .prepare(
+      `${UNIFIED_PUBLIC_EVENT_CTE_SQL}
+       SELECT ${PUBLIC_EVENT_EXPORT_COLUMNS_SQL}
+       FROM public_events AS public_event
+       WHERE ${filter.sql}
+       ${publicEventOrderSql(parsed.view)}
+       LIMIT ?`,
+    )
+    .bind(...commonBindings, maxEvents + 1)
+    .all<Record<string, unknown>>();
+  assertSuccessfulResult(result);
+  const sourceRows = result.results ?? [];
+  if (sourceRows.length > maxEvents) {
+    throw validationIssue(
+      "filters",
+      "result_limit_exceeded",
+      "Narrow the filters before downloading this export.",
+    );
+  }
+  if (
+    sourceRows.some((row) =>
+      parseFiniteInteger(row.public_slug_count, {
+        path: "publicEventExport.publicSlugCount",
+        minimum: 0,
+      }) !== 1
+    )
+  ) {
+    invalidProjection();
+  }
+  const currentRows = await revalidatePublicEventIdentityRows(
+    database,
+    parsed.organizationId,
+    sourceRows,
+  );
+  if (currentRows.length !== sourceRows.length) invalidProjection();
+  return Object.freeze(
+    currentRows.map(publicEventExportRecord),
+  );
+}
+
 export async function getPublicEventBySlug(
   database: Pick<D1DatabaseLike, "prepare">,
   input: GetPublicEventInput,
@@ -4030,6 +4173,42 @@ export async function getPublicEventBySlug(
     [row],
   );
   return enrichedRow ? toPublicEventDetailDto(enrichedRow) : null;
+}
+
+export async function getPublicEventExportRecordBySlug(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: GetPublicEventInput,
+): Promise<PublicEventExportRecord | null> {
+  const organizationId = parseIdentifier(
+    input.organizationId,
+    "organizationId",
+  );
+  const slug = parseIdentifier(input.slug, "slug");
+  const row = await database
+    .prepare(
+      `${UNIFIED_PUBLIC_EVENT_CTE_SQL}
+       SELECT ${PUBLIC_EVENT_EXPORT_COLUMNS_SQL}
+       FROM public_events AS public_event
+       WHERE public_event.slug = ?
+       LIMIT 1`,
+    )
+    .bind(organizationId, organizationId, organizationId, slug)
+    .first<Record<string, unknown>>();
+  if (!row) return null;
+  if (
+    parseFiniteInteger(row.public_slug_count, {
+      path: "publicEventExport.publicSlugCount",
+      minimum: 0,
+    }) !== 1
+  ) {
+    invalidProjection();
+  }
+  const [currentRow] = await revalidatePublicEventIdentityRows(
+    database,
+    organizationId,
+    [row],
+  );
+  return currentRow ? publicEventExportRecord(currentRow) : null;
 }
 
 export async function getPublicEventsBySlugs(
@@ -4812,6 +4991,97 @@ export function toPublicEventCardDto(
   });
 }
 
+function publicEventExportRecord(
+  row: Record<string, unknown>,
+): PublicEventExportRecord {
+  return Object.freeze({
+    event: toPublicEventExportDto(row),
+    sourceIdentity: parseIdentifier(
+      row.public_source_identity_key,
+      "publicEventExport.sourceIdentity",
+    ),
+    sourceVersion: parseFiniteInteger(row.public_source_version, {
+      path: "publicEventExport.sourceVersion",
+      minimum: 0,
+    }),
+  });
+}
+
+function toPublicEventExportDto(
+  row: Record<string, unknown>,
+): PublicEventExportDto {
+  assertSinglePublicSlug(row);
+  const status = parseEnum(
+    row.event_status,
+    ["confirmed", "tentative", "cancelled", "completed"] as const,
+    "event.status",
+  );
+  const rsvpMode =
+    row.rsvp_mode === null || row.rsvp_mode === undefined
+      ? null
+      : parseEnum(
+          row.rsvp_mode,
+          ["meetup", "coming_soon"] as const,
+          "event.rsvpMode",
+        );
+  const rsvpUrl =
+    row.rsvp_url === null || row.rsvp_url === undefined
+      ? null
+      : parseOfficialMeetupEventUrl(row.rsvp_url, "event.rsvpUrl");
+  if (
+    (rsvpMode === "meetup" && rsvpUrl === null) ||
+    (rsvpMode !== "meetup" && rsvpUrl !== null)
+  ) {
+    return invalidProjection();
+  }
+  return Object.freeze({
+    attendanceMode: publicAttendanceMode(row.attendance_mode),
+    availabilityState:
+      row.availability_state === null ||
+      row.availability_state === undefined
+        ? null
+        : parseEnum(
+            row.availability_state,
+            ["open", "full", "waitlist"] as const,
+            "event.availabilityState",
+          ),
+    category: publicCategory(row),
+    club: Object.freeze({
+      slug: parseIdentifier(row.club_slug, "event.club.slug"),
+      name: parseBoundedString(row.club_name, {
+        path: "event.club.name",
+        maxLength: 160,
+      }),
+    }),
+    costText: optionalPublicText(row.cost_text, "event.costText", 500),
+    description: parseOptionalBoundedString(row.description, {
+      path: "event.description",
+      maxLength: 20_000,
+    }),
+    isCancelled: status === "cancelled",
+    lane: publicLane(row),
+    program: publicProgram(row),
+    rsvpUrl,
+    schedule:
+      row.time_kind === "timed"
+        ? timedSchedule(row)
+        : row.time_kind === "all_day"
+          ? allDaySchedule(row)
+          : invalidProjection(),
+    slug: parseIdentifier(row.slug, "event.slug"),
+    status,
+    summary: parseOptionalBoundedString(row.summary, {
+      path: "event.summary",
+      maxLength: 500,
+    }),
+    title: parseBoundedString(row.title, {
+      path: "event.title",
+      maxLength: 200,
+    }),
+    venue: publicVenue(row),
+  });
+}
+
 function publicProgram(
   row: Record<string, unknown>,
 ): PublicEventCardDto["program"] {
@@ -4916,11 +5186,18 @@ export function toPublicEventDetailDto(
 
 function buildPublicEventFilter(
   input: ParsedPublicEventQuery,
+  options: Readonly<{ includeCancelled?: boolean }> = {},
 ): Readonly<{ bindings: readonly D1Value[]; sql: string }> {
+  const upcomingStatuses = options.includeCancelled
+    ? "('confirmed', 'tentative', 'cancelled')"
+    : "('confirmed', 'tentative')";
+  const pastStatuses = options.includeCancelled
+    ? "('confirmed', 'tentative', 'completed', 'cancelled')"
+    : "('confirmed', 'tentative', 'completed')";
   const clauses: string[] = [
     input.view === "upcoming"
-      ? "public_event.event_status IN ('confirmed', 'tentative')"
-      : "public_event.event_status IN ('confirmed', 'tentative', 'completed')",
+      ? `public_event.event_status IN ${upcomingStatuses}`
+      : `public_event.event_status IN ${pastStatuses}`,
   ];
   const bindings: D1Value[] = [];
 

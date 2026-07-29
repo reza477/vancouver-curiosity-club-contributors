@@ -79,13 +79,14 @@ society-registration, tax, or charity claim.
 
 ## Public contact and permanent origin
 
-- Confirmed public contact email address: **Missing**. Phase 2 uses only the
-  confirmed Meetup group destinations and renders no fake form.
+- Confirmed public contact email address: **Missing**. Phase 7 does not invent
+  one: the public Contact form stores a reply email and message in the private
+  organizer inbox and explicitly sends no confirmation email.
 - Owner-only Sites origin: **Available for the deployed Phase 2 version 8**.
   Public/shared access is not authorized, and unpublished Phase 3, Phase 4, or
-  Phase 5 candidates, or the current Phase 6 candidate, must not be
-  represented as live there. QR downloads remain outside Phase 6 and require
-  a separately authorized stable destination.
+  Phase 5 candidates, the Phase 6 candidate, or the current Phase 7 work must
+  not be represented as live there. QR downloads remain an authorized cut and
+  require a separately authorized stable destination.
 - Custom domain: **Not requested and not required**
 
 ## Photography and consent

@@ -249,6 +249,35 @@ function notificationContent(notification: NotificationDto): Readonly<{
       href: "/organizer/team",
     };
   }
+  if (payload.type === "cms_starter_copy_skipped") {
+    return {
+      detail:
+        `${payload.pageSlug} kept its newer private draft and was not ` +
+        "automatically republished. Review the page before publishing.",
+      heading: "Website copy needs review",
+      href: `/organizer/content/pages/${encodeURIComponent(payload.pageId)}`,
+    };
+  }
+  if (
+    payload.type === "form_submission_received" ||
+    payload.type === "form_submission_assigned"
+  ) {
+    return {
+      detail: `${payload.formKey} / ${payload.publicReference} / ${payload.status.replaceAll("_", " ")}`,
+      heading:
+        payload.type === "form_submission_received"
+          ? "New private form submission"
+          : "Submission assigned to you",
+      href: `/organizer/submissions/${encodeURIComponent(payload.submissionId)}`,
+    };
+  }
+  if (!("eventId" in payload)) {
+    return {
+      detail: "Open the private organizer workspace for details.",
+      heading: "Private notification",
+      href: "/organizer/notifications",
+    };
+  }
   const labels = {
     conflict_approved: "Conflict review approved",
     conflict_created: "New schedule conflict",

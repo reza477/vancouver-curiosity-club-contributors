@@ -9,6 +9,7 @@ const primaryNavigation = [
   { href: "/organizer/calendar", label: "Calendar" },
   { href: "/organizer/events", label: "Events" },
   { href: "/organizer/conflicts", label: "Conflicts" },
+  { href: "/organizer/submissions", label: "Submissions" },
   { href: "/organizer/team", label: "Team" },
   { href: "/organizer/clubs", label: "Clubs" },
 ] as const;
@@ -20,6 +21,8 @@ const utilityNavigation = [
 ] as const;
 
 const contentNavigation = [
+  { href: "/organizer/imports", label: "Imports" },
+  { href: "/organizer/exports", label: "Exports" },
   { href: "/organizer/content", label: "Website content" },
   { href: "/organizer/media", label: "Media library" },
 ] as const;
@@ -168,12 +171,15 @@ export function WorkspaceShell({
             <Link href="/organizer">Dashboard</Link>
             <Link href="/organizer/events">Events</Link>
             <Link href="/organizer/clubs">Clubs</Link>
+            <Link href="/organizer/submissions">Submissions</Link>
             <Link href="/organizer/meetup">Meetup</Link>
             <Link href="/organizer/notifications">Notifications</Link>
             {canManageContent ? (
               <>
                 <Link href="/organizer/content">Website content</Link>
                 <Link href="/organizer/media">Media library</Link>
+                <Link href="/organizer/imports">Imports</Link>
+                <Link href="/organizer/exports">Exports</Link>
               </>
             ) : null}
             <Link href="/organizer/profile">Profile</Link>

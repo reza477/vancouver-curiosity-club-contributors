@@ -65,10 +65,102 @@ import {
   calendarDateInTimeZone,
   DEFAULT_TIME_ZONE,
 } from "../../time";
+import {
+  PUBLIC_CATALOG_PAGES,
+  PUBLIC_ORGANIZATION_SLUG,
+  type PublicCatalogPageDefinition,
+} from "../public/catalog-definitions";
+import { prepareNotificationInsert } from "./notifications";
 
 const CMS_ADOPTION_VERSION = 1;
 const CMS_ENTITY_LIMIT = 200;
 const CMS_REVISION_LIMIT = 100;
+const PHASE7_STARTER_COPY_UPGRADE_VERSION = 1;
+const PHASE7_STARTER_COPY_MARKER_KEY =
+  "phase7_starter_copy_upgrade";
+const PHASE7_STARTER_COPY_PAGE_SLUGS = Object.freeze([
+  "contact",
+  "get-involved",
+  "host-an-event",
+  "privacy",
+] as const);
+type Phase7StarterCopyPageSlug =
+  (typeof PHASE7_STARTER_COPY_PAGE_SLUGS)[number];
+type Phase7StarterCopyOutcome = Readonly<{
+  contentHash: string | null;
+  outcome: "skipped" | "upgraded";
+  reason:
+    | "already_current"
+    | "legacy_copy_upgraded"
+    | "newer_draft_preserved"
+    | "nonlegacy_copy_preserved"
+    | "page_unavailable";
+  recordedAt: number;
+  slug: Phase7StarterCopyPageSlug;
+}>;
+type Phase7StarterCopyMarker = Readonly<{
+  completedAt: number | null;
+  outcomes: readonly Phase7StarterCopyOutcome[];
+  version: typeof PHASE7_STARTER_COPY_UPGRADE_VERSION;
+}>;
+type Phase7StarterCopyCandidate = Readonly<{
+  actor: AuthorizedMembership;
+  contentVersion: number;
+  currentDraftHash: string | null;
+  currentDraftIsUpgrade: boolean;
+  currentDraftRevisionId: string | null;
+  entityKey: string | null;
+  publishedHash: string | null;
+  publishedRevisionId: string | null;
+  workflowStatus: CmsWorkflowState | null;
+}>;
+export type Phase7StarterCopyReconciliationResult =
+  | "processed"
+  | "ready";
+const LEGACY_PHASE7_STARTER_PAGE_CONTENT = Object.freeze({
+  contact: Object.freeze({
+    heading: "Find us on Meetup",
+    text:
+      "No public contact form or confirmed public email is available yet. Use one of the confirmed Meetup group destinations.",
+  }),
+  "get-involved": Object.freeze({
+    heading: "Bring something to the club",
+    paragraphs: Object.freeze([
+      "Attending a published event is the simplest way in. Volunteer, host, and partner conversations currently begin through one of the confirmed Meetup group pages.",
+      "No public intake form is enabled in this phase, and an idea does not reserve a date or guarantee publication.",
+    ]),
+    text:
+      "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
+  }),
+  "host-an-event": Object.freeze({
+    heading: "Interested in hosting?",
+    paragraphs: Object.freeze([
+      "This page is informational. It does not submit an event, reserve a date, or promise that an idea will be scheduled.",
+      "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for an organizer to assess later.",
+    ]),
+    text:
+      "Event-hosting tools are not open yet. For now, read the club’s approach and connect through a confirmed Meetup group page.",
+  }),
+  privacy: Object.freeze({
+    heading: "Privacy, in plain language",
+    paragraphs: Object.freeze([
+      "The site is hosted with ChatGPT Sites and uses Sites-managed D1 for structured data and R2 for approved files.",
+      "Organizer access will use Sign in with ChatGPT, which shares authenticated identity information with the organizer portal. Public event facts imported from Meetup link back to the official RSVP page.",
+      "This starter notice needs legal review before a public launch.",
+    ]),
+    text:
+      "Public pages can be browsed without an attendee account. This phase has no enabled public submission form.",
+  }),
+} satisfies Readonly<
+  Record<
+    Phase7StarterCopyPageSlug,
+    Readonly<{
+      heading: string;
+      paragraphs?: readonly string[];
+      text: string;
+    }>
+  >
+>);
 const PUBLIC_LEGAL_SETTING_KEY = "public_legal_status";
 const PUBLIC_IDENTITY_SETTING_KEY = "public_identity";
 const REQUIRED_SYSTEM_PAGE_SLUGS = new Set([
@@ -940,7 +1032,7 @@ export async function saveCmsEntityDraft(
     );
   }
   const snapshot = parseSnapshot(entityType, input.snapshot);
-  return saveRevision(database, identity, actor, {
+  await saveRevision(database, actor, {
     entityKey,
     entityType,
     expectedContentVersion,
@@ -948,6 +1040,7 @@ export async function saveCmsEntityDraft(
     restoredFromRevisionId: null,
     snapshot,
   });
+  return readCmsEntityWorkspace(database, identity, entityType, entityKey);
 }
 
 export async function restoreCmsRevisionAsDraft(
@@ -973,7 +1066,7 @@ export async function restoreCmsRevisionAsDraft(
     input.revisionId,
   );
   if (!source) throw notFound();
-  return saveRevision(database, identity, actor, {
+  await saveRevision(database, actor, {
     entityKey,
     entityType,
     expectedContentVersion: input.expectedContentVersion,
@@ -981,6 +1074,7 @@ export async function restoreCmsRevisionAsDraft(
     restoredFromRevisionId: source.id,
     snapshot: source.snapshot,
   });
+  return readCmsEntityWorkspace(database, identity, entityType, entityKey);
 }
 
 export async function publishCmsEntity(
@@ -1002,6 +1096,36 @@ export async function publishCmsEntity(
   enforceSingletonKey(entityType, entityKey);
   const { expectedContentVersion } = parsePublishInput(inputValue);
   const now = parseTimestamp(nowUtcMs);
+  await publishRevisionForActor(database, actor, {
+    entityKey,
+    entityType,
+    expectedContentVersion,
+    now,
+  });
+  return readCmsEntityWorkspace(database, identity, entityType, entityKey);
+}
+
+async function publishRevisionForActor(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  input: Readonly<{
+    auditMetadata?: Readonly<Record<string, boolean | number | string>>;
+    entityKey: string;
+    entityType: CmsEntityType;
+    expectedContentVersion: number;
+    now: number;
+  }>,
+): Promise<void> {
+  const {
+    entityKey,
+    entityType,
+    expectedContentVersion,
+    now,
+  } = input;
+  const allowedRoles =
+    entityType === "legal_status"
+      ? (["owner"] as const)
+      : (["owner", "administrator"] as const);
   const state = await readState(database, actor.organizationId, entityType, entityKey);
   if (
     !state ||
@@ -1222,6 +1346,7 @@ export async function publishCmsEntity(
     metadata: {
       contentVersion: nextContentVersion,
       revisionNumber: revision.revisionNumber,
+      ...(input.auditMetadata ?? {}),
     },
     contentVersion: nextContentVersion,
     completion: publishCompletion,
@@ -1262,7 +1387,175 @@ export async function publishCmsEntity(
   ) {
     throw staleEdit();
   }
-  return readCmsEntityWorkspace(database, identity, entityType, entityKey);
+}
+
+/**
+ * Bounded post-adoption maintenance for the four Phase 7 form pages.
+ *
+ * A call processes at most one page. Only the exact published Phase 6 starter
+ * snapshot may be replaced. Any newer or non-starter draft is preserved and
+ * recorded as an explicit skip. The actor is selected from the same current,
+ * active canonical Owner relationship used by invariant adoption; no request
+ * can supply or fabricate an actor.
+ */
+export async function reconcilePhase7StarterPageCopy(
+  database: D1DatabaseLike,
+  nowUtcMs = Date.now(),
+): Promise<Phase7StarterCopyReconciliationResult> {
+  const now = parseTimestamp(nowUtcMs);
+  const markerEnvelope = await readPhase7StarterCopyMarker(database);
+  if (!markerEnvelope) return "ready";
+  if (
+    markerEnvelope.marker?.completedAt !== null &&
+    markerEnvelope.marker?.outcomes.length ===
+      PHASE7_STARTER_COPY_PAGE_SLUGS.length
+  ) {
+    return "ready";
+  }
+
+  const completedSlugs = new Set(
+    markerEnvelope.marker?.outcomes.map((outcome) => outcome.slug) ?? [],
+  );
+  const slug = PHASE7_STARTER_COPY_PAGE_SLUGS.find(
+    (candidate) => !completedSlugs.has(candidate),
+  );
+  if (!slug) {
+    throw serviceUnavailable();
+  }
+
+  const targetSnapshot = phase7StarterPageSnapshot(slug, false);
+  const legacySnapshot = phase7StarterPageSnapshot(slug, true);
+  const [targetHash, legacyHash] = await Promise.all([
+    contentHash(targetSnapshot),
+    contentHash(legacySnapshot),
+  ]);
+  const candidate = await readPhase7StarterCopyCandidate(
+    database,
+    markerEnvelope.organizationId,
+    slug,
+    targetHash,
+  );
+  if (!candidate) throw serviceUnavailable();
+
+  let outcome: Phase7StarterCopyOutcome;
+  let notifyOwner = false;
+  if (
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftHash === targetHash &&
+    candidate.publishedHash === targetHash
+  ) {
+    outcome = phase7StarterCopyOutcome(
+      slug,
+      "upgraded",
+      "already_current",
+      targetHash,
+      now,
+    );
+  } else if (
+    candidate.entityKey &&
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftRevisionId === candidate.publishedRevisionId &&
+    candidate.currentDraftHash === legacyHash &&
+    candidate.publishedHash === legacyHash
+  ) {
+    const draftVersion = await saveRevision(database, candidate.actor, {
+      auditMetadata: {
+        source: "phase7_starter_copy_upgrade",
+        targetContentHash: targetHash,
+        upgradeVersion: PHASE7_STARTER_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: candidate.contentVersion,
+      now,
+      restoredFromRevisionId: null,
+      snapshot: targetSnapshot,
+    });
+    await publishRevisionForActor(database, candidate.actor, {
+      auditMetadata: {
+        source: "phase7_starter_copy_upgrade",
+        targetContentHash: targetHash,
+        upgradeVersion: PHASE7_STARTER_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: draftVersion,
+      now,
+    });
+    outcome = phase7StarterCopyOutcome(
+      slug,
+      "upgraded",
+      "legacy_copy_upgraded",
+      targetHash,
+      now,
+    );
+  } else if (
+    candidate.entityKey &&
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftRevisionId !== candidate.publishedRevisionId &&
+    candidate.currentDraftHash === targetHash &&
+    candidate.publishedHash === legacyHash &&
+    candidate.currentDraftIsUpgrade
+  ) {
+    await publishRevisionForActor(database, candidate.actor, {
+      auditMetadata: {
+        resumed: true,
+        source: "phase7_starter_copy_upgrade",
+        targetContentHash: targetHash,
+        upgradeVersion: PHASE7_STARTER_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: candidate.contentVersion,
+      now,
+    });
+    outcome = phase7StarterCopyOutcome(
+      slug,
+      "upgraded",
+      "legacy_copy_upgraded",
+      targetHash,
+      now,
+    );
+  } else if (
+    candidate.currentDraftRevisionId !==
+      candidate.publishedRevisionId
+  ) {
+    notifyOwner = true;
+    outcome = phase7StarterCopyOutcome(
+      slug,
+      "skipped",
+      "newer_draft_preserved",
+      candidate.publishedHash,
+      now,
+    );
+  } else if (!candidate.entityKey || !candidate.workflowStatus) {
+    outcome = phase7StarterCopyOutcome(
+      slug,
+      "skipped",
+      "page_unavailable",
+      null,
+      now,
+    );
+  } else {
+    outcome = phase7StarterCopyOutcome(
+      slug,
+      "skipped",
+      "nonlegacy_copy_preserved",
+      candidate.publishedHash,
+      now,
+    );
+  }
+
+  await recordPhase7StarterCopyOutcome(database, {
+    actor: candidate.actor,
+    entityKey: candidate.entityKey,
+    marker: markerEnvelope.marker,
+    markerJson: markerEnvelope.markerJson,
+    notifyOwner,
+    now,
+    outcome,
+  });
+  return "processed";
 }
 
 export async function unpublishCmsEntity(
@@ -2752,9 +3045,9 @@ export async function revokeCmsLegalStatus(
 
 async function saveRevision(
   database: D1DatabaseLike,
-  identity: TrustedServerIdentity,
   actor: AuthorizedMembership,
   input: Readonly<{
+    auditMetadata?: Readonly<Record<string, boolean | number | string>>;
     entityKey: string;
     entityType: CmsEntityType;
     expectedContentVersion: number;
@@ -2762,7 +3055,7 @@ async function saveRevision(
     restoredFromRevisionId: string | null;
     snapshot: CmsSnapshot;
   }>,
-): Promise<CmsEntityWorkspaceDto> {
+): Promise<number> {
   const state = await readState(
     database,
     actor.organizationId,
@@ -2933,6 +3226,7 @@ async function saveRevision(
       metadata: {
         contentVersion: nextVersion,
         restored: input.restoredFromRevisionId !== null,
+        ...(input.auditMetadata ?? {}),
       },
       mediaRevisionId: revisionId,
       mediaScope: "draft",
@@ -2955,12 +3249,7 @@ async function saveRevision(
   ) {
     throw staleEdit();
   }
-  return readCmsEntityWorkspace(
-    database,
-    identity,
-    input.entityType,
-    input.entityKey,
-  );
+  return nextVersion;
 }
 
 async function publicationStatements(
@@ -6871,6 +7160,472 @@ async function listCmsEntityRevisionsForActor(
       }),
     ),
   );
+}
+
+function phase7StarterPageSnapshot(
+  slug: Phase7StarterCopyPageSlug,
+  legacy: boolean,
+): CmsPageSnapshot {
+  const definition = PUBLIC_CATALOG_PAGES.find(
+    (page) => page.slug === slug,
+  );
+  if (!definition) throw serviceUnavailable();
+  const sections = legacy
+    ? phase7LegacyStarterSections(definition, slug)
+    : definition.sections;
+  const blocks = sections.map((section) => ({
+    config: section.content,
+    id: section.key,
+    type: section.type,
+  }));
+  const summary = firstStarterPageSummary(blocks) ?? definition.title;
+  return parsePageSnapshot({
+    blocks,
+    metaDescription: summary.slice(0, 160),
+    openGraphAssetId: null,
+    seoTitle: definition.title.slice(0, 60),
+    slug,
+    title: definition.title,
+  });
+}
+
+function phase7LegacyStarterSections(
+  definition: PublicCatalogPageDefinition,
+  slug: Phase7StarterCopyPageSlug,
+): PublicCatalogPageDefinition["sections"] {
+  const intro = definition.sections.find(
+    (section) => section.key === "intro" && section.type === "intro",
+  );
+  if (!intro || definition.sections.length !== 1) {
+    throw serviceUnavailable();
+  }
+  return Object.freeze([
+    Object.freeze({
+      ...intro,
+      content: LEGACY_PHASE7_STARTER_PAGE_CONTENT[slug],
+    }),
+  ]);
+}
+
+function firstStarterPageSummary(
+  blocks: readonly Readonly<{
+    config: Readonly<Record<string, unknown>>;
+  }>[],
+): string | null {
+  for (const block of blocks) {
+    for (const key of ["text", "heading"] as const) {
+      const value = block.config[key];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+    const paragraphs = block.config.paragraphs;
+    if (Array.isArray(paragraphs)) {
+      const paragraph = paragraphs.find(
+        (value) => typeof value === "string" && value.trim(),
+      );
+      if (typeof paragraph === "string") return paragraph.trim();
+    }
+  }
+  return null;
+}
+
+async function readPhase7StarterCopyMarker(
+  database: D1DatabaseLike,
+): Promise<Readonly<{
+  marker: Phase7StarterCopyMarker | null;
+  markerJson: string | null;
+  organizationId: string;
+}> | null> {
+  const row = await database
+    .prepare(
+      `SELECT organization.id AS organization_id,
+              marker.value_json AS marker_json
+       FROM organizations AS organization
+       LEFT JOIN site_settings AS marker
+         ON marker.organization_id = organization.id
+        AND marker.key = ?
+        AND marker.is_public = 0
+       WHERE organization.slug = ?
+       LIMIT 1`,
+    )
+    .bind(
+      PHASE7_STARTER_COPY_MARKER_KEY,
+      PUBLIC_ORGANIZATION_SLUG,
+    )
+    .first<Record<string, unknown>>();
+  if (!row) return null;
+  const markerJson = optionalString(row.marker_json);
+  return Object.freeze({
+    marker: markerJson ? parsePhase7StarterCopyMarker(markerJson) : null,
+    markerJson,
+    organizationId: requiredString(row.organization_id),
+  });
+}
+
+function parsePhase7StarterCopyMarker(
+  value: string,
+): Phase7StarterCopyMarker {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(value);
+  } catch {
+    throw serviceUnavailable();
+  }
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    Array.isArray(raw) ||
+    Reflect.get(raw, "version") !==
+      PHASE7_STARTER_COPY_UPGRADE_VERSION ||
+    !Array.isArray(Reflect.get(raw, "outcomes"))
+  ) {
+    throw serviceUnavailable();
+  }
+  const completedAtValue = Reflect.get(raw, "completedAt");
+  const completedAt =
+    completedAtValue === null
+      ? null
+      : safeNonnegativeInteger(completedAtValue);
+  const outcomes = Reflect.get(raw, "outcomes") as unknown[];
+  if (outcomes.length > PHASE7_STARTER_COPY_PAGE_SLUGS.length) {
+    throw serviceUnavailable();
+  }
+  const seen = new Set<Phase7StarterCopyPageSlug>();
+  const parsed = outcomes.map((outcome) => {
+    if (
+      typeof outcome !== "object" ||
+      outcome === null ||
+      Array.isArray(outcome)
+    ) {
+      throw serviceUnavailable();
+    }
+    const slugValue = Reflect.get(outcome, "slug");
+    const slug = PHASE7_STARTER_COPY_PAGE_SLUGS.find(
+      (candidate) => candidate === slugValue,
+    );
+    const outcomeValue = Reflect.get(outcome, "outcome");
+    const reasonValue = Reflect.get(outcome, "reason");
+    const contentHashValue = Reflect.get(outcome, "contentHash");
+    if (
+      !slug ||
+      seen.has(slug) ||
+      (outcomeValue !== "skipped" && outcomeValue !== "upgraded") ||
+      !(
+        reasonValue === "already_current" ||
+        reasonValue === "legacy_copy_upgraded" ||
+        reasonValue === "newer_draft_preserved" ||
+        reasonValue === "nonlegacy_copy_preserved" ||
+        reasonValue === "page_unavailable"
+      ) ||
+      !(
+        contentHashValue === null ||
+        (
+          typeof contentHashValue === "string" &&
+          /^[a-f0-9]{64}$/u.test(contentHashValue)
+        )
+      )
+    ) {
+      throw serviceUnavailable();
+    }
+    seen.add(slug);
+    return phase7StarterCopyOutcome(
+      slug,
+      outcomeValue,
+      reasonValue,
+      contentHashValue,
+      safeNonnegativeInteger(Reflect.get(outcome, "recordedAt")),
+    );
+  });
+  if (
+    (completedAt === null) !==
+      (parsed.length < PHASE7_STARTER_COPY_PAGE_SLUGS.length)
+  ) {
+    throw serviceUnavailable();
+  }
+  return Object.freeze({
+    completedAt,
+    outcomes: Object.freeze(parsed),
+    version: PHASE7_STARTER_COPY_UPGRADE_VERSION,
+  });
+}
+
+async function readPhase7StarterCopyCandidate(
+  database: D1DatabaseLike,
+  organizationId: string,
+  slug: Phase7StarterCopyPageSlug,
+  targetHash: string,
+): Promise<Phase7StarterCopyCandidate | null> {
+  const row = await database
+    .prepare(
+      `SELECT owner_membership.id AS membership_id,
+              owner_membership.organization_id,
+              owner_membership.profile_id,
+              page.id AS entity_key,
+              state.workflow_status,
+              state.content_version,
+              state.current_draft_revision_id,
+              state.published_revision_id,
+              current_draft.content_hash AS current_draft_hash,
+              published.content_hash AS published_hash,
+              CASE WHEN EXISTS (
+                SELECT 1
+                FROM audit_logs AS audit
+                WHERE audit.organization_id = state.organization_id
+                  AND audit.actor_profile_id =
+                      owner_membership.profile_id
+                  AND audit.action = 'cms.entity_draft_saved'
+                  AND audit.entity_type = 'page'
+                  AND audit.entity_id = state.entity_key
+                  AND json_extract(
+                        audit.metadata_json,
+                        '$.contentVersion'
+                      ) = state.content_version
+                  AND json_extract(
+                        audit.metadata_json,
+                        '$.source'
+                      ) = 'phase7_starter_copy_upgrade'
+                  AND json_extract(
+                        audit.metadata_json,
+                        '$.targetContentHash'
+                      ) = ?
+              ) THEN 1 ELSE 0 END AS current_draft_is_upgrade
+       FROM organization_memberships AS owner_membership
+       JOIN profiles AS owner_profile
+         ON owner_profile.id = owner_membership.profile_id
+        AND owner_profile.status = 'active'
+        AND owner_profile.deleted_at IS NULL
+       JOIN cms_adoption_states AS adoption
+         ON adoption.organization_id =
+            owner_membership.organization_id
+        AND adoption.adoption_version = ?
+       LEFT JOIN pages AS page
+         ON page.organization_id = owner_membership.organization_id
+        AND page.slug = ?
+        AND page.deleted_at IS NULL
+       LEFT JOIN cms_entity_publication_states AS state
+         ON state.organization_id = owner_membership.organization_id
+        AND state.entity_type = 'page'
+        AND state.entity_key = page.id
+       LEFT JOIN cms_entity_revisions AS current_draft
+         ON current_draft.id = state.current_draft_revision_id
+        AND current_draft.organization_id = state.organization_id
+        AND current_draft.publication_state_id = state.id
+       LEFT JOIN cms_entity_revisions AS published
+         ON published.id = state.published_revision_id
+        AND published.organization_id = state.organization_id
+        AND published.publication_state_id = state.id
+       WHERE owner_membership.organization_id = ?
+         AND owner_membership.role = 'owner'
+         AND owner_membership.status = 'active'
+         AND owner_membership.deleted_at IS NULL
+       ORDER BY owner_membership.id
+       LIMIT 1`,
+    )
+    .bind(
+      targetHash,
+      CMS_ADOPTION_VERSION,
+      slug,
+      organizationId,
+    )
+    .first<Record<string, unknown>>();
+  if (!row) return null;
+  const workflowValue = optionalString(row.workflow_status);
+  return Object.freeze({
+    actor: Object.freeze({
+      membershipId: requiredString(row.membership_id),
+      organizationId: requiredString(row.organization_id),
+      profileId: requiredString(row.profile_id),
+      role: "owner" as const,
+    }),
+    contentVersion:
+      row.content_version === null
+        ? 0
+        : safeNonnegativeInteger(row.content_version),
+    currentDraftHash: optionalHash(row.current_draft_hash),
+    currentDraftIsUpgrade: row.current_draft_is_upgrade === 1,
+    currentDraftRevisionId: optionalString(
+      row.current_draft_revision_id,
+    ),
+    entityKey: optionalString(row.entity_key),
+    publishedHash: optionalHash(row.published_hash),
+    publishedRevisionId: optionalString(row.published_revision_id),
+    workflowStatus:
+      workflowValue === null ? null : workflowStatus(workflowValue),
+  });
+}
+
+function phase7StarterCopyOutcome(
+  slug: Phase7StarterCopyPageSlug,
+  outcome: Phase7StarterCopyOutcome["outcome"],
+  reason: Phase7StarterCopyOutcome["reason"],
+  contentHashValue: string | null,
+  recordedAt: number,
+): Phase7StarterCopyOutcome {
+  return Object.freeze({
+    contentHash: contentHashValue,
+    outcome,
+    reason,
+    recordedAt,
+    slug,
+  });
+}
+
+async function recordPhase7StarterCopyOutcome(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    actor: AuthorizedMembership;
+    entityKey: string | null;
+    marker: Phase7StarterCopyMarker | null;
+    markerJson: string | null;
+    notifyOwner: boolean;
+    now: number;
+    outcome: Phase7StarterCopyOutcome;
+  }>,
+): Promise<void> {
+  const outcomes = Object.freeze([
+    ...(input.marker?.outcomes ?? []),
+    input.outcome,
+  ]);
+  const complete =
+    outcomes.length === PHASE7_STARTER_COPY_PAGE_SLUGS.length;
+  const nextMarker: Phase7StarterCopyMarker = Object.freeze({
+    completedAt: complete ? input.now : null,
+    outcomes,
+    version: PHASE7_STARTER_COPY_UPGRADE_VERSION,
+  });
+  const nextJson = canonicalJson(nextMarker);
+  const markerId =
+    `phase7-starter-copy-marker:${input.actor.organizationId}`;
+  const actorGuard = cmsActorGuard("owner");
+  const statements: D1PreparedStatementLike[] = [
+    database
+      .prepare(
+        `INSERT INTO site_settings (
+           id, organization_id, key, value_json, is_public,
+           updated_by_profile_id, created_at, updated_at
+         )
+         SELECT ?, ?, ?, ?, 0, ?, ?, ?
+         WHERE ${actorGuard.sql}
+         ON CONFLICT(organization_id, key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_by_profile_id = excluded.updated_by_profile_id,
+           updated_at = excluded.updated_at
+         WHERE site_settings.is_public = 0
+           AND site_settings.value_json IS ?`,
+      )
+      .bind(
+        markerId,
+        input.actor.organizationId,
+        PHASE7_STARTER_COPY_MARKER_KEY,
+        nextJson,
+        input.actor.profileId,
+        input.now,
+        input.now,
+        ...actorGuard.bindings(input.actor),
+        input.markerJson,
+      ),
+  ];
+  if (input.notifyOwner && input.entityKey) {
+    statements.push(
+      prepareNotificationInsert(database, {
+        createdAt: input.now,
+        id:
+          `phase7-starter-copy-skip:${input.actor.organizationId}:` +
+          input.outcome.slug,
+        organizationId: input.actor.organizationId,
+        payload: {
+          pageId: input.entityKey,
+          pageSlug: input.outcome.slug,
+          type: "cms_starter_copy_skipped",
+        },
+        recipientProfileId: input.actor.profileId,
+      }),
+    );
+  }
+  try {
+    await database.batch(statements);
+  } catch {
+    // A synchronized identical call may have recorded the same outcome first.
+  }
+
+  const [markerRow, notificationRow] = await Promise.all([
+    database
+      .prepare(
+        `SELECT value_json
+         FROM site_settings
+         WHERE organization_id = ?
+           AND key = ?
+           AND is_public = 0
+         LIMIT 1`,
+      )
+      .bind(
+        input.actor.organizationId,
+        PHASE7_STARTER_COPY_MARKER_KEY,
+      )
+      .first<Record<string, unknown>>(),
+    input.notifyOwner && input.entityKey
+      ? database
+          .prepare(
+            `SELECT 1 AS exact
+             FROM notifications
+             WHERE id = ?
+               AND organization_id = ?
+               AND recipient_profile_id = ?
+               AND type = 'cms_starter_copy_skipped'
+               AND payload_json = ?
+               AND deleted_at IS NULL
+             LIMIT 1`,
+          )
+          .bind(
+            `phase7-starter-copy-skip:${input.actor.organizationId}:` +
+              input.outcome.slug,
+            input.actor.organizationId,
+            input.actor.profileId,
+            canonicalJson({
+              pageId: input.entityKey,
+              pageSlug: input.outcome.slug,
+            }),
+          )
+          .first<Record<string, unknown>>()
+      : Promise.resolve({ exact: 1 } as Record<string, unknown>),
+  ]);
+  const persisted = markerRow
+    ? parsePhase7StarterCopyMarker(
+        requiredString(markerRow.value_json),
+      )
+    : null;
+  const persistedOutcome = persisted?.outcomes.find(
+    (outcome) => outcome.slug === input.outcome.slug,
+  );
+  if (
+    !persistedOutcome ||
+    persistedOutcome.outcome !== input.outcome.outcome ||
+    persistedOutcome.reason !== input.outcome.reason ||
+    persistedOutcome.contentHash !== input.outcome.contentHash ||
+    notificationRow?.exact !== 1
+  ) {
+    throw serviceUnavailable();
+  }
+}
+
+function optionalHash(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)) {
+    return value;
+  }
+  throw serviceUnavailable();
+}
+
+function safeNonnegativeInteger(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    throw serviceUnavailable();
+  }
+  return value;
 }
 
 function parseSnapshot(

@@ -1,387 +1,368 @@
 # Vancouver Curiosity Club — Build Status
 
-Last updated: 2026-07-27 (America/Vancouver)
+Last updated: 2026-07-28 (America/Vancouver)
 
 ## Active phase and release state
 
-- **Phase 6 — Structured content, media, taxonomy, and public attribution.**
-- Phase 6 is **terminally complete for the authorized scope**. Its migration,
-  runtime-invariant, SQL-compatibility, CMS, catalog, media, publication,
-  browser, package, and privacy gates are green.
-- The first-run Meetup Program/Club catalog seed uses seven set-based
-  statements and one live server authorization. The largest measured
-  whole-route invocation is 43 D1 statements, leaving seven statements of
-  headroom. The clean deterministic full suite is 592/592.
-- Exact source commit
-  `402880972fae5ed185a781888a6a5c6d9d167070` was pushed to the existing
-  short-lived Sites source repository and saved exactly once as unpublished
-  Sites version 12. It was not deployed.
-- **Phase 7 — Not started.**
-- Authorized cuts:
-
-  - Editor role — **Not implemented — authorized cut**
-  - Viewer role — **Not implemented — authorized cut**
-  - Realtime subscriptions — **Not implemented — authorized cut**
-
-- Approved-real-artwork browser smoke — **Awaiting owner / not run**.
-  Synthetic local non-person artwork verifies mechanics only.
-- No awards are claimed.
-- No deployment or access change is authorized. The owner-only live deployment
-  remains version 8 with one allowed owner and zero groups.
-
-## Implemented Phase 6 scope
-
-### CMS, preview, and public materialization
-
-- Owners and Administrators can create, save, preview, publish, unpublish,
-  restore, reorder, archive, and safely delete supported structured content
-  within the exact server-authorized lifecycle for pages, clubs, recurring
-  Programs, Community destinations, navigation, Site Identity, and legal
-  status.
-- Required system pages retain their canonical slugs and required structure.
-  Resources is an optional unpublished page with a no-code draft-creation
-  path and protected `/resources` slug.
-- Private preview is authenticated, no-store, noindex, revision-specific, and
-  uses the same entity renderers, layout, responsive media, palette, typography,
-  and current public facts as production. It does not create a share token.
-- Immutable revisions, publication states, receipts, exact projection parity,
-  write intents, audits, redirects, and media usages form one fail-closed
-  materialization contract. Direct projection tampering and missing or
-  unrelated media usage fail closed.
-- Page, Club, Program, Community, navigation, Site Identity, legal, and public
-  event reads require the exact current or intentionally retained archived
-  materialization. Stale and crafted projections are suppressed.
-
-### Media and public attribution
-
-- D1 is authoritative for media metadata, opaque R2 keys, upload state,
-  responsive WebP variants, dimensions, focal point, rights, consent, credit,
-  alt text, caption inheritance, hashes, exact usages, deletion, and durable
-  cleanup retry.
-- Public media serves only normalized `webp_480`, `webp_960`, and
-  `webp_1600` variants through the exact organization, entity, revision, and
-  usage relationship. Originals remain authenticated and no-store; Organizers
-  cannot fetch originals.
-- Upload and finalization races await every R2 operation and preserve a
-  deterministic cleanup manifest. Failed upload and deletion cleanup remain
-  discoverable and idempotently retryable without exposing object keys.
-- Media required for event artwork, Open Graph, logo, cover, thumbnail, and
-  profile-photo uses requires useful alt text even when an asset is marked
-  decorative. Inline genuinely decorative media may retain empty alt.
-- Organizer public attribution uses a separate private draft and immutable
-  confirmed/adopted receipt. Public output requires profile consent and
-  event-level host display; revocation removes output immediately. Public DTOs
-  allow only display name, bounded biography, and approved photo metadata and
-  never expose email, role, assignments, auth identifiers, private drafts, or
-  raw object keys.
-
-### Taxonomy, clubs, Programs, and events
-
-- Owners and Administrators manage event lanes and categories through bounded
-  intent, base-row, companion-state, audit, and completion envelopes.
-- The four canonical lane slugs remain immutable:
-
-  - `think`
-  - `reset-and-make`
-  - `explore`
-  - `eat-and-play`
-
-- Canonical labels, descriptions, and order are fill-only during adoption so
-  owner edits are not overwritten. Direct base-table or companion-state
-  protocol bypasses, cross-organization writes, history forks, reference
-  destruction, and incomplete envelopes are rejected or detected.
-- Existing events may preserve their exact archived lane/category on ordinary
-  edits. New events and reassignment may select only active values.
-- First-class recurring Programs use the existing Program/event relationship
-  with CMS profile, publication, order, feature, archive, history, media,
-  resources, and public route support. Top-level Club identities remain
-  distinct from recurring Programs.
-- Archived Club and Program details retain truthful historical public detail,
-  exact published media, and eligible Past events while leaving active
-  directories and future discovery. Upcoming events block archive; retained
-  history blocks destructive safe-delete.
-- Unified public events keep exact Club/Program receipt tokens across list,
-  detail, editorial, related, sitemap, and private-selection paths.
-  Publication, edit, tamper, cross-source collision, and split-read races fail
-  closed.
-
-### Branding, navigation, legal, metadata, and accessibility
-
-- Published Site Identity drives brand name, title/site name, palette,
-  typography, logo, global Open Graph fallback, root icons, and dynamic
-  manifest output. Rebranding never silently retains contradictory VCC social
-  artwork.
-- Page, event, Club, and Program metadata uses exact approved media with real
-  dimensions and canonical alt, falling back only to a current approved Site
-  Identity selection or a truthful static default.
-- Required navigation targets survive maximum optional ordering; duplicate
-  placement-and-target pairs are rejected. The responsive menu changes before
-  a maximum validated navigation row can overflow.
-- Legal claims are blocked across public CMS, event, media, metadata,
-  structured-data, and feed surfaces unless exact coherent wording comes
-  through the Owner-confirmed legal projection. Administrators may prepare a
-  legal draft but cannot confirm, revoke, publish, or unpublish it.
-- Organizer identity emails are denied from public content in both directions:
-  public publication rejects historical/current organizer emails, and later
-  organizer activation or email mutation rejects a collision with still
-  resolvable public content.
-- Palette validation covers actual text/background, inverse, caption, alert,
-  focus, border, chip, and status-indicator pairings. Public soft text derives
-  from the validated foreground token.
-- Shared public and preview renderers preserve one main landmark, a valid skip
-  target, structured breadcrumbs, route-specific composition, responsive
-  image source sets built from real deduplicated widths, and mobile target
-  sizes.
-
-## Frozen migration and schema evidence
-
-- Exactly one Phase 6 migration exists:
-  `drizzle/0015_phase6_cms_media.sql`. There is no `0016`.
-- Migration chain is exactly `0008` through `0015`; prior `0008` through
-  `0014` remain unchanged.
-- Frozen hashes:
-
-  - `0015_phase6_cms_media.sql` SHA-256:
-    `53f13344db9a8f37c34e2c4b9c2fefb0fd6184b842be8a69583f9c2165448091`
-    (58,180 bytes)
-  - `drizzle/meta/0015_snapshot.json` SHA-256:
-    `3255a27f8704f3c54ace3c6a216d4008b17ea061adb47a8d666bc76a9fa195ca`
-    (485,823 bytes)
-  - `drizzle/meta/_journal.json` SHA-256:
-    `660131356c9d3e505b63b23eb1736a7e694bd545f44e2e2dd579e6adccd91911`
-    (1,272 bytes)
-
-- Measured schema/package/snapshot signature:
-
-  - 78 tables
-  - 194 checks
-  - 273 foreign keys
-  - 184 explicit indexes
-  - 73 unique indexes
-  - 0 packaged triggers
-
-- Phase 6 contains 73 retry-safe idempotent CREATE fragments. DDL batches are
-  48 plus 25 statements; request statement counts are 48 plus 26 because the
-  migration ledger is written only in the final successful batch.
-- All 74 interruption cuts, followed by two complete retries, converge to the
-  exact schema with zero foreign-key violations.
-- Local and preview migration application each verified 8 migrations,
-  78 tables, all 213 runtime triggers, bounded repair followed by `ready`, and
-  zero `PRAGMA foreign_key_check` violations.
-- Real D1 accepts valid non-null Club and Program theme colors and rejects
-  invalid colors through the short length/substr/negative-GLOB check. The
-  platform witness confirms a 50-byte GLOB pattern succeeds and a 51-byte
-  pattern fails.
-
-## Runtime invariants, SQL, and request budgets
-
-- Current runtime invariant evidence:
-
-  - 213 exact global triggers
-  - 135 Phase 6 triggers
-  - 61 Phase 6 count statements
-  - 23 combined invariant count groups
-  - every current invariant count equals zero at readiness
-  - empty convergence: 9 bounded requests
-  - 12-profile legacy-attribution plus taxonomy convergence: 23 bounded
-    requests
-  - worst repair request: 48 D1 statements
-
-- All 213 trigger definitions and 132 distinct table/operation activation
-  families compile on fresh Miniflare D1. The maximum audited Phase 6 trigger
-  is 43,345 bytes; the maximum combined probe is 74,743 bytes.
-- Stable production D1-shape evidence:
-
-  - Events: 47/47; 35 shapes; max 87,259 bytes / 19 binds
-  - Catalog/sitemap: 7/7; 14 shapes; max 59,988 bytes / 5 binds
-  - CMS: 22/22; 118 shapes; max 31,803 bytes / 58 binds
-  - Media: 23/23; 55 shapes; max 43,913 bytes / 14 binds
-  - Profiles: 18/18; 28 shapes; max 18,664 bytes / 17 binds
-  - Taxonomy: 4/4; 45 shapes; max 2,535 bytes / 21 binds
-  - Publication: 105/105
-
-- No audited production SQL shape reaches the D1 100,000-byte statement limit
-  or 100-bind limit. Audited global maxima are 87,259 bytes and 58 binds.
-- Administrator-approved immediate publication uses 49 statements with a
-  largest batch of 15. The hardest due-publication path uses 31 statements
-  with a largest batch of 16. Both remain below the 50-statement request cap.
-- Home peak D1 concurrency is 5, below the six-connection Worker-invocation
-  limit.
-- Public-catalog accounting at `lib/server/public/catalog.ts` SHA-256
-  `5f88a0bd9b465d4cb846bb94aae6b15ee6a4477b7acc73c2b86dc59b9e145676`
-  uses seven set-based fill-only catalog statements and one live
-  server-authorized actor. The actor-taking core is private rather than an
-  externally forgeable authorization seam.
-- The taxonomy protocol still accepts only the exact known first-result `N` or
-  `N+1`, requires every other result to equal `N`, and verifies the exact
-  durable taxonomy envelope after the batch.
-- Full Worker-invocation request traces, including invariant preflight,
-  request maintenance, both organizer GET context loads, route reads, live
-  authorization, catalog maintenance, and response work, are:
-
-  - Meetup GET: 23 healthy, 37 existing-owner fresh catalog, and 43
-    first-owner fresh catalog
-  - Meetup connect POST: 14 healthy with a new source, 28 existing-owner fresh
-    catalog with a new source, 34 first-owner fresh catalog with a new source,
-    and 11 for an exact-source retry
-
-- The maximum is 43, leaving seven statements below the 50-statement request
-  cap. Failure, retry, concurrent initialization, marker deletion/repair
-  interleavings, and exact durable postconditions are covered without blind
-  retries.
-
-## Verification already completed
-
-- Clean `npm.cmd ci` completed from the tracked lockfile: 503 packages.
-- Current accepted dependency audit state:
-
-  - production: 3 high, 0 critical
-  - complete tree: 18 total — 1 low, 4 moderate, 13 high, 0 critical
-
-  No unsafe forced upgrade of the pinned Sites/Next runtime was applied.
-- Focused migration/runtime compatibility gate after the theme-color repair:
-  **11/11 passed**.
-- Site Identity canonical adoption and CMS/adoption gate:
-  **25/25 passed**; all 119 captured CMS/adoption D1 shapes compile, with
-  maximum 31,803 bytes and 58 binds.
-- Public-catalog and whole-route focused real-Miniflare gate: **30/30 passed**.
-- Catalog, Meetup, invariant, and request-budget affected gate:
-  **93/93 passed**.
-- The clean deterministic serial repository suite is **592/592 passed**.
-- Strict typecheck, zero-warning lint before build, production build,
-  zero-warning lint after build, and `git diff --check` are green on the final
-  source.
-- The fresh rendered Worker integration is **23/23 passed**.
-- `drizzle-kit check` reports `Everything's fine`.
-- Fresh local and preview migration application each reached `ready` with
-  8 migrations, 78 tables, 213/213 runtime triggers, and zero foreign-key
-  violations.
-- The retained final `dist` contains **141 files / 8,711,691 bytes**. Its
-  hosting metadata, migration 0015, snapshot, and journal are byte-identical
-  to source, and its forbidden-artifact count is zero.
-- Final package/privacy scans report zero raw R2 identifiers, private identity
-  columns, fixture `.test` emails, private Meetup iCal URLs, private-key
-  material, common secret-token shapes, or literal initial-owner email
-  assignments.
-- After the final CMS trailing-space correction, the affected CMS and real-D1
-  compatibility rerun passed **24/24**, followed by a fresh production build,
-  zero-warning post-build lint, rendered Worker **23/23**, and this repeated
-  package/privacy inventory.
-
-## Final browser and accessibility evidence
-
-- Local Cloudflare-backed browser QA covered:
-
-  - desktop 1440×900
-  - tablet 1024×768
-  - mobile 390×844
-
-- Home, Community, and Club pages retained one main landmark, header/footer,
-  valid breadcrumbs where applicable, and no horizontal overflow.
-- The responsive menu is a native keyboard-focusable `details`/`summary`
-  control. At mobile width the wordmark and menu control are at least 44px,
-  and all six open-menu destinations plus Organizer Login are 48px high.
-- The skip link targets an existing focusable `#page-content`.
-- The Club accessibility tree had one main, one banner, one contentinfo, and
-  no unnamed links or buttons.
-- The narrow Program-card action regression was corrected: the mobile
-  “Read the Program note” link measures 175px wide by 44px high and no longer
-  collapses into a one-word grid column.
-- In-app keyboard event simulation could not reliably exercise browser-native
-  Tab/Enter defaults. Semantic controls, focus targets, visible focus styles,
-  target sizes, and source/render contracts were verified; no literal
-  end-to-end keyboard-keypress claim is made.
-- The final Cloudflare-backed browser pass measured exact 1440×900, 1024×768,
-  and 390×844 viewports. Each had one main, one header, one footer, a valid
-  skip target, zero horizontal overflow, and a 92×44 menu control.
-- The final Home render showed the canonical Site Identity, substantive
-  required content, exact canonical lane descriptions, featured Clubs, and
-  confirmed Community destinations.
-- The local Worker and its workerd child were stopped after the pass; port
-  3000 is free and the temporary browser logs were removed.
-
-## Final Phase 6 release actions completed
-
-All authorized implementation, verification, build, rendered, browser,
-migration, package, privacy, source-provenance, and version-save gates are
-green:
-
-1. The exact verified source was committed and pushed at
-   `402880972fae5ed185a781888a6a5c6d9d167070`.
-2. The official Sites helper packaged the exact pushed state. Archive
-   inspection found 141 files, 8,711,691 uncompressed file bytes, zero unsafe
-   paths, zero forbidden artifacts, and exact hosting/migration/snapshot/
-   journal parity.
-3. Exactly one new **unpublished** Sites version 12 was saved and read back
-   with the exact source SHA, 141 files, 8,826,880 stored bytes, null
-   screenshot/preview state, and content hash recorded below.
-4. The live owner-only version 8, access policy, bindings, runtime, domains,
-   and preview state remain unchanged.
-
-No deployment or access mutation was performed.
-
-## Not implemented
-
-- Editor role — **Not implemented — authorized cut**
-- Viewer role — **Not implemented — authorized cut**
-- Realtime subscriptions — **Not implemented — authorized cut**
-- Phase 6 adds no import/export workflow, public form, submission inbox,
-  attendee account, internal RSVP system, payment, donation, email, comment,
-  message, forum, chat, automatic Meetup write-back, or on-site social feature.
-- Phase 7 imports, exports, public forms, and submissions are not implemented.
-
-## Awaiting owner / not run
-
-- Approved-real-artwork browser smoke — **Awaiting owner / not run**.
-- Hosted Phase 6 CMS/media/publication smoke — not run because Phase 6 is not
-  deployed and no deployment is authorized.
-- Hosted second-human identity verification — not run because current access
-  permits one owner and zero groups.
-- Real-event end-to-end publication smoke — not run because no approved real
-  event/artwork fixture is authorized for production use.
-- No award submission or award claim was made.
-
-## Sites project and live-state preservation
-
-- Sites project:
-  `appgprj_6a62eaf79c4881919bb8e47998af851a`.
-- Logical bindings remain D1 `DB` and R2 `MEDIA`.
-- Runtime remains revision 1 with only the redacted
-  `INITIAL_OWNER_EMAIL` secret.
-- Access remains custom: exactly one allowed owner and zero groups.
-- Custom domains: none.
-- Preview deployment: none.
-- Public/shared access: disabled.
-- Existing live deployment remains owner-only version 8 at
+- **Active phase: Phase 7 — Imports, exports, calendars, and public forms.**
+- Phase 6 is **Completed and verified** for its authorized scope.
+- Phase 7 implementation is in progress. The final migration freeze, complete
+  repository matrix, production build, rendered/browser verification, package
+  inventory, source commit, and Sites save have not yet completed.
+- **Phase 8 — Not started.**
+- No Phase 7 deployment, preview deployment, access-policy change, domain
+  change, binding change, runtime-value change, or hosted D1/R2 data mutation
+  has been performed.
+- The existing owner-only live deployment remains version 8 at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
-- Live deployment ID remains
-  `appgdep_6a654533aee481918098af58b5a4f861` on saved version
-  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_eed88ec7d02c8191a865045cd32c940e`.
-- Preserved unpublished Phase 5 version 11:
-  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_c698ee1802e08191b7ac4cde79e6afe5`.
-  Its readback source is
-  `8d33f124d6e6b55a8eea5b6af64baa7982484b3f`, content hash is
-  `sha256:fd1b49bd5439694e460f998c0562a4d25eca189d1b5c5518d7e7b3ebd76cda02`,
-  and preview state is null.
-- Unpublished Phase 6 version 12:
-  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_09b2e58e86708191bad24f520ea2d21e`.
-  Its exact readback reports:
+- Phase 7 is not viewable at that live URL unless a later separately authorized
+  deployment occurs.
 
-  - version number 12
-  - source commit `402880972fae5ed185a781888a6a5c6d9d167070`
-  - content hash
-    `sha256:93b7fac9a7646b0a0943fb41cdba1ea7c7f845562b2478a5403faae2927b3e65`
-  - 141 files
-  - 8,826,880 stored bytes
-  - screenshot URL null
+## Previous-phase preservation
 
-- Current preview URL remains null. Version 12 was saved but not deployed.
-- No Phase 6 deployment, preview deployment, access-policy change,
-  custom-domain change, binding change, or runtime change has occurred.
+Phase 6 remains the verified prerequisite for this work:
 
-## Exact next action and next phase
+- saved source commit:
+  `402880972fae5ed185a781888a6a5c6d9d167070`;
+- unpublished Sites version 12:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_09b2e58e86708191bad24f520ea2d21e`;
+- version 12 content hash:
+  `sha256:93b7fac9a7646b0a0943fb41cdba1ea7c7f845562b2478a5403faae2927b3e65`;
+- 141 stored files / 8,826,880 stored bytes / null screenshot state;
+- the clean deterministic Phase 6 suite passed 592/592;
+- strict typecheck, zero-warning lint, production build, rendered Worker 23/23,
+  migration/package parity, privacy scans, and local browser verification were
+  green on that exact Phase 6 source;
+- the live deployment remained owner-only version 8 and version 12 was not
+  deployed.
 
-Stop for independent coordinator audit. Do not deploy or begin Phase 7 without
-new authorization.
+Phase 7 preserves:
 
-**Phase 7 — Not started.**
+- Sign in with ChatGPT and invitation-only membership;
+- live server authorization and role revalidation;
+- Phase 4 scheduling conflict, intent, optimistic-version, atomic-batch, and D1
+  reservation guards;
+- Phase 5 private-to-public publishing and public projection boundaries;
+- Phase 6 CMS receipts, legal confirmation, taxonomy, Community, Program,
+  organizer-attribution, and exact R2 media-usage rules;
+- completed-generation Meetup snapshot publication and source-scoped identity;
+- the existing private Meetup feed addresses and exact public Meetup URLs.
+
+No award is claimed.
+
+## Phase 7 feature status
+
+### CSV import
+
+**Implemented and focused-verified; final exact-source repository verification
+is pending.**
+
+The implementation is constrained to:
+
+- one local UTF-8 RFC 4180 CSV upload, maximum 2 MiB, 40 columns, 2,000
+  nonblank data rows, 32 KiB normalized rows, and 10,000 Unicode characters per
+  cell;
+- a self-contained versioned template and downloadable field guide;
+- allowlisted mapping, visible defaults, normalized persisted preview, exact
+  preview fingerprint, validation, duplicate warnings, conflict preview, and
+  no event/public mutation before approval;
+- deterministic non-null CSV source namespaces when `external_id` is used;
+- current Owner/Administrator approval only;
+- one authoritative Phase 4 scheduling-write envelope per applied row;
+- durable idempotency, cursor, lease, per-row result, interruption/resume, and
+  no automatic conflict retry;
+- private events only; import never publishes or overwrites;
+- Owner-only terminal source-payload redaction after 90 days.
+
+The parser, preview, approval, application, history, route/UI, conflict,
+concurrency, redaction, real-D1 compatibility, and dense-limit focused matrix
+passed 98/98 on the current source. The measured worst complete apply route is
+47 D1 statements, below the 50-statement Worker limit. The final clean-install
+repository matrix remains pending.
+
+### Public downloads, private exports, and calendar subscriptions
+
+**Implemented but not externally verified.**
+
+Current source includes:
+
+- one-event public ICS;
+- filtered public ICS and CSV with bounded max-plus-one rejection;
+- Owner/Administrator operational CSV;
+- Owner-only `vcc-owner-backup-v1` JSON and safe media manifest;
+- Owner-authenticated original-media download by asset ID;
+- revocable read-only private calendar subscriptions using one-time raw
+  256-bit tokens and stored lowercase SHA-256 hashes;
+- separate persisted public/private calendar component revisions with opaque
+  UID, exact emitted-VEVENT fingerprint, signed 32-bit sequence, and monotonic
+  last-modified time.
+
+The current Phase 7 focused matrix passed 124/124 across import, calendar,
+export, form, submission, migration, invariant, D1, concurrency, overflow,
+post-2038, privacy, and tamper cases.
+External calendar-client behavior is **Implemented but not externally
+verified** while Phase 7 remains unpublished.
+
+### Public forms and private submissions
+
+**Implemented but not externally verified.**
+
+Current source includes:
+
+- Contact, Volunteer, Host an Event, and Venue or Community Partnership forms;
+- bounded plain-text validation, same-origin protection, signed time-bounded
+  form instances, honeypot/minimum-time redacted spam receipts, anonymous
+  HMAC-derived rate scopes, durable D1 limits, and request idempotency;
+- atomic base submission, canonical workflow, minimum-safe notifications, and
+  audit receipt;
+- private Owner/Administrator inbox plus assignment-scoped Organizer access;
+- New, In Review, Responded, and Archived workflow;
+- append-only private notes;
+- received-date filtering and bounded pagination;
+- 365-day retention-review flags;
+- Owner-only irreversible personal-content redaction.
+
+The focused form/submission service, route, UI, real-D1, redaction, and
+whole-request budget gates are green on the current working tree. The largest
+public form Worker path measured 16 D1 statements, below the 50-statement
+limit. Final rendered and browser gates remain to be run.
+
+### Existing CMS intake-copy adoption
+
+**Implemented and focused-verified.**
+
+Fresh catalog starter copy truthfully describes the four working forms and no
+email confirmation. A versioned one-page-per-request CMS save/publish upgrader
+patches only the exact four legacy starter strings and matching exact starter
+metadata. It preserves owner edits, skips a newer Owner draft, uses the normal
+CAS/receipt/materialization path, marks completion only after all four pages,
+and is idempotent. Fresh seed, exact-legacy upgrade, owner-edit preservation,
+newer-draft skip, idempotency, and public parity passed 5/5.
+
+## Migration and runtime-invariant status
+
+- The sole Phase 7 migration is intended to remain
+  `drizzle/0016_phase7_import_export_forms.sql`; no `0017` is authorized.
+- The Phase 7 migration and `drizzle/meta/0016_snapshot.json` are frozen for
+  the source-commit gate. Final exact-commit repetition is still required.
+- Current frozen-source provenance:
+
+  - `0016` SQL SHA-256:
+    `543b5a386961d169926216890079cb4ae1738aacd4f01582d7d30018418b377`
+  - `0016` snapshot SHA-256:
+    `5c7e90c362afc5eb75995e8349648b2fca7299300910c731d6cc3d30cf096b77`
+  - journal SHA-256:
+    `1979ea18d896ad101299876b8b4cb59645ec1720c457cdf0d030d977fc83aa9f`
+  - schema signature: 86 tables, 243 checks, 298 foreign keys, 199 explicit
+    indexes, 79 unique indexes, and zero packaged triggers
+  - schema/migration statement parity: 285/285 with zero mismatches
+  - tokenizer/partial-prefix/package parity: passed on the source-freeze
+    checkpoint
+- The runtime invariant contract advances from the completed Phase 6 version to
+  Phase 7. The current fingerprint is
+  `c8e35f208bafcff688140d30f4617ca08b67d92beea5af00027d10f8cdbe9135`.
+  It installs 248 global triggers, including 35 Phase 7 triggers, and seven
+  Phase 7 integrity counts. Empty convergence is nine requests; the
+  12-profile legacy-attribution plus taxonomy path is 23; the worst repair
+  request is 46 statements. Final exact-commit repetition remains required.
+- Every final migration test must cover clean, populated prior-phase,
+  archived-legacy, idempotent reapply, every partial-prefix retry cut,
+  tokenizer, concurrent invariant installation, package equality,
+  foreign-key checks, and exact snapshot/schema agreement.
+
+## D1, R2, authentication, and authorization
+
+- D1 remains the only application database, bound as `DB`.
+- R2 remains the only media store, bound as `MEDIA`; raw object keys are
+  private. Phase 7 media backup resolves authenticated Owner downloads by
+  allowlisted asset ID.
+- Sign in with ChatGPT remains the organizer identity boundary.
+- Owner, Administrator, Organizer, and public capabilities are enforced on the
+  server. Crafted organization, profile, event, batch, row, submission, token,
+  media, or role values must not widen access.
+- Import, form, submission, token, and export writes use bounded D1 batches and
+  completion sentinels rather than treating a post-commit `meta.changes` check
+  as rollback.
+- Every measured Phase 7 Worker invocation stays below 50 D1 statements. Exact
+  invariant-plus-maintenance-plus-route totals are: public ICS 9, public CSV 7,
+  operational CSV 6, Owner backup 23, media manifest 6, media download 6,
+  calendar-token create 6, private feed 7, and token revoke 7. The import apply
+  maximum is 47 and the public-form maximum is 16.
+- Public-form protection keys, raw tokens, token hashes, rate fingerprints,
+  private Meetup feed addresses, and R2 keys are excluded from ordinary
+  settings, logs, errors, exports, and client bundles.
+
+## Import validation, idempotency, and conflict status
+
+- The strict parser covers BOM/RFC 4180 quoting, embedded commas/newlines,
+  duplicate headers, invalid UTF-8/NUL, binary/HTML/XML/ICS/JSON masquerades,
+  row/column/cell/file limits, normalized-payload byte limits, DST gaps and
+  ambiguity, canonical URLs, lifecycle and mapping constraints, normalized
+  co-organizer sets, and deterministic final-payload fingerprints.
+- Preview persists only allowlisted mapped facts and does not create events,
+  organizers, venues, revisions, source links, conflict facts, or public
+  projections.
+- An external ID requires a deterministic CSV source namespace. Duplicate
+  safety does not rely on a nullable SQLite unique key.
+- Import application uses the authoritative Phase 4 service. Warn-and-reason,
+  administrator-review, and blocked collisions retain their exact existing
+  meanings.
+- Per-row application, source link, result, and batch cursor/count updates must
+  be atomic and idempotent.
+- Terminal import and 90-day Owner source redaction are covered, including
+  Administrator/Organizer denial, exact-90-day acceptance, zero-row terminal
+  batches, and irreversible bounded postcondition checks.
+
+## Export and privacy status
+
+- All Phase 7 download formats use explicit field allowlists and bounded
+  max-plus-one reads.
+- CSV output neutralizes spreadsheet formula prefixes before RFC 4180 quoting.
+- Public downloads use only verified current public event projection fields.
+- Operational CSV excludes organizer email, meeting credentials, conflict
+  reasons, identity/invitation data, tokens, source-feed secrets, submissions,
+  and generic audit payloads.
+- The Owner backup uses export-local `member-N` references and contextual
+  nested sanitizers. It excludes email/provider identity, invitations,
+  sessions, tokens and hashes, private feed addresses, form/rate/protection
+  state, notifications, generic audits, runtime values, credentials, and R2
+  keys.
+- The backup is not an infrastructure backup and has no automatic or in-app
+  restore. Disposable local-D1 restore rehearsal: **Not run**.
+- The final public-projection and built-output leakage scans are **Not run** on
+  the final Phase 7 artifact.
+
+## Verification ledger
+
+Completed focused checkpoints on the current working tree:
+
+- complete focused Phase 7 matrix: 124/124 passed;
+- import parser/UI/atomicity/real-D1/scheduling matrix: 98/98 passed;
+- non-import read-only audit matrix: 53/53 passed;
+- private-calendar denial and exact export/calendar route-budget matrix: 19/19
+  passed, including real Miniflare D1;
+- CMS exact-legacy starter-copy upgrade: 5/5 passed;
+- migration/tokenizer/invariant/runtime-D1 audit: green with zero foreign-key
+  and invariant violations;
+- typecheck: passed;
+- zero-warning lint: passed;
+- `git diff --check`: passed at the last checkpoint.
+
+Final required commands on the frozen exact source:
+
+- `npm.cmd ci` — **Not run**
+- final `npm.cmd run db:generate`/snapshot parity — **Not run**
+- `npm.cmd run db:apply:local` — **Not run**
+- `npm.cmd run db:apply:preview` — **Not run**
+- `npm.cmd run typecheck` — **Not run**
+- zero-warning `npm.cmd run lint` before build — **Not run**
+- full deterministic `npm.cmd test` — **Not run**
+- `npm.cmd run build` — **Not run**
+- zero-warning lint after build — **Not run**
+- `npm.cmd run test:rendered` — **Not run**
+- production dependency audit — **Not run**
+- complete dependency audit — **Not run**
+- final `git diff --check` — **Not run**
+- migration/package/snapshot equality and interruption retries — **Not run**
+- source and built-output privacy/credential scans — **Not run**
+- exact archive inventory and packaged migration parity — **Not run**
+- browser/accessibility verification at 320, 390, 768, 1280, and 1440 pixels
+  — **Not run**
+
+No final Phase 7 pass/fail/skip totals, command exit codes, build result,
+accessibility measurements, SQL maxima, request counts, or dependency-audit
+counts will be entered until measured from the frozen source.
+
+## Authorized cuts and known limitations
+
+- **ICS file import — Not implemented — authorized cut.**
+- Downloadable QR generation — **Not implemented — authorized cut.**
+- Daily notification digests — **Not implemented — authorized cut.**
+- Weekly notification digests — **Not implemented — authorized cut.**
+- Editor role — **Not implemented — authorized cut.**
+- Viewer role — **Not implemented — authorized cut.**
+- Realtime subscriptions — **Not implemented — authorized cut.**
+- CSV import has no overwrite/update/merge mode and never publishes.
+- No email or form-confirmation email is sent.
+- No newsletter enrollment is performed.
+- Backups are Owner-run; no automatic backup, scheduler, or automatic restore
+  is claimed.
+- Retention review is flagged; there is no automatic purge.
+- The private calendar is read-only and not a two-way sync.
+- External calendar-client behavior is **Implemented but not externally
+  verified** before a future authorized deployment.
+- Owner backup deliberately excludes identity, tokens, source-feed secrets,
+  public forms, and rate-limit state.
+- Approved-real-artwork browser smoke — **Awaiting owner / not run**.
+- Missing approved real artwork remains an owner input. Synthetic local
+  non-person fixtures verify mechanics only.
+
+## Source, build, Sites, and live-state provenance
+
+- Phase 7 saved source commit: **Not run**
+- Phase 7 status-only ledger commit: **Not run**
+- Exact pushed source readback: **Not run**
+- Exact Phase 7 production archive: **Not run**
+- New unpublished Phase 7 Sites version: **Not run**
+- Version number/opaque ID/content hash/file count/bytes/screenshot state:
+  **Not run**
+- Deployment: **Not run**
+- Preview deployment: **Not run**
+- Live-access change: **Not run**
+
+Required immutable Sites identity:
+
+- project ID: `appgprj_6a62eaf79c4881919bb8e47998af851a`;
+- logical D1 binding: `DB`;
+- logical R2 binding: `MEDIA`;
+- live owner-only version: 8;
+- access: one allowed owner, zero groups;
+- custom domains: none;
+- preview URL: none;
+- runtime revision: 1 with only the redacted `INITIAL_OWNER_EMAIL` value.
+
+At most one new unpublished Sites version may be saved after every final gate
+is green. It must not be deployed.
+
+## Five-minute Owner smoke-test card
+
+Overall status: **Awaiting owner smoke test.**
+
+1. Sign in as the Owner.
+2. Download the CSV template.
+3. Upload a CSV containing one valid private Draft, one invalid row, one hard
+   duplicate, and one possible scheduling conflict.
+4. Confirm preview clearly distinguishes all four rows.
+5. Confirm the Events count and calendar remain unchanged before approval.
+6. Approve only the valid row.
+7. Confirm one event is created, remains private, and its per-row result is
+   durable after refresh.
+8. Retry/resume and confirm no duplicate event appears.
+9. Submit one public Contact form.
+10. Confirm success appears only after storage and says no email was sent.
+11. Open Submissions and verify only an authorized user can see the message.
+12. Assign it to an Organizer and confirm another unassigned Organizer cannot
+    read it.
+13. Mark it In Review and Responded; confirm the site does not claim it sent a
+    response.
+14. Download one-event ICS and filtered public CSV/ICS; inspect them for private
+    fields.
+15. Generate the Owner JSON backup and confirm it contains no emails, tokens,
+    credentials, form submissions, private feed addresses, or R2 keys.
+16. Create a private calendar token, copy it once, revoke it, and confirm the
+    revoked URL is denied.
+17. Confirm the live owner-only URL still serves version 8 and was not changed
+    by Phase 7.
+
+Items that require Phase 7 to be accessible through hosted infrastructure are
+**Awaiting a future authorized deployment**. They are not marked passed by
+local implementation or an unpublished Sites save.
+
+## Exact next phase and stop condition
+
+- Finish and verify exactly Phase 7.
+- Save at most one valid unpublished Sites version only after every gate is
+  green.
+- Do not deploy.
+- Owner smoke status remains **Awaiting owner smoke test**.
+- **Phase 8 — Not started.**

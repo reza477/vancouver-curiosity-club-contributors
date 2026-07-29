@@ -7,6 +7,7 @@ import {
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { ContactRouteBody } from "@/app/_components/EditorialRouteBodies";
+import { PublicSubmissionForm } from "@/app/_components/PublicSubmissionForm";
 
 const route = "/contact";
 const slug = "contact";
@@ -32,5 +33,9 @@ export default async function ContactPage() {
   const destinations = hasCommunityLinksBlock(loaded.page)
     ? null
     : await loadCommunityDestinations(route);
-  return <ContactRouteBody destinations={destinations} page={loaded.page} />;
+  return (
+    <ContactRouteBody destinations={destinations} page={loaded.page}>
+      <PublicSubmissionForm formKey="contact" />
+    </ContactRouteBody>
+  );
 }

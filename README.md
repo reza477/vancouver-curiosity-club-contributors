@@ -475,5 +475,47 @@ Publishing a CMS revision changes D1-backed public content. Saving a Sites
 version records an immutable source/build candidate. Deploying a saved version
 changes what the live URL serves. These are separate actions: the Phase 6
 candidate is not deployed, live owner-only version 8 remains unchanged unless
-a separate turn explicitly authorizes deployment, and Phase 7 imports,
-exports, public forms, and submissions have not started.
+a separate turn explicitly authorizes deployment.
+
+## Phase 7 imports, exports, calendars, and public intake
+
+Phase 7 is the active implementation phase. It adds a versioned, resumable CSV
+event-import workflow that stores a fingerprinted non-authoritative preview and
+applies approved rows through the Phase 4 conflict service. Imports create only
+private events, never overwrite a source-linked event, and never publish.
+
+Public event downloads include one-event ICS plus bounded filtered ICS and CSV.
+Owner/Administrator operations add an allowlisted event CSV; Owner-only
+operations add the versioned JSON product-data backup, safe media manifest, and
+authenticated media download. Active organizer members may create and revoke
+only their own read-only private calendar subscription.
+
+Contact, Volunteer, Host an Event, and Venue or Community Partnership forms
+store bounded plain-text submissions in the private organizer inbox. The
+workflow supports assignment, canonical statuses, append-only notes, retention
+review, and Owner-only irreversible personal-content redaction. It sends no
+email or marketing enrollment.
+
+Phase 7 uses one additive migration,
+`0016_phase7_import_export_forms.sql`, while runtime triggers continue through
+the established bounded invariant installer. Final migration, full-suite,
+build, rendered, browser, package, and Sites-version evidence remains recorded
+only after it is actually verified in `BUILD_STATUS.md`.
+
+Phase 7 guides:
+
+- `docs/architecture/0011-phase-7-imports-exports-forms.md`
+- `docs/phase7-csv-field-guide.md`
+- `docs/phase7-exports-calendar-backup.md`
+- `docs/phase7-public-forms-submissions.md`
+- `docs/phase7-local-testing.md`
+- `docs/owner-guide-phase7.md`
+- `docs/organizer-guide-phase7.md`
+- `docs/known-limitations-phase7.md`
+
+**ICS file import — Not implemented — authorized cut.** This does not affect
+ICS downloads, the read-only private calendar subscription, or the established
+Meetup iCalendar source workflow.
+
+Phase 7 remains unpublished while implementation and final verification are in
+progress. Live owner-only version 8 is unchanged.

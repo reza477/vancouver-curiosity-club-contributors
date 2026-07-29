@@ -7,6 +7,8 @@ import { CalendarWorkspace } from "@/app/_organizer/CalendarWorkspace";
 import { loadCalendarWorkspaceData } from "@/app/_organizer/data";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
 import { PageHeader } from "@/app/_organizer/PageHeader";
+import { PrivateCalendarSubscriptionPanel } from "@/app/_organizer/PrivateCalendarSubscriptionPanel";
+import { listOwnCalendarSubscriptions } from "@/lib/server/phase7/calendar-subscriptions";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
 export const dynamic = "force-dynamic";
@@ -28,11 +30,20 @@ export default async function OrganizerCalendarPage({
   if (loaded.kind !== "granted") return <AccessChangedState />;
 
   let data: Awaited<ReturnType<typeof loadCalendarWorkspaceData>> | null = null;
+  let subscriptions:
+    | Awaited<ReturnType<typeof listOwnCalendarSubscriptions>>
+    | null = null;
   try {
-    data = await loadCalendarWorkspaceData(
-      loaded.context,
-      raw.take === undefined ? 500 : raw.take,
-    );
+    [data, subscriptions] = await Promise.all([
+      loadCalendarWorkspaceData(
+        loaded.context,
+        raw.take === undefined ? 500 : raw.take,
+      ),
+      listOwnCalendarSubscriptions(
+        loaded.context.database,
+        loaded.context.identity,
+      ),
+    ]);
   } catch {
     writeSafeLog("error", "organizer_page_failed", {
       code: "internal_error",
@@ -65,6 +76,17 @@ export default async function OrganizerCalendarPage({
         title="Calendar"
       />
       <CalendarWorkspace {...data} />
+      {subscriptions ? (
+        <PrivateCalendarSubscriptionPanel
+          initialSubscriptions={subscriptions}
+        />
+      ) : (
+        <OrganizerPageState
+          detail="Existing calendar URLs remain unchanged. Refresh before creating or revoking one."
+          heading="Calendar subscriptions are temporarily unavailable."
+          tone="error"
+        />
+      )}
     </>
   );
 }

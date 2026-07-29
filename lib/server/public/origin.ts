@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { isCanonicalTrustedRequestPathname } from "../../request-pathname";
 
 export const TRUSTED_REQUEST_ORIGIN_HEADER = "x-vcc-request-origin";
 export const TRUSTED_REQUEST_PATHNAME_HEADER = "x-vcc-request-pathname";
@@ -64,18 +65,7 @@ export function parseTrustedRequestOrigin(value: unknown): URL | null {
 }
 
 export function parseTrustedRequestPathname(value: unknown): string | null {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > 2_048 ||
-    !value.startsWith("/") ||
-    value.startsWith("//") ||
-    /[\u0000-\u001f\u007f?#]/u.test(value)
-  ) {
-    return null;
-  }
-
-  return value;
+  return isCanonicalTrustedRequestPathname(value) ? value : null;
 }
 
 export function publicUrl(pathname: string, origin: URL): string {

@@ -5,6 +5,7 @@ import {
   EditorialUnavailable,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
+import { PublicFormPrivacyNotice } from "@/app/_components/PublicFormPrivacyNotice";
 
 const route = "/privacy";
 const slug = "privacy";
@@ -26,5 +27,9 @@ export default async function PrivacyPage() {
   if (loaded.kind === "unavailable") {
     return <EditorialUnavailable title="Privacy" />;
   }
-  return <EditorialPage page={loaded.page} tone="think" />;
+  return (
+    <EditorialPage page={loaded.page} tone="think">
+      <PublicFormPrivacyNotice />
+    </EditorialPage>
+  );
 }

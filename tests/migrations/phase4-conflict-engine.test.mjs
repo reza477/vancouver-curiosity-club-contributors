@@ -131,8 +131,9 @@ test("Phase 4 is one additive production-tokenizer-safe migration", () => {
       { idx: 13, tag: "0013_phase4_conflict_engine" },
       { idx: 14, tag: "0014_phase5_publication" },
       { idx: 15, tag: "0015_phase6_cms_media" },
+      { idx: 16, tag: "0016_phase7_import_export_forms" },
     ],
-    "Phase 4 must remain immutable after the single Phase 5 and Phase 6 migrations",
+    "Phase 4 must remain immutable after the single Phase 5, Phase 6, and Phase 7 migrations",
   );
 
   const migration = sql(PHASE4_FILE);

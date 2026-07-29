@@ -183,25 +183,25 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: "Bring something to the club",
         text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
         paragraphs: [
-          "Attending a published event is the simplest way in. Volunteer, host, and partner conversations currently begin through one of the confirmed Meetup group pages.",
-          "No public intake form is enabled in this phase, and an idea does not reserve a date or guarantee publication.",
+          "Attending a published event is the simplest way in. The Volunteer and Venue or Community Partnership forms store the details you choose to send in the private organizer inbox.",
+          "Submitting a form does not reserve a date, guarantee publication, enroll you in marketing, or send an email confirmation.",
         ],
       }),
     ]),
     page("host-an-event", "Host an Event", [
       section("intro", "intro", 10, {
         heading: "Interested in hosting?",
-        text: "Event-hosting tools are not open yet. For now, read the club’s approach and connect through a confirmed Meetup group page.",
+        text: "Use the Host an Event form to share a proposed title or topic, a short event idea, format, optional preferred club or program, and optional timing.",
         paragraphs: [
-          "This page is informational. It does not submit an event, reserve a date, or promise that an idea will be scheduled.",
+          "Submitting stores the proposal in the private organizer inbox. It does not create or publish an event, reserve a date, promise scheduling, or send an email confirmation.",
           "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for an organizer to assess later.",
         ],
       }),
     ]),
     page("contact", "Contact", [
       section("intro", "intro", 10, {
-        heading: "Find us on Meetup",
-        text: "No public contact form or confirmed public email is available yet. Use one of the confirmed Meetup group destinations.",
+        heading: "Send a private inquiry",
+        text: "The Contact form stores your name, reply email, topic, and message in the private organizer inbox. It does not enroll you in marketing or send an email confirmation.",
       }),
     ]),
     page("conduct", "Code of Conduct", [
@@ -227,10 +227,10 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
     page("privacy", "Privacy", [
       section("intro", "intro", 10, {
         heading: "Privacy, in plain language",
-        text: "Public pages can be browsed without an attendee account. This phase has no enabled public submission form.",
+        text: "Public pages and the four public forms can be used without an attendee account. Form submissions are stored in the private organizer inbox for authorized organizers to review.",
         paragraphs: [
           "The site is hosted with ChatGPT Sites and uses Sites-managed D1 for structured data and R2 for approved files.",
-          "Organizer access will use Sign in with ChatGPT, which shares authenticated identity information with the organizer portal. Public event facts imported from Meetup link back to the official RSVP page.",
+          "Organizer access uses Sign in with ChatGPT, which can provide name and email identity to the private organizer portal. Public visitors do not need to sign in.",
           "This starter notice needs legal review before a public launch.",
         ],
       }),

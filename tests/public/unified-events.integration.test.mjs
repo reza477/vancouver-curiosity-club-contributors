@@ -7,6 +7,7 @@ import {
   getEditorialPublicEvents,
   getAuthorizedOrganizerEventPublicPreview,
   getPublicEventBySlug,
+  getPublicEventExportRecordBySlug,
   listUpcomingPublicEvents,
   listUpcomingPublicMeetupEvents,
   listPublishedEventSelections,
@@ -14,12 +15,18 @@ import {
   listPublicEventSitemapSlugs,
   listRelatedPublicEvents,
   queryPublicEvents,
+  queryPublicEventsForExport,
   resolveEditorialPublishedEventSelectionProofs,
   resolvePublishedEventSelections,
 } from "../../lib/server/public/events.ts";
 import {
   buildPublicEventJsonLd,
 } from "../../lib/server/public/event-structured-data.ts";
+import {
+  createFilteredPublicCsvDownload,
+  createFilteredPublicIcsDownload,
+  createOneEventIcsDownload,
+} from "../../lib/server/phase7/public-exports.ts";
 import { InputValidationError } from "../../lib/validation/index.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
@@ -696,6 +703,263 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
       forbiddenKey,
     );
   }
+});
+
+test("public export projection is bounded, exact-materialization verified, and allowlisted", async (t) => {
+  const database = await createFixture(t);
+  const events = await queryPublicEventsForExport(database, {
+    ...upcomingInput(),
+    maxEvents: 500,
+  });
+  const manual = events.find(
+    (record) => record.event.slug === "manual-ideas-gathering",
+  );
+  assert.ok(manual);
+  assert.deepEqual(Object.keys(manual.event).sort(), [
+    "attendanceMode",
+    "availabilityState",
+    "category",
+    "club",
+    "costText",
+    "description",
+    "isCancelled",
+    "lane",
+    "program",
+    "rsvpUrl",
+    "schedule",
+    "slug",
+    "status",
+    "summary",
+    "title",
+    "venue",
+  ]);
+  const record = await getPublicEventExportRecordBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: manual.event.slug,
+  });
+  assert.ok(record);
+  assert.equal(record.event.slug, manual.event.slug);
+  assert.equal(Number.isSafeInteger(record.sourceVersion), true);
+  const serialized = JSON.stringify({ events, record });
+  for (const sentinel of PRIVATE_SENTINELS) {
+    assert.equal(serialized.includes(sentinel), false, sentinel);
+  }
+});
+
+test("public ICS and CSV downloads execute against the exact public projection and exclude private sentinels", async (t) => {
+  const database = await createFixture(t);
+  database.exec(
+    `UPDATE organizations
+     SET slug = 'vancouver-curiosity-and-education-society'
+     WHERE id = '${ORGANIZATION_ID}'`,
+  );
+  const origin = "https://vcc.example.test";
+  const published = await createOneEventIcsDownload(database, {
+    generatedAt: NOW_UTC_MS,
+    origin,
+    slug: "manual-ideas-gathering",
+  });
+  assert.ok(published);
+  assert.equal(published.contentType, "text/calendar; charset=utf-8");
+  assert.equal(published.fileName, "manual-ideas-gathering.ics");
+  assert.equal(occurrences(published.body, "BEGIN:VEVENT"), 1);
+  assert.match(published.body, /SUMMARY:Manual Ideas Gathering\r\n/u);
+  assert.match(
+    published.body,
+    /URL:https:\/\/vcc\.example\.test\/events\/manual-ideas-gathering\r\n/u,
+  );
+  assert.match(
+    published.body.replaceAll("\r\n ", ""),
+    /UID:[0-9a-f]{40}@calendar\.vancouver-curiosity-club\r\n/u,
+  );
+  assert.match(published.body, /STATUS:CONFIRMED\r\n/u);
+  assert.doesNotMatch(published.body, /event_manual_upcoming/iu);
+  database.exec(
+    `UPDATE events
+     SET private_notes = 'PRIVATE-ONLY-ICS-REVISION-SENTINEL'
+     WHERE id = 'event_manual_upcoming'`,
+  );
+  const privateOnlyEdit = await createOneEventIcsDownload(database, {
+    generatedAt: NOW_UTC_MS,
+    origin,
+    slug: "manual-ideas-gathering",
+  });
+  assert.ok(privateOnlyEdit);
+  assert.equal(
+    privateOnlyEdit.body,
+    published.body,
+    "private-only facts must not advance or alter the public component",
+  );
+  assert.doesNotMatch(
+    privateOnlyEdit.body,
+    /PRIVATE-ONLY-ICS-REVISION-SENTINEL/u,
+  );
+
+  assert.equal(
+    await createOneEventIcsDownload(database, {
+      generatedAt: NOW_UTC_MS,
+      origin,
+      slug: "private-event-sentinel",
+    }),
+    null,
+  );
+  assert.equal(
+    await createOneEventIcsDownload(database, {
+      generatedAt: NOW_UTC_MS,
+      origin,
+      slug: "guessed-private-event",
+    }),
+    null,
+  );
+  const cancelled = await createOneEventIcsDownload(database, {
+    generatedAt: NOW_UTC_MS,
+    origin,
+    slug: "cancelled-manual-event",
+  });
+  assert.ok(cancelled);
+  assert.match(cancelled.body, /STATUS:CANCELLED\r\n/u);
+
+  const searchParams = new URLSearchParams(
+    "state=upcoming&from=2026-08-02&to=2026-08-05&club=vancouver-curiosity-club",
+  );
+  const expected = await queryPublicEventsForExport(database, {
+    clubSlug: "vancouver-curiosity-club",
+    fromDate: "2026-08-02",
+    maxEvents: 500,
+    nowUtcMs: NOW_UTC_MS,
+    organizationId: ORGANIZATION_ID,
+    todayDate: TODAY_DATE,
+    toDate: "2026-08-05",
+    view: "upcoming",
+  });
+  const [calendar, csv] = await Promise.all([
+    createFilteredPublicIcsDownload(database, {
+      generatedAt: NOW_UTC_MS,
+      origin,
+      searchParams,
+    }),
+    createFilteredPublicCsvDownload(database, {
+      generatedAt: NOW_UTC_MS,
+      origin,
+      searchParams,
+    }),
+  ]);
+  assert.equal(occurrences(calendar.body, "BEGIN:VEVENT"), expected.length);
+  assert.equal(nonblankLines(csv.body).length, expected.length + 1);
+  for (const { event } of expected) {
+    assert.equal(calendar.body.includes(event.title), true, event.title);
+    assert.equal(csv.body.includes(event.title), true, event.title);
+  }
+  const serialized = `${published.body}\n${cancelled.body}\n${calendar.body}\n${csv.body}`;
+  for (const sentinel of PRIVATE_SENTINELS) {
+    assert.equal(serialized.includes(sentinel), false, sentinel);
+  }
+  assert.doesNotMatch(serialized, /private-organizer@synthetic\.invalid/iu);
+  assert.doesNotMatch(serialized, /source_synthetic|generation_active/iu);
+});
+
+test("public filtered ICS and CSV reject exact max-plus-one result sets instead of truncating", async (t) => {
+  const database = await createFixture(t);
+  database.exec(
+    `UPDATE organizations
+     SET slug = 'vancouver-curiosity-and-education-society'
+     WHERE id = '${ORGANIZATION_ID}'`,
+  );
+  insertPublicExportCapacityEvents(database, 2_001);
+  const input = {
+    generatedAt: NOW_UTC_MS,
+    origin: "https://vcc.example.test",
+    searchParams: new URLSearchParams(
+      "state=upcoming&from=2026-09-01&to=2026-09-02&q=Capacity%20boundary",
+    ),
+  };
+  await assert.rejects(
+    createFilteredPublicIcsDownload(database, input),
+    (error) =>
+      error?.name === "InputValidationError" &&
+      error?.issues?.[0]?.code === "result_limit_exceeded",
+    "501 rows must reject the 500-event ICS limit",
+  );
+  await assert.rejects(
+    createFilteredPublicCsvDownload(database, input),
+    (error) =>
+      error?.name === "InputValidationError" &&
+      error?.issues?.[0]?.code === "result_limit_exceeded",
+    "2,001 rows must reject the 2,000-row CSV limit",
+  );
+});
+
+test("public ICS persists one revision for each visible title, schedule, status, and venue change", async (t) => {
+  const database = await createFixture(t);
+  database.exec(
+    `UPDATE organizations
+     SET slug = 'vancouver-curiosity-and-education-society'
+     WHERE id = '${ORGANIZATION_ID}'`,
+  );
+  const input = {
+    generatedAt: NOW_UTC_MS,
+    origin: "https://vcc.example.test",
+    slug: "manual-ideas-gathering",
+  };
+  const initial = await createOneEventIcsDownload(database, input);
+  assert.ok(initial);
+  const initialRevision = publicCalendarRevision(database);
+  assert.equal(initialRevision.sequence, 0);
+
+  database.exec(
+    `UPDATE events
+     SET title = 'Manual Ideas Gathering revised', updated_at = 2
+     WHERE id = 'event_manual_upcoming'`,
+  );
+  const titleChanged = await createOneEventIcsDownload(database, input);
+  assert.ok(titleChanged);
+  assert.match(
+    titleChanged.body,
+    /SUMMARY:Manual Ideas Gathering revised\r\n/u,
+  );
+  const titleRevision = publicCalendarRevision(database);
+  assertCalendarRevisionStep(initialRevision, titleRevision);
+
+  database.exec(
+    `UPDATE events
+     SET starts_at_utc = starts_at_utc + 3600000,
+         ends_at_utc = ends_at_utc + 3600000,
+         schedule_version = schedule_version + 1,
+         updated_at = 3
+     WHERE id = 'event_manual_upcoming'`,
+  );
+  const scheduleChanged = await createOneEventIcsDownload(database, input);
+  assert.ok(scheduleChanged);
+  assert.match(scheduleChanged.body, /DTSTART:20260802T030000Z\r\n/u);
+  const scheduleRevision = publicCalendarRevision(database);
+  assertCalendarRevisionStep(titleRevision, scheduleRevision);
+
+  database.exec(
+    `UPDATE events
+     SET status = 'tentative', updated_at = 4
+     WHERE id = 'event_manual_upcoming'`,
+  );
+  const statusChanged = await createOneEventIcsDownload(database, input);
+  assert.ok(statusChanged);
+  assert.match(statusChanged.body, /STATUS:TENTATIVE\r\n/u);
+  const statusRevision = publicCalendarRevision(database);
+  assertCalendarRevisionStep(scheduleRevision, statusRevision);
+
+  database.exec(
+    `UPDATE venues
+     SET public_location_name = 'Changed public room',
+         public_address = '200 Changed Street',
+         updated_at = 5
+     WHERE id = 'venue_public'`,
+  );
+  const venueChanged = await createOneEventIcsDownload(database, input);
+  assert.ok(venueChanged);
+  assert.match(
+    venueChanged.body,
+    /LOCATION:Changed public room — 200 Changed Street\r\n/u,
+  );
+  const venueRevision = publicCalendarRevision(database);
+  assertCalendarRevisionStep(statusRevision, venueRevision);
 });
 
 test("public category options follow taxonomy order and retain archived categories only while public projections use them", async (t) => {
@@ -3620,6 +3884,76 @@ async function insertTimedEvent(database, event) {
       event.deletedAt,
     )
     .run();
+}
+
+function insertPublicExportCapacityEvents(database, count) {
+  const statement = database.sqlite.prepare(
+    `INSERT INTO events (
+       id, organization_id, club_id, event_lane_id, category_id, venue_id,
+       primary_organizer_profile_id, title, slug, summary, description,
+       status, visibility, time_kind, starts_at_utc, ends_at_utc, timezone,
+       all_day_start_date, all_day_end_date_exclusive,
+       buffer_before_minutes, buffer_after_minutes, organizer_scope_json,
+       schedule_version, schedule_review_state, hold_expires_at,
+       private_notes, private_meeting_details, published_at,
+       created_by_profile_id, updated_by_profile_id, created_at, updated_at,
+       deleted_at
+     ) VALUES (
+       ?, ?, 'club_vcc', NULL, NULL, NULL, NULL, ?, ?, NULL, NULL,
+       'confirmed', 'public', 'timed', ?, ?, 'America/Vancouver',
+       NULL, NULL, 0, 0, '[]', 1, 'unreviewed', NULL,
+       'PRIVATE_EVENT_NOTE_SENTINEL', 'PRIVATE_MEETING_SENTINEL', 1,
+       'profile_owner', 'profile_owner', 1, 1, NULL
+     )`,
+  );
+  database.sqlite.exec("BEGIN IMMEDIATE");
+  try {
+    for (let index = 0; index < count; index += 1) {
+      const suffix = String(index + 1).padStart(4, "0");
+      statement.run(
+        `event_capacity_${suffix}`,
+        ORGANIZATION_ID,
+        `Capacity boundary ${suffix}`,
+        `capacity-boundary-${suffix}`,
+        Date.parse("2026-09-01T20:00:00.000Z"),
+        Date.parse("2026-09-01T22:00:00.000Z"),
+      );
+    }
+    database.sqlite.exec("COMMIT");
+  } catch (error) {
+    database.sqlite.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function publicCalendarRevision(database) {
+  const row = database.sqlite
+    .prepare(
+      `SELECT sequence, last_modified_at
+       FROM event_calendar_component_revisions
+       WHERE organization_id = ?
+         AND scope = 'public'
+         AND event_key = 'legacy:event_manual_upcoming'`,
+    )
+    .get(ORGANIZATION_ID);
+  assert.ok(row);
+  return {
+    lastModifiedAt: row.last_modified_at,
+    sequence: row.sequence,
+  };
+}
+
+function assertCalendarRevisionStep(previous, current) {
+  assert.equal(current.sequence, previous.sequence + 1);
+  assert.equal(current.lastModifiedAt, previous.lastModifiedAt + 1_000);
+}
+
+function occurrences(value, needle) {
+  return value.split(needle).length - 1;
+}
+
+function nonblankLines(value) {
+  return value.split(/\r\n|\n/gu).filter(Boolean);
 }
 
 async function insertOrganizerPublicEvent(

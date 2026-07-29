@@ -137,6 +137,51 @@ export type OrganizerScheduleEditGuardInput = Readonly<{
   venueId: string | null;
 }>;
 
+export type OrganizerScheduleCreateGuard =
+  | Readonly<{
+      completionStatement: D1PreparedStatementLike;
+      finalizationStatement: D1PreparedStatementLike;
+      holdExpiresAt: number | null;
+      incidentStatement: D1PreparedStatementLike;
+      invalidationStatements: readonly D1PreparedStatementLike[];
+      intentId: string;
+      intentStatement: D1PreparedStatementLike;
+      outcome: "apply";
+      overrideStatement: D1PreparedStatementLike;
+      requiresDraftStaging: boolean;
+      reviewStatements: readonly D1PreparedStatementLike[];
+    }>
+  | Readonly<{
+      holdExpiresAt: null;
+      outcome: "pending_approval";
+      reviewRequestId: string;
+      reviewStatements: readonly D1PreparedStatementLike[];
+    }>;
+
+export type OrganizerScheduleCreateGuardInput = Readonly<{
+  allDayEndDateExclusive: string | null;
+  allDayStartDate: string | null;
+  bufferAfterMinutes: number;
+  bufferBeforeMinutes: number;
+  clubId: string;
+  endsAtUtc: number | null;
+  eventId: string;
+  expectedPolicyMode:
+    | "block"
+    | "require_admin_approval"
+    | "warn_reason"
+    | null;
+  organizerScope: readonly string[];
+  planningStatus: "tentative_hold" | "confirmed";
+  primaryOrganizerProfileId: string;
+  reason: string | null;
+  scheduleShape: "all_day" | "timed";
+  startsAtUtc: number | null;
+  timeZone: string;
+  title: string;
+  venueId: string | null;
+}>;
+
 export const ORGANIZER_PUBLICATION_SCHEDULE_OPERATIONS = [
   "cancel_scheduled_publication",
   "publish",
@@ -528,6 +573,292 @@ export async function prepareNonReservingScheduleGuard(
           ),
     intentId,
     intentStatement,
+  });
+}
+
+/**
+ * Builds the authoritative Phase 4 envelope for a new imported reserving
+ * event. A blocking policy rejects before persistence. A warn-and-reason
+ * policy requires its version-bound reason. When administrator review is
+ * required, the caller creates a private Draft and executes reviewStatements
+ * in the same atomic batch; the requested hold/confirmation is not reserved
+ * until the existing review workflow approves it.
+ */
+export async function prepareOrganizerScheduleCreateGuard(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  actor: AuthorizedMembership,
+  input: OrganizerScheduleCreateGuardInput,
+  now: number,
+): Promise<OrganizerScheduleCreateGuard> {
+  const interval =
+    input.scheduleShape === "timed"
+      ? normalizeConflictInterval({
+          bufferAfterMinutes: input.bufferAfterMinutes,
+          bufferBeforeMinutes: input.bufferBeforeMinutes,
+          endUtc: input.endsAtUtc ?? Number.NaN,
+          startUtc: input.startsAtUtc ?? Number.NaN,
+        })
+      : normalizeAllDayConflictInterval({
+          bufferAfterMinutes: input.bufferAfterMinutes,
+          bufferBeforeMinutes: input.bufferBeforeMinutes,
+          endDateExclusive: input.allDayEndDateExclusive,
+          startDate: input.allDayStartDate,
+          timeZone: input.timeZone,
+        });
+  const scope = Object.freeze([...new Set(input.organizerScope)].sort());
+  const policy = await getOrganizerConflictPolicy(database, identity);
+  if (
+    input.expectedPolicyMode !== null &&
+    input.expectedPolicyMode !== policy.mode
+  ) {
+    throw staleSchedule();
+  }
+  const requestedHoldExpiresAt =
+    input.planningStatus === "tentative_hold"
+      ? now + policy.defaultHoldHours * 60 * 60_000
+      : null;
+  const candidate: ConflictCandidate = Object.freeze({
+    bufferAfterMinutes: input.bufferAfterMinutes,
+    bufferBeforeMinutes: input.bufferBeforeMinutes,
+    candidateKey: `manual:${input.eventId}`,
+    clubId: input.clubId,
+    eventId: input.eventId,
+    holdExpiresAt: requestedHoldExpiresAt,
+    interval,
+    organizationId: actor.organizationId,
+    organizerProfileIds: scope,
+    planningStatus: input.planningStatus,
+    primaryOrganizerProfileId: input.primaryOrganizerProfileId,
+    scheduleVersion: 2,
+    source: "manual",
+    title: input.title,
+    venueId: input.venueId,
+  });
+  const conflicts = await loadAuthoritativeConflictFacts(
+    database,
+    actor.organizationId,
+    candidate,
+    now,
+  );
+  if (conflicts.length > 0 && policy.mode === "block") {
+    throw conflictRefused(
+      "This time is already reserved. The current workspace policy blocks overlapping reservations.",
+    );
+  }
+  const reason =
+    conflicts.length > 0 && policy.mode === "warn_reason"
+      ? requireConflictReason(input.reason)
+      : null;
+  const requiresDraftStaging = conflicts.length > 0;
+  const expectedVersion = requiresDraftStaging ? 1 : 0;
+  const proposedVersion = requiresDraftStaging ? 2 : 1;
+  const fingerprint = await schedulingFingerprint({
+    allDayEndDateExclusive: input.allDayEndDateExclusive,
+    allDayStartDate: input.allDayStartDate,
+    bufferAfterMinutes: input.bufferAfterMinutes,
+    bufferBeforeMinutes: input.bufferBeforeMinutes,
+    clubId: input.clubId,
+    endsAtUtc: input.endsAtUtc,
+    eventId: input.eventId,
+    holdExpiresAt: requestedHoldExpiresAt,
+    interval,
+    organizerScope: scope,
+    planningStatus: input.planningStatus,
+    policyId: policy.id,
+    policyVersion: policy.version,
+    scheduleShape: input.scheduleShape,
+    scheduleVersion: proposedVersion,
+    startsAtUtc: input.startsAtUtc,
+    timeZone: input.timeZone,
+    venueId: input.venueId,
+  });
+
+  if (
+    conflicts.length > 0 &&
+    policy.mode === "require_admin_approval"
+  ) {
+    const reviewRequestId = `conflict-review:${crypto.randomUUID()}`;
+    const reviewFingerprint = await schedulingFingerprint({
+      allDayEndDateExclusive: input.allDayEndDateExclusive,
+      allDayStartDate: input.allDayStartDate,
+      bufferAfterMinutes: input.bufferAfterMinutes,
+      bufferBeforeMinutes: input.bufferBeforeMinutes,
+      clubId: input.clubId,
+      endsAtUtc: input.endsAtUtc,
+      eventId: input.eventId,
+      holdExpiresAt: requestedHoldExpiresAt,
+      interval,
+      organizerScope: scope,
+      planningStatus: input.planningStatus,
+      policyId: policy.id,
+      policyVersion: policy.version,
+      scheduleShape: input.scheduleShape,
+      scheduleVersion: 2,
+      startsAtUtc: input.startsAtUtc,
+      timeZone: input.timeZone,
+      venueId: input.venueId,
+    });
+    return Object.freeze({
+      holdExpiresAt: null,
+      outcome: "pending_approval" as const,
+      reviewRequestId,
+      reviewStatements: Object.freeze(
+        pendingCreateReviewStatements(
+          database,
+          actor,
+          input,
+          conflicts,
+          reviewRequestId,
+          policy,
+          reviewFingerprint,
+          requireConflictReason(input.reason),
+          requestedHoldExpiresAt,
+          interval,
+          scope,
+          now,
+        ),
+      ),
+    });
+  }
+
+  const intentId = `schedule-intent:${crypto.randomUUID()}`;
+  const intentStatement = database
+    .prepare(
+      `INSERT INTO organizer_schedule_write_intents (
+         id, organization_id, organizer_event_id, actor_profile_id, club_id,
+         operation, planning_status, schedule_shape, actual_start_utc,
+         actual_end_utc, expanded_start_utc, expanded_end_utc, timezone,
+         all_day_start_date, all_day_end_date_exclusive,
+         buffer_before_minutes, buffer_after_minutes, venue_id,
+         primary_organizer_profile_id, organizer_scope_json, hold_expires_at,
+         expected_content_version, expected_schedule_version,
+         proposed_content_version, proposed_schedule_version, policy_id,
+         policy_version, policy_mode, reason, review_request_id,
+         state_fingerprint, created_at, completed_at
+       ) VALUES (
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL
+       )`,
+    )
+    .bind(
+      intentId,
+      actor.organizationId,
+      input.eventId,
+      actor.profileId,
+      input.clubId,
+      input.planningStatus === "tentative_hold"
+        ? "place_hold"
+        : "confirm",
+      input.planningStatus,
+      input.scheduleShape,
+      interval.actualStartUtc,
+      interval.actualEndUtc,
+      interval.expandedStartUtc,
+      interval.expandedEndUtc,
+      input.timeZone,
+      input.allDayStartDate,
+      input.allDayEndDateExclusive,
+      input.bufferBeforeMinutes,
+      input.bufferAfterMinutes,
+      input.venueId,
+      input.primaryOrganizerProfileId,
+      JSON.stringify(scope),
+      requestedHoldExpiresAt,
+      expectedVersion,
+      expectedVersion,
+      proposedVersion,
+      proposedVersion,
+      policy.id,
+      policy.version,
+      policy.mode,
+      reason,
+      fingerprint,
+      now,
+    );
+  const incidentStatement = incidentInsertStatement(
+    database,
+    actor,
+    intentId,
+    null,
+    fingerprint,
+    policy.id,
+    policy.version,
+    proposedVersion,
+    "open",
+    now,
+  );
+  const overrideStatement = database
+    .prepare(
+      `INSERT INTO organizer_conflict_overrides (
+         id, organization_id, incident_id, organizer_event_id,
+         conflicting_candidate_key, proposed_schedule_version,
+         conflicting_schedule_version, policy_id, policy_version,
+         state_fingerprint, reason, actor_profile_id, review_request_id,
+         created_at, invalidated_at, invalidated_by_profile_id
+       )
+       SELECT 'conflict-override:' || lower(hex(randomblob(16))),
+              incident.organization_id, incident.id,
+              incident.organizer_event_id,
+              incident.conflicting_candidate_key,
+              incident.proposed_schedule_version,
+              incident.conflicting_schedule_version,
+              incident.policy_id, incident.policy_version,
+              incident.state_fingerprint, ?, ?, NULL, ?, NULL, NULL
+       FROM organizer_conflict_incidents AS incident
+       WHERE incident.organization_id = ?
+         AND incident.write_intent_id = ?
+         AND incident.proposed_schedule_version = ?`,
+    )
+    .bind(
+      reason ?? "No overlap",
+      actor.profileId,
+      now,
+      actor.organizationId,
+      intentId,
+      proposedVersion,
+    );
+  return Object.freeze({
+    completionStatement: database
+      .prepare(
+        `UPDATE organizer_schedule_write_intents
+         SET completed_at = ?
+         WHERE id = ?
+           AND organization_id = ?
+           AND organizer_event_id = ?
+           AND completed_at IS NULL`,
+      )
+      .bind(now, intentId, actor.organizationId, input.eventId),
+    finalizationStatement: database
+      .prepare(
+        `UPDATE organizer_conflict_incidents
+         SET state = 'approved',
+             updated_at = ?
+         WHERE organization_id = ?
+           AND write_intent_id = ?
+           AND proposed_schedule_version = ?
+           AND state = 'open'`,
+      )
+      .bind(now, actor.organizationId, intentId, proposedVersion),
+    holdExpiresAt: requestedHoldExpiresAt,
+    incidentStatement,
+    invalidationStatements: requiresDraftStaging
+      ? Object.freeze(
+          scheduleContextInvalidationStatements(
+            database,
+            actor,
+            input.eventId,
+            null,
+            now,
+          ),
+        )
+      : Object.freeze([]),
+    intentId,
+    intentStatement,
+    outcome: "apply" as const,
+    overrideStatement,
+    requiresDraftStaging,
+    reviewStatements: Object.freeze([]),
   });
 }
 
@@ -2884,6 +3215,208 @@ async function createPendingReview(
     throw mapSchedulingDatabaseError(error);
   }
   return reviewId;
+}
+
+function pendingCreateReviewStatements(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  input: OrganizerScheduleCreateGuardInput,
+  conflicts: readonly ConflictFact[],
+  reviewId: string,
+  policy: Readonly<{ id: string; version: number }>,
+  fingerprint: string,
+  reason: string,
+  holdExpiresAt: number | null,
+  interval: NormalizedConflictInterval,
+  organizerScope: readonly string[],
+  now: number,
+): D1PreparedStatementLike[] {
+  const requestedPlanningStatus = input.planningStatus;
+  const requestedScheduleVersion = 2;
+  const requestedState = {
+    action:
+      requestedPlanningStatus === "tentative_hold"
+        ? "place_hold"
+        : "confirm",
+    clubId: input.clubId,
+    conflictKeys: conflictKeys(conflicts),
+    holdExpiresAt,
+    interval,
+    organizerScope,
+    planningStatus: requestedPlanningStatus,
+    scheduleShape: input.scheduleShape,
+    proposedScheduleVersion: requestedScheduleVersion,
+    expectedScheduleVersion: 1,
+    timeZone: input.timeZone,
+    venueId: input.venueId,
+  };
+  return [
+    database
+      .prepare(
+        `INSERT INTO organizer_conflict_review_requests (
+           id, organization_id, organizer_event_id,
+           requested_planning_status, requested_schedule_version,
+           state_fingerprint, requested_state_json, policy_id, policy_version,
+           requester_profile_id, reason, state, decided_by_profile_id,
+           decided_at, decision_note, created_at, updated_at
+         )
+         SELECT ?, event.organization_id, event.id, ?, ?, ?, ?, ?, ?, ?, ?,
+                'pending', NULL, NULL, NULL, ?, ?
+         FROM organizer_events AS event
+         JOIN organization_memberships AS membership
+           ON membership.id = ?
+          AND membership.organization_id = event.organization_id
+          AND membership.profile_id = ?
+          AND membership.role IN ('owner', 'administrator')
+          AND membership.status = 'active'
+          AND membership.deleted_at IS NULL
+         JOIN profiles AS profile
+           ON profile.id = membership.profile_id
+          AND profile.status = 'active'
+          AND profile.deleted_at IS NULL
+         WHERE event.id = ?
+           AND event.organization_id = ?
+           AND event.content_version = 1
+           AND event.schedule_version = 1
+           AND event.planning_status = 'draft'
+           AND event.publication_status = 'private'
+           AND event.deleted_at IS NULL`,
+      )
+      .bind(
+        reviewId,
+        requestedPlanningStatus,
+        requestedScheduleVersion,
+        fingerprint,
+        JSON.stringify(requestedState),
+        policy.id,
+        policy.version,
+        actor.profileId,
+        reason,
+        now,
+        now,
+        actor.membershipId,
+        actor.profileId,
+        input.eventId,
+        actor.organizationId,
+      ),
+    ...pendingCreateIncidentStatements(
+      database,
+      actor,
+      input.eventId,
+      conflicts,
+      reviewId,
+      policy,
+      fingerprint,
+      requestedScheduleVersion,
+      now,
+    ),
+    conflictNotificationStatement(database, actor, {
+      directRecipientProfileId: null,
+      eventId: input.eventId,
+      includeReviewers: true,
+      now,
+      sourceId: reviewId,
+      sourceKind: "review",
+      type: "conflict_review_requested",
+    }),
+    auditStatement(
+      database,
+      actor,
+      input.eventId,
+      "conflict_review.requested",
+      {
+        policyVersion: policy.version,
+        proposedScheduleVersion: requestedScheduleVersion,
+        requestedScheduleVersion,
+        reviewId,
+      },
+      now,
+    ),
+  ];
+}
+
+function pendingCreateIncidentStatements(
+  database: D1DatabaseLike,
+  actor: AuthorizedMembership,
+  eventId: string,
+  conflicts: readonly ConflictFact[],
+  reviewId: string,
+  policy: Readonly<{ id: string; version: number }>,
+  fingerprint: string,
+  proposedScheduleVersion: number,
+  now: number,
+): D1PreparedStatementLike[] {
+  const chunks: string[] = [];
+  let pending: Record<string, unknown>[] = [];
+  for (const fact of conflicts) {
+    const encoded = {
+      candidateKey: fact.existingCandidateKey,
+      classification: fact.classification,
+      eventId: fact.existingEventId,
+      overlapEndUtc: fact.overlapEndUtc,
+      overlapStartUtc: fact.overlapStartUtc,
+      resources: fact.resources,
+      scheduleVersion: fact.existingScheduleVersion,
+    };
+    const candidate = JSON.stringify([...pending, encoded]);
+    if (new TextEncoder().encode(candidate).byteLength > 96 * 1024) {
+      if (pending.length === 0) {
+        throw validationError(
+          "The conflict review payload is too large to persist safely.",
+        );
+      }
+      chunks.push(JSON.stringify(pending));
+      pending = [encoded];
+    } else {
+      pending.push(encoded);
+    }
+  }
+  if (pending.length > 0) chunks.push(JSON.stringify(pending));
+  return chunks.map((chunk) =>
+    database
+      .prepare(
+        `INSERT INTO organizer_conflict_incidents (
+           id, organization_id, organizer_event_id,
+           conflicting_candidate_key, conflicting_event_id,
+           conflicting_source_kind, proposed_schedule_version,
+           conflicting_schedule_version, policy_id, policy_version,
+           classification, overlap_start_utc, overlap_end_utc,
+           resources_json, state_fingerprint, state, write_intent_id,
+           review_request_id, detected_by_profile_id, created_at, updated_at,
+           resolved_at
+         )
+         SELECT 'conflict-incident:' || lower(hex(randomblob(16))),
+                ?, ?, json_extract(item.value, '$.candidateKey'),
+                json_extract(item.value, '$.eventId'),
+                CASE
+                  WHEN json_extract(item.value, '$.candidateKey')
+                       LIKE 'manual:%' THEN 'manual'
+                  WHEN json_extract(item.value, '$.candidateKey')
+                       LIKE 'meetup:%' THEN 'meetup'
+                  ELSE 'legacy'
+                END,
+                ?, json_extract(item.value, '$.scheduleVersion'), ?, ?,
+                json_extract(item.value, '$.classification'),
+                json_extract(item.value, '$.overlapStartUtc'),
+                json_extract(item.value, '$.overlapEndUtc'),
+                json_extract(item.value, '$.resources'), ?,
+                'pending_approval', NULL, ?, ?, ?, ?, NULL
+         FROM json_each(?) AS item`,
+      )
+      .bind(
+        actor.organizationId,
+        eventId,
+        proposedScheduleVersion,
+        policy.id,
+        policy.version,
+        fingerprint,
+        reviewId,
+        actor.profileId,
+        now,
+        now,
+        chunk,
+      ),
+  );
 }
 
 function pendingIncidentStatements(

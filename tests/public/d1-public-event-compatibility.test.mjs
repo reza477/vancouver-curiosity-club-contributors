@@ -10,6 +10,7 @@ import {
   getAuthorizedOrganizerEventPublicPreview,
   getEditorialPublicEvents,
   getPublicEventBySlug,
+  getPublicEventExportRecordBySlug,
   getPublicEventsBySlugs,
   listPublishedEventSelections,
   listPublicEventCategoryOptions,
@@ -18,6 +19,7 @@ import {
   listUpcomingPublicEvents,
   listUpcomingPublicMeetupEvents,
   queryPublicEvents,
+  queryPublicEventsForExport,
   resolveEditorialPublishedEventSelections,
   resolvePublishedEventSelections,
 } from "../../lib/server/public/events.ts";
@@ -97,6 +99,8 @@ test("public event statements compile and execute through real Miniflare D1", as
   }
 
   const preparedSql = [];
+  let maximumStatementBytes = 0;
+  let maximumBindings = 0;
   const database = {
     prepare(sql) {
       const byteLength = new TextEncoder().encode(sql).byteLength;
@@ -104,9 +108,12 @@ test("public event statements compile and execute through real Miniflare D1", as
         byteLength < MAX_D1_STATEMENT_BYTES,
         `D1 statement is ${byteLength} bytes`,
       );
+      maximumStatementBytes = Math.max(maximumStatementBytes, byteLength);
       preparedSql.push(sql);
       return {
         bind(...bindings) {
+          maximumBindings = Math.max(maximumBindings, bindings.length);
+          assert.ok(bindings.length < 100);
           return {
             async all() {
               return request({ bindings, mode: "all", sql });
@@ -132,6 +139,20 @@ test("public event statements compile and execute through real Miniflare D1", as
     view: "upcoming",
   };
   assert.equal((await queryPublicEvents(database, queryInput)).totalCount, 0);
+  assert.deepEqual(
+    await queryPublicEventsForExport(database, {
+      ...queryInput,
+      maxEvents: 500,
+    }),
+    [],
+  );
+  assert.equal(
+    await getPublicEventExportRecordBySlug(database, {
+      organizationId: ORGANIZATION_ID,
+      slug: "missing-event",
+    }),
+    null,
+  );
   assert.equal(
     await getPublicEventBySlug(database, {
       organizationId: ORGANIZATION_ID,
@@ -249,4 +270,6 @@ test("public event statements compile and execute through real Miniflare D1", as
   );
 
   assert.ok(preparedSql.length >= 14);
+  assert.ok(maximumStatementBytes < 90_000);
+  assert.ok(maximumBindings < 100);
 });

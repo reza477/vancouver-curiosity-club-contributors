@@ -188,9 +188,17 @@ class SqliteD1TestStatement {
 
   runSynchronously() {
     this.recordExecution();
-    const result = this.database.sqlite
-      .prepare(this.sql)
-      .run(...this.bindings);
+    const statement = this.database.sqlite.prepare(this.sql);
+    if (statement.columns().length > 0) {
+      return {
+        success: true,
+        results: statement.all(...this.bindings),
+        meta: {
+          changes: 0,
+        },
+      };
+    }
+    const result = statement.run(...this.bindings);
     return {
       success: true,
       meta: {

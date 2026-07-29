@@ -1,0 +1,156 @@
+Vancouver Curiosity Club event CSV template v1
+Parser version: v1
+
+DOWNLOAD
+The matching UTF-8 template is vcc-event-import-v1.csv. It contains only the
+canonical header row and no fabricated event or personal data.
+
+ACCEPTED INPUT
+- One local UTF-8 .csv file, with or without a UTF-8 BOM.
+- RFC 4180 comma-separated quoting, escaped quotes, embedded commas, and
+  embedded newlines.
+- At most 2 MiB, 40 columns, 2,000 nonblank data rows, 32 KiB per normalized
+  mapped row, and 10,000 Unicode characters per cell.
+- Remote URLs, Excel, JSON, ICS, XML, HTML, ZIP, executables, archives, NUL
+  bytes, invalid UTF-8, duplicate headers, and inconsistent row shapes are
+  rejected.
+
+MAPPING
+The official headers map automatically by exact match. For other headers, map
+each uploaded header to one canonical field or choose Ignore. A canonical field
+may be mapped only once.
+
+Required mappings:
+- title
+- club
+- schedule_type
+- planning_status
+- primary_organizer_email
+- attendance_mode
+
+Club, Program, lane, category, venue, and organizer values must resolve to
+active records in the current organization. Organizer matching uses normalized
+membership email, never display name. Imports do not create missing Clubs,
+Programs, lanes, categories, venues, profiles, memberships, or invitations.
+Unmapped columns are ignored and not retained. The original upload is not
+stored in D1 or R2.
+
+SOURCE LABEL AND NAMESPACE
+Use a short factual source label for the batch. If any row supplies external_id,
+also supply a source namespace from one to 64 characters. It is normalized to
+lowercase, must start with a letter or number, and may then contain only
+letters, numbers, dots, dashes, or underscores. Examples: member-calendar-2026
+or community.partner. Do not put an email, token, URL, or secret in a namespace.
+CSV source type + namespace + external_id is the cross-batch duplicate key and
+never authorizes an overwrite.
+
+CANONICAL COLUMNS
+
+external_id
+  Optional source identifier. Requires the bounded source namespace above.
+
+title
+  Required plain-text title, at most 180 characters.
+
+club
+  Required active same-organization Club ID, slug, or unambiguous normalized
+  name.
+
+program
+  Optional active same-organization Program reference.
+
+lane
+  Optional active same-organization event lane.
+
+category
+  Optional active same-organization category.
+
+schedule_type
+  Required: unscheduled, timed, or all_day. Only an idea may be unscheduled.
+
+start_date
+  Timed/all-day local start date in YYYY-MM-DD.
+
+start_time
+  Timed local start in HH:MM or HH:MM:SS.
+
+start_utc_offset
+  Optional +HH:MM or -HH:MM. Required for an ambiguous repeated local start
+  time and must match the selected timezone.
+
+end_date
+  Timed local end date in YYYY-MM-DD. Overnight and multi-day events are
+  allowed when the end is later than the start.
+
+end_time
+  Timed local end in HH:MM or HH:MM:SS.
+
+end_utc_offset
+  Optional +HH:MM or -HH:MM. Required for an ambiguous repeated local end time
+  and must match the selected timezone.
+
+end_date_exclusive
+  Required for all_day. It is the day after the last included date. Do not use
+  it for timed events.
+
+timezone
+  IANA timezone. Blank visibly defaults to America/Vancouver. Fixed-offset
+  labels such as UTC-7 are invalid.
+
+planning_status
+  Required: idea, draft, tentative_hold, or confirmed. New imports cannot be
+  cancelled, completed, or archived.
+
+publication_status
+  Optional. Blank visibly defaults to private. Private is the only accepted
+  value.
+
+primary_organizer_email
+  Required active or invited same-organization membership email.
+
+co_organizer_emails
+  Optional. Separate up to 12 membership emails with |. Values are normalized,
+  deduplicated, and deterministically ordered. Do not repeat the primary
+  organizer.
+
+location
+  Optional active same-organization venue reference. It never carries private
+  venue instructions.
+
+attendance_mode
+  Required: in_person, online, hybrid, or undecided.
+
+meetup_url
+  Optional public HTTPS Meetup event URL. Fragments and tracking parameters are
+  removed. Userinfo, non-default ports, and private feed URLs are rejected.
+
+notes
+  Optional private internal notes. Notes never become public description text
+  automatically.
+
+buffer_before_minutes
+  Optional whole minutes from 0 through 1440. Blank defaults to 0.
+
+buffer_after_minutes
+  Optional whole minutes from 0 through 1440. Blank defaults to 0.
+
+DATE AND TIME RULES
+Timed rows require real local start and end values plus an IANA timezone. A
+spring daylight-saving gap is rejected. A repeated fall time requires the
+matching offset, such as -07:00 for the earlier Vancouver occurrence or -08:00
+for the later one. All-day rows use start_date and end_date_exclusive.
+
+PUBLICATION, DUPLICATES, AND CONFLICTS
+Imports never publish events. A requested scheduled, published, or unpublished
+state is rejected. Review the imported private event and use the normal
+publishing workflow.
+
+Hard duplicates are skipped and never overwrite an event. A possible semantic
+duplicate defaults to Skip; an Owner or Administrator may choose Create
+Separate Event only with a written reason. Preview is non-authoritative.
+Application reloads the stored preview and rechecks authorization, mappings,
+duplicates, and the authoritative Phase 4 conflict policy. Imported source text
+is treated as text and is never executed as a spreadsheet formula.
+
+AUTHORIZED CUT
+ICS file import - Not implemented - authorized cut.

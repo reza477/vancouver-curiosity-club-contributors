@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   runRequestMaintenance,
+  shouldReconcilePhase7StarterCopy,
   shouldReconcileScheduledPublication,
   shouldRefreshPublicMeetupCalendar,
 } from "../../lib/server/database/request-maintenance.ts";
@@ -126,6 +127,29 @@ test("the Worker maintenance contract separates publication and Meetup refresh i
 });
 
 test("only safe read routes run bounded pre-dispatch maintenance", () => {
+  for (const pathname of [
+    "/contact",
+    "/get-involved",
+    "/host-an-event",
+    "/privacy",
+  ]) {
+    assert.equal(
+      shouldReconcilePhase7StarterCopy("GET", pathname),
+      true,
+    );
+    assert.equal(
+      shouldReconcilePhase7StarterCopy("HEAD", pathname),
+      true,
+    );
+  }
+  assert.equal(
+    shouldReconcilePhase7StarterCopy("POST", "/contact"),
+    false,
+  );
+  assert.equal(
+    shouldReconcilePhase7StarterCopy("GET", "/events"),
+    false,
+  );
   assert.equal(
     shouldReconcileScheduledPublication("GET", "/events"),
     true,
@@ -150,6 +174,30 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
     shouldRefreshPublicMeetupCalendar("POST", "/events"),
     false,
   );
+});
+
+test("one starter-copy outcome redirects before ordinary public work", async () => {
+  const trace = [];
+  const result = await runRequestMaintenance(
+    {},
+    { method: "GET", pathname: "/contact" },
+    {
+      async reconcilePublication() {
+        trace.push("publication");
+        return publicationResult();
+      },
+      async reconcileStarterCopy() {
+        trace.push("starter-copy");
+        return "processed";
+      },
+      async refreshMeetup() {
+        trace.push("meetup");
+        return meetupResult("not_due");
+      },
+    },
+  );
+  assert.deepEqual(result, { kind: "redirect", source: "cms" });
+  assert.deepEqual(trace, ["starter-copy"]);
 });
 
 async function maintenance(

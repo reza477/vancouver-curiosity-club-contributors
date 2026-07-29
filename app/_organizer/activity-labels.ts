@@ -36,6 +36,40 @@ export function activityLabel(
       return "Legal wording confirmed";
     case "cms.legal_status_revoked":
       return "Legal wording confirmation revoked";
+    case "calendar_subscription.created":
+      return "Private calendar subscription created";
+    case "calendar_subscription.revoked":
+      return "Private calendar subscription revoked";
+    case "event_export.operational_csv":
+      return "Operational event CSV exported";
+    case "form_submission.assigned":
+      return "Submission assignment changed";
+    case "form_submission.created":
+      return "Public form submission stored";
+    case "form_submission.note_added":
+      return "Private submission note appended";
+    case "form_submission.personal_content_redacted":
+      return "Submission personal content redacted";
+    case "form_submission.status_changed":
+      return "Submission status changed";
+    case "import.approved":
+      return "CSV import approved";
+    case "import.batch_created":
+      return "CSV import preview created";
+    case "import.completed":
+      return "CSV import completed";
+    case "import.conflict_linked":
+      return "CSV import conflict decision recorded";
+    case "import.duplicate_override":
+      return "CSV import duplicate warning overridden";
+    case "import.mapping_confirmed":
+      return "CSV import mapping confirmed";
+    case "import.resumed":
+      return "CSV import resumed";
+    case "import.row_applied":
+      return "CSV import row processed";
+    case "import.source_payload_redacted":
+      return "CSV import source payload redacted";
     case "invitation.accepted":
       return "Invitation accepted";
     case "invitation.created":
@@ -54,6 +88,10 @@ export function activityLabel(
       return "Media upload finalized";
     case "media.upload_started":
       return "Media upload started";
+    case "media_export.manifest":
+      return "Media backup manifest exported";
+    case "media_export.original_downloaded":
+      return "Media backup original downloaded";
     case "membership.ownership_transferred":
       return "Ownership transferred";
     case "membership.updated":
@@ -70,6 +108,8 @@ export function activityLabel(
       return "Planning record restored";
     case "organizer_event.updated":
       return "Planning record updated";
+    case "owner_backup.generated":
+      return "Owner JSON backup generated";
     case "profile.notification_preference_changed":
       return "Notification preference changed";
     case "profile.updated":
