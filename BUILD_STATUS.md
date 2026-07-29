@@ -7,9 +7,8 @@ Last updated: 2026-07-28 (America/Vancouver)
 - **Active phase: Phase 7 — Imports, exports, calendars, and public forms.**
 - Phase 6 is **Completed and verified** for its authorized scope.
 - Phase 7 implementation and the complete local repository, migration,
-  production-build, rendered-Worker, and browser matrix are **Completed and
-  verified**. The exact post-ledger source commit must be rebuilt and
-  re-attested before the one authorized unpublished Sites save.
+  production-build, rendered-Worker, browser, archive, source-readback, and
+  unpublished Sites-version matrix are **Completed and verified**.
 - **Phase 8 — Not started.**
 - No Phase 7 deployment, preview deployment, access-policy change, domain
   change, binding change, runtime-value change, or hosted D1/R2 data mutation
@@ -232,10 +231,16 @@ newer-draft skip, idempotency, and public parity passed 5/5.
   keys.
 - The backup is not an infrastructure backup and has no automatic or in-app
   restore. Disposable local-D1 restore rehearsal: **Not run**.
-- Source and pre-final-build output privacy scans found no credential, email,
+- Source and exact-build output privacy scans found no credential, email,
   private-feed, raw-token, R2-key, form/import sentinel, local-path, environment
-  file, local database, or private client-bundle leak. The exact post-ledger
-  artifact inventory remains part of the final save/readback gate.
+  file, local database, or private client-bundle leak.
+- The exact pushed-source artifact contains 165 files and 10,108,055 source
+  bytes. Its canonical sorted path/size/content SHA-256 is
+  `3a15e80cd009736fff61f5fda7d03eb96b3455f56e238c47dca5c30d974db7e9`.
+  The compressed archive is 2,484,680 bytes with SHA-256
+  `584eed6a914c89f096ac18d2afe0d5b6788e5f3ec6f9a1d8a5b69aed5b6aa5ab`.
+  Archive extraction matched the exact build 165/165 with zero missing, extra,
+  or content-mismatched files.
 
 ## Verification ledger
 
@@ -311,22 +316,34 @@ smoke remains **Awaiting owner / not run**.
 
 ## Source, build, Sites, and live-state provenance
 
-- Phase 7 saved source commit: **Not run**
-- Phase 7 status-only ledger commit: **Not run**
-- Exact pushed source readback: **Not run**
-- Exact Phase 7 production archive: **Not run**
-- New unpublished Phase 7 Sites version: **Not run**
-- Version number/opaque ID/content hash/file count/bytes/screenshot state:
-  **Not run**
+- Phase 7 saved source commit: `f39fcb3fc6ab97a21fa8cc00d3b180f5ccf84842`
+- Phase 7 status-only ledger commit: **This final ledger commit; its exact SHA
+  is reported in the terminal handoff.**
+- Exact pushed `refs/heads/main` readback:
+  `f39fcb3fc6ab97a21fa8cc00d3b180f5ccf84842`
+- Exact Phase 7 production archive:
+  SHA-256
+  `584eed6a914c89f096ac18d2afe0d5b6788e5f3ec6f9a1d8a5b69aed5b6aa5ab`,
+  2,484,680 compressed bytes, 165 files
+- New unpublished Phase 7 Sites version: `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_34386dc8a6b88191bff111eb49b8de7c`
+- Version number: 13
+- Version source commit:
+  `f39fcb3fc6ab97a21fa8cc00d3b180f5ccf84842`
+- Version content hash:
+  `sha256:509d83482466740e5c4b5755ef1d55c6f2c5eb32ab9702b12e86347c91953f61`
+- Version readback: 165 files / 10,240,000 stored bytes / null screenshot /
+  no preview URL
 - Deployment: **Not run**
 - Preview deployment: **Not run**
 - Live-access change: **Not run**
 
-Read-only Sites inspection before the save gate confirmed the required project,
-the current live URL, no preview URL, no custom domains, custom access with
-exactly one allowed user and zero groups, and saved versions 1–12. The
-connector exposes the live URL but not its deployed-version number; the
-established ledger records live version 8.
+Sites readback after the single save confirmed the required project, exactly
+versions 1–13 with one version 13, the unchanged live URL, no preview URL, no
+custom domains, and custom access revision 1 with exactly one allowed user and
+zero account, workspace, or tenant groups. No deploy, preview, access, domain,
+binding, runtime, D1, or R2 mutation was invoked. The connector exposes the
+live URL but not its deployed-version number; the established ledger records
+live version 8, and the unpublished save did not alter production.
 
 Required immutable Sites identity:
 
@@ -378,9 +395,9 @@ local implementation or an unpublished Sites save.
 
 ## Exact next phase and stop condition
 
-- Phase 7 is completed and verified locally.
-- Save at most one valid unpublished Sites version only after every gate is
-  green.
+- Phase 7 is completed and verified for its authorized scope.
+- Exactly one valid unpublished Phase 7 Sites version was saved after every
+  gate was green.
 - Do not deploy.
 - Owner smoke status remains **Awaiting owner smoke test**.
 - **Phase 8 — Not started.**
