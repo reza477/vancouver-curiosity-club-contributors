@@ -160,8 +160,8 @@ newer-draft skip, idempotency, and public parity passed 5/5.
     checkpoint
 - The runtime invariant contract advances from the completed Phase 6 version to
   Phase 7. The current fingerprint is
-  `c8e35f208bafcff688140d30f4617ca08b67d92beea5af00027d10f8cdbe9135`.
-  It installs 248 global triggers, including 35 Phase 7 triggers, and seven
+  `94aa90e191244072d66fb3f77575e56064ef8478660d7778c3c4b473f632582b`.
+  It installs 249 global triggers, including 36 Phase 7 triggers, and seven
   Phase 7 integrity counts. Empty convergence is nine requests; the
   12-profile legacy-attribution plus taxonomy path is 23; the worst repair
   request is 46 statements. Final exact-commit repetition remains required.

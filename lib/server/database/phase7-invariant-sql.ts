@@ -619,6 +619,20 @@ BEGIN
   END;
 END;`,
   String.raw`
+CREATE TRIGGER IF NOT EXISTS import_batches_phase7_identity_before_update
+BEFORE UPDATE ON import_batches
+BEGIN
+  SELECT CASE
+    WHEN NEW.id <> OLD.id
+      OR NEW.organization_id <> OLD.organization_id
+      OR NEW.source_type <> OLD.source_type
+      OR NEW.source_label IS NOT OLD.source_label
+      OR NEW.created_by_profile_id <> OLD.created_by_profile_id
+      OR NEW.created_at <> OLD.created_at
+    THEN RAISE(ABORT, 'phase7_import_batch_identity_immutable')
+  END;
+END;`,
+  String.raw`
 CREATE TRIGGER IF NOT EXISTS import_batch_details_phase7_before_insert
 BEFORE INSERT ON import_batch_details
 BEGIN
@@ -1113,13 +1127,28 @@ BEGIN
     WHEN NOT EXISTS (
       SELECT 1
       FROM import_batches AS batch
-      INNER JOIN import_batch_details AS detail
-        ON detail.import_batch_id = batch.id
-       AND detail.organization_id = batch.organization_id
       WHERE batch.id = NEW.import_batch_id
         AND batch.organization_id = NEW.organization_id
-        AND batch.source_type = 'csv'
-        AND detail.phase IN ('uploaded', 'previewed')
+        AND (
+          (
+            batch.source_type <> 'csv'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM import_batch_details AS any_detail
+              WHERE any_detail.import_batch_id = batch.id
+            )
+          )
+          OR (
+            batch.source_type = 'csv'
+            AND EXISTS (
+              SELECT 1
+              FROM import_batch_details AS detail
+              WHERE detail.import_batch_id = batch.id
+                AND detail.organization_id = batch.organization_id
+                AND detail.phase IN ('uploaded', 'previewed')
+            )
+          )
+        )
     )
     THEN RAISE(ABORT, 'phase7_import_row_organization_mismatch')
   END;
@@ -1135,6 +1164,34 @@ BEGIN
       OR NEW.row_number <> OLD.row_number
       OR NEW.created_at <> OLD.created_at
       OR NEW.updated_at < OLD.updated_at
+      OR NOT EXISTS (
+        SELECT 1
+        FROM import_batches AS batch
+        WHERE batch.id = OLD.import_batch_id
+          AND batch.organization_id = OLD.organization_id
+      )
+      OR (
+        (
+          EXISTS (
+            SELECT 1
+            FROM import_batches AS batch
+            WHERE batch.id = OLD.import_batch_id
+              AND batch.organization_id = OLD.organization_id
+              AND batch.source_type = 'csv'
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM import_batch_details AS any_detail
+            WHERE any_detail.import_batch_id = OLD.import_batch_id
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM import_batch_details AS detail
+          WHERE detail.import_batch_id = OLD.import_batch_id
+            AND detail.organization_id = OLD.organization_id
+        )
+      )
       OR EXISTS (
         SELECT 1
         FROM import_batch_details AS detail
@@ -1189,6 +1246,17 @@ END;`,
   String.raw`
 CREATE TRIGGER IF NOT EXISTS import_rows_phase7_before_delete
 BEFORE DELETE ON import_rows
+WHEN EXISTS (
+  SELECT 1
+  FROM import_batches AS batch
+  WHERE batch.id = OLD.import_batch_id
+    AND batch.source_type = 'csv'
+)
+OR EXISTS (
+  SELECT 1
+  FROM import_batch_details AS detail
+  WHERE detail.import_batch_id = OLD.import_batch_id
+)
 BEGIN
   SELECT RAISE(ABORT, 'phase7_import_row_delete_denied');
 END;`,
@@ -2288,6 +2356,13 @@ FROM (
       WHERE detail.import_batch_id = batch.id
         AND detail.organization_id = batch.organization_id
     )
+  UNION ALL
+  SELECT count(*) AS violation_count
+  FROM import_rows AS row
+  LEFT JOIN import_batches AS batch
+    ON batch.id = row.import_batch_id
+   AND batch.organization_id = row.organization_id
+  WHERE batch.id IS NULL
 ) AS count_group`,
   String.raw`
 SELECT COALESCE(sum(count_group.violation_count), 0) AS violation_count

@@ -350,6 +350,207 @@ test("Phase 7 import preview facts freeze at approval", () => {
   }
 });
 
+test("Phase 7 CSV row guards preserve non-CSV rows and reject cross-organization or reclassified ownership", () => {
+  const database = fixture();
+  try {
+    const now = Date.now();
+    database.exec(`
+      INSERT INTO organizations (
+        id, name, slug, timezone, owner_bootstrap_closed_at,
+        created_by_profile_id, created_at, updated_at
+      ) VALUES (
+        'org-2', 'Other organization', 'other-organization',
+        'America/Vancouver', 1, 'owner-1', 1, 1
+      );
+    `);
+    database
+      .prepare(
+        `INSERT INTO import_batches (
+           id, organization_id, source_type, source_label, status,
+           created_by_profile_id, created_at
+         ) VALUES (
+           'meetup-batch', 'org-1', 'meetup_ics', 'Meetup calendar',
+           'processing', 'owner-1', ?
+         )`,
+      )
+      .run(now);
+    database
+      .prepare(
+        `INSERT INTO import_batches (
+           id, organization_id, source_type, source_label, status,
+           created_by_profile_id, created_at
+         ) VALUES (
+           'other-meetup-batch', 'org-2', 'meetup_ics',
+           'Other Meetup calendar', 'processing', 'owner-1', ?
+         )`,
+      )
+      .run(now);
+    assert.throws(
+      () =>
+        database
+          .prepare(
+            `INSERT INTO import_rows (
+               id, organization_id, import_batch_id, row_number,
+               source_payload_json, normalized_payload_json,
+               status, created_at, updated_at
+             ) VALUES (
+               'cross-org-row', 'org-1', 'other-meetup-batch', 1,
+               '{"componentIndex":1}', '{"title":"Wrong organization"}',
+               'accepted', ?, ?
+             )`,
+          )
+          .run(now, now),
+      /phase7_import_row_organization_mismatch/iu,
+    );
+    database
+      .prepare(
+        `INSERT INTO import_rows (
+           id, organization_id, import_batch_id, row_number,
+           source_payload_json, normalized_payload_json,
+           status, created_at, updated_at
+         ) VALUES (
+           'meetup-row', 'org-1', 'meetup-batch', 1,
+           '{"componentIndex":1}', '{"title":"Meetup event"}',
+           'accepted', ?, ?
+         )`,
+      )
+      .run(now, now);
+    assert.throws(
+      () =>
+        database
+          .prepare(
+            `UPDATE import_batches
+             SET source_type = 'csv'
+             WHERE id = 'meetup-batch'`,
+          )
+          .run(),
+      /phase7_import_batch_identity_immutable/iu,
+    );
+    database
+      .prepare(
+        `UPDATE import_rows
+         SET status = 'rejected',
+             error_code = 'conflict_rejected',
+             updated_at = ?
+         WHERE id = 'meetup-row'`,
+      )
+      .run(now + 1);
+    assert.equal(
+      database
+        .prepare(
+          `SELECT status
+           FROM import_rows
+           WHERE id = 'meetup-row'`,
+        )
+        .get().status,
+      "rejected",
+    );
+    database
+      .prepare("DELETE FROM import_rows WHERE id = 'meetup-row'")
+      .run();
+    assert.equal(
+      database
+        .prepare(
+          "SELECT count(*) AS count FROM import_rows WHERE id = 'meetup-row'",
+        )
+        .get().count,
+      0,
+    );
+
+    database
+      .prepare(
+        `INSERT INTO import_batches (
+           id, organization_id, source_type, source_label, status,
+           created_by_profile_id, created_at
+         ) VALUES (
+           'csv-batch', 'org-1', 'csv', 'CSV fixture',
+           'pending', 'owner-1', ?
+         )`,
+      )
+      .run(now);
+    assert.throws(
+      () =>
+        database
+          .prepare(
+            `INSERT INTO import_rows (
+               id, organization_id, import_batch_id, row_number,
+               source_payload_json, normalized_payload_json,
+               status, created_at, updated_at
+             ) VALUES (
+               'csv-row-before-detail', 'org-1', 'csv-batch', 1,
+               '{"title":"Draft"}', '{"title":"Draft"}',
+               'accepted', ?, ?
+             )`,
+          )
+          .run(now, now),
+      /phase7_import_row_organization_mismatch/iu,
+    );
+    database
+      .prepare(
+        `INSERT INTO import_batch_details (
+           import_batch_id, organization_id, file_sha256,
+           source_namespace, template_version, parser_version,
+           encoding, delimiter, column_mapping_json,
+           mapping_fingerprint, updated_by_profile_id,
+           created_at, updated_at
+         ) VALUES (
+           'csv-batch', 'org-1', ?, 'csv-fixture', 1, 1,
+           'utf-8', ',', '{}', ?, 'owner-1', ?, ?
+         )`,
+      )
+      .run("a".repeat(64), "b".repeat(64), now, now);
+    database
+      .prepare(
+        `INSERT INTO import_rows (
+           id, organization_id, import_batch_id, row_number,
+           source_payload_json, normalized_payload_json,
+           status, created_at, updated_at
+         ) VALUES (
+           'csv-row', 'org-1', 'csv-batch', 1,
+           '{"title":"Draft"}', '{"title":"Draft"}',
+           'accepted', ?, ?
+         )`,
+      )
+      .run(now, now);
+    assert.throws(
+      () =>
+        database
+          .prepare("DELETE FROM import_rows WHERE id = 'csv-row'")
+          .run(),
+      /phase7_import_row_delete_denied/iu,
+    );
+    assertPhase7CountsZero(database);
+
+    database.exec("DROP TRIGGER import_rows_phase7_org_before_insert");
+    database
+      .prepare(
+        `INSERT INTO import_rows (
+           id, organization_id, import_batch_id, row_number,
+           source_payload_json, normalized_payload_json,
+           status, created_at, updated_at
+         ) VALUES (
+           'corrupt-cross-org-row', 'org-1', 'other-meetup-batch', 2,
+           '{"componentIndex":2}', '{"title":"Corrupt residue"}',
+           'accepted', ?, ?
+         )`,
+      )
+      .run(now, now);
+    assert.ok(
+      readPhase7Counts(database)[3] > 0,
+      "the global import-row integrity probe detects cross-organization residue",
+    );
+    database
+      .prepare(
+        "DELETE FROM import_rows WHERE id = 'corrupt-cross-org-row'",
+      )
+      .run();
+    installPhase7Triggers(database);
+    assertPhase7CountsZero(database);
+  } finally {
+    database.close();
+  }
+});
+
 test("Phase 7 import redaction rejects missing provenance and preserves only the audited Owner redaction", () => {
   const database = fixture();
   try {

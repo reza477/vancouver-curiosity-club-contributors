@@ -1214,7 +1214,11 @@ test("Worker refresh-on-view preflight plus a due bounded two-row slice stays wi
     kind: "redirect",
     source: "meetup",
   });
-  assert.equal(refreshed.outcome, "partial");
+  assert.equal(
+    refreshed.outcome,
+    "partial",
+    JSON.stringify(refreshed),
+  );
   assert.equal(refreshed.counts.created, 2);
   assert.deepEqual(database.counts(), {
     batchLengths: [2, 9, 9, 4],

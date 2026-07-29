@@ -215,7 +215,7 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
       }),
     ),
     {
-      counts: { batchLengths: [21], statementCount: 28 },
+      counts: { batchLengths: [22], statementCount: 29 },
       status: "repaired",
     },
     {
@@ -381,7 +381,7 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
       }),
     ),
     {
-      counts: { batchLengths: [21], statementCount: 28 },
+      counts: { batchLengths: [22], statementCount: 29 },
       status: "repaired",
     },
     {
@@ -575,7 +575,7 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
     { batchLengths: [39], statementCount: 46 },
     { batchLengths: [39], statementCount: 46 },
     { batchLengths: [39], statementCount: 46 },
-    { batchLengths: [21], statementCount: 28 },
+    { batchLengths: [22], statementCount: 29 },
     { batchLengths: [25], statementCount: 34 },
   ];
   for (const [index, expectedCounts] of expectedColdTrace.entries()) {
