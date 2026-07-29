@@ -169,13 +169,14 @@ git diff --check
 ```
 
 Do not run `db:generate` directly into the real `drizzle` directory after the
-Phase 6 migration exists: the real journal already ends at index 15 and a
-direct generation can create an unintended `0016`. The Phase 6 snapshot is
-regenerated in a disposable output directory seeded only with the real
-`0014_snapshot.json` and a temporary journal ending at index 14. Only the
-generated `0015_snapshot.json` is copied back. The real
-`0015_phase6_cms_media.sql` and real journal must remain byte-for-byte
-unchanged across that procedure, followed by `drizzle-kit check`.
+Phase 7 migration exists: the real journal already ends at index 16 and a
+direct generation can create an unintended `0017`. A Phase 7 snapshot-only
+refresh uses a disposable output directory seeded with the real
+`0015_snapshot.json` and a temporary journal ending at index 15. Only the
+generated `0016_snapshot.json` is copied back. The real
+`0016_phase7_import_export_forms.sql` and real journal must remain
+byte-for-byte unchanged across that procedure, followed by
+`drizzle-kit check`.
 
 `npm.cmd run test:rendered` executes the built Cloudflare Worker in Miniflare
 against a fresh generated migration chain. It verifies public HTML, metadata,
@@ -479,7 +480,8 @@ a separate turn explicitly authorizes deployment.
 
 ## Phase 7 imports, exports, calendars, and public intake
 
-Phase 7 is the active implementation phase. It adds a versioned, resumable CSV
+Phase 7 is completed and verified for its authorized local scope. It adds a
+versioned, resumable CSV
 event-import workflow that stores a fingerprinted non-authoritative preview and
 applies approved rows through the Phase 4 conflict service. Imports create only
 private events, never overwrite a source-linked event, and never publish.
@@ -498,9 +500,9 @@ email or marketing enrollment.
 
 Phase 7 uses one additive migration,
 `0016_phase7_import_export_forms.sql`, while runtime triggers continue through
-the established bounded invariant installer. Final migration, full-suite,
-build, rendered, browser, package, and Sites-version evidence remains recorded
-only after it is actually verified in `BUILD_STATUS.md`.
+the established bounded invariant installer. Exact migration, full-suite,
+build, rendered, browser, package, and Sites-version evidence is recorded only
+after verification in `BUILD_STATUS.md`.
 
 Phase 7 guides:
 
@@ -517,5 +519,6 @@ Phase 7 guides:
 ICS downloads, the read-only private calendar subscription, or the established
 Meetup iCalendar source workflow.
 
-Phase 7 remains unpublished while implementation and final verification are in
-progress. Live owner-only version 8 is unchanged.
+Phase 7 remains unpublished. Its local implementation and verification are
+complete; exact saved-candidate provenance is recorded in `BUILD_STATUS.md`.
+Live owner-only version 8 is unchanged.

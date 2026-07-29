@@ -12,8 +12,14 @@ test("Phase 7 ledger and README state the active phase without invented provenan
   assert.match(status, /Phase 6 is \*\*Completed and verified\*\*/u);
   assert.match(status, /Phase 8 — Not started/u);
   assert.doesNotMatch(status, /\*\*Phase 7 — Not started\.\*\*/u);
-  assert.match(status, /Phase 7 saved source commit: \*\*Not run\*\*/u);
-  assert.match(status, /New unpublished Phase 7 Sites version: \*\*Not run\*\*/u);
+  assert.match(
+    status,
+    /Phase 7 saved source commit: (?:\*\*Not run\*\*|`[0-9a-f]{40}`)/u,
+  );
+  assert.match(
+    status,
+    /New unpublished Phase 7 Sites version: (?:\*\*Not run\*\*|`appgprj_[^`\s]+~appgver_[^`\s]+`)/u,
+  );
   assert.match(status, /Awaiting owner smoke test/u);
   assert.match(status, /Awaiting a future authorized deployment/u);
   assert.match(

@@ -6,9 +6,10 @@ Last updated: 2026-07-28 (America/Vancouver)
 
 - **Active phase: Phase 7 — Imports, exports, calendars, and public forms.**
 - Phase 6 is **Completed and verified** for its authorized scope.
-- Phase 7 implementation is in progress. The final migration freeze, complete
-  repository matrix, production build, rendered/browser verification, package
-  inventory, source commit, and Sites save have not yet completed.
+- Phase 7 implementation and the complete local repository, migration,
+  production-build, rendered-Worker, and browser matrix are **Completed and
+  verified**. The exact post-ledger source commit must be rebuilt and
+  re-attested before the one authorized unpublished Sites save.
 - **Phase 8 — Not started.**
 - No Phase 7 deployment, preview deployment, access-policy change, domain
   change, binding change, runtime-value change, or hosted D1/R2 data mutation
@@ -54,8 +55,7 @@ No award is claimed.
 
 ### CSV import
 
-**Implemented and focused-verified; final exact-source repository verification
-is pending.**
+**Completed and verified.**
 
 The implementation is constrained to:
 
@@ -76,13 +76,14 @@ The implementation is constrained to:
 
 The parser, preview, approval, application, history, route/UI, conflict,
 concurrency, redaction, real-D1 compatibility, and dense-limit focused matrix
-passed 98/98 on the current source. The measured worst complete apply route is
-47 D1 statements, below the 50-statement Worker limit. The final clean-install
-repository matrix remains pending.
+passed 98/98. The measured worst complete apply route is 47 D1 statements,
+below the 50-statement Worker limit. The deterministic clean-install repository
+matrix passed 737/737 with no failures, skips, or todos.
 
 ### Public downloads, private exports, and calendar subscriptions
 
-**Implemented but not externally verified.**
+**Completed and verified locally. The external calendar-client seam is
+implemented but not externally verified.**
 
 Current source includes:
 
@@ -97,15 +98,12 @@ Current source includes:
   UID, exact emitted-VEVENT fingerprint, signed 32-bit sequence, and monotonic
   last-modified time.
 
-The current Phase 7 focused matrix passed 124/124 across import, calendar,
-export, form, submission, migration, invariant, D1, concurrency, overflow,
-post-2038, privacy, and tamper cases.
 External calendar-client behavior is **Implemented but not externally
 verified** while Phase 7 remains unpublished.
 
 ### Public forms and private submissions
 
-**Implemented but not externally verified.**
+**Completed and verified locally.**
 
 Current source includes:
 
@@ -123,13 +121,15 @@ Current source includes:
 - Owner-only irreversible personal-content redaction.
 
 The focused form/submission service, route, UI, real-D1, redaction, and
-whole-request budget gates are green on the current working tree. The largest
-public form Worker path measured 16 D1 statements, below the 50-statement
-limit. Final rendered and browser gates remain to be run.
+whole-request budget gates are green. The largest public form Worker path
+measured 16 D1 statements, below the 50-statement limit. Rendered and browser
+checks verified the single-main compositions, unique form IDs, focused error
+summary, field errors with preserved values, and the exact post-commit
+private-inbox/no-email success message.
 
 ### Existing CMS intake-copy adoption
 
-**Implemented and focused-verified.**
+**Completed and verified.**
 
 Fresh catalog starter copy truthfully describes the four working forms and no
 email confirmation. A versioned one-page-per-request CMS save/publish upgrader
@@ -141,10 +141,9 @@ newer-draft skip, idempotency, and public parity passed 5/5.
 
 ## Migration and runtime-invariant status
 
-- The sole Phase 7 migration is intended to remain
+- The sole Phase 7 migration is
   `drizzle/0016_phase7_import_export_forms.sql`; no `0017` is authorized.
-- The Phase 7 migration and `drizzle/meta/0016_snapshot.json` are frozen for
-  the source-commit gate. Final exact-commit repetition is still required.
+- The Phase 7 migration and `drizzle/meta/0016_snapshot.json` are frozen.
 - Current frozen-source provenance:
 
   - `0016` SQL SHA-256:
@@ -156,19 +155,23 @@ newer-draft skip, idempotency, and public parity passed 5/5.
   - schema signature: 86 tables, 243 checks, 298 foreign keys, 199 explicit
     indexes, 79 unique indexes, and zero packaged triggers
   - schema/migration statement parity: 285/285 with zero mismatches
-  - tokenizer/partial-prefix/package parity: passed on the source-freeze
-    checkpoint
+  - tokenizer/partial-prefix/package parity: passed
 - The runtime invariant contract advances from the completed Phase 6 version to
   Phase 7. The current fingerprint is
   `94aa90e191244072d66fb3f77575e56064ef8478660d7778c3c4b473f632582b`.
   It installs 249 global triggers, including 36 Phase 7 triggers, and seven
   Phase 7 integrity counts. Empty convergence is nine requests; the
   12-profile legacy-attribution plus taxonomy path is 23; the worst repair
-  request is 46 statements. Final exact-commit repetition remains required.
-- Every final migration test must cover clean, populated prior-phase,
-  archived-legacy, idempotent reapply, every partial-prefix retry cut,
-  tokenizer, concurrent invariant installation, package equality,
-  foreign-key checks, and exact snapshot/schema agreement.
+  request is 46 statements.
+- `npm.cmd run db:generate` exited 0 with no schema changes, and
+  `drizzle-kit check` exited 0.
+- Local and preview migration application each exited 0 with nine migrations,
+  86 tables, all 249 expected triggers installed, bounded
+  repaired-to-ready convergence, and zero foreign-key violations.
+- Migration coverage includes clean, populated prior-phase, archived-legacy,
+  idempotent reapply, every partial-prefix retry cut, tokenizer, concurrent
+  invariant installation, package equality, foreign-key checks, and exact
+  snapshot/schema agreement.
 
 ## D1, R2, authentication, and authorization
 
@@ -229,12 +232,14 @@ newer-draft skip, idempotency, and public parity passed 5/5.
   keys.
 - The backup is not an infrastructure backup and has no automatic or in-app
   restore. Disposable local-D1 restore rehearsal: **Not run**.
-- The final public-projection and built-output leakage scans are **Not run** on
-  the final Phase 7 artifact.
+- Source and pre-final-build output privacy scans found no credential, email,
+  private-feed, raw-token, R2-key, form/import sentinel, local-path, environment
+  file, local database, or private client-bundle leak. The exact post-ledger
+  artifact inventory remains part of the final save/readback gate.
 
 ## Verification ledger
 
-Completed focused checkpoints on the current working tree:
+Completed verification checkpoints:
 
 - complete focused Phase 7 matrix: 124/124 passed;
 - import parser/UI/atomicity/real-D1/scheduling matrix: 98/98 passed;
@@ -244,34 +249,41 @@ Completed focused checkpoints on the current working tree:
 - CMS exact-legacy starter-copy upgrade: 5/5 passed;
 - migration/tokenizer/invariant/runtime-D1 audit: green with zero foreign-key
   and invariant violations;
-- typecheck: passed;
-- zero-warning lint: passed;
-- `git diff --check`: passed at the last checkpoint.
+- `npm.cmd ci`: exit 0; 503 packages installed;
+- `npm.cmd ls --depth=0`: exit 0 with a clean npm dependency tree;
+- `npm.cmd run typecheck`: exit 0;
+- zero-warning `npm.cmd run lint` before and after build: exit 0;
+- deterministic `npm.cmd test`: exit 0; 737 passed, zero failed, skipped, or
+  todo;
+- `npm.cmd run build`: exit 0;
+- `npm.cmd run test:rendered`: exit 0; 25 passed, zero failed, skipped, or
+  todo;
+- `git diff --check`: exit 0 at the verified source checkpoint;
+- production `npm.cmd audit --omit=dev --json`: exit 1 with 709 dependencies,
+  three high findings and zero low, moderate, or critical findings (`next`
+  direct; `postcss` and `sharp` transitive);
+- complete `npm.cmd audit --json`: exit 1 with 709 dependencies and 18
+  findings: one low, four moderate, 13 high, and zero critical.
 
-Final required commands on the frozen exact source:
+The audit findings are recorded for the dedicated Phase 8 hardening phase; no
+forced incompatible dependency upgrade was applied.
 
-- `npm.cmd ci` — **Not run**
-- final `npm.cmd run db:generate`/snapshot parity — **Not run**
-- `npm.cmd run db:apply:local` — **Not run**
-- `npm.cmd run db:apply:preview` — **Not run**
-- `npm.cmd run typecheck` — **Not run**
-- zero-warning `npm.cmd run lint` before build — **Not run**
-- full deterministic `npm.cmd test` — **Not run**
-- `npm.cmd run build` — **Not run**
-- zero-warning lint after build — **Not run**
-- `npm.cmd run test:rendered` — **Not run**
-- production dependency audit — **Not run**
-- complete dependency audit — **Not run**
-- final `git diff --check` — **Not run**
-- migration/package/snapshot equality and interruption retries — **Not run**
-- source and built-output privacy/credential scans — **Not run**
-- exact archive inventory and packaged migration parity — **Not run**
-- browser/accessibility verification at 320, 390, 768, 1280, and 1440 pixels
-  — **Not run**
+Local browser verification used synthetic `.invalid` identities only:
 
-No final Phase 7 pass/fail/skip totals, command exit codes, build result,
-accessibility measurements, SQL maxima, request counts, or dependency-audit
-counts will be entered until measured from the frozen source.
+- 320, 390, 768, 1280, and 1440 pixel widths had no essential horizontal
+  overflow, exactly one `main`, and the established skip target;
+- Get Involved rendered both forms with unique IDs; Contact, Host, and Privacy
+  content remained inside the canonical main landmark;
+- an invalid Contact attempt focused the accessible error summary, rendered
+  field-specific errors, and preserved entered values;
+- a legitimate local Contact attempt focused the success region only after the
+  D1 commit and used the exact private-inbox/no-email copy;
+- public ICS and CSV downloads completed;
+- the browser emitted zero warnings or errors;
+- a signed-out organizer import request redirected to Sign in with ChatGPT.
+
+No Lighthouse or synthetic performance score was run. Approved-real-artwork
+smoke remains **Awaiting owner / not run**.
 
 ## Authorized cuts and known limitations
 
@@ -309,6 +321,12 @@ counts will be entered until measured from the frozen source.
 - Deployment: **Not run**
 - Preview deployment: **Not run**
 - Live-access change: **Not run**
+
+Read-only Sites inspection before the save gate confirmed the required project,
+the current live URL, no preview URL, no custom domains, custom access with
+exactly one allowed user and zero groups, and saved versions 1–12. The
+connector exposes the live URL but not its deployed-version number; the
+established ledger records live version 8.
 
 Required immutable Sites identity:
 
@@ -360,7 +378,7 @@ local implementation or an unpublished Sites save.
 
 ## Exact next phase and stop condition
 
-- Finish and verify exactly Phase 7.
+- Phase 7 is completed and verified locally.
 - Save at most one valid unpublished Sites version only after every gate is
   green.
 - Do not deploy.

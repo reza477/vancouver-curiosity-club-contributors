@@ -20,8 +20,11 @@ Do not reuse a partially installed dependency tree for the final gate.
 ```powershell
 node --import tsx --test tests/imports/csv-parser.test.mjs
 node --import tsx --test tests/phase7/import-routes-ui.integration.test.mjs
+node --import tsx --test tests/phase7/d1-import-compatibility.test.mjs
+node --import tsx --test tests/phase7/import-concurrency-atomicity.integration.test.mjs
 node --import tsx --test tests/phase7/public-forms-submissions.integration.test.mjs
 node --import tsx --test tests/phase7/public-form-route-ui.integration.test.mjs
+node --import tsx --test tests/phase7/submission-routes.integration.test.mjs
 node --import tsx --test tests/phase7/submissions-redaction.integration.test.mjs
 node --import tsx --test tests/phase7/export-format.test.mjs
 node --import tsx --test tests/phase7/calendar-and-private-exports.integration.test.mjs
@@ -29,13 +32,15 @@ node --import tsx --test tests/phase7/calendar-component-revisions.integration.t
 node --import tsx --test tests/phase7/d1-export-calendar-compatibility.test.mjs
 node --import tsx --test tests/phase7/export-route-contract.test.mjs
 node --import tsx --test tests/phase7/request-pathname.test.mjs
+node --import tsx --test tests/phase7/starter-copy-upgrade.integration.test.mjs
+node --import tsx --test tests/phase7/documentation-contract.test.mjs
 node --import tsx --test tests/database/phase7-import-export-forms-invariants.test.mjs
 node --import tsx --test tests/migrations/phase7-import-export-forms.test.mjs
 ```
 
-The exact final test inventory may add a tracked submission-API authorization
-matrix and a whole-Worker import-route budget gate. `BUILD_STATUS.md` must list
-only tests that exist and were run on the frozen source.
+The tracked submission-API authorization, import atomicity, real-D1
+compatibility, and whole-Worker request-budget gates are part of this inventory.
+`BUILD_STATUS.md` lists only tests that exist and were run.
 
 ## Migration and invariant gate
 
@@ -69,7 +74,7 @@ an unintended `0017` into the real `drizzle` directory.
 
 ## Full exact-source gate
 
-Run the repository suite deterministically. Miniflare/workerd-heavy files are
+Run the repository suite deterministically. Seven Miniflare/workerd-heavy files are
 kept serial by the tracked test runner to avoid Windows ephemeral-port
 exhaustion; do not add semantic retry loops.
 

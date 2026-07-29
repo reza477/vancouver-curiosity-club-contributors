@@ -1,6 +1,6 @@
 # ADR 0011: Phase 7 imports, exports, calendars, and public intake
 
-Status: Accepted for Phase 7 implementation; final release verification pending
+Status: Accepted and implemented; local verification completed
 
 Date: 2026-07-28
 
