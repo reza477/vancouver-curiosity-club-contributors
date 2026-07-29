@@ -414,7 +414,7 @@ newer-draft skip, idempotency, and public parity passed 5/5.
 - Current frozen-source provenance:
 
   - `0016` SQL SHA-256:
-    `543b5a386961d169926216890079cb4ae1738aacd4f01582d7d30018418b377`
+    `543b5a386961d169926216890079cb4ae1738aac8d4f01582d7d30018418b377`
   - `0016` snapshot SHA-256:
     `5c7e90c362afc5eb75995e8349648b2fca7299300910c731d6cc3d30cf096b77`
   - journal SHA-256:
