@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  OrganizerAccessDeniedError,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type D1PreparedStatementLike,
@@ -1619,6 +1620,13 @@ export async function getOrganizerEvent(
   const actor = await authorizeMembership(database, identity);
   const event = await requireManualEvent(database, actor, eventId, true);
   await authorizeEventEdit(database, actor, event);
+  await assertCurrentOrganizerEventReadAccess(
+    database,
+    identity,
+    actor,
+    [event.id],
+    true,
+  );
   return event;
 }
 
@@ -1712,7 +1720,17 @@ export async function listOrganizerEvents(
       limit,
     )
     .all<Record<string, unknown>>();
-  return Object.freeze((result.results ?? []).map(readManualEventRow));
+  const events = Object.freeze(
+    (result.results ?? []).map(readManualEventRow),
+  );
+  await assertCurrentOrganizerEventReadAccess(
+    database,
+    identity,
+    actor,
+    events.map((event) => event.id),
+    true,
+  );
+  return events;
 }
 
 /**
@@ -1757,6 +1775,13 @@ export async function queryOrganizerEventIndex(
   const events = Object.freeze(
     (result.results ?? []).map(readManualEventRow),
   );
+  await assertCurrentOrganizerEventReadAccess(
+    database,
+    identity,
+    actor,
+    events.map((event) => event.id),
+    true,
+  );
   const firstResult = events.length === 0 ? 0 : offset + 1;
   const lastResult = offset + events.length;
   return Object.freeze({
@@ -1771,6 +1796,109 @@ export async function queryOrganizerEventIndex(
     status: query.status,
     totalCount,
   });
+}
+
+export async function assertCurrentOrganizerEventReadAccess(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  actor: AuthorizedMembership,
+  eventIds: readonly string[],
+  requireEditableClubAssignment: boolean,
+): Promise<void> {
+  const row = await database
+    .prepare(
+      `WITH selected_event_ids AS (
+         SELECT value AS event_id
+         FROM json_each(?)
+         WHERE type = 'text'
+       )
+       SELECT CASE
+         WHEN (
+           SELECT count(DISTINCT event_id)
+           FROM selected_event_ids
+         ) = ?
+         AND EXISTS (
+           SELECT 1
+           FROM organization_memberships AS membership
+           JOIN profiles AS profile
+             ON profile.id = membership.profile_id
+           JOIN organizations AS organization
+             ON organization.id = membership.organization_id
+           WHERE membership.id = ?
+             AND membership.organization_id = ?
+             AND membership.profile_id = ?
+             AND membership.role = ?
+             AND membership.normalized_email = ?
+             AND profile.normalized_email = ?
+             AND membership.status = 'active'
+             AND profile.status = 'active'
+             AND membership.deleted_at IS NULL
+             AND profile.deleted_at IS NULL
+             AND organization.deleted_at IS NULL
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM selected_event_ids AS selected
+           LEFT JOIN organizer_events AS event
+             ON event.id = selected.event_id
+            AND event.organization_id = ?
+           WHERE event.id IS NULL
+              OR (
+                ? = 'organizer'
+                AND NOT (
+                  event.primary_organizer_profile_id = ?
+                  OR EXISTS (
+                    SELECT 1
+                    FROM organizer_event_organizers AS association
+                    WHERE association.organization_id =
+                          event.organization_id
+                      AND association.organizer_event_id = event.id
+                      AND association.profile_id = ?
+                      AND association.deleted_at IS NULL
+                  )
+                )
+              )
+              OR (
+                ? = 1
+                AND ? = 'organizer'
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM club_memberships AS club_membership
+                  WHERE club_membership.organization_id =
+                        event.organization_id
+                    AND club_membership.club_id = event.club_id
+                    AND club_membership.organization_membership_id = ?
+                    AND club_membership.profile_id = ?
+                    AND club_membership.status = 'active'
+                    AND club_membership.deleted_at IS NULL
+                )
+              )
+         )
+         THEN 1 ELSE 0
+       END AS allowed`,
+    )
+    .bind(
+      JSON.stringify(eventIds),
+      eventIds.length,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+      identity.email,
+      actor.organizationId,
+      actor.role,
+      actor.profileId,
+      actor.profileId,
+      requireEditableClubAssignment ? 1 : 0,
+      actor.role,
+      actor.membershipId,
+      actor.profileId,
+    )
+    .first<Record<string, unknown>>();
+  if (row?.allowed !== 1) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
 }
 
 function parseOrganizerEventIndexQuery(
@@ -1856,7 +1984,17 @@ export async function listOrganizerEventRevisions(
     )
     .bind(actor.organizationId, eventId, limit)
     .all<Record<string, unknown>>();
-  return Object.freeze((result.results ?? []).map(readRevisionRow));
+  const revisions = Object.freeze(
+    (result.results ?? []).map(readRevisionRow),
+  );
+  await assertCurrentOrganizerEventReadAccess(
+    database,
+    identity,
+    actor,
+    [eventId],
+    true,
+  );
+  return revisions;
 }
 
 async function setOrganizerEventDeletedState(

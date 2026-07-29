@@ -1,6 +1,7 @@
 import { getRuntimeMediaBucket } from "@/lib/server/media/runtime";
 import { getPrivateMediaVariant } from "@/lib/server/media/storage";
 import {
+  assertTrustedOrganizerRead,
   organizerApiError,
   requireOrganizerApiActor,
 } from "../../../../_shared";
@@ -17,6 +18,7 @@ export async function GET(
 ): Promise<Response> {
   const { id, variant } = await context.params;
   try {
+    assertTrustedOrganizerRead(request);
     const { database, identity } = await requireOrganizerApiActor();
     const eventId = new URL(request.url).searchParams.get("eventId") ?? undefined;
     const media = await getPrivateMediaVariant(

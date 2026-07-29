@@ -42,6 +42,17 @@ export async function requireOrganizerApiActor(
   return Object.freeze({ database, identity, membership });
 }
 
+export function assertTrustedOrganizerRead(request: Request): void {
+  const requestUrl = new URL(request.url);
+  const origin = request.headers.get("origin");
+  if (
+    request.headers.get("sec-fetch-site") === "cross-site" ||
+    (origin !== null && origin !== requestUrl.origin)
+  ) {
+    throw new OrganizerAccessDeniedError("role_not_allowed");
+  }
+}
+
 export function privateOrganizerJson(
   value: unknown,
   options: Readonly<{

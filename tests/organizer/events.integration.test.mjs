@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   createOrganizerEvent,
   duplicateOrganizerEvent,
+  getOrganizerEvent,
   listOrganizerEventRevisions,
   listOrganizerEvents,
   queryOrganizerEventIndex,
@@ -20,6 +21,8 @@ import {
   getOrganizerCalendarEvent,
   listOrganizerCalendarEvents,
 } from "../../lib/server/organizer/calendar.ts";
+import { previewOrganizerConflicts } from "../../lib/server/organizer/conflicts.ts";
+import { OrganizerAccessDeniedError } from "../../lib/server/auth/index.ts";
 import {
   DATABASE_INVARIANT_VERSION,
   ensureDatabaseInvariants,
@@ -30,6 +33,10 @@ import {
   MAX_DATABASE_INVARIANT_READY_ATTEMPTS,
   ensureDatabaseInvariantsReady,
 } from "../database/invariant-ready.mjs";
+import {
+  countD1Statements,
+  interceptD1Statements,
+} from "../auth/intercept-d1.mjs";
 
 const ownerIdentity = Object.freeze({
   displayName: "Owner",
@@ -641,6 +648,233 @@ test("Organizer mutation access is own/co-organizer and club scoped", async (t) 
       "an organization member without the event club assignment cannot be assigned as an Organizer",
     );
   }
+});
+
+test("private event reads fail closed when actor or assignment facts change before the final seal", async (t) => {
+  await t.test("list denies a removed club assignment", async (t) => {
+    const database = newDatabase();
+    t.after(() => database.close());
+    await ensureDatabaseInvariantsReady(database);
+    await createOrganizerEvent(
+      database,
+      ownerIdentity,
+      ideaInput({
+        primaryOrganizerProfileId: "profile-organizer-1",
+      }),
+    );
+    const intercepted = interceptD1Statements(database, {
+      before: (sql) => sql.includes("WITH selected_event_ids AS"),
+      hook: async () => {
+        database.exec(`
+          UPDATE club_memberships
+          SET status = 'suspended', updated_at = updated_at + 1
+          WHERE id = 'club-o1'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      listOrganizerEvents(intercepted.database, organizerIdentity),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+
+  await t.test("detail denies a removed club assignment", async (t) => {
+    const database = newDatabase();
+    t.after(() => database.close());
+    await ensureDatabaseInvariantsReady(database);
+    const event = await createOrganizerEvent(
+      database,
+      ownerIdentity,
+      ideaInput({
+        primaryOrganizerProfileId: "profile-organizer-1",
+      }),
+    );
+    const intercepted = interceptD1Statements(database, {
+      before: (sql) => sql.includes("WITH selected_event_ids AS"),
+      hook: async () => {
+        database.exec(`
+          UPDATE club_memberships
+          SET status = 'suspended', updated_at = updated_at + 1
+          WHERE id = 'club-o1'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      getOrganizerEvent(
+        intercepted.database,
+        organizerIdentity,
+        event.id,
+      ),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+
+  await t.test("revision history denies a removed club assignment", async (t) => {
+    const database = newDatabase();
+    t.after(() => database.close());
+    await ensureDatabaseInvariantsReady(database);
+    const event = await createOrganizerEvent(
+      database,
+      ownerIdentity,
+      ideaInput({
+        primaryOrganizerProfileId: "profile-organizer-1",
+      }),
+    );
+    const intercepted = interceptD1Statements(database, {
+      before: (sql) => sql.includes("WITH selected_event_ids AS"),
+      hook: async () => {
+        database.exec(`
+          UPDATE club_memberships
+          SET status = 'suspended', updated_at = updated_at + 1
+          WHERE id = 'club-o1'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      listOrganizerEventRevisions(
+        intercepted.database,
+        organizerIdentity,
+        event.id,
+      ),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+
+  await t.test("calendar denies a profile suspended after source reads", async (t) => {
+    const database = newDatabase();
+    t.after(() => database.close());
+    await ensureDatabaseInvariantsReady(database);
+    await createOrganizerEvent(
+      database,
+      ownerIdentity,
+      ideaInput(),
+    );
+    const intercepted = interceptD1Statements(database, {
+      after: (sql) =>
+        sql.includes("FROM organizer_events AS event") &&
+        sql.includes("END AS read_only"),
+      before: (sql) =>
+        sql.includes("SELECT membership.id AS membership_id") &&
+        sql.includes("membership.organization_id = ?"),
+      hook: async () => {
+        database.exec(`
+          UPDATE profiles
+          SET status = 'suspended', updated_at = updated_at + 1
+          WHERE id = 'profile-organizer-1'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      listOrganizerCalendarEvents(
+        intercepted.database,
+        organizerIdentity,
+      ),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+
+  await t.test("conflict preview denies a removed club assignment", async (t) => {
+    const database = newDatabase();
+    t.after(() => database.close());
+    await ensureDatabaseInvariantsReady(database);
+    const intercepted = interceptD1Statements(database, {
+      before: (sql) => sql.includes("WITH selected_club_ids AS"),
+      hook: async () => {
+        database.exec(`
+          UPDATE club_memberships
+          SET status = 'suspended', updated_at = updated_at + 1
+          WHERE id = 'club-o1'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      previewOrganizerConflicts(
+        intercepted.database,
+        organizerIdentity,
+        {
+          bufferAfterMinutes: 0,
+          bufferBeforeMinutes: 0,
+          clubId: "club-main",
+          coOrganizerProfileIds: [],
+          eventId: null,
+          expectedScheduleVersion: null,
+          planningStatus: "draft",
+          primaryOrganizerProfileId: "profile-organizer-1",
+          schedule: {
+            endLocal: "2032-08-15T20:00",
+            shape: "timed",
+            startLocal: "2032-08-15T18:00",
+            timeZone: "America/Vancouver",
+          },
+          venueId: "venue-main",
+        },
+      ),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+});
+
+test("private event read seals use one bounded statement for empty and populated result sets", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+
+  const emptyList = countD1Statements(database);
+  assert.deepEqual(
+    await listOrganizerEvents(emptyList.database, organizerIdentity),
+    [],
+  );
+  assert.equal(emptyList.count(), 3);
+
+  const event = await createOrganizerEvent(
+    database,
+    ownerIdentity,
+    ideaInput({
+      primaryOrganizerProfileId: "profile-organizer-1",
+    }),
+  );
+
+  const populatedList = countD1Statements(database);
+  assert.equal(
+    (await listOrganizerEvents(
+      populatedList.database,
+      organizerIdentity,
+    )).length,
+    1,
+  );
+  assert.equal(populatedList.count(), 3);
+
+  const detail = countD1Statements(database);
+  assert.equal(
+    (await getOrganizerEvent(
+      detail.database,
+      organizerIdentity,
+      event.id,
+    )).id,
+    event.id,
+  );
+  assert.equal(detail.count(), 4);
+
+  const revisions = countD1Statements(database);
+  assert.equal(
+    (await listOrganizerEventRevisions(
+      revisions.database,
+      organizerIdentity,
+      event.id,
+    )).length,
+    1,
+  );
+  assert.equal(revisions.count(), 5);
 });
 
 test("calendar filtering includes co-organizers, all-day boundaries, and truthful counts beyond the response cap", async (t) => {

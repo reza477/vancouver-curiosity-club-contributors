@@ -1030,7 +1030,9 @@ export type PublicEventExportDto = Readonly<{
 }>;
 
 export type PublicEventExportRecord = Readonly<{
+  clubProjectionToken: string;
   event: PublicEventExportDto;
+  programProjectionToken: string | null;
   sourceIdentity: string;
   sourceVersion: number;
 }>;
@@ -4146,6 +4148,78 @@ export async function queryPublicEventsForExport(
   );
 }
 
+/**
+ * Final, bounded public-export proof used after calendar revision
+ * reconciliation. The source identity/version prevents an event edit from
+ * racing the emitted component, while the opaque Club/Program projection
+ * tokens retain exact current receipt/revision/live parity without repeating
+ * the large public DTO query.
+ */
+export async function revalidatePublicEventExportRecords(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: Readonly<{
+    organizationId: unknown;
+    records: readonly PublicEventExportRecord[];
+  }>,
+): Promise<boolean> {
+  const organizationId = parseIdentifier(
+    input.organizationId,
+    "organizationId",
+  );
+  if (!Array.isArray(input.records) || input.records.length > 500) {
+    throw validationIssue(
+      "records",
+      "invalid_length",
+      "At most 500 public event export records may be revalidated at once.",
+    );
+  }
+  if (input.records.length === 0) return true;
+
+  const sourceIdentities = new Set<string>();
+  const slugs = new Set<string>();
+  const rows = input.records.map((record, index) => {
+    const sourceIdentity = parseIdentifier(
+      record.sourceIdentity,
+      `records.${index}.sourceIdentity`,
+    );
+    const slug = parseIdentifier(record.event.slug, `records.${index}.slug`);
+    if (sourceIdentities.has(sourceIdentity) || slugs.has(slug)) {
+      return invalidProjection();
+    }
+    sourceIdentities.add(sourceIdentity);
+    slugs.add(slug);
+    return Object.freeze({
+      public_club_projection_token: parseBoundedString(
+        record.clubProjectionToken,
+        {
+          path: `records.${index}.clubProjectionToken`,
+          minLength: 2,
+          maxLength: 1_024,
+        },
+      ),
+      public_program_projection_token: parseOptionalBoundedString(
+        record.programProjectionToken,
+        {
+          path: `records.${index}.programProjectionToken`,
+          maxLength: 1_024,
+        },
+      ),
+      public_source_identity_key: sourceIdentity,
+      public_source_version: parseFiniteInteger(record.sourceVersion, {
+        path: `records.${index}.sourceVersion`,
+        minimum: 0,
+      }),
+      slug,
+    });
+  });
+  const currentRows = await revalidatePublicEventIdentityRows(
+    database,
+    organizationId,
+    rows,
+  );
+  return currentRows.length === rows.length;
+}
+
 export async function getPublicEventBySlug(
   database: Pick<D1DatabaseLike, "prepare">,
   input: GetPublicEventInput,
@@ -4995,7 +5069,20 @@ function publicEventExportRecord(
   row: Record<string, unknown>,
 ): PublicEventExportRecord {
   return Object.freeze({
+    clubProjectionToken: parseBoundedString(
+      row.public_club_projection_token,
+      {
+        path: "publicEventExport.clubProjectionToken",
+        minLength: 2,
+        maxLength: 1_024,
+      },
+    ),
     event: toPublicEventExportDto(row),
+    programProjectionToken:
+      parseOptionalBoundedString(row.public_program_projection_token, {
+        path: "publicEventExport.programProjectionToken",
+        maxLength: 1_024,
+      }),
     sourceIdentity: parseIdentifier(
       row.public_source_identity_key,
       "publicEventExport.sourceIdentity",

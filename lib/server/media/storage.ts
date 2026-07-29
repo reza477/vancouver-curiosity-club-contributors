@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  OrganizerAccessDeniedError,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
@@ -673,6 +674,7 @@ export async function listMediaAssets(
       LIMIT ?`)
     .bind(actor.organizationId, limit)
     .all<Record<string, unknown>>();
+  await assertExactCurrentMediaManager(database, identity, actor);
   return Object.freeze((rows.results ?? []).map(privateMediaDto));
 }
 
@@ -758,6 +760,7 @@ export async function readMediaAsset(
     .bind(assetId, actor.organizationId)
     .first<Record<string, unknown>>();
   if (!row) throw new MediaAssetNotFoundError();
+  await assertExactCurrentMediaManager(database, identity, actor);
   return privateMediaDto(row);
 }
 
@@ -1338,6 +1341,40 @@ export async function getPublicMediaVariant(
   } catch {
     throw new MediaAssetNotFoundError();
   }
+  const row = await readPublicMediaVariantRecord(
+    database,
+    assetId,
+    variantKind,
+  );
+  if (!row) throw new MediaAssetNotFoundError();
+  const body = await bucket.get(row.objectKey);
+  if (!body) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The media file is temporarily unavailable.",
+    );
+  }
+  const current = await readPublicMediaVariantRecord(
+    database,
+    assetId,
+    variantKind,
+  );
+  if (!current || !sameStoredMediaVariant(row, current)) {
+    throw new MediaAssetNotFoundError();
+  }
+  return Object.freeze({
+    body,
+    etag: row.sha256,
+    mimeType: row.mimeType,
+  });
+}
+
+async function readPublicMediaVariantRecord(
+  database: D1DatabaseLike,
+  assetId: string,
+  variantKind: (typeof PUBLIC_MEDIA_VARIANT_KINDS)[number],
+): Promise<StoredMediaReadVariant | null> {
   const row = await database
     .prepare(
       `SELECT variant.object_key, variant.mime_type, variant.sha256
@@ -1395,20 +1432,7 @@ export async function getPublicMediaVariant(
     )
     .bind(PUBLIC_ORGANIZATION_SLUG, variantKind, assetId)
     .first<Record<string, unknown>>();
-  if (!row) throw new MediaAssetNotFoundError();
-  const body = await bucket.get(requiredString(row.object_key));
-  if (!body) {
-    throw new SafeApplicationError(
-      "service_unavailable",
-      503,
-      "The media file is temporarily unavailable.",
-    );
-  }
-  return Object.freeze({
-    body,
-    etag: requiredString(row.sha256),
-    mimeType: readMimeType(row.mime_type),
-  });
+  return row ? storedMediaReadVariant(row) : null;
 }
 
 export async function getPrivateMediaVariant(
@@ -1434,6 +1458,49 @@ export async function getPrivateMediaVariant(
     MEDIA_VARIANT_KINDS,
     "variant",
   );
+  const row = await readPrivateMediaVariantRecord(
+    database,
+    identity,
+    membership,
+    assetId,
+    variantKind,
+    organizerEventId,
+  );
+  if (!row) throw new MediaAssetNotFoundError();
+  const body = await bucket.get(row.objectKey);
+  if (!body) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The media file is temporarily unavailable.",
+    );
+  }
+  const current = await readPrivateMediaVariantRecord(
+    database,
+    identity,
+    membership,
+    assetId,
+    variantKind,
+    organizerEventId,
+  );
+  if (!current || !sameStoredMediaVariant(row, current)) {
+    throw new MediaAssetNotFoundError();
+  }
+  return Object.freeze({
+    body,
+    etag: row.sha256,
+    mimeType: row.mimeType,
+  });
+}
+
+async function readPrivateMediaVariantRecord(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  membership: AuthorizedMembership,
+  assetId: string,
+  variantKind: MediaVariantKind,
+  organizerEventId: string | null,
+): Promise<StoredMediaReadVariant | null> {
   const row = await database
     .prepare(
       `SELECT variant.object_key, variant.mime_type, variant.sha256
@@ -1450,10 +1517,12 @@ export async function getPrivateMediaVariant(
          ON current_membership.id = ?
         AND current_membership.organization_id = asset.organization_id
         AND current_membership.profile_id = ?
+        AND current_membership.normalized_email = ?
         AND current_membership.status = 'active'
         AND current_membership.deleted_at IS NULL
        JOIN profiles AS current_profile
          ON current_profile.id = current_membership.profile_id
+        AND current_profile.normalized_email = ?
         AND current_profile.status = 'active'
         AND current_profile.deleted_at IS NULL
        WHERE asset.id = ?
@@ -1524,26 +1593,79 @@ export async function getPrivateMediaVariant(
       variantKind,
       membership.membershipId,
       membership.profileId,
+      identity.email,
+      identity.email,
       assetId,
       membership.organizationId,
       organizerEventId,
       organizerEventId,
     )
     .first<Record<string, unknown>>();
-  if (!row) throw new MediaAssetNotFoundError();
-  const body = await bucket.get(requiredString(row.object_key));
-  if (!body) {
-    throw new SafeApplicationError(
-      "service_unavailable",
-      503,
-      "The media file is temporarily unavailable.",
-    );
-  }
+  return row ? storedMediaReadVariant(row) : null;
+}
+
+type StoredMediaReadVariant = Readonly<{
+  mimeType: MediaImageMimeType;
+  objectKey: string;
+  sha256: string;
+}>;
+
+function storedMediaReadVariant(
+  row: Record<string, unknown>,
+): StoredMediaReadVariant {
   return Object.freeze({
-    body,
-    etag: requiredString(row.sha256),
     mimeType: readMimeType(row.mime_type),
+    objectKey: requiredString(row.object_key),
+    sha256: requiredString(row.sha256),
   });
+}
+
+function sameStoredMediaVariant(
+  expected: StoredMediaReadVariant,
+  current: StoredMediaReadVariant,
+): boolean {
+  return (
+    current.objectKey === expected.objectKey &&
+    current.mimeType === expected.mimeType &&
+    current.sha256 === expected.sha256
+  );
+}
+
+async function assertExactCurrentMediaManager(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  expected: AuthorizedMembership,
+): Promise<void> {
+  const row = await database
+    .prepare(
+      `SELECT 1 AS authorized
+       FROM organization_memberships AS membership
+       JOIN profiles AS profile
+         ON profile.id = membership.profile_id
+        AND profile.normalized_email = ?
+        AND profile.status = 'active'
+        AND profile.deleted_at IS NULL
+       JOIN organizations AS organization
+         ON organization.id = membership.organization_id
+        AND organization.deleted_at IS NULL
+       WHERE membership.id = ?
+         AND membership.organization_id = ?
+         AND membership.profile_id = ?
+         AND membership.normalized_email = ?
+         AND membership.role IN ('owner', 'administrator')
+         AND membership.status = 'active'
+         AND membership.deleted_at IS NULL
+       LIMIT 1`,
+    )
+    .bind(
+      identity.email,
+      expected.membershipId,
+      expected.organizationId,
+      expected.profileId,
+      identity.email,
+    )
+    .first<Record<string, unknown>>();
+  if (!row) throw new OrganizerAccessDeniedError();
 }
 
 function parseMediaMetadata(value: unknown): ParsedMediaMetadata {

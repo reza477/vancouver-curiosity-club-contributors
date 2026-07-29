@@ -6,9 +6,11 @@ import type { PublicEventCardDto } from "@/lib/server/public/events";
 export function EventCard({
   event,
   compact = false,
+  priority = false,
 }: Readonly<{
   event: PublicEventCardDto;
   compact?: boolean;
+  priority?: boolean;
 }>) {
   const schedule = formatEventSchedule(event);
   const location =
@@ -42,8 +44,10 @@ export function EventCard({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 alt={event.artwork.altText ?? ""}
+                decoding="async"
+                fetchPriority={priority ? "high" : "auto"}
                 height={event.artwork.dimensions.large.height}
-                loading="lazy"
+                loading={priority ? "eager" : "lazy"}
                 sizes="(max-width: 640px) 100vw, (max-width: 1100px) 72vw, 900px"
                 src={event.artwork.url}
                 srcSet={responsiveImageSrcSet([

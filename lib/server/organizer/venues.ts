@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  OrganizerAccessDeniedError,
   type D1DatabaseLike,
   type TrustedServerIdentity,
 } from "../auth";
@@ -45,14 +46,51 @@ export async function listOrganizerVenues(
   const actor = await authorizeMembership(database, identity);
   const result = await database
     .prepare(
-      `${VENUE_SELECT}
-       WHERE organization_id = ?
-       ORDER BY deleted_at IS NOT NULL, lower(name), id
+      `WITH current_actor AS (
+         SELECT membership.organization_id
+         FROM organization_memberships AS membership
+         JOIN profiles AS profile
+           ON profile.id = membership.profile_id
+          AND profile.normalized_email = ?
+          AND profile.status = 'active'
+          AND profile.deleted_at IS NULL
+         JOIN organizations AS organization
+           ON organization.id = membership.organization_id
+          AND organization.deleted_at IS NULL
+         WHERE membership.id = ?
+           AND membership.organization_id = ?
+           AND membership.profile_id = ?
+           AND membership.role = ?
+           AND membership.normalized_email = ?
+           AND membership.status = 'active'
+           AND membership.deleted_at IS NULL
+         LIMIT 1
+       )
+       SELECT venue.id, venue.name, venue.timezone, venue.private_address,
+              venue.private_directions, venue.accessibility_notes,
+              venue.updated_at, venue.deleted_at
+       FROM current_actor
+       LEFT JOIN venues AS venue
+         ON venue.organization_id = current_actor.organization_id
+       ORDER BY venue.deleted_at IS NOT NULL, lower(venue.name), venue.id
        LIMIT 250`,
     )
-    .bind(actor.organizationId)
+    .bind(
+      identity.email,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+    )
     .all<Record<string, unknown>>();
-  return Object.freeze((result.results ?? []).map(readVenue));
+  const rows = result.results ?? [];
+  if (rows.length === 0) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
+  return Object.freeze(
+    rows.filter((row) => row.id !== null).map(readVenue),
+  );
 }
 
 export async function createOrganizerVenue(

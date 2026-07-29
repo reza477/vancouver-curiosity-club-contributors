@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  revalidateAuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
 } from "../auth";
@@ -57,6 +58,7 @@ export async function listOwnCalendarSubscriptions(
     .bind(actor.organizationId, actor.profileId)
     .all<Record<string, unknown>>();
   assertResult(result.success);
+  await revalidateAuthorizedMembership(database, identity, actor);
   return Object.freeze((result.results ?? []).map(readSubscription));
 }
 
@@ -94,12 +96,15 @@ export async function createOwnCalendarSubscription(
          FROM organization_memberships AS membership
          JOIN profiles AS profile
            ON profile.id = membership.profile_id
+          AND profile.normalized_email = ?
          JOIN organizations AS organization
            ON organization.id = membership.organization_id
          WHERE membership.id = ?
            AND membership.organization_id = ?
            AND membership.profile_id = ?
+           AND membership.role = ?
            AND membership.role IN ('owner', 'administrator', 'organizer')
+           AND membership.normalized_email = ?
            AND membership.status = 'active'
            AND membership.deleted_at IS NULL
            AND profile.status = 'active'
@@ -118,9 +123,12 @@ export async function createOwnCalendarSubscription(
         tokenHash,
         label,
         now,
+        identity.email,
         actor.membershipId,
         actor.organizationId,
         actor.profileId,
+        actor.role,
+        identity.email,
         MAX_ACTIVE_TOKENS,
       ),
     database
@@ -149,6 +157,7 @@ export async function createOwnCalendarSubscription(
       "No more than three active calendar subscriptions are allowed.",
     );
   }
+  await revalidateAuthorizedMembership(database, identity, actor);
   return Object.freeze({
     subscription: Object.freeze({
       createdAt: now,
@@ -180,7 +189,10 @@ export async function revokeOwnCalendarSubscription(
     tokenId,
   );
   if (!existing) return privateNotFound();
-  if (existing.revokedAt !== null) return existing;
+  if (existing.revokedAt !== null) {
+    await revalidateAuthorizedMembership(database, identity, actor);
+    return existing;
+  }
 
   try {
     const results = await database.batch([
@@ -197,12 +209,15 @@ export async function revokeOwnCalendarSubscription(
                FROM organization_memberships AS membership
                JOIN profiles AS profile
                  ON profile.id = membership.profile_id
+                AND profile.normalized_email = ?
+               JOIN organizations AS organization
+                 ON organization.id = membership.organization_id
+                AND organization.deleted_at IS NULL
                WHERE membership.id = ?
                  AND membership.organization_id = token.organization_id
                  AND membership.profile_id = token.profile_id
-                 AND membership.role IN (
-                   'owner', 'administrator', 'organizer'
-                 )
+                 AND membership.role = ?
+                 AND membership.normalized_email = ?
                  AND membership.status = 'active'
                  AND membership.deleted_at IS NULL
                  AND profile.status = 'active'
@@ -214,7 +229,10 @@ export async function revokeOwnCalendarSubscription(
           tokenId,
           actor.organizationId,
           actor.profileId,
+          identity.email,
           actor.membershipId,
+          actor.role,
+          identity.email,
         ),
       database
         .prepare(
@@ -245,6 +263,7 @@ export async function revokeOwnCalendarSubscription(
       tokenId,
     );
     if (current?.revokedAt !== null && current?.revokedAt !== undefined) {
+      await revalidateAuthorizedMembership(database, identity, actor);
       return current;
     }
     throw new SafeApplicationError(
@@ -253,6 +272,7 @@ export async function revokeOwnCalendarSubscription(
       "The calendar subscription changed before it could be revoked.",
     );
   }
+  await revalidateAuthorizedMembership(database, identity, actor);
   return Object.freeze({ ...existing, revokedAt: now });
 }
 
@@ -383,6 +403,16 @@ export async function readPrivateCalendarSubscription(
       scope: "private",
     },
   );
+  if (
+    !(await hasActivePrivateCalendarToken(database, {
+      organizationId,
+      profileId,
+      tokenHash,
+      tokenId,
+    }))
+  ) {
+    return privateNotFound();
+  }
   return buildIcalendar(calendarEvents, {
     calendarName: "Vancouver Curiosity Club · private planning",
     generatedAt,

@@ -207,8 +207,12 @@
 }
 
 .rowDetails summary {
+  display: flex;
+  align-items: center;
+  min-block-size: 2.75rem;
   cursor: pointer;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .codeList {

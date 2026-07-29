@@ -276,10 +276,14 @@ export async function readOrganizerPublicationWorkspace(
   // D1 read (and one concurrent connection) on a value those roles never use.
   const policyPromise =
     actor.role === "organizer"
-      ? readPublicationPolicyByActor(database, actor)
+      ? readPublicationPolicyByActor(database, identity, actor)
       : Promise.resolve(
           Object.freeze({ organizerSelfPublishEnabled: false }),
         );
+  const initialCanEditPublicDetails =
+    actor.role !== "organizer" ||
+    event.primaryOrganizerProfileId === actor.profileId ||
+    event.coOrganizerProfileIds.includes(actor.profileId);
   const [
     readDetailsRow,
     readArtworkOptionRows,
@@ -301,11 +305,50 @@ export async function readOrganizerPublicationWorkspace(
         profileId: actor.profileId,
       }),
     ]);
-  const finalAccess = await readPublicationAccess(database, actor, event);
-  if (!finalAccess.active) {
+  let initialMissing: OrganizerPublicationReadinessIssue[];
+  let readinessAccessError: SafeApplicationError | null = null;
+  try {
+    initialMissing = await publicationReadinessIssues(
+      database,
+      actor,
+      event,
+      initialCanEditPublicDetails ? readDetailsRow : null,
+      initialCanEditPublicDetails
+        ? readHostOptionRows
+        : Object.freeze([]),
+      initialCanEditPublicDetails,
+    );
+  } catch (error) {
+    if (
+      !(
+        error instanceof SafeApplicationError &&
+        (error.code === "authorization_denied" ||
+          error.code === "not_found")
+      )
+    ) {
+      throw error;
+    }
+    // The exact final access query below distinguishes an inactive actor from
+    // an Organizer whose event/club assignment changed during readiness.
+    readinessAccessError = error;
+    initialMissing = [];
+  }
+  const finalAccess = await readPublicationAccess(
+    database,
+    actor,
+    event,
+    identity,
+  );
+  if (
+    !finalAccess.active ||
+    finalAccess.canEdit !== initialCanEditPublicDetails
+  ) {
     throw new OrganizerAccessDeniedError();
   }
   const finalCanEditPublicDetails = finalAccess.canEdit;
+  if (finalCanEditPublicDetails && readinessAccessError) {
+    throw readinessAccessError;
+  }
   const detailsRow = finalCanEditPublicDetails ? readDetailsRow : null;
   const artworkOptions = finalCanEditPublicDetails
     ? readArtworkOptionRows
@@ -325,14 +368,14 @@ export async function readOrganizerPublicationWorkspace(
   const details = detailsRow
     ? detailsDto(detailsRow, event, selectedArtworkAssetId)
     : null;
-  const missing = await publicationReadinessIssues(
-    database,
-    actor,
-    event,
-    detailsRow,
-    hostOptions,
-    finalCanEditPublicDetails,
-  );
+  const missing = finalCanEditPublicDetails
+    ? initialMissing
+    : [
+        issue(
+          "public_details_required",
+          "Complete the website publication details.",
+        ),
+      ];
   const canPublish =
     finalCanEditPublicDetails &&
     (actor.role === "owner" ||
@@ -406,7 +449,14 @@ export async function readOrganizerPublicationPreview(
     actor,
     eventId,
   );
-  if (!(await canActorEditPublicationEvent(database, actor, event))) {
+  if (
+    !(await canActorEditPublicationEvent(
+      database,
+      identity,
+      actor,
+      event,
+    ))
+  ) {
     return null;
   }
   return getAuthorizedOrganizerEventPublicPreview(database, {
@@ -422,7 +472,7 @@ export async function readOrganizationPublicationPolicy(
   identity: TrustedServerIdentity,
 ): Promise<OrganizationPublicationPolicyDto> {
   const actor = await authorizeMembership(database, identity);
-  return readPublicationPolicyByActor(database, actor);
+  return readPublicationPolicyByActor(database, identity, actor);
 }
 
 export async function updateOrganizationPublicationPolicy(
@@ -753,7 +803,7 @@ export async function performOrganizerPublicationAction(
   requireExpectedVersions(event, input);
   const policy =
     actor.role === "organizer"
-      ? await readPublicationPolicyByActor(database, actor)
+      ? await readPublicationPolicyByActor(database, identity, actor)
       : null;
   if (
     actor.role === "organizer" &&
@@ -1733,31 +1783,45 @@ function isDeterministicPublicationFailure(error: unknown): boolean {
 
 async function readPublicationPolicyByActor(
   database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
   actor: AuthorizedMembership,
 ): Promise<OrganizationPublicationPolicyDto> {
   const row = await database
     .prepare(
-      `SELECT policy.organizer_self_publish_enabled
-       FROM organization_publication_policies AS policy
-       JOIN organization_memberships AS current_membership
-         ON current_membership.id = ?
-        AND current_membership.organization_id = policy.organization_id
-        AND current_membership.profile_id = ?
-        AND current_membership.status = 'active'
-        AND current_membership.deleted_at IS NULL
+      `SELECT COALESCE(policy.organizer_self_publish_enabled, 0)
+                AS organizer_self_publish_enabled
+       FROM organization_memberships AS current_membership
        JOIN profiles AS current_profile
          ON current_profile.id = current_membership.profile_id
+        AND current_profile.normalized_email = ?
         AND current_profile.status = 'active'
         AND current_profile.deleted_at IS NULL
-       WHERE policy.organization_id = ?
+       JOIN organizations AS current_organization
+         ON current_organization.id = current_membership.organization_id
+        AND current_organization.deleted_at IS NULL
+       LEFT JOIN organization_publication_policies AS policy
+         ON policy.organization_id = current_membership.organization_id
+       WHERE current_membership.id = ?
+         AND current_membership.organization_id = ?
+         AND current_membership.profile_id = ?
+         AND current_membership.role = ?
+         AND current_membership.normalized_email = ?
+         AND current_membership.status = 'active'
+         AND current_membership.deleted_at IS NULL
        LIMIT 1`,
     )
     .bind(
+      identity.email,
       actor.membershipId,
-      actor.profileId,
       actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
     )
     .first<Record<string, unknown>>();
+  if (!row) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
   return Object.freeze({
     organizerSelfPublishEnabled:
       row?.organizer_self_publish_enabled === 1,
@@ -2356,16 +2420,20 @@ async function readPendingJobId(
 
 async function canActorEditPublicationEvent(
   database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
   actor: AuthorizedMembership,
   event: OrganizerEventDto,
 ): Promise<boolean> {
-  return (await readPublicationAccess(database, actor, event)).canEdit;
+  return (
+    await readPublicationAccess(database, actor, event, identity)
+  ).canEdit;
 }
 
 async function readPublicationAccess(
   database: D1DatabaseLike,
   actor: AuthorizedMembership,
   event: OrganizerEventDto,
+  identity?: TrustedServerIdentity,
 ): Promise<Readonly<{ active: boolean; canEdit: boolean }>> {
   const row = await database
     .prepare(
@@ -2414,6 +2482,11 @@ async function readPublicationAccess(
        WHERE membership.id = ?
          AND membership.organization_id = ?
          AND membership.profile_id = ?
+         AND membership.role = ?
+         AND (? IS NULL OR (
+           membership.normalized_email = ?
+           AND profile.normalized_email = ?
+         ))
          AND membership.status = 'active'
          AND membership.deleted_at IS NULL
        LIMIT 1`,
@@ -2423,6 +2496,10 @@ async function readPublicationAccess(
       actor.membershipId,
       actor.organizationId,
       actor.profileId,
+      actor.role,
+      identity?.email ?? null,
+      identity?.email ?? null,
+      identity?.email ?? null,
     )
     .first<Record<string, unknown>>();
   return Object.freeze({

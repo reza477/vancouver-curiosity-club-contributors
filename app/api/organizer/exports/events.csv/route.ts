@@ -1,13 +1,15 @@
 import { createOperationalEventCsv } from "@/lib/server/phase7/private-exports";
 import {
+  assertTrustedOrganizerRead,
   organizerApiError,
   requireOrganizerApiActor,
 } from "../../_shared";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   try {
+    assertTrustedOrganizerRead(request);
     const { database, identity } = await requireOrganizerApiActor([
       "owner",
       "administrator",

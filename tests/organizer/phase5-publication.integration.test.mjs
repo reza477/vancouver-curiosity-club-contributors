@@ -21,6 +21,7 @@ import {
 import {
   ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM,
   performOrganizerPublicationAction,
+  readOrganizationPublicationPolicy,
   readOrganizerPublicationPreview,
   readOrganizerPublicationWorkspace,
   reconcileDueOrganizerPublications,
@@ -47,6 +48,7 @@ import {
 } from "../../lib/server/database/invariants.ts";
 import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import { interceptD1Statements } from "../auth/intercept-d1.mjs";
 
 const ownerIdentity = Object.freeze({
   displayName: "Owner",
@@ -813,7 +815,7 @@ test("preview permission exactly matches the protected projection for draft and 
 });
 
 test("publication workspace and preview revalidate live membership and club scope at their final reads", async (t) => {
-  await t.test("club assignment loss suppresses every private publication field and action", async (t) => {
+  await t.test("club assignment loss denies the private publication workspace", async (t) => {
     const database = await newDatabase();
     t.after(() => database.close());
     setD1Now(database, BASE_NOW);
@@ -842,19 +844,14 @@ test("publication workspace and preview revalidate live membership and club scop
         `);
       },
     );
-    const workspace = await readOrganizerPublicationWorkspace(
-      raced,
-      organizerIdentity,
-      event.id,
+    await assert.rejects(
+      readOrganizerPublicationWorkspace(
+        raced,
+        organizerIdentity,
+        event.id,
+      ),
+      (error) => error?.code === "authorization_denied",
     );
-    assert.equal(workspace.permissions.canEditPublicDetails, false);
-    assert.equal(workspace.permissions.canPreview, false);
-    assert.equal(workspace.permissions.canPublish, false);
-    assert.equal(workspace.details.artworkAssetId, null);
-    assert.equal(workspace.details.attendanceMode, "location_undecided");
-    assert.deepEqual(workspace.artworkOptions, []);
-    assert.deepEqual(workspace.hostOptions, []);
-    assert.equal(workspace.pendingJob, null);
   });
 
   await t.test("membership suspension before the final artwork read denies the workspace", async (t) => {
@@ -933,6 +930,73 @@ test("publication workspace and preview revalidate live membership and club scop
       ),
       null,
     );
+  });
+
+  await t.test("suspension after readiness but before final access denies every workspace field", async (t) => {
+    const database = await newDatabase();
+    t.after(() => database.close());
+    setD1Now(database, BASE_NOW);
+    const event = await createConfirmedEvent(database, {
+      primaryOrganizerProfileId: "profile-organizer",
+      title: "Publication final-seal race",
+    });
+    await saveDetails(
+      database,
+      organizerIdentity,
+      await readOrganizerPublicationWorkspace(
+        database,
+        organizerIdentity,
+        event.id,
+      ),
+      { artworkAssetId: "asset-event-artwork" },
+    );
+    const intercepted = interceptD1Statements(database, {
+      before: (sql) =>
+        sql.includes("SELECT membership.role,") &&
+        sql.includes("END AS can_edit"),
+      hook: async () => {
+        database.exec(`
+          UPDATE organization_memberships
+          SET status = 'suspended'
+          WHERE id = 'membership-organizer'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      readOrganizerPublicationWorkspace(
+        intercepted.database,
+        organizerIdentity,
+        event.id,
+      ),
+      (error) => error?.code === "authorization_denied",
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+
+  await t.test("policy read denies an actor suspended after initial authorization", async (t) => {
+    const database = await newDatabase();
+    t.after(() => database.close());
+    const intercepted = interceptD1Statements(database, {
+      before: (sql) =>
+        sql.includes("LEFT JOIN organization_publication_policies AS policy"),
+      hook: async () => {
+        database.exec(`
+          UPDATE organization_memberships
+          SET status = 'suspended'
+          WHERE id = 'membership-organizer'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      readOrganizationPublicationPolicy(
+        intercepted.database,
+        organizerIdentity,
+      ),
+      (error) => error?.code === "authorization_denied",
+    );
+    assert.equal(intercepted.fired(), true);
   });
 });
 
@@ -1545,7 +1609,7 @@ test("publication exits and maximum host plus artwork details stay within the D1
     assertWithinStatementCap(detailsCounter, "approved event artwork details");
     assert.deepEqual(detailsCounter.counts(), {
       batchLengths: [13],
-      statementCount: 41,
+      statementCount: 42,
     });
 
     const publishCounter = countedBinding(database);
@@ -1661,7 +1725,7 @@ test("publication exits and maximum host plus artwork details stay within the D1
     );
     assert.deepEqual(detailsCounter.counts(), {
       batchLengths: [14],
-      statementCount: 42,
+      statementCount: 43,
     });
     assert.equal(
       await countWhere(

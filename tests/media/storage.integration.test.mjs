@@ -9,6 +9,7 @@ import {
   getPublicMediaVariant,
   listMediaAssets,
   listPendingMediaCleanups,
+  readMediaAsset,
   retryDeletedMediaCleanup,
   updateMediaAssetMetadata,
   uploadMediaAsset,
@@ -30,6 +31,9 @@ import {
 import {
   resolvePublicEventMetadataImage,
 } from "../../lib/server/public/metadata.ts";
+import {
+  runRequestMaintenance,
+} from "../../lib/server/database/request-maintenance.ts";
 
 const mediaSqlRecording = startSqliteD1StatementRecording({
   sourceIncludes: [],
@@ -649,6 +653,164 @@ test("private media byte lookup revalidates live membership, profile, role, and 
         (error) => error?.code === "not_found",
       );
       assert.deepEqual(bucket.getKeys, []);
+    });
+  }
+});
+
+test("private and public media reads fail closed when entitlement changes while R2 is pending", async (t) => {
+  const privateCases = [
+    {
+      label: "membership suspension",
+      mutate(database) {
+        database.exec(
+          `UPDATE organization_memberships
+           SET status = 'suspended'
+           WHERE id = 'membership-organizer'`,
+        );
+      },
+    },
+    {
+      label: "event-club assignment removal",
+      mutate(database) {
+        database
+          .prepare(
+            `UPDATE club_memberships
+             SET deleted_at = ?
+             WHERE id = 'club-member-organizer'`,
+          )
+          .bind(BASE_NOW)
+          .runSynchronously();
+      },
+    },
+  ];
+
+  for (const testCase of privateCases) {
+    await t.test(`private ${testCase.label}`, async (t) => {
+      const database = newDatabase();
+      const getStarted = deferred();
+      const releaseGet = deferred();
+      const bucket = new MemoryR2Bucket({
+        beforeGet: async () => {
+          getStarted.resolve();
+          await releaseGet.promise;
+        },
+      });
+      t.after(() => database.close());
+      const asset = await uploadMediaAsset(
+        database,
+        bucket,
+        ownerIdentity,
+        uploadInput(),
+        { decodeProbe, nowUtcMs: BASE_NOW },
+      );
+
+      const pendingRead = getPrivateMediaVariant(
+        database,
+        bucket,
+        organizerIdentity,
+        asset.id,
+        "webp_480",
+        { eventId: "event-organizer" },
+      );
+      await getStarted.promise;
+      testCase.mutate(database);
+      releaseGet.resolve();
+
+      await assert.rejects(
+        pendingRead,
+        (error) => error?.code === "not_found" && error?.status === 404,
+      );
+      assert.equal(bucket.getKeys.length, 1);
+    });
+  }
+
+  await t.test("public published usage retirement", async (t) => {
+    const database = newDatabase();
+    const getStarted = deferred();
+    const releaseGet = deferred();
+    const bucket = new MemoryR2Bucket({
+      beforeGet: async () => {
+        getStarted.resolve();
+        await releaseGet.promise;
+      },
+    });
+    t.after(() => database.close());
+    const asset = await uploadMediaAsset(
+      database,
+      bucket,
+      ownerIdentity,
+      uploadInput(),
+      { decodeProbe, nowUtcMs: BASE_NOW },
+    );
+    insertUsage(database, asset.id, "published");
+
+    const pendingRead = getPublicMediaVariant(
+      database,
+      bucket,
+      asset.id,
+      "webp_480",
+    );
+    await getStarted.promise;
+    database
+      .prepare(
+        `UPDATE media_usage_references
+         SET publication_scope = 'draft'
+         WHERE asset_id = ?
+           AND publication_scope = 'published'
+           AND deleted_at IS NULL`,
+      )
+      .bind(asset.id)
+      .runSynchronously();
+    releaseGet.resolve();
+
+    await assert.rejects(
+      pendingRead,
+      (error) => error?.code === "not_found" && error?.status === 404,
+    );
+    assert.equal(bucket.getKeys.length, 1);
+  });
+});
+
+test("rights-bearing media list and detail reads seal the exact active manager after data access", async (t) => {
+  for (const [label, read] of [
+    [
+      "list",
+      (database) => listMediaAssets(database, ownerIdentity),
+    ],
+    [
+      "detail",
+      (database, assetId) =>
+        readMediaAsset(database, ownerIdentity, assetId),
+    ],
+  ]) {
+    await t.test(label, async (t) => {
+      const database = newDatabase();
+      const bucket = new MemoryR2Bucket();
+      t.after(() => database.close());
+      const asset = await uploadMediaAsset(
+        database,
+        bucket,
+        ownerIdentity,
+        uploadInput(),
+        { decodeProbe, nowUtcMs: BASE_NOW },
+      );
+      const raced = afterFirstMatchingDatabase(
+        database,
+        /detail\.private_rights_source_note[\s\S]*FROM media_assets AS asset/u,
+        () => {
+          database.exec(
+            `UPDATE organization_memberships
+             SET status = 'suspended'
+             WHERE id = 'membership-owner'`,
+          );
+        },
+      );
+
+      await assert.rejects(
+        read(raced, asset.id),
+        (error) =>
+          error?.code === "authorization_denied" && error?.status === 403,
+      );
     });
   }
 });
@@ -1283,7 +1445,7 @@ test("R2 deletion failure remains durably retryable from the persisted four-key 
   );
 });
 
-test("media list stays bounded to one authorization read plus one aggregate query", async (t) => {
+test("media reads stay bounded after final authorization and projection seals", async (t) => {
   const database = newDatabase();
   const bucket = new MemoryR2Bucket();
   t.after(() => database.close());
@@ -1301,8 +1463,215 @@ test("media list stays bounded to one authorization read plus one aggregate quer
     limit: 100,
   });
   assert.equal(assets.length, 3);
-  assert.equal(counted.count, 2);
+  assert.equal(counted.count, 3);
   assert.ok(assets.every((asset) => asset.variants.length === 4));
+
+  const detailCounted = countedDatabase(database);
+  await readMediaAsset(
+    detailCounted.database,
+    ownerIdentity,
+    assets[0].id,
+  );
+  assert.equal(detailCounted.count, 3);
+
+  insertUsage(database, assets[0].id, "published");
+  const publicCounted = countedDatabase(database);
+  await getPublicMediaVariant(
+    publicCounted.database,
+    bucket,
+    assets[0].id,
+    "webp_480",
+  );
+  assert.equal(publicCounted.count, 2);
+
+  const privateCounted = countedDatabase(database);
+  await getPrivateMediaVariant(
+    privateCounted.database,
+    bucket,
+    ownerIdentity,
+    assets[0].id,
+    "original",
+  );
+  assert.equal(privateCounted.count, 3);
+  assert.equal(privateCounted.count + 1, 4);
+
+  const mediaLibraryCounted = countedDatabase(database);
+  await listPendingMediaCleanups(
+    mediaLibraryCounted.database,
+    ownerIdentity,
+  );
+  await listMediaAssets(mediaLibraryCounted.database, ownerIdentity);
+  assert.equal(mediaLibraryCounted.count, 5);
+  const mediaLibraryRouteStatementCount =
+    1 + mediaLibraryCounted.count;
+  assert.equal(mediaLibraryRouteStatementCount, 6);
+  assert.ok(
+    Math.max(
+      counted.count,
+      detailCounted.count,
+      publicCounted.count,
+      privateCounted.count,
+      mediaLibraryRouteStatementCount,
+    ) < 50,
+  );
+});
+
+test("media upload, edit, delete, and cleanup route-equivalent compositions add the exact invariant fast-path contract and stay below the Worker cap", async (t) => {
+  const invariantFastPathStatements = 2;
+  const counts = {};
+
+  const runComposition = async ({
+    database,
+    label,
+    method,
+    pathname,
+    work,
+  }) => {
+    const counter = countedDatabase(database);
+    assert.deepEqual(
+      await runRequestMaintenance(counter.database, {
+        method,
+        pathname,
+      }),
+      { kind: "continue" },
+      `${label} must continue past request maintenance`,
+    );
+    const value = await work(counter.database);
+    counts[label] =
+      invariantFastPathStatements + counter.count;
+    assert.ok(
+      counts[label] < 50,
+      `${label} used ${counts[label]} D1 statements`,
+    );
+    return value;
+  };
+
+  await t.test("upload", async (t) => {
+    const database = newDatabase();
+    const bucket = new MemoryR2Bucket();
+    t.after(() => database.close());
+    const asset = await runComposition({
+      database,
+      label: "upload",
+      method: "POST",
+      pathname: "/api/organizer/media",
+      work: (binding) =>
+        uploadMediaAsset(
+          binding,
+          bucket,
+          ownerIdentity,
+          uploadInput({ fileName: "budget-upload.png" }),
+          { decodeProbe, nowUtcMs: BASE_NOW },
+        ),
+    });
+    assert.equal(asset.uploadState, "ready");
+  });
+
+  await t.test("metadata edit", async (t) => {
+    const database = newDatabase();
+    const bucket = new MemoryR2Bucket();
+    t.after(() => database.close());
+    const asset = await uploadMediaAsset(
+      database,
+      bucket,
+      ownerIdentity,
+      uploadInput({ fileName: "budget-edit.png" }),
+      { decodeProbe, nowUtcMs: BASE_NOW },
+    );
+    const edited = await runComposition({
+      database,
+      label: "metadata_edit",
+      method: "PATCH",
+      pathname: `/api/organizer/media/${asset.id}`,
+      work: (binding) =>
+        updateMediaAssetMetadata(
+          binding,
+          ownerIdentity,
+          asset.id,
+          asset.contentVersion,
+          {
+            ...approvedMetadata(),
+            caption: "Budgeted metadata edit.",
+          },
+          { nowUtcMs: BASE_NOW + 1 },
+        ),
+    });
+    assert.equal(edited.contentVersion, asset.contentVersion + 1);
+  });
+
+  await t.test("delete", async (t) => {
+    const database = newDatabase();
+    const bucket = new MemoryR2Bucket();
+    t.after(() => database.close());
+    const asset = await uploadMediaAsset(
+      database,
+      bucket,
+      ownerIdentity,
+      uploadInput({ fileName: "budget-delete.png" }),
+      { decodeProbe, nowUtcMs: BASE_NOW },
+    );
+    const deleted = await runComposition({
+      database,
+      label: "delete",
+      method: "DELETE",
+      pathname: `/api/organizer/media/${asset.id}`,
+      work: (binding) =>
+        deleteMediaAsset(
+          binding,
+          bucket,
+          ownerIdentity,
+          asset.id,
+          asset.contentVersion,
+          { nowUtcMs: BASE_NOW + 1 },
+        ),
+    });
+    assert.equal(deleted.deleted, true);
+    assert.equal(deleted.cleanupPending, false);
+  });
+
+  await t.test("retry cleanup", async (t) => {
+    const database = newDatabase();
+    const bucket = new MemoryR2Bucket({ failDeleteCount: 1 });
+    t.after(() => database.close());
+    const asset = await uploadMediaAsset(
+      database,
+      bucket,
+      ownerIdentity,
+      uploadInput({ fileName: "budget-cleanup.png" }),
+      { decodeProbe, nowUtcMs: BASE_NOW },
+    );
+    const deleted = await deleteMediaAsset(
+      database,
+      bucket,
+      ownerIdentity,
+      asset.id,
+      asset.contentVersion,
+      { nowUtcMs: BASE_NOW + 1 },
+    );
+    assert.equal(deleted.cleanupPending, true);
+    const cleanup = await runComposition({
+      database,
+      label: "cleanup",
+      method: "POST",
+      pathname: `/api/organizer/media/${asset.id}/cleanup`,
+      work: (binding) =>
+        retryDeletedMediaCleanup(
+          binding,
+          bucket,
+          ownerIdentity,
+          asset.id,
+          deleted.cleanupVersion,
+        ),
+    });
+    assert.equal(cleanup.cleanupPending, false);
+  });
+
+  assert.deepEqual(counts, {
+    cleanup: 7,
+    delete: 10,
+    metadata_edit: 10,
+    upload: 21,
+  });
 });
 
 test("CMS usage validation and reconciliation stay same-org, public-ready, atomic, and revision-current", async (t) => {
@@ -1983,6 +2352,7 @@ function insertSiteOgUsage(database, assetId) {
 
 class MemoryR2Bucket {
   constructor(options = {}) {
+    this.beforeGet = options.beforeGet ?? null;
     this.failDeleteCount = options.failDeleteCount ?? 0;
     this.failPutAt = options.failPutAt ?? null;
     this.getKeys = [];
@@ -2005,6 +2375,7 @@ class MemoryR2Bucket {
 
   async get(key) {
     this.getKeys.push(key);
+    await this.beforeGet?.(key);
     const object = this.objects.get(key);
     if (!object) return null;
     const bytes = object.bytes.slice();
@@ -2032,6 +2403,37 @@ class MemoryR2Bucket {
   }
 }
 
+function afterFirstMatchingDatabase(database, pattern, afterFirst) {
+  let fired = false;
+  const wrap = (statement, matches) => ({
+    all: async (...args) => {
+      const result = await statement.all(...args);
+      if (matches && !fired) {
+        fired = true;
+        afterFirst();
+      }
+      return result;
+    },
+    bind: (...values) => wrap(statement.bind(...values), matches),
+    first: async (...args) => {
+      const result = await statement.first(...args);
+      if (matches && !fired) {
+        fired = true;
+        afterFirst();
+      }
+      return result;
+    },
+    run: (...args) => statement.run(...args),
+  });
+  return {
+    batch: (statements) => database.batch(statements),
+    prepare(sql) {
+      pattern.lastIndex = 0;
+      return wrap(database.prepare(sql), pattern.test(sql));
+    },
+  };
+}
+
 function beforeFirstMatchingDatabase(database, pattern, beforeFirst) {
   let fired = false;
   const wrap = (statement, matches) => ({
@@ -2055,9 +2457,18 @@ function beforeFirstMatchingDatabase(database, pattern, beforeFirst) {
   };
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function countedDatabase(database) {
   let count = 0;
   const wrap = (statement) => ({
+    inner: statement,
     all: async (...args) => {
       count += 1;
       return statement.all(...args);
@@ -2074,7 +2485,12 @@ function countedDatabase(database) {
   });
   return {
     database: {
-      batch: async (statements) => database.batch(statements),
+      batch: async (statements) => {
+        count += statements.length;
+        return database.batch(
+          statements.map((statement) => statement.inner ?? statement),
+        );
+      },
       prepare: (sql) => wrap(database.prepare(sql)),
     },
     get count() {
@@ -2115,7 +2531,7 @@ function webpPart(width, height) {
 test("all exercised media SQL shapes compile through real D1", async () => {
   const shapes = mediaSqlRecording.stop();
   await assertRecordedD1ShapesCompile(shapes, {
-    expectedCount: 55,
+    expectedCount: 57,
     label: "media service",
   });
 });

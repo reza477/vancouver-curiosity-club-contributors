@@ -28,12 +28,12 @@ export function ShareControls({
   }
 
   return (
-    <div className="share-controls" aria-label="Share this event">
+    <section className="share-controls" aria-label="Share this event">
       <button type="button" onClick={share}>
         Share
       </button>
       <a href={emailHref}>Email link</a>
       <p aria-live="polite">{message}</p>
-    </div>
+    </section>
   );
 }

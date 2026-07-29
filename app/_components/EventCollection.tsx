@@ -20,8 +20,8 @@ export function EventCollection({
 
   return (
     <div className="event-list">
-      {events.map((event) => (
-        <EventCard event={event} key={event.slug} />
+      {events.map((event, index) => (
+        <EventCard event={event} key={event.slug} priority={index === 0} />
       ))}
     </div>
   );

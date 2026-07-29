@@ -17,6 +17,7 @@ import {
 } from "@/app/_organizer/CreateProgramDraftButton";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
 import { PageHeader } from "@/app/_organizer/PageHeader";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import { listCmsEntities } from "@/lib/server/organizer/cms";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
@@ -39,7 +40,7 @@ export default async function OrganizerContentPage() {
   let laneOptions: readonly ClubProfileLaneOption[] = [];
   let programParentOptions: readonly ProgramParentOption[] = [];
   try {
-    entities = await listCmsEntities(
+    const currentEntities = await listCmsEntities(
       loaded.context.database,
       loaded.context.identity,
     );
@@ -150,8 +151,15 @@ export default async function OrganizerContentPage() {
               }),
             ]
           : [],
-      ),
+        ),
     );
+    await revalidateAuthorizedMembership(
+      loaded.context.database,
+      loaded.context.identity,
+      loaded.context.membership,
+      { allowedRoles: ["owner", "administrator"] },
+    );
+    entities = currentEntities;
   } catch {
     writeSafeLog("error", "organizer_page_failed", {
       code: "internal_error",

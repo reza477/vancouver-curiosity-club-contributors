@@ -8,6 +8,7 @@ import {
   AuthConfigurationError,
   OrganizerAccessDeniedError,
   authorizeOrganizerAccess,
+  revalidateAuthorizedMembership,
   trustedIdentityFromSites,
 } from "@/lib/server/auth";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
@@ -40,12 +41,17 @@ export async function loadOrganizerPageContext(
       getOrganizerProfile(database, identity),
       getUnreadNotificationCount(database, membership),
     ]);
+    const currentMembership = await revalidateAuthorizedMembership(
+      database,
+      identity,
+      membership,
+    );
 
     const context: OrganizerPageContext = Object.freeze({
       database,
       defaultTimezone: settings.defaultTimezone,
       identity,
-      membership,
+      membership: currentMembership,
       organizerDisplayName: profile.displayName,
       organizerInitials: profile.initials,
       unreadNotificationCount,

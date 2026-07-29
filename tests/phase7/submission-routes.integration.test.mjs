@@ -8,11 +8,20 @@ import {
   trustedIdentityFromSites,
 } from "../../lib/server/auth/index.ts";
 import {
+  ensureDatabaseInvariants,
+} from "../../lib/server/database/invariants.ts";
+import {
+  runRequestMaintenance,
+} from "../../lib/server/database/request-maintenance.ts";
+import {
   PHASE7_INVARIANT_COUNT_SQL,
   PHASE7_INVARIANT_TRIGGER_STATEMENTS,
 } from "../../lib/server/database/phase7-invariant-sql.ts";
 import { submitPublicForm } from "../../lib/server/phase7/public-forms.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import {
+  ensureDatabaseInvariantsReady,
+} from "../database/invariant-ready.mjs";
 
 const ORIGIN = "https://submissions.example";
 const OWNER_EMAIL = "submissions-owner@vcc-tests.invalid";
@@ -541,35 +550,35 @@ test("submission routes enforce private role, assignment, redaction, and request
   );
 
   assert.deepEqual(counts, {
-    admin_assignment: 15,
-    admin_detail: 6,
-    admin_list: 5,
-    admin_note: 10,
-    admin_redaction_denied: 1,
-    admin_status: 14,
-    assigned_organizer_detail: 6,
-    assigned_organizer_list: 5,
-    cross_org_detail: 3,
-    cross_org_list: 5,
-    excessive_date_filter: 2,
-    invalid_date_filter: 2,
-    new_assignee_detail: 6,
-    organizer_note: 10,
-    organizer_redaction_denied: 1,
-    organizer_status: 14,
-    owner_assignment: 15,
-    owner_detail: 6,
-    owner_list: 5,
-    owner_note: 10,
-    owner_redaction: 16,
-    owner_status: 14,
-    owner_unassign: 14,
-    post_redaction_detail: 6,
-    post_redaction_stale: 3,
-    reassigned_organizer_denied: 3,
-    suspended_assignee_denied: 1,
-    unassigned_organizer_detail: 3,
-    unassigned_organizer_list: 5,
+    admin_assignment: 17,
+    admin_detail: 8,
+    admin_list: 7,
+    admin_note: 12,
+    admin_redaction_denied: 3,
+    admin_status: 16,
+    assigned_organizer_detail: 8,
+    assigned_organizer_list: 7,
+    cross_org_detail: 5,
+    cross_org_list: 7,
+    excessive_date_filter: 4,
+    invalid_date_filter: 4,
+    new_assignee_detail: 8,
+    organizer_note: 12,
+    organizer_redaction_denied: 3,
+    organizer_status: 16,
+    owner_assignment: 17,
+    owner_detail: 8,
+    owner_list: 7,
+    owner_note: 12,
+    owner_redaction: 18,
+    owner_status: 16,
+    owner_unassign: 16,
+    post_redaction_detail: 8,
+    post_redaction_stale: 5,
+    reassigned_organizer_denied: 5,
+    suspended_assignee_denied: 3,
+    unassigned_organizer_detail: 5,
+    unassigned_organizer_list: 7,
   });
   assert.ok(
     Object.values(counts).every((count) => count < 50),
@@ -788,13 +797,19 @@ async function seedOtherOrganization(database, now) {
 }
 
 async function detailRequest(fixture, counts, label, email) {
-  return countedRequest(fixture, counts, label, email, () =>
-    detailRoute.GET(
-      new Request(
-        `${ORIGIN}/api/organizer/submissions/${fixture.submissionId}`,
+  const pathname =
+    `/api/organizer/submissions/${fixture.submissionId}`;
+  return countedRequest(
+    fixture,
+    counts,
+    label,
+    email,
+    () =>
+      detailRoute.GET(
+        new Request(`${ORIGIN}${pathname}`),
+        { params: Promise.resolve({ id: fixture.submissionId }) },
       ),
-      { params: Promise.resolve({ id: fixture.submissionId }) },
-    ),
+    { method: "GET", pathname },
   );
 }
 
@@ -806,27 +821,65 @@ async function mutationRequest(
   handler,
   body,
 ) {
-  const url = `${ORIGIN}/api/organizer/submissions/${fixture.submissionId}/${label}`;
-  return countedRequest(fixture, counts, label, email, () =>
-    handler(
-      new Request(url, {
-        body: JSON.stringify(body),
-        headers: {
-          "content-type": "application/json",
-          origin: ORIGIN,
-        },
-        method: handler === notesRoute.POST || handler === redactRoute.POST
-          ? "POST"
-          : "PATCH",
-      }),
-      { params: Promise.resolve({ id: fixture.submissionId }) },
-    ),
+  const operation =
+    handler === assignmentRoute.PATCH
+      ? "assignment"
+      : handler === statusRoute.PATCH
+        ? "status"
+        : handler === notesRoute.POST
+          ? "notes"
+          : "redact";
+  const pathname =
+    `/api/organizer/submissions/${fixture.submissionId}/${operation}`;
+  const method =
+    handler === notesRoute.POST || handler === redactRoute.POST
+      ? "POST"
+      : "PATCH";
+  return countedRequest(
+    fixture,
+    counts,
+    label,
+    email,
+    () =>
+      handler(
+        new Request(`${ORIGIN}${pathname}`, {
+          body: JSON.stringify(body),
+          headers: {
+            "content-type": "application/json",
+            origin: ORIGIN,
+          },
+          method,
+        }),
+        { params: Promise.resolve({ id: fixture.submissionId }) },
+      ),
+    { method, pathname },
   );
 }
 
-async function countedRequest(fixture, counts, label, email, callback) {
+async function countedRequest(
+  fixture,
+  counts,
+  label,
+  email,
+  callback,
+  request = {
+    method: "GET",
+    pathname: "/api/organizer/submissions",
+  },
+) {
+  await ensureDatabaseInvariantsReady(fixture.database);
   setIdentity(email);
   fixture.counted.reset();
+  assert.equal(
+    await ensureDatabaseInvariants(fixture.counted),
+    "ready",
+    `${label} must enter through the invariant fast path`,
+  );
+  assert.deepEqual(
+    await runRequestMaintenance(fixture.counted, request),
+    { kind: "continue" },
+    `${label} must continue past request maintenance`,
+  );
   const response = await callback();
   counts[label] = fixture.counted.count;
   assertPrivateHeaders(response);

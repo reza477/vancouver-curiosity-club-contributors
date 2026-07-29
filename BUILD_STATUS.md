@@ -1,21 +1,26 @@
 # Vancouver Curiosity Club — Build Status
 
-Last updated: 2026-07-28 (America/Vancouver)
+Last updated: 2026-07-29 (America/Vancouver)
 
 ## Active phase and release state
 
-- **Active phase: Phase 7 — Imports, exports, calendars, and public forms.**
+- Workspace: `C:\Users\user\Documents\Website`
+- **Active phase: Phase 8 — Security and release hardening.**
 - Phase 6 is **Completed and verified** for its authorized scope.
 - Phase 7 implementation and the complete local repository, migration,
   production-build, rendered-Worker, browser, archive, source-readback, and
   unpublished Sites-version matrix are **Completed and verified**.
-- **Phase 8 — Not started.**
-- No Phase 7 deployment, preview deployment, access-policy change, domain
+- Phase 8 implementation is complete and its pre-freeze security, dependency,
+  migration, D1-budget, accessibility, responsive, performance, link/content,
+  and complete repository gates are green. The final exact-commit
+  rebuild/readback gate is **in progress** and is recorded below.
+- **Phase 9 — Not started.**
+- No Phase 8 deployment, preview deployment, access-policy change, domain
   change, binding change, runtime-value change, or hosted D1/R2 data mutation
   has been performed.
 - The existing owner-only live deployment remains version 8 at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
-- Phase 7 is not viewable at that live URL unless a later separately authorized
+- Phase 8 is not viewable at that live URL unless a later separately authorized
   deployment occurs.
 
 ## Previous-phase preservation
@@ -49,6 +54,269 @@ Phase 7 preserves:
 - the existing private Meetup feed addresses and exact public Meetup URLs.
 
 No award is claimed.
+
+## Phase 8 hardening status
+
+### Important fixed decisions
+
+- Phase 8 hardens the completed Phase 1–7 product; it adds no Phase 9
+  deployment behavior.
+- Sites remains the only host. The existing `DB` and `MEDIA` logical bindings,
+  platform-owned Sign in with ChatGPT, owner-only live version 8, access
+  policy, domains, runtime values, and hosted D1/R2 data remain unchanged.
+- Phase 8 changes no D1 schema. The migration chain still ends at the sole
+  `0016_phase7_import_export_forms.sql`; there is no `0017`.
+- The Worker canonicalizes the request pathname once before routing, trusted
+  request context, invitation-token capture, maintenance, shell selection,
+  cache/robots/referrer policy, and safe diagnostics. Malformed, residual,
+  double-encoded, delimiter, slash/backslash, dot-segment, Unicode, and
+  overlength ambiguity fails closed.
+- Production uses a practical nonce-based CSP and explicit framing,
+  MIME-sniffing, referrer, permissions, opener/resource, HTTPS, private-cache,
+  and robots headers. Inline styles remain allowed because the current
+  vinext-generated style path requires them; production scripts do not receive
+  a blanket inline-script allowance.
+- Protected multi-read responses and conditional writes carry or revalidate
+  the exact current actor, role, organization, assignment, club, event,
+  publication, revision, receipt, media, token, or lease facts immediately
+  before return/commit. A concurrent access or state change fails closed.
+- Public HTML, metadata, JSON-LD, sitemap, errors, ICS, CSV, redirects, media,
+  and anonymous APIs use explicit allowlists. D1 application rows and R2
+  object keys are never generic public serializers or download inputs.
+- Dependency remediation uses compatible releases only. No force upgrade,
+  blanket override, audit suppression, or incompatible Next/ESLint/Drizzle
+  downgrade is accepted merely to change an audit count.
+
+### Security, privacy, R2, token, and error review
+
+**Completed and verified locally.**
+
+- Crafted-route and direct-service coverage verifies current active profile,
+  membership, role, organization, club, assignment, and entity ownership for
+  organizer pages, events, conflicts, publication, CMS, settings, team,
+  invitations, notifications, imports, submissions, exports, private
+  calendars, Meetup, and media.
+- Encoded organizer/API/private-calendar/invitation paths receive the same
+  private classification as the router or are rejected before dispatch.
+  Private calendar bearer paths are recorded only as
+  `/api/calendar/private/[token]`.
+- CSRF/same-origin, bounded body/input, parameterized D1, safe error, atomic
+  sentinel, idempotency, durable rate-limit, and audit-privacy contracts remain
+  intact.
+- Public media requires exact current public usage and safety proof. Private
+  original/variant reads require current authorized membership and role. Both
+  revalidate after `MEDIA.get()` and before returning bytes.
+- Raw invitation/calendar tokens, token hashes, private Meetup feed addresses,
+  identity headers, runtime values, R2 keys, notes, submissions, import source
+  rows, and conflict reasons remain excluded from logs, errors, audits,
+  downloads, public output, and browser bundles.
+- Source and built-artifact tests cover nested sentinels, environment/local
+  paths, source maps, local databases/logs, fixtures, mock/debug routes,
+  identity values, form/import facts, private feeds, token material, and R2
+  keys.
+- Public/private cache and indexing behavior is verified through rendered
+  Worker and route tests. Private, identity, preview, error, and token
+  responses are no-store and non-indexable.
+
+### Whole-Worker D1 statement budgets
+
+All measured paths remain below the 50-statement invocation ceiling. Counts
+include the invariant fast path and request maintenance where the real fixture
+can enter a ready runtime; the deliberately invalid media fixture adds the
+established two-statement invariant fast path explicitly.
+
+- Meetup page GET: 26 healthy, 40 fresh catalog, 46 first Owner + fresh
+  catalog.
+- Meetup connect: 15 healthy/new source, 29 fresh catalog, 35 first Owner +
+  fresh catalog, 12 exact-source retry.
+- Manual Meetup refresh: 38.
+- Organizer calendar: 42 healthy, 46 with 5,000 candidates and a due hold
+  notice.
+- Public filtered ICS: 10; one-event ICS: 10; public CSV: 7.
+- Operational CSV: 6; Owner JSON backup: 23; media manifest/original: 6/6.
+- Private-calendar token create/feed/revoke: 7/8/8.
+- Public form instance: 5; legitimate form submit maximum: 16; invalid form:
+  9.
+- Submission routes: list 7, detail 8, note 12, status 16, assignment 17,
+  Owner redaction 18.
+- Import apply maximum: 48.
+- Ordinary event create/edit/place-hold: 28/34/36.
+- Settings workspace read/update: 4/5; conflict-policy read/update: 4/10.
+- Media upload/edit/delete/cleanup: 21/10/10/7.
+- 24-block CMS page publication: 27.
+- Max-host event detail/publication: 43; conflict-authorized publication: 46;
+  Administrator-approved immediate publication: 49; due reconciliation: 31.
+
+### Accessibility and keyboard verification
+
+Target: WCAG 2.2 AA.
+
+- axe-core 4.12.1 with Chrome 150 reported zero violations, including zero
+  serious and zero critical, at 390 CSS pixels on Home, Events, one synthetic
+  published event detail, Contact, organizer Events, event create, Imports,
+  and Submissions. Home, Events, and event detail also reported zero violations
+  at 1280.
+- The original diagnostic detail page exposed one serious 1.01:1 selector
+  collision. The public detail article now restores `var(--ink)` and a
+  1rem base size; the rebuilt rerun reports zero violations. A source contract
+  pins the fix.
+- axe incomplete/manual contrast nodes remain a manual-review category rather
+  than being relabelled as passes. Manual computed-style and rendered checks
+  found no remaining text or functional-control contrast failure in the
+  tested routes.
+- Keyboard checks verified the first Tab reaches “Skip to main content” and
+  Enter moves focus to `#page-content`; event-card navigation opens the exact
+  detail; the calendar download is reachable; public-form and organizer-event
+  validation focus their error summaries and exact invalid fields; and no
+  success state appears for an invalid normal submission.
+- Calendar roving focus supports arrows, Home/End, and Page Up/Down. Error
+  summaries, row-local import errors, destructive confirmations, form success,
+  and dialog restoration retain explicit focus behavior.
+- Reduced-motion mode resolves to automatic scrolling and effectively zero
+  transition duration. Statuses and outside-month dates retain non-color cues.
+
+### Responsive and browser verification
+
+Synthetic `.invalid` identities/data only:
+
+- Public Home, Events, and published event detail at exactly 320, 390, 768,
+  1280, and 1440 CSS pixels: zero essential horizontal overflow, 16px body
+  text, one main/H1, and no visible interactive control smaller than 44 pixels
+  in both dimensions.
+- Private event-create, Imports, and Submissions at 390 have zero horizontal
+  overflow. Event create and Imports also pass the 200%-zoom reflow equivalent.
+- Keyboard browser flows cover the public browse/detail/download path, public
+  validation, organizer sign-in boundary, organizer event create/validation,
+  and safe error recovery. The remaining real Owner, approved-artwork, and
+  hosted second-identity checks stay Owner-gated below.
+- A healthy-fixture crawl covered 26 unique visible internal targets: 25
+  returned 200 and `/organizer` returned the expected 307 Sign in with ChatGPT
+  redirect. Filtered ICS, public CSV, and one-event ICS returned 200 with their
+  correct content types.
+- Visible Meetup destinations are exactly the three confirmed group URLs. The
+  audit verified href truth; it did not claim third-party network availability.
+- The tested browser emitted no hydration or application error on the healthy
+  routes. Deliberate malformed/denial probes remain expected negative cases.
+
+### Local production performance
+
+Environment: Windows 10/11 x64, Node 24.18.0, Lighthouse 13.4.1, Headless
+Chrome 150.0.0.0, disposable fresh Miniflare D1, one rebuilt-artifact run per
+route/form factor. Mobile uses Lighthouse simulated throttling (150ms RTT,
+1,638.4 Kbps, 4x CPU, 412x823); desktop uses 40ms RTT, 10,240 Kbps, 1x CPU,
+1350x940.
+
+Scores are Performance / Accessibility / Best Practices / SEO:
+
+- Home mobile: 98/100/100/100; FCP/LCP/Speed Index 1,854ms; TBT 0ms;
+  CLS 0; 180,034 bytes / 19 requests.
+- Home desktop: 100/100/100/100; FCP/LCP/Speed Index 451ms; TBT 0ms;
+  CLS 0.
+- Events mobile: 98/100/100/100; FCP/LCP/Speed Index 1,810ms; TBT 0ms;
+  CLS 0; 179,504 bytes / 20 requests.
+- Events desktop: 100/100/100/100; FCP/LCP/Speed Index 448ms; TBT 0ms;
+  CLS 0.
+- Published event detail mobile: 97/100/100/100; FCP 1,960ms; LCP 2,110ms;
+  Speed Index 1,960ms; TBT 0ms; CLS 0; 180,875 bytes / 20 requests.
+- Published event detail desktop: 100/100/100/100; FCP 450ms; LCP 490ms;
+  Speed Index 450ms; TBT 0ms; CLS 0.
+
+Four Lighthouse commands exited 0. Two Events commands wrote valid complete
+JSON but returned exit 1 only when Windows blocked temporary Chrome-profile
+cleanup after the audit; no Lighthouse/headless Chrome process or audit helper
+remained. The final exact-commit run must supersede that cleanup limitation
+before Sites save.
+
+### Dependency and supply-chain result
+
+- Clean lockfile install: exit 0.
+- `npm ls --omit=dev --all` and full `npm ls --all`: exit 0 with no missing,
+  invalid, or extraneous packages.
+- Production audit: exit 0, zero low/moderate/high/critical findings; four
+  direct production packages and seven production nodes.
+- Full audit: exit 1, 16 development/build-tool package nodes: 12 high, four
+  moderate, zero low or critical. All 16 are `dev: true`; optional `sharp` is
+  not packaged.
+- Six underlying advisory families: brace-expansion OOM through ESLint;
+  esbuild development-server cross-origin response read through drizzle-kit;
+  three PostCSS stringify/source-map file-disclosure families through Next;
+  and sharp/libvips through optional Next image tooling.
+- Direct affected dev tools are drizzle-kit, ESLint, eslint-config-next, and
+  Next; the remaining 12 nodes are transitive.
+- The Sites archive contains only `dist`, not `node_modules`. Artifact scanning
+  finds none of drizzle-kit, esbuild-kit, esbuild, PostCSS, minimatch,
+  brace-expansion, native `sharp`, or libvips. The only `sharp` text is an
+  unrelated image-URL operation flag.
+- `npm audit fix --dry-run` leaves all 16 findings. npm's proposed
+  Drizzle/Next/ESLint/config changes are incompatible major
+  downgrades/upgrades and the vulnerable transitives are pinned outside a
+  compatible range. No force, override, or frozen architecture downgrade was
+  applied. Re-evaluate when aligned upstream releases exist.
+
+### Phase 8 verification ledger
+
+- Required clean `npm.cmd ci`: exit 0; 504 packages installed from the exact
+  lockfile.
+- `npm.cmd ls --omit=dev --all`, `npm.cmd ls --all`, and signature
+  verification: exit 0.
+- `npm.cmd run typecheck`: exit 0.
+- Zero-warning `npm.cmd run lint`: exit 0 before and after the diagnostic
+  production build.
+- Deterministic serial `npm.cmd test`: exit 0; 849 passed, zero failed,
+  skipped, cancelled, or todo; 79 files; 585,627ms.
+- Diagnostic `npm.cmd run build`: exit 0. It intentionally remains
+  non-release evidence because it embeds the old pre-Phase-8 HEAD while the
+  worktree is dirty.
+- Diagnostic `npm.cmd run test:rendered`: exit 0; 25 passed, zero failed or
+  skipped.
+- Phase 8 source/artifact interface/leakage contracts: 15/15.
+- Migration/invariant/real-D1 focused matrix: 53/53; security/path/media/export
+  matrix: 45/45; exact-actor/events/portal matrix: 67/67; Meetup
+  sync/budget/real-D1/media matrix: 64/64; publication/CMS/scheduling matrix:
+  233/233; public/events/media/forms/calendar matrix: 158/158.
+- New whole-route budget closures: 9/9.
+- `drizzle-kit check`: exit 0. Local and preview apply each converge through
+  nine migrations to 86 tables, 249 runtime triggers, a ready invariant
+  marker, and zero foreign-key violations.
+- `git diff --check`: exit 0; line-ending conversion notices are not whitespace
+  errors.
+- Final exact-source `npm test`, build, post-build lint, rendered Worker,
+  artifact/package parity, axe/Lighthouse/browser checks, and archive readback:
+  **Not run until the substantive source commit exists.**
+
+### Development-only behavior, links, and honest content
+
+- Static inventory found 125 app routes and 138 literal internal references
+  with zero dead references; the two non-route targets are the existing CSV
+  template and field guide.
+- No lorem ipsum, award/recognition/testimonial/statistic claim,
+  charity/tax-deductibility/donation claim, fake email/newsletter,
+  automatic-backup/restore, two-way-sync, dead `href="#"`, or fake disabled
+  action remains in public-facing source.
+- Current CMS starter content truthfully describes the four working forms,
+  private inbox storage, no marketing/email confirmation, variable
+  accessibility facts, RSVP behavior, and owner/legal review. Historical
+  “forms unavailable” strings remain only as exact-match reconciliation
+  constants for safe legacy adoption.
+- The three seeded Meetup group destinations match `OWNER_INPUTS.md`
+  byte-for-byte. No additional public Meetup destination is fabricated.
+- Metadata and JSON-LD use explicit public allowlists. Unconfirmed legal,
+  nonprofit, charity, venue-accessibility, and media-rights claims remain
+  suppressed.
+
+### Phase 8 decisions awaiting real prerequisites
+
+- Approved-real-artwork browser smoke: **Awaiting owner smoke test**.
+- Five-minute Owner smoke card: **Awaiting owner smoke test**.
+- Hosted second-identity role/suspension/reassignment: **Not run**; access
+  changes are not authorized.
+- External private calendar-client behavior: **Implemented but not externally
+  verified** before a future authorized deployment.
+- Venue-specific accessibility facts, approved production photography/rights,
+  confirmed public contact email, and other items in `OWNER_INPUTS.md` remain
+  missing owner facts; no value is invented.
+- Disposable local-D1 Owner-backup restore rehearsal remains **Not run**. The
+  documented backup is not an automatic or complete infrastructure restore.
 
 ## Phase 7 feature status
 
@@ -242,7 +510,7 @@ newer-draft skip, idempotency, and public parity passed 5/5.
   Archive extraction matched the exact build 165/165 with zero missing, extra,
   or content-mismatched files.
 
-## Verification ledger
+## Phase 7 verification ledger (preserved history)
 
 Completed verification checkpoints:
 
@@ -287,8 +555,9 @@ Local browser verification used synthetic `.invalid` identities only:
 - the browser emitted zero warnings or errors;
 - a signed-out organizer import request redirected to Sign in with ChatGPT.
 
-No Lighthouse or synthetic performance score was run. Approved-real-artwork
-smoke remains **Awaiting owner / not run**.
+Phase 7 intentionally did not run Lighthouse or a synthetic performance score;
+the Phase 8 measurements above supersede that historical limitation.
+Approved-real-artwork smoke remains **Awaiting owner smoke test**.
 
 ## Authorized cuts and known limitations
 
@@ -310,15 +579,15 @@ smoke remains **Awaiting owner / not run**.
   verified** before a future authorized deployment.
 - Owner backup deliberately excludes identity, tokens, source-feed secrets,
   public forms, and rate-limit state.
-- Approved-real-artwork browser smoke — **Awaiting owner / not run**.
+- Approved-real-artwork browser smoke — **Awaiting owner smoke test**.
 - Missing approved real artwork remains an owner input. Synthetic local
   non-person fixtures verify mechanics only.
 
 ## Source, build, Sites, and live-state provenance
 
 - Phase 7 saved source commit: `f39fcb3fc6ab97a21fa8cc00d3b180f5ccf84842`
-- Phase 7 status-only ledger commit: **This final ledger commit; its exact SHA
-  is reported in the terminal handoff.**
+- Phase 7 status-only ledger commit:
+  `abedfca034f063b467fe381292fa5e0d29cca3f9`
 - Exact pushed `refs/heads/main` readback:
   `f39fcb3fc6ab97a21fa8cc00d3b180f5ccf84842`
 - Exact Phase 7 production archive:
@@ -359,45 +628,57 @@ Required immutable Sites identity:
 At most one new unpublished Sites version may be saved after every final gate
 is green. It must not be deployed.
 
-## Five-minute Owner smoke-test card
+### Phase 8 source/save checkpoint
+
+- Phase 8 substantive source commit: **Pending final source freeze**
+- Phase 8 pushed `refs/heads/main` readback: **Not run**
+- Exact Phase 8 production archive hash/count/bytes: **Not run**
+- New unpublished Sites version 14: **Not run**
+- Phase 8 status-only ledger commit: **Not available until the source save
+  readback exists**
+- Deployment: **Not run**
+- Preview deployment: **Not run**
+- Live-access/domain/binding/runtime/D1/R2 change: **Not run**
+
+These fields must be replaced with exact readback values after—and only
+after—the final committed-source build, complete matrix, package equality, and
+single unpublished save succeed. Saving does not authorize deployment.
+
+## Five-minute Phase 8 Owner smoke-test card
 
 Overall status: **Awaiting owner smoke test.**
 
 1. Sign in as the Owner.
-2. Download the CSV template.
-3. Upload a CSV containing one valid private Draft, one invalid row, one hard
-   duplicate, and one possible scheduling conflict.
-4. Confirm preview clearly distinguishes all four rows.
-5. Confirm the Events count and calendar remain unchanged before approval.
-6. Approve only the valid row.
-7. Confirm one event is created, remains private, and its per-row result is
-   durable after refresh.
-8. Retry/resume and confirm no duplicate event appears.
-9. Submit one public Contact form.
-10. Confirm success appears only after storage and says no email was sent.
-11. Open Submissions and verify only an authorized user can see the message.
-12. Assign it to an Organizer and confirm another unassigned Organizer cannot
-    read it.
-13. Mark it In Review and Responded; confirm the site does not claim it sent a
-    response.
-14. Download one-event ICS and filtered public CSV/ICS; inspect them for private
-    fields.
-15. Generate the Owner JSON backup and confirm it contains no emails, tokens,
-    credentials, form submissions, private feed addresses, or R2 keys.
-16. Create a private calendar token, copy it once, revoke it, and confirm the
-    revoked URL is denied.
-17. Confirm the live owner-only URL still serves version 8 and was not changed
-    by Phase 7.
+2. At 390px or a narrow phone, browse Events, open one real published event,
+   and confirm its real Meetup destination is correct.
+3. Follow the organizer sign-in boundary and confirm no private page appears
+   before authorization.
+4. In the organizer agenda, use only the keyboard to open an event, edit a
+   safe field, review any conflict state, then Save or Cancel.
+5. Trigger one validation error and confirm the summary receives focus, names
+   the exact field, and remains readable at 200% zoom.
+6. Keyboard-check one public form, Imports, Submissions, CMS/media, and an
+   export/download. Confirm focus stays visible and no control is dead.
+7. At 320px and 390px, check the same core route for horizontal overflow,
+   clipped text, undersized controls, and inaccessible sticky/dialog content.
+8. Confirm a private draft/hold, note, conflict reason, submission, token,
+   private feed, backup, and media original cannot be reached anonymously or
+   inferred through an error.
+9. Confirm the Accessibility Statement and public copy make no unverified
+   venue, charity, award, email, backup, sync, or response-time claim.
+10. Confirm the live owner-only URL still serves version 8 and Phase 8 was not
+    deployed.
 
-Items that require Phase 7 to be accessible through hosted infrastructure are
+Items that require Phase 8 to be accessible through hosted infrastructure are
 **Awaiting a future authorized deployment**. They are not marked passed by
 local implementation or an unpublished Sites save.
 
 ## Exact next phase and stop condition
 
 - Phase 7 is completed and verified for its authorized scope.
-- Exactly one valid unpublished Phase 7 Sites version was saved after every
-  gate was green.
+- Phase 8 remains **in progress** until the exact committed-source build,
+  single unpublished save/readback, and final ledger checkpoint above are
+  complete.
 - Do not deploy.
 - Owner smoke status remains **Awaiting owner smoke test**.
-- **Phase 8 — Not started.**
+- **Phase 9 — Not started.**

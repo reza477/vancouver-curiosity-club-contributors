@@ -1,6 +1,7 @@
 import {
   OrganizerAccessDeniedError,
   authorizeMembership,
+  revalidateAuthorizedMembership,
   type D1DatabaseLike,
   type OrganizationRole,
   type TrustedServerIdentity,
@@ -129,8 +130,17 @@ export async function listTeamMembers(
     clubsByProfile.set(profileId, clubs);
   }
 
+  const currentActor = await authorizeMembership(database, identity);
+  if (
+    currentActor.organizationId !== actor.organizationId ||
+    currentActor.membershipId !== actor.membershipId ||
+    currentActor.profileId !== actor.profileId
+  ) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
   const canSeeEmails =
-    actor.role === "owner" || actor.role === "administrator";
+    currentActor.role === "owner" ||
+    currentActor.role === "administrator";
   return Object.freeze(
     (members.results ?? [])
       .map((row) =>
@@ -237,6 +247,9 @@ export async function updateTeamMember(
       status === "active" ? assignmentRemovalBlockers : null,
     );
     if (blockers.length > 0) {
+      await revalidateAuthorizedMembership(database, identity, actor, {
+        allowedRoles: ["owner", "administrator"],
+      });
       throw new TeamMutationBlockedError(blockers);
     }
   }
@@ -735,6 +748,11 @@ export async function getTeamMemberById(
     actor.organizationId,
     row.profileId,
   );
+  const currentActor = await revalidateAuthorizedMembership(
+    database,
+    identity,
+    actor,
+  );
   return Object.freeze({
     membershipId: row.membershipId,
     profileId: row.profileId,
@@ -744,7 +762,7 @@ export async function getTeamMemberById(
     role: row.role,
     status: row.status,
     clubs: Object.freeze(clubs),
-    ...(actor.role === "owner" || actor.role === "administrator"
+    ...(currentActor.role === "owner" || currentActor.role === "administrator"
       ? { email: row.email }
       : {}),
   });

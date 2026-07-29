@@ -432,6 +432,7 @@ function MemberCard({
         <span
           aria-label={`${member.calendarColor} calendar color`}
           className={`${styles.memberAvatar} ${styles[`color${capitalize(member.calendarColor)}`]}`}
+          role="img"
         >
           {member.initials}
         </span>

@@ -198,6 +198,32 @@ export async function authorizeMembership(
   return membership;
 }
 
+/**
+ * Final read seal for multi-step private reads. A role, membership, profile, or
+ * organization change during an awaited D1/R2 operation makes the response
+ * fail closed; callers can retry against the new authorization state.
+ */
+export async function revalidateAuthorizedMembership(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  expected: AuthorizedMembership,
+  requirement: Omit<AuthorizationRequirement, "organizationId"> = {},
+): Promise<AuthorizedMembership> {
+  const current = await authorizeMembership(database, identity, {
+    ...requirement,
+    organizationId: expected.organizationId,
+  });
+  if (
+    current.organizationId !== expected.organizationId ||
+    current.membershipId !== expected.membershipId ||
+    current.profileId !== expected.profileId ||
+    current.role !== expected.role
+  ) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
+  return current;
+}
+
 export async function authorizeOrganizerAccess(
   database: D1DatabaseLike,
   identity: TrustedServerIdentity,

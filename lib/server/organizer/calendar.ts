@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  revalidateAuthorizedMembership,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
@@ -27,7 +28,11 @@ import {
 import { organizerScheduleOverlapsUtcRange } from "./schedule-state";
 import { reconcileOrganizerHoldNotices } from "./hold-reconciliation";
 
-const CALENDAR_QUERY_PAGE_SIZE = 250;
+// Three source readers share one Worker invocation with invariant, page-shell,
+// hold-notice, filter-option, and subscription reads. A 2,000-row page keeps
+// the 5,001-row max+1 scan bounded to three statements per source instead of
+// twenty-one, while remaining well below D1's per-result response limit.
+const CALENDAR_QUERY_PAGE_SIZE = 2_000;
 const CALENDAR_CANDIDATE_SCAN_LIMIT = 5_000;
 
 export const ORGANIZER_EVENT_SOURCES = ["manual", "meetup", "legacy"] as const;
@@ -99,6 +104,7 @@ export async function listOrganizerCalendarEvents(
   const candidates = await loadCalendarCandidates(database, actor, null);
   const events = candidates.filter((event) => eventMatches(event, filters));
   const bounded = Object.freeze(events.slice(0, filters.limit));
+  await revalidateAuthorizedMembership(database, identity, actor);
   return Object.freeze({
     events: bounded,
     scheduled: Object.freeze(
@@ -138,6 +144,7 @@ export async function getOrganizerCalendarEvent(
       "The event could not be found.",
     );
   }
+  await revalidateAuthorizedMembership(database, identity, actor);
   return event;
 }
 

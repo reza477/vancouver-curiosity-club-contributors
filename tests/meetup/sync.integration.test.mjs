@@ -35,6 +35,7 @@ import {
 import { toMeetupUiState } from "../../app/organizer/meetup/model.ts";
 import { connectionCopy } from "../../app/organizer/meetup/MeetupControls.tsx";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import { interceptD1Statements } from "../auth/intercept-d1.mjs";
 
 const OWNER_EMAIL = "owner@example.com";
 const OWNER_IDENTITY = trustedIdentityFromSites({
@@ -176,6 +177,81 @@ function createDatabase({
   `);
   return database;
 }
+
+function seedMeetupAdministrator(database) {
+  database.exec(`
+    INSERT INTO profiles (
+      id, siwc_subject, normalized_email, display_name, status,
+      created_at, updated_at
+    ) VALUES (
+      'profile_admin', 'email:admin@example.com', 'admin@example.com',
+      'Administrator', 'active', 1, 1
+    );
+    INSERT INTO organization_memberships (
+      id, organization_id, profile_id, normalized_email, role, status,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'membership_admin', '${ORGANIZATION_ID}', 'profile_admin',
+      'admin@example.com', 'administrator', 'active',
+      'profile_owner', 1, 1
+    );
+  `);
+  return trustedIdentityFromSites({
+    email: "admin@example.com",
+    displayName: "Administrator",
+  });
+}
+
+test("Meetup connection state denies a member suspended after the source read", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  database.exec(`
+    INSERT INTO profiles (
+      id, siwc_subject, normalized_email, display_name, status,
+      created_at, updated_at
+    ) VALUES (
+      'profile_reader', 'email:reader@example.test',
+      'reader@example.test', 'Reader', 'active', 2, 2
+    );
+    INSERT INTO organization_memberships (
+      id, organization_id, profile_id, normalized_email, role, status,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'membership_reader', '${ORGANIZATION_ID}', 'profile_reader',
+      'reader@example.test', 'organizer', 'active',
+      'profile_owner', 2, 2
+    );
+  `);
+  await ensureDatabaseInvariantsReady(database);
+  const readerIdentity = trustedIdentityFromSites({
+    displayName: "Reader",
+    email: "reader@example.test",
+  });
+  const intercepted = interceptD1Statements(database, {
+    after: (sql) =>
+      sql.includes("FROM sync_sources") &&
+      sql.includes("source_type = ?"),
+    before: (sql) =>
+      sql.includes("SELECT membership.id AS membership_id") &&
+      sql.includes("membership.organization_id = ?"),
+    hook: async () => {
+      database.exec(`
+        UPDATE profiles
+        SET status = 'suspended', updated_at = updated_at + 1
+        WHERE id = 'profile_reader'
+      `);
+    },
+  });
+
+  await assert.rejects(
+    getMeetupConnectionState(
+      intercepted.database,
+      readerIdentity,
+    ),
+    (error) => error instanceof OrganizerAccessDeniedError,
+  );
+  assert.equal(intercepted.fired(), true);
+});
 
 function meetupEvent({
   description = "PRIVATE_DESCRIPTION_SENTINEL",
@@ -604,27 +680,7 @@ test("connection commit rejects an archived club without persisting a source, fe
 test("connection commit revalidates an active Owner or Administrator actor", async (t) => {
   const database = createDatabase({ clubs: ["club_a"] });
   t.after(() => database.close());
-  database.exec(`
-    INSERT INTO profiles (
-      id, siwc_subject, normalized_email, display_name, status,
-      created_at, updated_at
-    ) VALUES (
-      'profile_admin', 'email:admin@example.com', 'admin@example.com',
-      'Administrator', 'active', 1, 1
-    );
-    INSERT INTO organization_memberships (
-      id, organization_id, profile_id, normalized_email, role, status,
-      created_by_profile_id, created_at, updated_at
-    ) VALUES (
-      'membership_admin', '${ORGANIZATION_ID}', 'profile_admin',
-      'admin@example.com', 'administrator', 'active',
-      'profile_owner', 1, 1
-    );
-  `);
-  const administrator = trustedIdentityFromSites({
-    email: "admin@example.com",
-    displayName: "Administrator",
-  });
+  const administrator = seedMeetupAdministrator(database);
   let raced = false;
   const racingDatabase = {
     prepare(sql) {
@@ -668,6 +724,101 @@ test("connection commit revalidates an active Owner or Administrator actor", asy
       .first("count"),
     0,
   );
+});
+
+test("connection configuration seals the exact allowed role for no-op and commit races", async (t) => {
+  await t.test("same-source no-op rejects an allowed-role drift", async (t) => {
+    const database = createDatabase({ clubs: ["club_a"] });
+    t.after(() => database.close());
+    const administrator = seedMeetupAdministrator(database);
+    await configure(database, "club_a", FEED_A, 1_000);
+    const intercepted = interceptD1Statements(database, {
+      after: (sql) =>
+        sql.includes("SELECT id, club_id") &&
+        sql.includes("FROM sync_sources"),
+      before: (sql) =>
+        sql.includes("SELECT id, organization_id, club_id") &&
+        sql.includes("FROM sync_sources"),
+      hook: async () => {
+        database.exec(`
+          UPDATE organization_memberships
+          SET role = 'owner', updated_at = updated_at + 1
+          WHERE id = 'membership_admin'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      configureMeetupCalendarSource(
+        intercepted.database,
+        administrator,
+        { clubId: "club_a", feedUrl: FEED_A },
+        2_000,
+      ),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+    assert.equal(
+      await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM audit_logs
+           WHERE action = 'meetup.connection_configured'`,
+        )
+        .first("count"),
+      1,
+    );
+  });
+
+  await t.test("new-source commit rejects an allowed-role drift", async (t) => {
+    const database = createDatabase({ clubs: ["club_a"] });
+    t.after(() => database.close());
+    const administrator = seedMeetupAdministrator(database);
+    let raced = false;
+    const racingDatabase = {
+      prepare(sql) {
+        return database.prepare(sql);
+      },
+      async batch(statements) {
+        if (!raced) {
+          raced = true;
+          database.exec(`
+            UPDATE organization_memberships
+            SET role = 'owner', updated_at = updated_at + 1
+            WHERE id = 'membership_admin'
+          `);
+        }
+        return database.batch(statements);
+      },
+    };
+
+    await assert.rejects(
+      configureMeetupCalendarSource(
+        racingDatabase,
+        administrator,
+        { clubId: "club_a", feedUrl: FEED_A },
+        1_000,
+      ),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(raced, true);
+    assert.equal(
+      await database
+        .prepare("SELECT count(*) AS count FROM sync_sources")
+        .first("count"),
+      0,
+    );
+    assert.equal(
+      await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM audit_logs
+           WHERE action = 'meetup.connection_configured'`,
+        )
+        .first("count"),
+      0,
+    );
+  });
 });
 
 test("resolves the exact safe Meetup program catalog from an empty organization", async (t) => {
@@ -1124,12 +1275,88 @@ test("imported description and location remain absent from persistence and publi
   assert.equal(serializedPublic.includes(location), false);
 });
 
-test("a three-event refresh stays within the per-invocation D1 query budget", async (t) => {
+test("manual Meetup refresh seals the exact initiating manager across reads and network latency", async (t) => {
+  const body = calendar(
+    meetupEvent({
+      uid: "manual-race@meetup.com",
+      eventId: "manual-race",
+      title: "Manual race fixture",
+    }),
+  );
+
+  await t.test("allowed-role drift before the lease leaves no refresh residue", async (t) => {
+    const database = createDatabase();
+    t.after(() => database.close());
+    const administrator = seedMeetupAdministrator(database);
+    await configure(database, "club_a", FEED_A, 1_000);
+    const intercepted = interceptD1Statements(database, {
+      after: (sql) =>
+        sql.includes("FROM sync_sources") &&
+        sql.includes("ORDER BY created_at ASC, id ASC"),
+      before: (sql) =>
+        sql.includes("UPDATE sync_sources") &&
+        sql.includes("SET lease_token = ?"),
+      hook: async () => {
+        database.exec(`
+          UPDATE organization_memberships
+          SET role = 'owner', updated_at = updated_at + 1
+          WHERE id = 'membership_admin'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      refreshMeetupCalendarSource(
+        intercepted.database,
+        administrator,
+        {
+          clubId: "club_a",
+          fetcher: sequenceFetcher([body]),
+          nowUtcMs: 2_000,
+          clock: () => 2_000,
+        },
+      ),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+    await assertNoManualRefreshResidue(database);
+  });
+
+  await t.test("allowed-role drift during fetch rolls back the generation and releases the lease", async (t) => {
+    const database = createDatabase();
+    t.after(() => database.close());
+    const administrator = seedMeetupAdministrator(database);
+    await configure(database, "club_a", FEED_A, 1_000);
+    let fetched = false;
+    const fetcher = async () => {
+      fetched = true;
+      database.exec(`
+        UPDATE organization_memberships
+        SET role = 'owner', updated_at = updated_at + 1
+        WHERE id = 'membership_admin'
+      `);
+      return calendarResponse(body);
+    };
+
+    await assert.rejects(
+      refreshMeetupCalendarSource(database, administrator, {
+        clubId: "club_a",
+        fetcher,
+        nowUtcMs: 2_000,
+        clock: () => 2_000,
+      }),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(fetched, true);
+    await assertNoManualRefreshResidue(database);
+  });
+});
+
+test("a three-event manual refresh processes a bounded two-row slice within the D1 query budget", async (t) => {
   const innerDatabase = createDatabase();
   t.after(() => innerDatabase.close());
-  const database = countingDatabase(innerDatabase);
-  await configure(database, "club_a", FEED_A, 1_000);
-  database.reset();
+  await configure(innerDatabase, "club_a", FEED_A, 1_000);
+  const counted = exactCountingDatabase(innerDatabase);
 
   const body = calendar(
     meetupEvent({
@@ -1155,19 +1382,54 @@ test("a three-event refresh stays within the per-invocation D1 query budget", as
     }),
   );
   const result = await refresh(
-    database,
+    counted.binding,
     "club_a",
     sequenceFetcher([body]),
     2_000,
   );
 
-  assert.equal(result.outcome, "completed");
-  assert.equal(result.counts.created, 3);
+  assert.equal(result.outcome, "partial");
+  assert.equal(result.counts.created, 2);
+  const measured = counted.counts();
+  assert.equal(measured.statementCount, 35);
+  assert.deepEqual(measured.batchLengths, [2, 9, 9, 4]);
   assert.ok(
-    database.count() <= 50,
-    `refresh prepared ${database.count()} D1 statements; expected <= 50`,
+    measured.statementCount <= 50,
+    `refresh executed ${measured.statementCount} D1 statements; expected <= 50`,
   );
 });
+
+async function assertNoManualRefreshResidue(database) {
+  const residue = await database
+    .prepare(
+      `SELECT
+         (SELECT count(*) FROM import_batches
+          WHERE source_type = 'meetup_ics') AS batch_count,
+         (SELECT count(*) FROM import_rows) AS row_count,
+         (SELECT count(*) FROM meetup_sync_generations) AS generation_count,
+         (SELECT count(*) FROM meetup_event_snapshots) AS snapshot_count,
+         (SELECT count(*) FROM events) AS event_count,
+         (SELECT count(*) FROM external_source_links
+          WHERE source_type = 'meetup_ics') AS link_count,
+         (SELECT count(*) FROM audit_logs
+          WHERE action LIKE 'meetup.%'
+            AND action <> 'meetup.connection_configured') AS audit_count,
+         (SELECT count(*) FROM sync_sources
+          WHERE lease_token IS NOT NULL
+             OR lease_expires_at IS NOT NULL) AS lease_count`,
+    )
+    .first();
+  assert.deepEqual({ ...residue }, {
+    audit_count: 0,
+    batch_count: 0,
+    event_count: 0,
+    generation_count: 0,
+    lease_count: 0,
+    link_count: 0,
+    row_count: 0,
+    snapshot_count: 0,
+  });
+}
 
 test("Worker refresh-on-view preflight plus a due bounded two-row slice stays within the D1 statement cap", async (t) => {
   const innerDatabase = createDatabase();
@@ -1365,7 +1627,7 @@ test("Worker refresh-on-view conflict and failure paths redirect within the D1 s
   });
 });
 
-test("three conflict rejections stay within the per-invocation D1 query budget", async (t) => {
+test("three conflict rejections resume across bounded requests within the D1 query budget", async (t) => {
   const innerDatabase = createDatabase();
   t.after(() => innerDatabase.close());
   await ensureDatabaseInvariantsReady(innerDatabase);
@@ -1397,19 +1659,35 @@ test("three conflict rejections stay within the per-invocation D1 query budget",
       }),
     ),
   );
-  const result = await refresh(
+  const fetcher = sequenceFetcher([body, body]);
+  const partial = await refresh(
     database,
     "club_a",
-    sequenceFetcher([body]),
+    fetcher,
     2_000,
   );
-
-  assert.equal(result.outcome, "completed");
-  assert.equal(result.counts.created, 0);
-  assert.equal(result.counts.rejected, 3);
+  const firstRequestCount = database.count();
+  assert.equal(partial.outcome, "partial");
+  assert.equal(partial.counts.created, 0);
+  assert.equal(partial.counts.rejected, 2);
   assert.ok(
-    database.count() <= 50,
-    `conflict path prepared ${database.count()} D1 statements; expected <= 50`,
+    firstRequestCount <= 50,
+    `first conflict path prepared ${firstRequestCount} D1 statements; expected <= 50`,
+  );
+  database.reset();
+  const completed = await refresh(
+    database,
+    "club_a",
+    fetcher,
+    3_000,
+  );
+  const secondRequestCount = database.count();
+  assert.equal(completed.outcome, "completed");
+  assert.equal(completed.counts.created, 0);
+  assert.equal(completed.counts.rejected, 1);
+  assert.ok(
+    secondRequestCount <= 50,
+    `resumed conflict path prepared ${secondRequestCount} D1 statements; expected <= 50`,
   );
   assert.equal(
     await innerDatabase
@@ -2214,7 +2492,7 @@ test("a conflicting source activation rolls back generation publication and prio
   );
 });
 
-test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => {
+test("resumes a stable feed snapshot in bounded two-row chunks", async (t) => {
   const innerDatabase = createDatabase();
   t.after(() => innerDatabase.close());
   const database = countingDatabase(innerDatabase);
@@ -2262,7 +2540,7 @@ test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => 
   const firstQueryCount = database.count();
   assert.equal(partial.outcome, "partial");
   assert.equal(partial.state.status, "partial");
-  assert.equal(partial.counts.created, 3);
+  assert.equal(partial.counts.created, 2);
   assert.ok(
     firstQueryCount <= 50,
     `first chunk prepared ${firstQueryCount} D1 statements; expected <= 50`,
@@ -2271,7 +2549,7 @@ test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => 
     await innerDatabase
       .prepare(`SELECT count(*) AS count FROM events`)
       .first("count"),
-    3,
+    2,
   );
   const pending = await innerDatabase
     .prepare(
@@ -2283,7 +2561,7 @@ test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => 
     .first();
   assert.equal(pending.active_generation_id, null);
   assert.equal(typeof pending.pending_generation_id, "string");
-  assert.equal(pending.pending_cursor, 3);
+  assert.equal(pending.pending_cursor, 2);
   assert.equal(typeof pending.pending_snapshot_hash, "string");
   assert.equal(pending.pending_snapshot_hash.length, 64);
   assert.equal(pending.last_success_at, null);
@@ -2303,7 +2581,7 @@ test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => 
     {
       state: "staging",
       expected_item_count: 4,
-      processed_item_count: 3,
+      processed_item_count: 2,
       rejected_item_count: 0,
       removed_count: 0,
       published_at: null,
@@ -2329,7 +2607,7 @@ test("resumes a stable feed snapshot in bounded three-row chunks", async (t) => 
   );
   const secondQueryCount = database.count();
   assert.equal(completed.outcome, "completed");
-  assert.equal(completed.counts.created, 1);
+  assert.equal(completed.counts.created, 2);
   assert.ok(
     secondQueryCount <= 50,
     `resume chunk prepared ${secondQueryCount} D1 statements; expected <= 50`,
@@ -2463,7 +2741,7 @@ X-CALENDAR-COLOR:#123456`,
     2_000,
   );
   assert.equal(partial.outcome, "partial");
-  assert.equal(partial.counts.created, 3);
+  assert.equal(partial.counts.created, 2);
   const pending = await database
     .prepare(
       `SELECT active_generation_id, pending_generation_id,
@@ -2475,7 +2753,7 @@ X-CALENDAR-COLOR:#123456`,
   assert.equal(pending.active_generation_id, null);
   assert.equal(typeof pending.pending_generation_id, "string");
   assert.equal(typeof pending.pending_snapshot_hash, "string");
-  assert.equal(pending.pending_cursor, 3);
+  assert.equal(pending.pending_cursor, 2);
   assert.equal(
     await database
       .prepare(
@@ -2493,7 +2771,7 @@ X-CALENDAR-COLOR:#123456`,
     3_000,
   );
   assert.equal(completed.outcome, "completed");
-  assert.equal(completed.counts.created, 1);
+  assert.equal(completed.counts.created, 2);
   const finished = await database
     .prepare(
       `SELECT active_generation_id, pending_generation_id,
@@ -3098,7 +3376,7 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   );
   assert.equal(partial.outcome, "partial");
   assert.equal(partial.counts.cancelled, 1);
-  assert.equal(partial.counts.created, 1);
+  assert.equal(partial.counts.created, 0);
   assert.equal(partial.counts.updated, 2);
 
   const sourceDuringPartial = await database
@@ -3134,7 +3412,7 @@ test("keeps the last completed generation public when a later chunk fails", asyn
       state: "staging",
       previous_generation_id: sourceAfterPublished.active_generation_id,
       expected_item_count: 4,
-      processed_item_count: 3,
+      processed_item_count: 2,
       rejected_item_count: 0,
       removed_count: 0,
       published_at: null,
@@ -3239,7 +3517,7 @@ test("keeps the last completed generation public when a later chunk fails", asyn
       state: "staging",
       previous_generation_id: sourceAfterPublished.active_generation_id,
       expected_item_count: 4,
-      processed_item_count: 3,
+      processed_item_count: 2,
       rejected_item_count: 0,
       removed_count: 0,
       published_at: null,
@@ -3385,14 +3663,26 @@ test("reconciles disappeared future events only after source-scoped finalization
     start: "20280606T030000Z",
     end: "20280606T040000Z",
   });
+  const initialAFetcher = sequenceFetcher([
+    calendar(keepEvent, missingEvent, secondMissingEvent),
+    calendar(keepEvent, missingEvent, secondMissingEvent),
+  ]);
+  const initialAPartial = await refresh(
+    database,
+    "club_a",
+    initialAFetcher,
+    2_000,
+  );
+  assert.equal(initialAPartial.outcome, "partial");
+  assert.equal(initialAPartial.counts.created, 2);
   const initialA = await refresh(
     database,
     "club_a",
-    sequenceFetcher([calendar(keepEvent, missingEvent, secondMissingEvent)]),
-    2_000,
+    initialAFetcher,
+    2_001,
   );
   assert.equal(initialA.outcome, "completed");
-  assert.equal(initialA.counts.created, 3);
+  assert.equal(initialA.counts.created, 1);
 
   const sourceBEvent = meetupEvent({
     uid: "other-source@meetup.com",
@@ -3551,7 +3841,7 @@ test("reconciles disappeared future events only after source-scoped finalization
       state: "staging",
       previous_generation_id: sourceBeforeDisappearance.active_generation_id,
       expected_item_count: 4,
-      processed_item_count: 3,
+      processed_item_count: 2,
       removed_count: 0,
     },
   );
@@ -3588,7 +3878,7 @@ test("reconciles disappeared future events only after source-scoped finalization
     {
       status: "draft",
       visibility: "public",
-      published_at: 2_000,
+      published_at: 2_001,
       deleted_at: null,
     },
     "an incomplete cursor must not reconcile any missing UID",
@@ -3761,6 +4051,7 @@ test("reconciles disappeared future events only after source-scoped finalization
   const reappearanceFetcher = sequenceFetcher([
     completedSnapshotWithReappearance,
     completedSnapshotWithReappearance,
+    completedSnapshotWithReappearance,
   ]);
 
   const reappearancePartial = await refresh(
@@ -3785,11 +4076,20 @@ test("reconciles disappeared future events only after source-scoped finalization
     false,
   );
 
-  const reappearanceCompleted = await refresh(
+  const reappearanceStillPartial = await refresh(
     database,
     "club_a",
     reappearanceFetcher,
     6_000,
+  );
+  assert.equal(reappearanceStillPartial.outcome, "partial");
+  assert.equal(reappearanceStillPartial.counts.removed, 0);
+
+  const reappearanceCompleted = await refresh(
+    database,
+    "club_a",
+    reappearanceFetcher,
+    7_000,
   );
   assert.equal(reappearanceCompleted.outcome, "completed");
   assert.equal(reappearanceCompleted.counts.removed, 0);
@@ -3798,7 +4098,7 @@ test("reconciles disappeared future events only after source-scoped finalization
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
     todayDate: "2026-01-01",
-    nowUtcMs: 6_001,
+    nowUtcMs: 7_001,
   });
   assert.equal(
     publicAfterReappearance.events.some(

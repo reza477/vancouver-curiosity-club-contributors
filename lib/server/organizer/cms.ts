@@ -1,5 +1,7 @@
 import {
+  OrganizerAccessDeniedError,
   authorizeMembership,
+  revalidateAuthorizedMembership,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type D1PreparedStatementLike,
@@ -359,11 +361,41 @@ export async function listCmsEntities(
         AND published.organization_id = state.organization_id
         AND published.publication_state_id = state.id
        WHERE state.organization_id = ?
+         AND EXISTS (
+           SELECT 1
+           FROM organization_memberships AS membership
+           JOIN profiles AS profile
+             ON profile.id = membership.profile_id
+            AND profile.normalized_email = ?
+            AND profile.status = 'active'
+            AND profile.deleted_at IS NULL
+           JOIN organizations AS organization
+             ON organization.id = membership.organization_id
+            AND organization.deleted_at IS NULL
+           WHERE membership.id = ?
+             AND membership.organization_id = state.organization_id
+             AND membership.profile_id = ?
+             AND membership.role = ?
+             AND membership.normalized_email = ?
+             AND membership.status = 'active'
+             AND membership.deleted_at IS NULL
+         )
        ORDER BY state.entity_type ASC, state.updated_at DESC, state.entity_key ASC
        LIMIT ?`,
     )
-    .bind(actor.organizationId, CMS_ENTITY_LIMIT)
+    .bind(
+      actor.organizationId,
+      identity.email,
+      actor.membershipId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+      CMS_ENTITY_LIMIT,
+    )
     .all<Record<string, unknown>>();
+  if ((result.results ?? []).length === 0) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
   return Object.freeze(
     (result.results ?? []).map((row) => entitySummary(row)),
   );
@@ -421,14 +453,16 @@ export async function readCmsEntityWorkspace(
     actor,
     state,
   );
+  const permissions = await cmsWorkspacePermissions(
+    database,
+    actor,
+    state,
+    revision?.snapshot ?? null,
+  );
+  await sealCmsReadActor(database, identity, actor);
   return Object.freeze({
     entity: entitySummary(row),
-    permissions: await cmsWorkspacePermissions(
-      database,
-      actor,
-      state,
-      revision?.snapshot ?? null,
-    ),
+    permissions,
     revision: revision
       ? Object.freeze({
           contentHash: revision.contentHash,
@@ -595,6 +629,7 @@ export async function readCmsRevisionPreview(
       actor.organizationId,
     );
   }
+  await sealCmsReadActor(database, identity, actor);
   return Object.freeze({
     clubRelatedResources,
     communityLinkOrder,
@@ -6878,6 +6913,16 @@ async function authorizeCmsActor(
   identity: TrustedServerIdentity,
 ): Promise<AuthorizedMembership> {
   return authorizeMembership(database, identity, {
+    allowedRoles: ["owner", "administrator"],
+  });
+}
+
+async function sealCmsReadActor(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  expected: AuthorizedMembership,
+): Promise<void> {
+  await revalidateAuthorizedMembership(database, identity, expected, {
     allowedRoles: ["owner", "administrator"],
   });
 }

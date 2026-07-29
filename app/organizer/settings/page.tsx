@@ -16,6 +16,7 @@ import {
 import { TaxonomySettingsPanel } from "@/app/_organizer/TaxonomySettingsPanel";
 import type { CmsMediaOption } from "@/app/_organizer/ClubContentEditor";
 import styles from "@/app/_organizer/workspace.module.css";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import { listMediaAssets } from "@/lib/server/media/storage";
 import { listActivityHistory } from "@/lib/server/organizer/activity";
 import { readCmsEntityWorkspace } from "@/lib/server/organizer/cms";
@@ -29,19 +30,27 @@ export default async function OrganizerSettingsPage() {
   const loaded = await loadOrganizerPageContext("/organizer/settings");
   enforceOrganizerPageAccess(loaded);
   if (loaded.kind !== "granted") return <AccessChanged />;
+  const canManage =
+    loaded.context.membership.role === "owner" ||
+    loaded.context.membership.role === "administrator";
   let data:
     | Readonly<{
-        activity: Awaited<ReturnType<typeof listActivityHistory>>;
+        activity: Awaited<ReturnType<typeof listActivityHistory>> | null;
         settings: Awaited<ReturnType<typeof getWorkspaceSettings>>;
       }>
     | null = null;
   try {
-    const [settings, activity] = await Promise.all([
-      getWorkspaceSettings(loaded.context.database, loaded.context.identity),
-      listActivityHistory(loaded.context.database, loaded.context.identity, {
-        limit: 40,
-      }),
-    ]);
+    const settings = await getWorkspaceSettings(
+      loaded.context.database,
+      loaded.context.identity,
+    );
+    const activity = canManage
+      ? await listActivityHistory(
+          loaded.context.database,
+          loaded.context.identity,
+          { limit: 40 },
+        )
+      : null;
     data = { activity, settings };
   } catch {
     writeSafeLog("error", "organizer_page_failed", {
@@ -66,9 +75,6 @@ export default async function OrganizerSettingsPage() {
       </>
     );
   }
-  const canManage =
-    loaded.context.membership.role === "owner" ||
-    loaded.context.membership.role === "administrator";
   let phase6:
     | Readonly<{
         legal: Awaited<ReturnType<typeof readCmsEntityWorkspace>>;
@@ -128,6 +134,15 @@ export default async function OrganizerSettingsPage() {
       });
     }
   }
+  try {
+    await revalidateAuthorizedMembership(
+      loaded.context.database,
+      loaded.context.identity,
+      loaded.context.membership,
+    );
+  } catch {
+    return <AccessChanged />;
+  }
   return (
     <>
       <PageHeader
@@ -161,7 +176,7 @@ export default async function OrganizerSettingsPage() {
           tone="error"
         />
       ) : null}
-      <ActivityFeed items={data.activity} />
+      {data.activity ? <ActivityFeed items={data.activity} /> : null}
     </>
   );
 }

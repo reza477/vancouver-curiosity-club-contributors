@@ -49,6 +49,8 @@
 
 .panel,
 .editorPanel {
+  min-width: 0;
+  max-width: 100%;
   padding: clamp(1rem, 3vw, 1.75rem);
 }
 
@@ -164,6 +166,7 @@
 .blockList,
 .noticeStack {
   display: grid;
+  min-width: 0;
   gap: 1rem;
 }
 
@@ -221,7 +224,9 @@
 
 .checkboxField {
   grid-template-columns: auto 1fr;
-  align-items: start;
+  align-items: center;
+  min-block-size: 2.75rem;
+  padding-block: 0.35rem;
 }
 
 .checkboxField input {
@@ -255,9 +260,18 @@
 }
 
 .uploadDrop {
+  min-width: 0;
   padding: 1.25rem;
   border: 1px dashed rgba(7, 27, 49, 0.55);
   background: #f7f2e7;
+  overflow-wrap: anywhere;
+}
+
+.uploadDrop input[type="file"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
 }
 
 .previewBanner {

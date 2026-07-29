@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  revalidateAuthorizedMembership,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type D1PreparedStatementLike,
@@ -442,6 +443,9 @@ export async function listSubmissionAssignees(
     )
     .bind(actor.organizationId)
     .all<Record<string, unknown>>();
+  await revalidateAuthorizedMembership(database, identity, actor, {
+    allowedRoles: ["owner", "administrator"],
+  });
   return Object.freeze(
     (result.results ?? []).flatMap((row) => {
       const profileId = stringValue(row.profile_id);

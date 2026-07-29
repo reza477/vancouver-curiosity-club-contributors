@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  isPrivateCalendarSubscriptionPath,
+  isPrivateOrIdentityPath,
   isCanonicalTrustedRequestPathname,
   MAX_TRUSTED_REQUEST_PATHNAME_LENGTH,
   normalizeEncodedRequestPathname,
+  safeRequestPathname,
 } from "../../lib/request-pathname.ts";
 
 test("request pathname normalization uses one strict canonical trust contract", () => {
@@ -65,4 +68,45 @@ test("trusted path headers accept only the canonical normalized representation",
   ]) {
     assert.equal(isCanonicalTrustedRequestPathname(value), false);
   }
+});
+
+test("one canonical classifier protects every private and identity namespace", () => {
+  for (const pathname of [
+    "/_sites-preview",
+    "/_sites-preview/session",
+    "/accept-invitation",
+    "/accept-invitation/consume",
+    "/api",
+    "/api/forms/instance",
+    "/auth",
+    "/auth/callback",
+    "/callback",
+    "/drafts/example",
+    "/invitations/example",
+    "/organizer",
+    "/organizer/events",
+    "/preview/example",
+    "/signin-with-chatgpt",
+    "/signout-with-chatgpt",
+  ]) {
+    assert.equal(isPrivateOrIdentityPath(pathname), true, pathname);
+  }
+  for (const pathname of [
+    "/",
+    "/apiary",
+    "/calendar",
+    "/events",
+    "/organizers",
+    "/previewing",
+  ]) {
+    assert.equal(isPrivateOrIdentityPath(pathname), false, pathname);
+  }
+
+  const rawFeedPath = `/api/calendar/private/${"T".repeat(43)}`;
+  assert.equal(isPrivateCalendarSubscriptionPath(rawFeedPath), true);
+  assert.equal(
+    safeRequestPathname(rawFeedPath),
+    "/api/calendar/private/[token]",
+  );
+  assert.equal(safeRequestPathname("/organizer/events"), "/organizer/events");
 });

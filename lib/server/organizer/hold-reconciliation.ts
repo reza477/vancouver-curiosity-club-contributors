@@ -7,7 +7,12 @@ import { SafeApplicationError } from "../../validation/server-observability";
 import { getOrganizerConflictPolicy } from "./conflict-policy";
 import { currentD1Time } from "./conflicts";
 
-const MAX_HOLD_NOTICE_RECIPIENTS_PER_RECONCILIATION = 20;
+// Each notice is an atomic notification + receipt pair. Calendar pages perform
+// this maintenance inside an invocation that also carries two organizer
+// context loads and the bounded three-source calendar scan. One recipient per
+// request preserves deterministic headroom below D1's 50-statement ceiling;
+// later requests converge through the durable receipt key.
+const MAX_HOLD_NOTICE_RECIPIENTS_PER_RECONCILIATION = 1;
 
 type DueHoldNotice = Readonly<{
   eventId: string;

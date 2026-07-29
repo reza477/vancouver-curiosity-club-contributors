@@ -32,7 +32,7 @@ export function EventFilters({
 }>) {
   return (
     <section className="event-filters" aria-labelledby="event-filter-heading">
-      <div className="event-view-tabs" aria-label="Event timeframe">
+      <nav className="event-view-tabs" aria-label="Event timeframe">
         <Link
           aria-current={values.state === "upcoming" ? "page" : undefined}
           href={stateHref(values, "upcoming")}
@@ -45,7 +45,7 @@ export function EventFilters({
         >
           Past
         </Link>
-      </div>
+      </nav>
 
       <form action="/events" key={filterFormKey(values)} method="get">
         <input type="hidden" name="state" value={values.state} />

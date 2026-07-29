@@ -6,6 +6,7 @@ import {
 } from "@/app/_organizer/access";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
 import { PublicPreviewShell } from "@/app/_organizer/PublicPreviewShell";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import { readCmsRevisionPreview } from "@/lib/server/organizer/cms";
 import type {
   CmsClubProfileSnapshot,
@@ -83,6 +84,12 @@ export default async function OrganizerContentRevisionPreview(
               preview.snapshot as CmsProgramProfileSnapshot,
             )
           : null;
+      await revalidateAuthorizedMembership(
+        loaded.context.database,
+        loaded.context.identity,
+        loaded.context.membership,
+        { allowedRoles: ["owner", "administrator"] },
+      );
       previewData = Object.freeze({
         catalog,
         clubLane,

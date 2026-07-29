@@ -464,6 +464,7 @@ test("the built public root is indexable and carries the production security con
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const policy = response.headers.get("content-security-policy") ?? "";
+  assert.match(policy, /base-uri 'none'/u);
   assert.match(policy, /frame-ancestors 'none'/u);
   assert.match(policy, /script-src [^;]*'strict-dynamic'/u);
   assert.match(policy, /script-src-attr 'none'/u);
@@ -473,9 +474,25 @@ test("the built public root is indexable and carries the production security con
   assert.ok(nonceMatch, "production CSP must contain a per-request nonce");
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("x-frame-options"), "DENY");
-  assert.match(
-    response.headers.get("strict-transport-security") ?? "",
-    /max-age=31536000/u,
+  assert.equal(
+    response.headers.get("cross-origin-opener-policy"),
+    "same-origin-allow-popups",
+  );
+  assert.equal(
+    response.headers.get("cross-origin-resource-policy"),
+    "same-origin",
+  );
+  assert.equal(
+    response.headers.get("permissions-policy"),
+    "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+  );
+  assert.equal(
+    response.headers.get("referrer-policy"),
+    "strict-origin-when-cross-origin",
+  );
+  assert.equal(
+    response.headers.get("strict-transport-security"),
+    "max-age=31536000; includeSubDomains",
   );
   assert.equal(response.headers.get("x-robots-tag"), null);
 
@@ -627,6 +644,10 @@ test("the built public root is indexable and carries the production security con
     headers: {
       "content-security-policy": "script-src 'nonce-attacker'",
       "content-security-policy-report-only": "script-src 'none'",
+      forwarded: "host=attacker.example;proto=http",
+      "x-forwarded-host": "attacker.example",
+      "x-forwarded-proto": "http",
+      "x-vcc-csp-nonce": "AAAAAAAAAAAAAAAAAAAAAA",
       "x-vcc-request-origin": "https://attacker.example",
       "x-vcc-request-pathname": "/attacker-controlled-path",
     },
@@ -637,12 +658,14 @@ test("the built public root is indexable and carries the production security con
   assert.ok(secondNonce);
   assert.notEqual(secondNonce, nonceMatch[1]);
   assert.doesNotMatch(secondPolicy, /attacker/u);
+  assert.doesNotMatch(secondPolicy, /AAAAAAAAAAAAAAAAAAAAAA/u);
   assert.equal(
     secondResponse.headers.get("content-security-policy-report-only"),
     null,
   );
   const secondHtml = await secondResponse.text();
   assert.doesNotMatch(secondHtml, /https:\/\/attacker\.example/u);
+  assert.doesNotMatch(secondHtml, /nonce="AAAAAAAAAAAAAAAAAAAAAA"/u);
   assert.match(secondHtml, /https:\/\/preview\.example\/og\.png/u);
 });
 
@@ -1032,6 +1055,16 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
     assert.equal(existing.status, guessed.status, existingPath);
     assertOrganizerPrivateResponse(existing);
     assertOrganizerPrivateResponse(guessed);
+    assert.equal(
+      existing.headers.get("referrer-policy"),
+      "no-referrer",
+      existingPath,
+    );
+    assert.equal(
+      guessed.headers.get("referrer-policy"),
+      "no-referrer",
+      guessedPath,
+    );
     assert.equal(
       existing.headers.get("cache-control"),
       guessed.headers.get("cache-control"),
@@ -1770,6 +1803,33 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
     "https://schema.org/EventScheduled",
   );
 
+  for (const downloadPath of [
+    `${detailPath}/calendar.ics`,
+    "/events/calendar.ics",
+    "/events/calendar.ics?state=upcoming",
+    "/events/events.csv",
+    "/events/events.csv?state=upcoming",
+  ]) {
+    const downloadResponse = await fetchPath(downloadPath);
+    assert.equal(downloadResponse.status, 200, downloadPath);
+    assert.equal(
+      downloadResponse.headers.get("x-robots-tag"),
+      "noindex, nofollow, noarchive",
+      downloadPath,
+    );
+    assert.equal(
+      downloadResponse.headers.get("referrer-policy"),
+      "strict-origin-when-cross-origin",
+      downloadPath,
+    );
+    assert.match(
+      downloadResponse.headers.get("cache-control") ?? "",
+      /public,\s*max-age=0,\s*must-revalidate/iu,
+      downloadPath,
+    );
+    await downloadResponse.arrayBuffer();
+  }
+
   const clubResponse = await fetchPath(
     "/clubs/vancouver-curiosity-club",
   );
@@ -2152,6 +2212,19 @@ test("signed-out private API responses are safe, private, and noindexed", async 
     response.headers.get("x-robots-tag"),
     "noindex, nofollow, noarchive",
   );
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(
+    response.headers.get("cross-origin-opener-policy"),
+    "same-origin-allow-popups",
+  );
+  assert.equal(
+    response.headers.get("cross-origin-resource-policy"),
+    "same-origin",
+  );
+  assert.equal(
+    response.headers.get("permissions-policy"),
+    "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+  );
   assert.deepEqual(await response.json(), {
     error: {
       code: "authentication_required",
@@ -2208,6 +2281,28 @@ test("percent-encoded private paths use one canonical security classification", 
     invitation.headers.get("location") ?? "",
     new RegExp(INVITATION_TOKEN, "u"),
   );
+
+  for (const path of [
+    "/_sites-preview",
+    "/auth/unknown",
+    "/callback",
+    "/drafts/unknown",
+    "/invitations/unknown",
+    "/preview/unknown",
+    "/signin-with-chatgpt/unknown",
+    "/signout-with-chatgpt/unknown",
+  ]) {
+    const response = await fetchPath(path, { redirect: "manual" });
+    assert.ok(
+      [200, 302, 303, 307, 400, 401, 403, 404].includes(response.status),
+      `${path} returned ${response.status}`,
+    );
+    assertOrganizerPrivateResponse(response);
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+    const body = await response.text();
+    assert.doesNotMatch(body, /aria-label="Primary navigation"/u, path);
+    assert.doesNotMatch(body, /aria-label="Footer navigation"/u, path);
+  }
 
   for (const path of [
     "/organizer%2fevents",

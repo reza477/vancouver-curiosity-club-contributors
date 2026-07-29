@@ -7,6 +7,7 @@ import {
   getRuntimeMediaBucket,
   getRuntimeMediaDecodeProbe,
 } from "@/lib/server/media/runtime";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import { readMediaUploadRequest } from "@/lib/server/media/multipart";
 import {
   organizerApiError,
@@ -18,14 +19,19 @@ export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
   try {
-    const { database, identity } = await requireOrganizerApiActor([
+    const { database, identity, membership } =
+      await requireOrganizerApiActor([
       "owner",
       "administrator",
     ]);
-    const [assets, cleanupPending] = await Promise.all([
-      listMediaAssets(database, identity),
-      listPendingMediaCleanups(database, identity),
-    ]);
+    const cleanupPending = await listPendingMediaCleanups(database, identity);
+    const assets = await listMediaAssets(database, identity);
+    await revalidateAuthorizedMembership(
+      database,
+      identity,
+      membership,
+      { allowedRoles: ["owner", "administrator"] },
+    );
     return privateOrganizerJson({ assets, cleanupPending });
   } catch (error) {
     return organizerApiError(

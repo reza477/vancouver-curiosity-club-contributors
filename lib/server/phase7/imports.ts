@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  revalidateAuthorizedMembership,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type D1PreparedStatementLike,
@@ -875,7 +876,12 @@ export async function createCsvImportPreview(
       mappingAuditIndex,
     ],
   });
-  return readCsvImportBatchForActor(database, actor, batchId);
+  return readCsvImportBatchForActor(
+    database,
+    identity,
+    actor,
+    batchId,
+  );
 }
 
 export async function approveCsvImportBatch(
@@ -1237,7 +1243,12 @@ export async function approveCsvImportBatch(
     now,
     completesWithoutApplication ? "completed" : "approved",
   );
-  return readCsvImportBatchForActor(database, actor, batchId);
+  return readCsvImportBatchForActor(
+    database,
+    identity,
+    actor,
+    batchId,
+  );
 }
 
 export async function listCsvImportBatches(
@@ -1316,6 +1327,9 @@ export async function listCsvImportBatches(
     .slice(0, parsedQuery.limit)
     .map(readImportBatchSummary);
   const last = items.at(-1) ?? null;
+  await revalidateAuthorizedMembership(database, identity, actor, {
+    allowedRoles: ["owner", "administrator"],
+  });
   return Object.freeze({
     hasMore,
     items: Object.freeze(items),
@@ -1453,11 +1467,18 @@ export async function getCsvImportBatch(
     allowedRoles: ["owner", "administrator"],
   });
   const batchId = parseIdentifier(batchIdValue, "batchId");
-  return readCsvImportBatchForActor(database, actor, batchId, query);
+  return readCsvImportBatchForActor(
+    database,
+    identity,
+    actor,
+    batchId,
+    query,
+  );
 }
 
 async function readCsvImportBatchForActor(
   database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
   actor: AuthorizedMembership,
   batchId: string,
   query: CsvImportBatchRowsQuery = {},
@@ -1591,6 +1612,9 @@ async function readCsvImportBatchForActor(
     readImportPreviewRow(row, conflictPolicyMode),
   );
   const lastRow = rows.at(-1) ?? null;
+  await revalidateAuthorizedMembership(database, identity, actor, {
+    allowedRoles: ["owner", "administrator"],
+  });
   return Object.freeze({
     batch: summary,
     conflictPolicyMode,
@@ -1809,7 +1833,12 @@ export async function redactCsvImportSourcePayload(
   ) {
     throw staleImport();
   }
-  return readCsvImportBatchForActor(database, actor, batchId);
+  return readCsvImportBatchForActor(
+    database,
+    identity,
+    actor,
+    batchId,
+  );
 }
 
 export async function applyNextCsvImportRow(
@@ -1838,6 +1867,7 @@ export async function applyNextCsvImportRow(
     return Object.freeze({
       batch: await readCsvImportBatchForActor(
         database,
+        identity,
         actor,
         batchId,
       ),
@@ -1865,6 +1895,7 @@ export async function applyNextCsvImportRow(
     return Object.freeze({
       batch: await readCsvImportBatchForActor(
         database,
+        identity,
         actor,
         batchId,
       ),
@@ -2021,6 +2052,7 @@ export async function applyNextCsvImportRow(
     return Object.freeze({
       batch: await readCsvImportBatchForActor(
         database,
+        identity,
         actor,
         batchId,
       ),
@@ -2065,6 +2097,7 @@ export async function applyNextCsvImportRow(
     return Object.freeze({
       batch: await readCsvImportBatchForActor(
         database,
+        identity,
         actor,
         batchId,
       ),
@@ -2094,6 +2127,7 @@ export async function applyNextCsvImportRow(
     return Object.freeze({
       batch: await readCsvImportBatchForActor(
         database,
+        identity,
         actor,
         batchId,
       ),

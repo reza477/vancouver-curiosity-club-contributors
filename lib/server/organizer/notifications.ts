@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  revalidateAuthorizedMembership,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type D1PreparedStatementLike,
@@ -201,12 +202,14 @@ export async function listNotifications(
   const hasMore = decoded.length > limit;
   const notifications = decoded.slice(0, limit);
   const last = notifications.at(-1);
+  const unreadCount = await getUnreadNotificationCount(database, actor);
+  await revalidateAuthorizedMembership(database, identity, actor);
 
   return Object.freeze({
     notifications: Object.freeze(notifications),
     nextCursor:
       hasMore && last ? `${last.createdAt}.${last.id}` : null,
-    unreadCount: await getUnreadNotificationCount(database, actor),
+    unreadCount,
   });
 }
 
@@ -252,16 +255,42 @@ export async function setNotificationReadState(
        WHERE id = ?
          AND organization_id = ?
          AND recipient_profile_id = ?
-         AND deleted_at IS NULL`,
+         AND deleted_at IS NULL
+         AND EXISTS (
+           SELECT 1
+           FROM organization_memberships AS current_membership
+           JOIN profiles AS current_profile
+             ON current_profile.id = current_membership.profile_id
+           JOIN organizations AS current_organization
+             ON current_organization.id = current_membership.organization_id
+           WHERE current_membership.id = ?
+             AND current_membership.organization_id = ?
+             AND current_membership.profile_id = ?
+             AND current_membership.role = ?
+             AND current_membership.normalized_email = ?
+             AND current_profile.normalized_email = ?
+             AND current_membership.status = 'active'
+             AND current_profile.status = 'active'
+             AND current_membership.deleted_at IS NULL
+             AND current_profile.deleted_at IS NULL
+             AND current_organization.deleted_at IS NULL
+         )`,
     )
     .bind(
       read ? now : null,
       notificationId,
       actor.organizationId,
       actor.profileId,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+      identity.email,
     )
     .run();
   if (changes(result) !== 1) throw privateNotFound();
+  await revalidateAuthorizedMembership(database, identity, actor);
   return Object.freeze({ id: notificationId, read });
 }
 
@@ -282,10 +311,40 @@ export async function markAllNotificationsRead(
        WHERE organization_id = ?
          AND recipient_profile_id = ?
          AND read_at IS NULL
-         AND deleted_at IS NULL`,
+         AND deleted_at IS NULL
+         AND EXISTS (
+           SELECT 1
+           FROM organization_memberships AS current_membership
+           JOIN profiles AS current_profile
+             ON current_profile.id = current_membership.profile_id
+           JOIN organizations AS current_organization
+             ON current_organization.id = current_membership.organization_id
+           WHERE current_membership.id = ?
+             AND current_membership.organization_id = ?
+             AND current_membership.profile_id = ?
+             AND current_membership.role = ?
+             AND current_membership.normalized_email = ?
+             AND current_profile.normalized_email = ?
+             AND current_membership.status = 'active'
+             AND current_profile.status = 'active'
+             AND current_membership.deleted_at IS NULL
+             AND current_profile.deleted_at IS NULL
+             AND current_organization.deleted_at IS NULL
+         )`,
     )
-    .bind(now, actor.organizationId, actor.profileId)
+    .bind(
+      now,
+      actor.organizationId,
+      actor.profileId,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+      identity.email,
+    )
     .run();
+  await revalidateAuthorizedMembership(database, identity, actor);
   return Object.freeze({ markedRead: changes(result) });
 }
 
@@ -315,7 +374,19 @@ export async function updateNotificationPreferenceMode(
          )
          SELECT profile.id, ?, NULL, NULL, NULL, ?, ?, ?
          FROM profiles AS profile
+         JOIN organization_memberships AS current_membership
+           ON current_membership.id = ?
+          AND current_membership.organization_id = ?
+          AND current_membership.profile_id = profile.id
+          AND current_membership.role = ?
+          AND current_membership.normalized_email = ?
+          AND current_membership.status = 'active'
+          AND current_membership.deleted_at IS NULL
+         JOIN organizations AS current_organization
+           ON current_organization.id = current_membership.organization_id
+          AND current_organization.deleted_at IS NULL
          WHERE profile.id = ?
+           AND profile.normalized_email = ?
            AND profile.status = 'active'
            AND profile.deleted_at IS NULL
          ON CONFLICT(profile_id) DO UPDATE SET
@@ -330,7 +401,12 @@ export async function updateNotificationPreferenceMode(
         mode,
         now,
         now,
+        actor.membershipId,
+        actor.organizationId,
+        actor.role,
+        identity.email,
         actor.profileId,
+        identity.email,
       ),
     database
       .prepare(
@@ -346,6 +422,26 @@ export async function updateNotificationPreferenceMode(
              WHERE profile_id = ?
                AND organization_id = ?
                AND notification_preference_mode = ?
+           )
+           AND EXISTS (
+             SELECT 1
+             FROM organization_memberships AS current_membership
+             JOIN profiles AS current_profile
+               ON current_profile.id = current_membership.profile_id
+             JOIN organizations AS current_organization
+               ON current_organization.id =
+                  current_membership.organization_id
+             WHERE current_membership.id = ?
+               AND current_membership.organization_id = ?
+               AND current_membership.profile_id = ?
+               AND current_membership.role = ?
+               AND current_membership.normalized_email = ?
+               AND current_profile.normalized_email = ?
+               AND current_membership.status = 'active'
+               AND current_profile.status = 'active'
+               AND current_membership.deleted_at IS NULL
+               AND current_profile.deleted_at IS NULL
+               AND current_organization.deleted_at IS NULL
            ) THEN 'profile.notification_preference_changed' ELSE NULL END,
            'profile', ?, ?, ?
          )`,
@@ -357,6 +453,12 @@ export async function updateNotificationPreferenceMode(
         actor.profileId,
         actor.organizationId,
         mode,
+        actor.membershipId,
+        actor.organizationId,
+        actor.profileId,
+        actor.role,
+        identity.email,
+        identity.email,
         actor.profileId,
         JSON.stringify({ mode }),
         now,
@@ -369,6 +471,7 @@ export async function updateNotificationPreferenceMode(
       "The notification preference could not be updated.",
     );
   }
+  await revalidateAuthorizedMembership(database, identity, actor);
   return Object.freeze({ mode });
 }
 

@@ -192,19 +192,28 @@ test("social assets are local PNGs with the expected dimensions", async () => {
 });
 
 test("the worker applies a security and noindex header foundation", async () => {
-  const worker = await readFile(new URL("worker/index.ts", projectRoot), "utf8");
+  const [worker, requestPathname] = await Promise.all([
+    readFile(new URL("worker/index.ts", projectRoot), "utf8"),
+    readFile(new URL("lib/request-pathname.ts", projectRoot), "utf8"),
+  ]);
 
   assert.match(worker, /Content-Security-Policy/);
   assert.match(worker, /frame-ancestors 'none'/);
+  assert.match(worker, /base-uri 'none'/);
   assert.match(worker, /object-src 'none'/);
   assert.match(worker, /X-Content-Type-Options/);
   assert.match(worker, /X-Frame-Options/);
   assert.match(worker, /Permissions-Policy/);
   assert.match(worker, /Strict-Transport-Security/);
   assert.match(worker, /X-Robots-Tag/);
-  assert.match(worker, /"\/organizer"/);
-  assert.match(worker, /"\/api"/);
-  assert.match(worker, /pathname\.startsWith\(`\$\{path\}\/`\)/);
+  assert.match(worker, /isPrivateOrIdentityPath/);
+  assert.match(requestPathname, /"\/_sites-preview"/);
+  assert.match(requestPathname, /"\/organizer"/);
+  assert.match(requestPathname, /"\/api"/);
+  assert.match(
+    requestPathname,
+    /pathname\.startsWith\(`\$\{path\}\/`\)/,
+  );
   const invariantInitialization = worker.indexOf(
     "await ensureDatabaseInvariants(env.DB)",
   );

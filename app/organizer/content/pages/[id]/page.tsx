@@ -11,6 +11,7 @@ import {
   type PageEditorSelectionOptions,
 } from "@/app/_organizer/PageContentEditor";
 import { PageHeader } from "@/app/_organizer/PageHeader";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import { listMediaAssets } from "@/lib/server/media/storage";
 import { readCmsEntityWorkspace } from "@/lib/server/organizer/cms";
 import { listPublishedEventSelections } from "@/lib/server/public/events";
@@ -95,6 +96,12 @@ export default async function OrganizerPageEditor(context: RouteContext) {
         .bind(loaded.context.membership.organizationId)
         .all<Record<string, unknown>>(),
     ]);
+    await revalidateAuthorizedMembership(
+      loaded.context.database,
+      loaded.context.identity,
+      loaded.context.membership,
+      { allowedRoles: ["owner", "administrator"] },
+    );
     data = Object.freeze({
       selectionOptions: Object.freeze({
         clubs: selectionRows(clubs.results),

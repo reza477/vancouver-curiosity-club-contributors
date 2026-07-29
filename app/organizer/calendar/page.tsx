@@ -8,6 +8,7 @@ import { loadCalendarWorkspaceData } from "@/app/_organizer/data";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
 import { PageHeader } from "@/app/_organizer/PageHeader";
 import { PrivateCalendarSubscriptionPanel } from "@/app/_organizer/PrivateCalendarSubscriptionPanel";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import { listOwnCalendarSubscriptions } from "@/lib/server/phase7/calendar-subscriptions";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
@@ -34,16 +35,21 @@ export default async function OrganizerCalendarPage({
     | Awaited<ReturnType<typeof listOwnCalendarSubscriptions>>
     | null = null;
   try {
-    [data, subscriptions] = await Promise.all([
-      loadCalendarWorkspaceData(
-        loaded.context,
-        raw.take === undefined ? 500 : raw.take,
-      ),
-      listOwnCalendarSubscriptions(
-        loaded.context.database,
-        loaded.context.identity,
-      ),
-    ]);
+    const currentData = await loadCalendarWorkspaceData(
+      loaded.context,
+      raw.take === undefined ? 500 : raw.take,
+    );
+    const currentSubscriptions = await listOwnCalendarSubscriptions(
+      loaded.context.database,
+      loaded.context.identity,
+    );
+    await revalidateAuthorizedMembership(
+      loaded.context.database,
+      loaded.context.identity,
+      loaded.context.membership,
+    );
+    data = currentData;
+    subscriptions = currentSubscriptions;
   } catch {
     writeSafeLog("error", "organizer_page_failed", {
       code: "internal_error",

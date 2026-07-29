@@ -250,7 +250,10 @@ export function PublicEventDetailRenderer({
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             alt={organizer.photo.altText}
+                            decoding="async"
                             height={organizer.photo.height}
+                            loading="lazy"
+                            sizes="(max-width: 640px) 5rem, 6rem"
                             src={organizer.photo.url}
                             width={organizer.photo.width}
                           />

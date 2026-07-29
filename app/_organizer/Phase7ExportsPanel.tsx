@@ -75,6 +75,7 @@ export function Phase7ExportsPanel({
           </p>
         </header>
         <button
+          className={styles.secondaryButton}
           disabled={busy !== null}
           onClick={() =>
             download(
@@ -105,7 +106,7 @@ export function Phase7ExportsPanel({
                 restore is not automatic.
               </p>
             </header>
-            <label>
+            <label className={styles.exportConfirmation}>
               <span>
                 Type <strong>{BACKUP_CONFIRMATION}</strong>
               </span>
@@ -117,6 +118,7 @@ export function Phase7ExportsPanel({
               />
             </label>
             <button
+              className={styles.primaryButton}
               disabled={
                 busy !== null || confirmation !== BACKUP_CONFIRMATION
               }
@@ -147,6 +149,7 @@ export function Phase7ExportsPanel({
               </p>
             </header>
             <button
+              className={styles.secondaryButton}
               disabled={busy !== null}
               onClick={() =>
                 download(

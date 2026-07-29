@@ -13,11 +13,13 @@ import { PageHeader, StatusPill } from "@/app/_organizer/PageHeader";
 import { WebsitePublicationPanel } from "@/app/_organizer/WebsitePublicationPanel";
 import styles from "@/app/_organizer/workspace.module.css";
 import type { OrganizerCalendarEventDto } from "@/lib/server/organizer/calendar";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import {
   listOrganizerEventConflictSummaries,
   type OrganizerEventConflictSummaryDto,
 } from "@/lib/server/organizer/event-conflicts";
 import {
+  assertCurrentOrganizerEventReadAccess,
   getOrganizerEventRecord,
   listOrganizerEventRevisions,
   type OrganizerEventDto,
@@ -279,6 +281,11 @@ async function loadEventDetailData(
     team.map((member) => [member.profileId, member.displayName]),
   );
   if (!isEditableManualRecord(record)) {
+    await revalidateAuthorizedMembership(
+      context.database,
+      context.identity,
+      context.membership,
+    );
     return Object.freeze({ kind: "read_only", names, record });
   }
   const [conflicts, options, publication, revisions] = await Promise.all([
@@ -296,6 +303,13 @@ async function loadEventDetailData(
       50,
     ),
   ]);
+  await assertCurrentOrganizerEventReadAccess(
+    context.database,
+    context.identity,
+    context.membership,
+    [record.id],
+    true,
+  );
   return Object.freeze({
     conflicts,
     kind: "editable",

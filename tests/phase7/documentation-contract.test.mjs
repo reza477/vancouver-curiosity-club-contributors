@@ -4,14 +4,18 @@ import test from "node:test";
 
 const ROOT = process.cwd();
 
-test("Phase 7 ledger and README state the active phase without invented provenance", () => {
+test("Phase 8 ledger preserves Phase 7 and advances without invented provenance", () => {
   const status = source("BUILD_STATUS.md");
   const readme = source("README.md");
 
-  assert.match(status, /Active phase: Phase 7/u);
+  assert.match(status, /Active phase: Phase 8/u);
   assert.match(status, /Phase 6 is \*\*Completed and verified\*\*/u);
-  assert.match(status, /Phase 8 — Not started/u);
-  assert.doesNotMatch(status, /\*\*Phase 7 — Not started\.\*\*/u);
+  assert.match(
+    status,
+    /Phase 7 implementation[\s\S]*\*\*Completed and verified\*\*/u,
+  );
+  assert.match(status, /Phase 9 [^\r\n]* Not started/u);
+  assert.doesNotMatch(status, /\*\*Phase 8 [^\r\n]* Not started\.\*\*/u);
   assert.match(
     status,
     /Phase 7 saved source commit: (?:\*\*Not run\*\*|`[0-9a-f]{40}`)/u,
@@ -19,6 +23,14 @@ test("Phase 7 ledger and README state the active phase without invented provenan
   assert.match(
     status,
     /New unpublished Phase 7 Sites version: (?:\*\*Not run\*\*|`appgprj_[^`\s]+~appgver_[^`\s]+`)/u,
+  );
+  assert.match(
+    status,
+    /Phase 8 substantive source commit: (?:\*\*Pending final source freeze\*\*|`[0-9a-f]{40}`)/u,
+  );
+  assert.match(
+    status,
+    /New unpublished Sites version 14: (?:\*\*Not run\*\*|`appgprj_[^`\s]+~appgver_[^`\s]+`)/u,
   );
   assert.match(status, /Awaiting owner smoke test/u);
   assert.match(status, /Awaiting a future authorized deployment/u);
@@ -30,7 +42,10 @@ test("Phase 7 ledger and README state the active phase without invented provenan
   const smokeSteps = [
     ...status.matchAll(/^(\d+)\. /gmu),
   ].map((match) => Number(match[1]));
-  assert.deepEqual(smokeSteps.slice(-17), Array.from({ length: 17 }, (_, i) => i + 1));
+  assert.deepEqual(
+    smokeSteps.slice(-10),
+    Array.from({ length: 10 }, (_, i) => i + 1),
+  );
 
   for (const path of [
     "docs/architecture/0011-phase-7-imports-exports-forms.md",
@@ -41,10 +56,16 @@ test("Phase 7 ledger and README state the active phase without invented provenan
     "docs/owner-guide-phase7.md",
     "docs/organizer-guide-phase7.md",
     "docs/known-limitations-phase7.md",
+    "docs/architecture/0012-phase-8-hardening.md",
+    "docs/phase8-local-testing.md",
+    "docs/owner-guide-phase8.md",
+    "docs/organizer-guide-phase8.md",
+    "docs/known-limitations-phase8.md",
   ]) {
     assert.match(readme, new RegExp(escapeRegex(path), "u"), path);
   }
   assert.doesNotMatch(readme, /Phase 7 imports,[\s\S]*have not started/u);
+  assert.match(readme, /Phase 9 [^\r\n]* Not started/u);
 });
 
 test("Phase 7 ADR pins persisted approval, resumability, conflict, atomicity, retention, and privacy", () => {

@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  OrganizerAccessDeniedError,
   type AuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
@@ -17,6 +18,7 @@ import {
   parseIanaTimeZone,
 } from "../../time";
 import { SafeApplicationError } from "../../validation/server-observability";
+import { assertCurrentOrganizerClubReadAccess } from "./clubs";
 import {
   findConflictFacts,
   normalizeAllDayConflictInterval,
@@ -278,6 +280,12 @@ export async function previewOrganizerConflicts(
     true,
   );
   const facts = allCollisionFacts(proposed, records, now);
+  await assertCurrentOrganizerClubReadAccess(
+    database,
+    identity,
+    actor,
+    [input.candidate.clubId],
+  );
   return Object.freeze(
     facts.slice(0, 100).map(({ fact, record }) =>
       previewItem(proposed, fact, record),
@@ -581,7 +589,123 @@ export async function listOrganizerConflictCenter(
       actor.profileId,
     )
     .all<Record<string, unknown>>();
-  return Object.freeze((result.results ?? []).map((row) => readCenterItem(row, actor)));
+  const items = Object.freeze(
+    (result.results ?? []).map((row) => readCenterItem(row, actor)),
+  );
+  await assertCurrentConflictCenterAccess(
+    database,
+    identity,
+    actor,
+    [
+      ...new Set(
+        (result.results ?? []).map((row) => requiredString(row.id)),
+      ),
+    ],
+  );
+  return items;
+}
+
+async function assertCurrentConflictCenterAccess(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  actor: AuthorizedMembership,
+  incidentIds: readonly string[],
+): Promise<void> {
+  const row = await database
+    .prepare(
+      `WITH selected_incident_ids AS (
+         SELECT value AS incident_id
+         FROM json_each(?)
+         WHERE type = 'text'
+       )
+       SELECT CASE
+         WHEN (
+           SELECT count(DISTINCT incident_id)
+           FROM selected_incident_ids
+         ) = ?
+         AND EXISTS (
+           SELECT 1
+           FROM organization_memberships AS membership
+           JOIN profiles AS profile
+             ON profile.id = membership.profile_id
+           JOIN organizations AS organization
+             ON organization.id = membership.organization_id
+           WHERE membership.id = ?
+             AND membership.organization_id = ?
+             AND membership.profile_id = ?
+             AND membership.role = ?
+             AND membership.normalized_email = ?
+             AND profile.normalized_email = ?
+             AND membership.status = 'active'
+             AND profile.status = 'active'
+             AND membership.deleted_at IS NULL
+             AND profile.deleted_at IS NULL
+             AND organization.deleted_at IS NULL
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM selected_incident_ids AS selected
+           LEFT JOIN organizer_conflict_incidents AS incident
+             ON incident.id = selected.incident_id
+            AND incident.organization_id = ?
+           LEFT JOIN organizer_events AS event_a
+             ON event_a.id = incident.organizer_event_id
+            AND event_a.organization_id = incident.organization_id
+           LEFT JOIN organizer_events AS event_b
+             ON incident.conflicting_source_kind = 'manual'
+            AND event_b.id = incident.conflicting_event_id
+            AND event_b.organization_id = incident.organization_id
+           WHERE incident.id IS NULL
+              OR event_a.id IS NULL
+              OR (
+                ? = 'organizer'
+                AND NOT (
+                  event_a.primary_organizer_profile_id = ?
+                  OR EXISTS (
+                    SELECT 1
+                    FROM organizer_event_organizers AS scope_a
+                    WHERE scope_a.organization_id =
+                          incident.organization_id
+                      AND scope_a.organizer_event_id = event_a.id
+                      AND scope_a.profile_id = ?
+                      AND scope_a.deleted_at IS NULL
+                  )
+                  OR event_b.primary_organizer_profile_id = ?
+                  OR EXISTS (
+                    SELECT 1
+                    FROM organizer_event_organizers AS scope_b
+                    WHERE scope_b.organization_id =
+                          incident.organization_id
+                      AND scope_b.organizer_event_id = event_b.id
+                      AND scope_b.profile_id = ?
+                      AND scope_b.deleted_at IS NULL
+                  )
+                )
+              )
+         )
+         THEN 1 ELSE 0
+       END AS allowed`,
+    )
+    .bind(
+      JSON.stringify(incidentIds),
+      incidentIds.length,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+      identity.email,
+      actor.organizationId,
+      actor.role,
+      actor.profileId,
+      actor.profileId,
+      actor.profileId,
+      actor.profileId,
+    )
+    .first<Record<string, unknown>>();
+  if (row?.allowed !== 1) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
 }
 
 export async function markInformationalConflictReviewed(

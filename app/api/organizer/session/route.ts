@@ -29,7 +29,7 @@ export async function GET(): Promise<Response> {
 
     const identity = trustedIdentityFromSites(user);
     const { database, initialOwnerEmail } = getRuntimeAuthConfiguration();
-    const membership = await authorizeOrganizerAccess(database, identity, {
+    await authorizeOrganizerAccess(database, identity, {
       initialOwnerEmail,
     });
     const profile = await getOrganizerProfile(database, identity);
@@ -38,7 +38,7 @@ export async function GET(): Promise<Response> {
       JSON.stringify({
         session: {
           displayName: profile.displayName,
-          role: membership.role,
+          role: profile.role,
         },
       }),
       {

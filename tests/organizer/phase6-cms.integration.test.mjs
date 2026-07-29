@@ -64,6 +64,10 @@ import {
   startSqliteD1StatementRecording,
 } from "../auth/sqlite-d1.mjs";
 import {
+  countD1Statements,
+  interceptD1Statements,
+} from "../auth/intercept-d1.mjs";
+import {
   assertRecordedD1ShapesCompile,
 } from "../database/d1-recorded-shapes.mjs";
 
@@ -210,6 +214,143 @@ test("first authorized CMS read adopts the exact public baseline and enforces ro
          AND confirmed_at IS NOT NULL`,
     ),
     3,
+  );
+});
+
+test("CMS collection read binds the exact live actor and stays bounded after adoption", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await listCmsEntities(database, ownerIdentity);
+
+  const counter = countD1Statements(database);
+  assert.ok(
+    (await listCmsEntities(counter.database, adminIdentity)).length > 0,
+  );
+  assert.equal(counter.count(), 3);
+
+  const intercepted = interceptD1Statements(database, {
+    before: (sql) => sql.includes("SELECT state.entity_type"),
+    hook: async () => {
+      database.exec(
+        `UPDATE profiles
+         SET status = 'suspended', updated_at = updated_at + 1
+         WHERE id = 'profile-admin'`,
+      );
+    },
+  });
+  await assert.rejects(
+    listCmsEntities(intercepted.database, adminIdentity),
+    (error) => error?.code === "authorization_denied",
+  );
+  assert.equal(intercepted.fired(), true);
+});
+
+test("CMS workspace seals the exact manager role after all private content reads", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await listCmsEntities(database, ownerIdentity);
+
+  const counter = countD1Statements(database);
+  assert.equal(
+    (
+      await readCmsEntityWorkspace(
+        counter.database,
+        adminIdentity,
+        "page",
+        "page-about",
+      )
+    ).entity.entityKey,
+    "page-about",
+  );
+  assert.equal(counter.count(), 8);
+
+  const intercepted = interceptD1Statements(database, {
+    after: (sql) =>
+      sql.includes(
+        "FROM legal_status_confirmation_receipts AS confirmation",
+      ),
+    before: (sql) => sql.includes("SELECT membership.id"),
+    hook: async () => {
+      database.exec(
+        `UPDATE organization_memberships
+         SET role = 'administrator', updated_at = updated_at + 1
+         WHERE id = 'membership-owner'`,
+      );
+    },
+  });
+  await assert.rejects(
+    readCmsEntityWorkspace(
+      intercepted.database,
+      ownerIdentity,
+      "legal_status",
+      "legal_status",
+    ),
+    (error) => error?.code === "authorization_denied",
+  );
+  assert.equal(intercepted.fired(), true);
+});
+
+test("CMS workspace and immutable revision preview deny data when manager authority changes after the read", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await listCmsEntities(database, ownerIdentity);
+  const initial = await readCmsEntityWorkspace(
+    database,
+    ownerIdentity,
+    "page",
+    "page-about",
+  );
+  assert.ok(initial.revision);
+
+  const suspendOwner = (updatedAt) => {
+    database.exec(`
+      UPDATE organization_memberships
+      SET status = 'suspended', updated_at = ${updatedAt}
+      WHERE id = 'membership-owner';
+    `);
+  };
+  const reactivateOwner = (updatedAt) => {
+    database.exec(`
+      UPDATE organization_memberships
+      SET status = 'active', updated_at = ${updatedAt}
+      WHERE id = 'membership-owner';
+    `);
+  };
+
+  await assert.rejects(
+    readCmsEntityWorkspace(
+      afterMatchingFirstDatabase(
+        database,
+        (sql) =>
+          sql.includes("WHERE state.id = ?") &&
+          sql.includes("current_draft_revision_id"),
+        () => suspendOwner(NOW + 100),
+      ),
+      ownerIdentity,
+      "page",
+      "page-about",
+    ),
+    (error) =>
+      error?.code === "authorization_denied" &&
+      error?.status === 403,
+  );
+  reactivateOwner(NOW + 101);
+
+  await assert.rejects(
+    readCmsRevisionPreview(
+      afterMatchingFirstDatabase(
+        database,
+        (sql) =>
+          sql.includes("FROM cms_entity_revisions AS revision") &&
+          sql.includes("WHERE revision.id = ?"),
+        () => suspendOwner(NOW + 102),
+      ),
+      ownerIdentity,
+      initial.revision.id,
+    ),
+    (error) =>
+      error?.code === "authorization_denied" &&
+      error?.status === 403,
   );
 });
 
@@ -3128,7 +3269,20 @@ test("maximum 24-block page publish stays inside the D1 50-statement request and
     },
     NOW,
   );
+  await ensureRuntimeInvariantReadiness(database);
   const counter = countedDatabase(database);
+  assert.equal(
+    await ensureDatabaseInvariants(counter.database),
+    "ready",
+  );
+  assert.deepEqual(
+    await runRequestMaintenance(counter.database, {
+      method: "POST",
+      pathname:
+        `/api/organizer/cms/page/${workspace.entity.entityKey}/publish`,
+    }),
+    { kind: "continue" },
+  );
   const published = await publishCmsEntity(
     counter.database,
     ownerIdentity,
@@ -3140,7 +3294,7 @@ test("maximum 24-block page publish stays inside the D1 50-statement request and
   assert.equal(published.entity.workflowStatus, "published");
   assert.equal(
     counter.statementCount,
-    24,
+    27,
     "the maximum CMS page publish statement budget drifted",
   );
   assert.ok(
@@ -5188,6 +5342,37 @@ function row(database, sql, ...bindings) {
   return value ? { ...value } : null;
 }
 
+function afterMatchingFirstDatabase(database, matches, afterRead) {
+  let fired = false;
+  const wrap = (statement, sql) => ({
+    bind(...values) {
+      return wrap(statement.bind(...values), sql);
+    },
+    async first(...args) {
+      const result = await statement.first(...args);
+      if (!fired && matches(sql)) {
+        fired = true;
+        await afterRead();
+      }
+      return result;
+    },
+    all(...args) {
+      return statement.all(...args);
+    },
+    run(...args) {
+      return statement.run(...args);
+    },
+  });
+  return {
+    batch(statements) {
+      return database.batch(statements);
+    },
+    prepare(sql) {
+      return wrap(database.prepare(sql), sql);
+    },
+  };
+}
+
 function countedDatabase(database) {
   let statementCount = 0;
   const batchLengths = [];
@@ -5271,7 +5456,7 @@ async function ensureRuntimeInvariantReadiness(database) {
 test("all exercised CMS and adoption SQL shapes compile through real D1", async () => {
   const shapes = cmsSqlRecording.stop();
   await assertRecordedD1ShapesCompile(shapes, {
-    expectedCount: 119,
+    expectedCount: 120,
     label: "CMS and adoption services",
   });
 });

@@ -3,6 +3,7 @@ import {
   authorizeMembership,
   generateInvitationToken,
   hashInvitationToken,
+  revalidateAuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
 } from "../auth";
@@ -85,6 +86,16 @@ export async function listOrganizerInvitations(
     )
     .bind(actor.organizationId)
     .all<Record<string, unknown>>();
+  const currentActor = await authorizeMembership(database, identity, {
+    allowedRoles: ["owner", "administrator"],
+  });
+  if (
+    currentActor.organizationId !== actor.organizationId ||
+    currentActor.membershipId !== actor.membershipId ||
+    currentActor.profileId !== actor.profileId
+  ) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
   return Object.freeze(
     (result.results ?? [])
       .map((row) => invitationFromRow(row, now))
@@ -206,10 +217,17 @@ export async function createOrganizerInvitation(
                  FROM organization_memberships AS actor_membership
                  JOIN profiles AS actor_profile
                    ON actor_profile.id = actor_membership.profile_id
+                  AND actor_profile.normalized_email = ?
+                 JOIN organizations AS actor_organization
+                   ON actor_organization.id =
+                      actor_membership.organization_id
+                  AND actor_organization.deleted_at IS NULL
                  WHERE actor_membership.id = ?
                    AND actor_membership.organization_id = ?
                    AND actor_membership.profile_id = ?
+                   AND actor_membership.role = ?
                    AND actor_membership.role IN ('owner', 'administrator')
+                   AND actor_membership.normalized_email = ?
                    AND actor_membership.status = 'active'
                    AND actor_membership.deleted_at IS NULL
                    AND actor_profile.status = 'active'
@@ -234,9 +252,12 @@ export async function createOrganizerInvitation(
             now,
             clubId,
             actor.organizationId,
+            identity.email,
             actor.membershipId,
             actor.organizationId,
             actor.profileId,
+            actor.role,
+            identity.email,
             actor.organizationId,
             targetEmail,
           )
@@ -256,10 +277,16 @@ export async function createOrganizerInvitation(
                FROM organization_memberships AS actor_membership
                JOIN profiles AS actor_profile
                  ON actor_profile.id = actor_membership.profile_id
+                AND actor_profile.normalized_email = ?
+               JOIN organizations AS actor_organization
+                 ON actor_organization.id =
+                    actor_membership.organization_id
+                AND actor_organization.deleted_at IS NULL
                WHERE actor_membership.id = ?
                  AND actor_membership.organization_id = ?
                  AND actor_membership.profile_id = ?
-                 AND actor_membership.role IN ('owner', 'administrator')
+                 AND actor_membership.role = 'owner'
+                 AND actor_membership.normalized_email = ?
                  AND actor_membership.status = 'active'
                  AND actor_membership.deleted_at IS NULL
                  AND actor_profile.status = 'active'
@@ -282,9 +309,11 @@ export async function createOrganizerInvitation(
             expiresAt,
             now,
             now,
+            identity.email,
             actor.membershipId,
             actor.organizationId,
             actor.profileId,
+            identity.email,
             actor.organizationId,
             targetEmail,
           );
@@ -342,6 +371,9 @@ export async function createOrganizerInvitation(
       "The invitation could not be read after creation.",
     );
   }
+  await revalidateAuthorizedMembership(database, identity, actor, {
+    allowedRoles: ["owner", "administrator"],
+  });
   return Object.freeze({
     invitation,
     copyablePath: `/accept-invitation?token=${encodeURIComponent(token)}`,
@@ -401,11 +433,27 @@ export async function revokeOrganizerInvitation(
              FROM organization_memberships AS actor_membership
              JOIN profiles AS actor_profile
                ON actor_profile.id = actor_membership.profile_id
+              AND actor_profile.normalized_email = ?
+             JOIN organizations AS actor_organization
+               ON actor_organization.id =
+                  actor_membership.organization_id
+              AND actor_organization.deleted_at IS NULL
              WHERE actor_membership.id = ?
                AND actor_membership.organization_id =
                    invitations.organization_id
                AND actor_membership.profile_id = ?
-               AND actor_membership.role IN ('owner', 'administrator')
+               AND actor_membership.role = ?
+               AND actor_membership.normalized_email = ?
+               AND (
+                 (
+                   invitations.intended_role = 'administrator'
+                   AND actor_membership.role = 'owner'
+                 )
+                 OR (
+                   invitations.intended_role = 'organizer'
+                   AND actor_membership.role IN ('owner', 'administrator')
+                 )
+               )
                AND actor_membership.status = 'active'
                AND actor_membership.deleted_at IS NULL
                AND actor_profile.status = 'active'
@@ -418,8 +466,11 @@ export async function revokeOrganizerInvitation(
         invitationId,
         actor.organizationId,
         now,
+        identity.email,
         actor.membershipId,
         actor.profileId,
+        actor.role,
+        identity.email,
       ),
     database
       .prepare(
@@ -466,6 +517,9 @@ export async function revokeOrganizerInvitation(
     now,
   );
   if (!revoked) throw invitationNotFound();
+  await revalidateAuthorizedMembership(database, identity, actor, {
+    allowedRoles: ["owner", "administrator"],
+  });
   return revoked;
 }
 

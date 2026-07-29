@@ -1,6 +1,43 @@
 export const MAX_TRUSTED_REQUEST_PATHNAME_LENGTH = 2_048;
 
 const UNSAFE_PATH_SEGMENT = /[%/?#\\\u0000-\u001f\u007f]/u;
+const PRIVATE_OR_IDENTITY_PATHS = [
+  "/_sites-preview",
+  "/organizer",
+  "/api",
+  "/auth",
+  "/accept-invitation",
+  "/drafts",
+  "/invitations",
+  "/preview",
+  "/signin-with-chatgpt",
+  "/signout-with-chatgpt",
+  "/callback",
+] as const;
+
+export function isPrivateOrIdentityPath(pathname: string): boolean {
+  return (
+    isPrivateCalendarSubscriptionPath(pathname) ||
+    PRIVATE_OR_IDENTITY_PATHS.some(
+      (path) => pathname === path || pathname.startsWith(`${path}/`),
+    )
+  );
+}
+
+export function isPrivateCalendarSubscriptionPath(
+  pathname: string,
+): boolean {
+  return (
+    pathname === "/api/calendar/private" ||
+    pathname.startsWith("/api/calendar/private/")
+  );
+}
+
+export function safeRequestPathname(pathname: string): string {
+  return isPrivateCalendarSubscriptionPath(pathname)
+    ? "/api/calendar/private/[token]"
+    : pathname;
+}
 
 /**
  * Canonicalizes the encoded pathname supplied by the platform URL parser.

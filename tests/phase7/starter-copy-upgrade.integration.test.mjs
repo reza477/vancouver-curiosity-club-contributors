@@ -369,7 +369,7 @@ test("synchronized first calls leave one page outcome and converge on retry", as
 test("starter-copy maintenance SQL stays within real D1 limits", async () => {
   const shapes = starterCopySqlRecording.stop();
   await assertRecordedD1ShapesCompile(shapes, {
-    expectedCount: 28,
+    expectedCount: 29,
     label: "Phase 7 starter-copy maintenance",
   });
 });

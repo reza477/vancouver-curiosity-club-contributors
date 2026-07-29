@@ -7,6 +7,7 @@ import {
 import {
   getPublicEventExportRecordBySlug,
   queryPublicEventsForExport,
+  revalidatePublicEventExportRecords,
   type PublicEventExportDto,
   type PublicEventExportRecord,
   type PublicEventListView,
@@ -88,6 +89,14 @@ export async function createOneEventIcsDownload(
       scope: "public",
     },
   );
+  if (
+    !(await revalidatePublicEventExportRecords(database, {
+      organizationId: organization.id,
+      records: [record],
+    }))
+  ) {
+    return null;
+  }
   return Object.freeze({
     body: buildIcalendar([calendarEvent], {
       calendarName: `${record.event.title} · Vancouver Curiosity Club`,
@@ -131,6 +140,18 @@ export async function createFilteredPublicIcsDownload(
     organizationId: loaded.organization.id,
     scope: "public",
   });
+  if (
+    !(await revalidatePublicEventExportRecords(database, {
+      organizationId: loaded.organization.id,
+      records: loaded.records,
+    }))
+  ) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The requested export could not be verified safely.",
+    );
+  }
   return Object.freeze({
     body: buildIcalendar(events, {
       calendarName: "Vancouver Curiosity Club events",

@@ -17,8 +17,13 @@ import {
   assignFormSubmission,
   getFormSubmission,
   listFormSubmissions,
+  listSubmissionAssignees,
 } from "../../lib/server/phase7/submissions.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import {
+  countD1Statements,
+  interceptD1Statements,
+} from "../auth/intercept-d1.mjs";
 
 const OWNER_EMAIL = "phase7-inbox-owner@vcc-tests.invalid";
 const ORGANIZER_EMAIL =
@@ -866,6 +871,64 @@ test("list response fails closed when organizer membership or assignment changes
       data.database.close();
     }
   });
+});
+
+test("submission assignee options revalidate the exact manager after reading private team data", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const profileId = "phase7-assignee-admin-profile";
+  const membershipId = "phase7-assignee-admin-membership";
+  const email = "assignee-admin@vcc-tests.invalid";
+  data.database.exec(`
+    INSERT INTO profiles (
+      id, siwc_subject, normalized_email, display_name,
+      public_attribution_consent, status, created_at, updated_at,
+      deleted_at
+    ) VALUES (
+      '${profileId}', 'phase7-assignee-admin-subject', '${email}',
+      'Assignee Administrator', 0, 'active', ${data.now}, ${data.now},
+      NULL
+    );
+    INSERT INTO organization_memberships (
+      id, organization_id, profile_id, normalized_email, role, status,
+      created_by_profile_id, created_at, updated_at, deleted_at
+    ) VALUES (
+      '${membershipId}', '${data.organizationId}', '${profileId}',
+      '${email}', 'administrator', 'active', '${data.ownerProfileId}',
+      ${data.now}, ${data.now}, NULL
+    );
+  `);
+  const administrator = trustedIdentityFromSites({
+    displayName: "Assignee Administrator",
+    email,
+  });
+
+  const counter = countD1Statements(data.database);
+  assert.ok(
+    (await listSubmissionAssignees(
+      counter.database,
+      administrator,
+    )).some((assignee) => assignee.profileId === profileId),
+  );
+  assert.equal(counter.count(), 3);
+
+  const intercepted = interceptD1Statements(data.database, {
+    after: (sql) =>
+      sql.includes("ORDER BY profile.display_name COLLATE NOCASE"),
+    before: (sql) => sql.includes("SELECT membership.id"),
+    hook: async () => {
+      data.database.exec(
+        `UPDATE profiles
+         SET status = 'suspended', updated_at = updated_at + 1
+         WHERE id = '${profileId}'`,
+      );
+    },
+  });
+  await assert.rejects(
+    listSubmissionAssignees(intercepted.database, administrator),
+    (error) => error?.code === "authorization_denied",
+  );
+  assert.equal(intercepted.fired(), true);
 });
 
 function interceptAfterHistoryRead(database, hook) {

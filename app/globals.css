@@ -3106,6 +3106,10 @@ main,
   color: var(--warm-surface-ink);
 }
 
+.home-invitation .section-kicker {
+  color: var(--warm-surface-ink);
+}
+
 .home-invitation__actions a {
   border-color: var(--warm-surface-ink);
 }
@@ -3365,6 +3369,8 @@ main,
     max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right))
     clamp(4rem, 8vw, 8rem)
     max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  color: var(--ink);
+  font-size: 1rem;
 }
 
 .event-detail__header {
@@ -3760,6 +3766,8 @@ main,
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  min-block-size: 2.75rem;
+  padding-block: 0.35rem;
   font-weight: 600;
 }
 
@@ -3784,6 +3792,8 @@ main,
 }
 
 .public-submission__error-summary a {
+  display: inline-flex;
+  align-items: center;
   min-height: 2.75rem;
 }
 

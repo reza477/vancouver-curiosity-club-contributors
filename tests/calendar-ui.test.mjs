@@ -204,7 +204,8 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
 });
 
 test("manual Meetup APIs derive authority server-side and restrict both mutations", async () => {
-  const [shared, connect, refresh, model, worker] = await Promise.all([
+  const [shared, connect, refresh, model, worker, requestPathname] =
+    await Promise.all([
     readFile(
       new URL("app/api/organizer/meetup/_shared.ts", projectRoot),
       "utf8",
@@ -219,6 +220,7 @@ test("manual Meetup APIs derive authority server-side and restrict both mutation
     ),
     readFile(new URL("app/organizer/meetup/model.ts", projectRoot), "utf8"),
     readFile(new URL("worker/index.ts", projectRoot), "utf8"),
+    readFile(new URL("lib/request-pathname.ts", projectRoot), "utf8"),
   ]);
 
   assert.match(shared, /getChatGPTUser\(\)/);
@@ -259,9 +261,13 @@ test("manual Meetup APIs derive authority server-side and restrict both mutation
     model,
     /scheduleConflict:\s*state\.lastErrorCode === "conflict_rejected"/u,
   );
-  assert.match(worker, /"\/organizer"/);
-  assert.match(worker, /"\/api"/);
-  assert.match(worker, /pathname\.startsWith\(`\$\{path\}\/`\)/);
+  assert.match(worker, /isPrivateOrIdentityPath\(requestPathname\)/);
+  assert.match(requestPathname, /"\/organizer"/);
+  assert.match(requestPathname, /"\/api"/);
+  assert.match(
+    requestPathname,
+    /pathname\.startsWith\(`\$\{path\}\/`\)/,
+  );
 });
 
 test("same-origin mutation guard rejects missing, malformed, and cross-site origins", () => {

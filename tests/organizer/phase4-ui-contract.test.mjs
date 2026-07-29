@@ -110,7 +110,11 @@ test("event editor follows the Phase 4 scheduling order and preserves rejected f
   assert.match(editor, /expectedScheduleVersion:\s*value\.expectedScheduleVersion/u);
   assert.match(state, /privateMeetingDetails:\s*value\.privateMeetingDetails/u);
   assert.match(state, /venueId:\s*value\.venueId/u);
-  assert.match(editor, /setErrors\(\[message\]\)/u);
+  assert.match(editor, /setErrors\(\[\{ fieldId: null, message \}\]\)/u);
+  assert.match(editor, /aria-invalid=\{hasFieldError\(errors,/u);
+  assert.match(editor, /aria-describedby=\{errorDescription\(errors,/u);
+  assert.match(editor, /<a href=\{`#\$\{error\.fieldId\}`\}>/u);
+  assert.match(editor, /<FieldError errors=\{errors\} fieldId=/u);
   assert.match(editor, /summaryRef\.current\?\.focus\(\)/u);
   assert.doesNotMatch(
     editor,

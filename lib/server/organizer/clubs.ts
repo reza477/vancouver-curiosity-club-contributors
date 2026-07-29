@@ -1,6 +1,7 @@
 import {
   OrganizerAccessDeniedError,
   authorizeMembership,
+  type AuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
 } from "../auth";
@@ -139,11 +140,100 @@ export async function listOrganizerClubs(
       : await statement
           .bind(CLUB_SETTINGS_PREFIX, actor.organizationId)
           .all<Record<string, unknown>>();
-  return Object.freeze(
+  const clubs = Object.freeze(
     (result.results ?? [])
       .map(clubFromRow)
       .filter((club): club is OrganizerClubDto => club !== null),
   );
+  await assertCurrentOrganizerClubReadAccess(
+    database,
+    identity,
+    actor,
+    clubs.map((club) => club.id),
+  );
+  return clubs;
+}
+
+export async function assertCurrentOrganizerClubReadAccess(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  actor: AuthorizedMembership,
+  clubIds: readonly string[],
+): Promise<void> {
+  const row = await database
+    .prepare(
+      `WITH selected_club_ids AS (
+         SELECT value AS club_id
+         FROM json_each(?)
+         WHERE type = 'text'
+       )
+       SELECT CASE
+         WHEN (
+           SELECT count(DISTINCT club_id)
+           FROM selected_club_ids
+         ) = ?
+         AND EXISTS (
+           SELECT 1
+           FROM organization_memberships AS membership
+           JOIN profiles AS profile
+             ON profile.id = membership.profile_id
+           JOIN organizations AS organization
+             ON organization.id = membership.organization_id
+           WHERE membership.id = ?
+             AND membership.organization_id = ?
+             AND membership.profile_id = ?
+             AND membership.role = ?
+             AND membership.normalized_email = ?
+             AND profile.normalized_email = ?
+             AND membership.status = 'active'
+             AND profile.status = 'active'
+             AND membership.deleted_at IS NULL
+             AND profile.deleted_at IS NULL
+             AND organization.deleted_at IS NULL
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM selected_club_ids AS selected
+           LEFT JOIN clubs AS club
+             ON club.id = selected.club_id
+            AND club.organization_id = ?
+            AND club.deleted_at IS NULL
+           WHERE club.id IS NULL
+              OR (
+                ? = 'organizer'
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM club_memberships AS assignment
+                  WHERE assignment.organization_id = club.organization_id
+                    AND assignment.club_id = club.id
+                    AND assignment.organization_membership_id = ?
+                    AND assignment.profile_id = ?
+                    AND assignment.status = 'active'
+                    AND assignment.deleted_at IS NULL
+                )
+              )
+         )
+         THEN 1 ELSE 0
+       END AS allowed`,
+    )
+    .bind(
+      JSON.stringify(clubIds),
+      clubIds.length,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+      identity.email,
+      actor.organizationId,
+      actor.role,
+      actor.membershipId,
+      actor.profileId,
+    )
+    .first<Record<string, unknown>>();
+  if (row?.allowed !== 1) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
 }
 
 export async function createPrivateOrganizerClub(

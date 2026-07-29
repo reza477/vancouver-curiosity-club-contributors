@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  revalidateAuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
 } from "../auth";
@@ -183,6 +184,7 @@ export async function getOrganizerProfile(
     .bind(actor.organizationId)
     .all<Record<string, unknown>>();
 
+  await revalidateAuthorizedMembership(database, identity, actor);
   return profileFromRows(
     row,
     clubs.results ?? [],

@@ -337,7 +337,7 @@ test("real import routes deny Organizer, hide cross-org IDs, reject stale approv
   assert.equal(historyResponse.history.total, 2);
   assert.equal(historyResponse.history.hasMore, true);
   assert.equal(typeof historyResponse.history.nextCursor, "string");
-  assert.equal(counted.count(), 4);
+  assert.equal(counted.count(), 5);
 
   counted.reset();
   const older = await importsRoute.GET(
@@ -352,7 +352,7 @@ test("real import routes deny Organizer, hide cross-org IDs, reject stale approv
   assert.equal(olderHistory.total, 2);
   assert.equal(olderHistory.hasMore, false);
   assert.equal(olderHistory.nextCursor, null);
-  assert.equal(counted.count(), 4);
+  assert.equal(counted.count(), 5);
 
   counted.reset();
   const filtered = await importsRoute.GET(
@@ -364,7 +364,7 @@ test("real import routes deny Organizer, hide cross-org IDs, reject stale approv
   const filteredHistory = (await filtered.json()).history;
   assert.equal(filteredHistory.total, 1);
   assert.equal(filteredHistory.items[0].batchId, "import-batch:owner-old");
-  assert.equal(counted.count(), 4);
+  assert.equal(counted.count(), 5);
 
   counted.reset();
   const detail = await detailRoute.GET(
@@ -379,7 +379,7 @@ test("real import routes deny Organizer, hide cross-org IDs, reject stale approv
     parseCsvImportWorkspace(detailBody.batch).conflictPolicyMode,
     "warn_reason",
   );
-  assert.equal(counted.count(), 4);
+  assert.equal(counted.count(), 5);
 
   counted.reset();
   const crossOrg = await detailRoute.GET(

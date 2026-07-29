@@ -111,7 +111,9 @@ export async function listActivityHistory(
   identity: TrustedServerIdentity,
   options: Readonly<{ before?: unknown; limit?: unknown }> = {},
 ): Promise<readonly ActivityHistoryItem[]> {
-  const actor = await authorizeMembership(database, identity);
+  const actor = await authorizeMembership(database, identity, {
+    allowedRoles: ["owner", "administrator"],
+  });
   const limit =
     options.limit === undefined
       ? 40
@@ -171,6 +173,20 @@ export async function listActivityHistory(
             limit,
           )
           .all<Record<string, unknown>>();
+  const currentActor = await authorizeMembership(database, identity, {
+    allowedRoles: ["owner", "administrator"],
+  });
+  if (
+    currentActor.organizationId !== actor.organizationId ||
+    currentActor.membershipId !== actor.membershipId ||
+    currentActor.profileId !== actor.profileId
+  ) {
+    throw new SafeApplicationError(
+      "authorization_denied",
+      403,
+      "Your organizer access changed before this activity could be returned.",
+    );
+  }
   return Object.freeze(
     (result.results ?? [])
       .map(activityFromRow)

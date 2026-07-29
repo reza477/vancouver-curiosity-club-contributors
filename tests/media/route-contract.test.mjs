@@ -31,6 +31,7 @@ test("private media routes remain authenticated, no-store, noindex, and never se
     ),
     "utf8",
   );
+  assert.match(route, /assertTrustedOrganizerRead\(request\)/u);
   assert.match(route, /requireOrganizerApiActor/u);
   assert.match(route, /private, no-store/u);
   assert.match(route, /noindex, nofollow, noarchive/u);
@@ -54,6 +55,25 @@ test("upload route uses bounded same-origin multipart validation and runtime dec
   assert.match(route, /getRuntimeMediaBucket/u);
   assert.match(route, /"owner",\s*"administrator"/u);
   assert.doesNotMatch(route, /organizer"\]/u);
+});
+
+test("rights-bearing media list surfaces finish with the sealed asset read", () => {
+  for (const path of [
+    ["app", "api", "organizer", "media", "route.ts"],
+    ["app", "organizer", "media", "page.tsx"],
+  ]) {
+    const source = readFileSync(join(process.cwd(), ...path), "utf8");
+    const cleanupRead = source.indexOf("await listPendingMediaCleanups");
+    const sealedAssetRead = source.indexOf("await listMediaAssets");
+    assert.notEqual(cleanupRead, -1, path.join("/"));
+    assert.notEqual(sealedAssetRead, -1, path.join("/"));
+    assert.ok(cleanupRead < sealedAssetRead, path.join("/"));
+    assert.doesNotMatch(
+      source.slice(cleanupRead, sealedAssetRead),
+      /Promise\.all/u,
+      path.join("/"),
+    );
+  }
 });
 
 test("private media UI keeps failed R2 cleanup durably actionable without exposing keys", () => {

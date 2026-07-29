@@ -238,7 +238,7 @@ export async function createOwnerJsonBackup(
       slug: text(row.slug),
       summary: nullableSafeText(row.summary),
       description: nullableSafeText(row.description),
-      privateNotes: nullableSafeText(row.private_notes),
+      privateNotes: nullablePrivatePlanningText(row.private_notes),
       meetupEventUrl: nullableSafeText(row.meetup_event_url),
       planningStatus: text(row.planning_status),
       publicationStatus: text(row.publication_status),
@@ -1291,6 +1291,14 @@ function safeText(value: unknown): string {
 
 function nullableSafeText(value: unknown): string | null {
   return value === null || value === undefined ? null : safeText(value);
+}
+
+function nullablePrivatePlanningText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return safeText(value).replace(
+    /\bhttps?:\/\/[^\s<>"']+/giu,
+    "[redacted-private-url]",
+  );
 }
 
 function text(value: unknown): string {

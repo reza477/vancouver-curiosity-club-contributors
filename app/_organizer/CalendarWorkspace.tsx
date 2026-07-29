@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+} from "react";
 import type { OrganizerCalendarEntry, OrganizerOption } from "./types";
 import { StatusPill } from "./PageHeader";
 import styles from "./workspace.module.css";
@@ -394,14 +399,14 @@ function Agenda({
     return <CalendarEmpty message={emptyMessage} />;
   }
   return (
-    <div className={styles.agenda} aria-label="Agenda">
+    <section className={styles.agenda} aria-label="Agenda">
       {groups.map(([date, records]) => (
         <section key={date} aria-labelledby={`agenda-${date}`}>
           <h2 id={`agenda-${date}`}>{formatDate(date, "full")}</h2>
           <EventList entries={records} />
         </section>
       ))}
-    </div>
+    </section>
   );
 }
 
@@ -427,7 +432,7 @@ function WeekView({
   const start = startOfWeek(selectedDate);
   const days = Array.from({ length: 7 }, (_, index) => shiftDate(start, index));
   return (
-    <div className={styles.weekView} aria-label={`Week of ${formatDate(start, "full")}`}>
+    <section className={styles.weekView} aria-label={`Week of ${formatDate(start, "full")}`}>
       {days.map((day) => {
         const records = entries.filter(
           (entry) => entry.dateKey <= day && entry.endDateKey >= day,
@@ -443,7 +448,7 @@ function WeekView({
           </section>
         );
       })}
-    </div>
+    </section>
   );
 }
 
@@ -457,6 +462,40 @@ function MonthView({
   selectedDate: string;
 }>) {
   const cells = monthCells(selectedDate);
+
+  function moveFocus(event: KeyboardEvent<HTMLButtonElement>, date: string) {
+    const dateValue = parseDateKey(date);
+    const dayOfWeek = dateValue.getUTCDay();
+    const nextDate =
+      event.key === "ArrowLeft"
+        ? shiftDate(date, -1)
+        : event.key === "ArrowRight"
+          ? shiftDate(date, 1)
+          : event.key === "ArrowUp"
+            ? shiftDate(date, -7)
+            : event.key === "ArrowDown"
+              ? shiftDate(date, 7)
+              : event.key === "Home"
+                ? shiftDate(date, -dayOfWeek)
+                : event.key === "End"
+                  ? shiftDate(date, 6 - dayOfWeek)
+                  : event.key === "PageUp"
+                    ? shiftMonth(date, -1)
+                    : event.key === "PageDown"
+                      ? shiftMonth(date, 1)
+                      : null;
+    if (!nextDate) return;
+    event.preventDefault();
+    onSelectDate(nextDate);
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>(
+          `[data-calendar-date="${nextDate}"]`,
+        )
+        ?.focus();
+    });
+  }
+
   return (
     <div className={styles.monthWrapper}>
       <div className={styles.monthWeekdays} aria-hidden="true">
@@ -464,7 +503,10 @@ function MonthView({
           <span key={day}>{day}</span>
         ))}
       </div>
-      <div className={styles.monthView} aria-label={rangeLabel(selectedDate, "month")}>
+      <section
+        className={styles.monthView}
+        aria-label={rangeLabel(selectedDate, "month")}
+      >
         {cells.map((cell) => {
           const records = entries.filter(
             (entry) => entry.dateKey <= cell.date && entry.endDateKey >= cell.date,
@@ -478,8 +520,11 @@ function MonthView({
             <button
               aria-label={`${formatDate(cell.date, "full")}, ${count} ${count === 1 ? "record" : "records"}, ${conflictCount} ${conflictCount === 1 ? "conflict indicator" : "conflict indicators"}`}
               className={cell.inMonth ? undefined : styles.outsideMonth}
+              data-calendar-date={cell.date}
               key={cell.date}
               onClick={() => onSelectDate(cell.date)}
+              onKeyDown={(event) => moveFocus(event, cell.date)}
+              tabIndex={cell.date === selectedDate ? 0 : -1}
               type="button"
             >
               <span>{dayNumber(cell.date)}</span>
@@ -497,7 +542,7 @@ function MonthView({
             </button>
           );
         })}
-      </div>
+      </section>
     </div>
   );
 }

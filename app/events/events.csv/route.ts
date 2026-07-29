@@ -21,6 +21,7 @@ export async function GET(request: Request): Promise<Response> {
         "Content-Disposition": `attachment; filename="${download.fileName}"`,
         "Content-Type": download.contentType,
         "X-Content-Type-Options": "nosniff",
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
       },
     });
   } catch (error) {

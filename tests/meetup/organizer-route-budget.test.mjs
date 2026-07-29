@@ -11,11 +11,18 @@ import { runRequestMaintenance } from "../../lib/server/database/request-mainten
 import {
   configureMeetupCalendarSource,
   getMeetupConnectionState,
+  refreshMeetupCalendarSource,
 } from "../../lib/server/meetup/sync.ts";
 import { ensureMeetupProgramClubs } from "../../lib/server/meetup/clubs.ts";
+import { listOrganizerCalendarEvents } from "../../lib/server/organizer/calendar.ts";
+import { listOrganizerClubs } from "../../lib/server/organizer/clubs.ts";
+import { createOrganizerEvent } from "../../lib/server/organizer/events.ts";
 import { getUnreadNotificationCount } from "../../lib/server/organizer/notifications.ts";
 import { getOrganizerProfile } from "../../lib/server/organizer/profiles.ts";
+import { performOrganizerLifecycleAction } from "../../lib/server/organizer/scheduling.ts";
 import { getWorkspaceSettings } from "../../lib/server/organizer/settings.ts";
+import { listTeamMembers } from "../../lib/server/organizer/team.ts";
+import { listOwnCalendarSubscriptions } from "../../lib/server/phase7/calendar-subscriptions.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 
@@ -36,7 +43,7 @@ test("Meetup organizer GET stays bounded for healthy, fresh-catalog, and first-o
     const counter = countedBinding(database);
     await simulateMeetupPageRequest(counter.binding);
 
-    assertInvocationCount(counter, 23, "healthy Meetup GET");
+    assertInvocationCount(counter, 26, "healthy Meetup GET");
   });
 
   await t.test("fresh catalog for an existing owner", async (t) => {
@@ -45,7 +52,7 @@ test("Meetup organizer GET stays bounded for healthy, fresh-catalog, and first-o
 
     await simulateMeetupPageRequest(counter.binding);
 
-    assertInvocationCount(counter, 37, "fresh-catalog Meetup GET");
+    assertInvocationCount(counter, 40, "fresh-catalog Meetup GET");
   });
 
   await t.test("first owner and fresh catalog", async (t) => {
@@ -54,7 +61,7 @@ test("Meetup organizer GET stays bounded for healthy, fresh-catalog, and first-o
 
     await simulateMeetupPageRequest(counter.binding, OWNER_EMAIL);
 
-    assertInvocationCount(counter, 43, "first-owner Meetup GET");
+    assertInvocationCount(counter, 46, "first-owner Meetup GET");
   });
 });
 
@@ -66,7 +73,7 @@ test("Meetup connect POST stays bounded for fresh, healthy, and idempotent reque
 
     await simulateMeetupConnectRequest(counter.binding);
 
-    assertInvocationCount(counter, 14, "healthy new-source connect");
+    assertInvocationCount(counter, 15, "healthy new-source connect");
   });
 
   await t.test("fresh catalog with a new source", async (t) => {
@@ -75,7 +82,7 @@ test("Meetup connect POST stays bounded for fresh, healthy, and idempotent reque
 
     await simulateMeetupConnectRequest(counter.binding);
 
-    assertInvocationCount(counter, 28, "fresh-catalog new-source connect");
+    assertInvocationCount(counter, 29, "fresh-catalog new-source connect");
   });
 
   await t.test("first owner, fresh catalog, and a new source", async (t) => {
@@ -84,7 +91,7 @@ test("Meetup connect POST stays bounded for fresh, healthy, and idempotent reque
 
     await simulateMeetupConnectRequest(counter.binding, OWNER_EMAIL);
 
-    assertInvocationCount(counter, 34, "first-owner new-source connect");
+    assertInvocationCount(counter, 35, "first-owner new-source connect");
   });
 
   await t.test("healthy exact-source retry", async (t) => {
@@ -104,7 +111,109 @@ test("Meetup connect POST stays bounded for fresh, healthy, and idempotent reque
 
     await simulateMeetupConnectRequest(counter.binding);
 
-    assertInvocationCount(counter, 11, "healthy exact-source retry");
+    assertInvocationCount(counter, 12, "healthy exact-source retry");
+  });
+});
+
+test("Meetup manual refresh POST stays bounded for its maximum two-row slice", async (t) => {
+  const database = await existingOwnerDatabase(t);
+  const clubs = await prepareHealthyCatalog(database);
+  await configureMeetupCalendarSource(
+    database,
+    OWNER_IDENTITY,
+    {
+      clubId: clubs[0].id,
+      feedUrl: FEED_URL,
+    },
+    1_000,
+  );
+  await ensureDatabaseInvariantsReady(database);
+  const counter = countedBinding(database);
+
+  const result = await simulateMeetupRefreshRequest(
+    counter.binding,
+    clubs[0].id,
+  );
+
+  assert.equal(result.outcome, "partial");
+  assert.equal(result.counts.created, 2);
+  assert.deepEqual(counter.counts().batchLengths, [2, 9, 9, 4]);
+  assertInvocationCount(counter, 38, "maximum-slice manual refresh POST");
+});
+
+test("organizer calendar GET stays bounded for healthy and maximum candidate/hold-notice requests", async (t) => {
+  assertCalendarRouteComposition();
+
+  await t.test("healthy calendar", async (t) => {
+    const database = await existingOwnerDatabase(t);
+    await prepareHealthyCatalog(database);
+    const counter = countedBinding(database);
+
+    const result = await simulateOrganizerCalendarPageRequest(
+      counter.binding,
+      null,
+      500,
+      () => counter.counts().statementCount,
+    );
+
+    assert.equal(result.calendar.resultCount, 0);
+    assert.equal(result.subscriptions.length, 0);
+    assert.deepEqual(result.trace, {
+      afterInvariant: 2,
+      afterLayoutContext: 11,
+      afterMaintenance: 2,
+      afterPageContext: 20,
+      afterSubscriptions: 42,
+      afterWorkspace: 39,
+    });
+    assert.deepEqual(counter.counts().batchLengths, []);
+    assertInvocationCount(counter, 42, "healthy organizer calendar GET");
+  });
+
+  await t.test("5,000 candidates and one due hold notice", async (t) => {
+    const database = await existingOwnerDatabase(t);
+    const clubs = await prepareHealthyCatalog(database);
+    await seedDueHold(database, clubs[0].id);
+    seedMaximumCalendarCandidates(database, clubs[0].id, 4_999);
+    await ensureDatabaseInvariantsReady(database);
+    const counter = countedBinding(database);
+
+    const result = await simulateOrganizerCalendarPageRequest(
+      counter.binding,
+      null,
+      5_000,
+      () => counter.counts().statementCount,
+    );
+
+    assert.equal(result.calendar.resultCount, 5_000);
+    assert.equal(result.calendar.events.length, 5_000);
+    assert.equal(result.subscriptions.length, 0);
+    assert.deepEqual(result.trace, {
+      afterInvariant: 2,
+      afterLayoutContext: 11,
+      afterMaintenance: 2,
+      afterPageContext: 20,
+      afterSubscriptions: 46,
+      afterWorkspace: 43,
+    });
+    assert.deepEqual(counter.counts().batchLengths, [2]);
+    assert.equal(
+      await tableCount(database, "organizer_hold_notice_receipts"),
+      1,
+    );
+    assert.equal(
+      await tableCount(
+        database,
+        "notifications",
+        "type IN ('hold_nearing_expiry', 'hold_expired')",
+      ),
+      1,
+    );
+    assertInvocationCount(
+      counter,
+      46,
+      "maximum-candidate organizer calendar GET with a due hold notice",
+    );
   });
 });
 
@@ -128,10 +237,65 @@ async function simulateMeetupPageRequest(
     database,
     initialOwnerEmail,
   );
-  assert.equal(firstContext.organizationId, secondContext.organizationId);
+  assert.equal(
+    firstContext.membership.organizationId,
+    secondContext.membership.organizationId,
+  );
 
   await getMeetupConnectionState(database, OWNER_IDENTITY, 2_000);
   await ensureMeetupProgramClubs(database, OWNER_IDENTITY, 2_000);
+}
+
+async function simulateOrganizerCalendarPageRequest(
+  database,
+  initialOwnerEmail = null,
+  take = 500,
+  readStatementCount = null,
+) {
+  const trace = {};
+  assert.equal(await ensureDatabaseInvariants(database), "ready");
+  trace.afterInvariant = readStatementCount?.() ?? null;
+  const maintenance = await runRequestMaintenance(database, {
+    method: "GET",
+    pathname: "/organizer/calendar",
+  });
+  trace.afterMaintenance = readStatementCount?.() ?? null;
+  if (maintenance.kind !== "continue") {
+    return Object.freeze({
+      maintenance,
+      trace: Object.freeze(trace),
+    });
+  }
+  const layoutContext = await loadOrganizerContext(
+    database,
+    initialOwnerEmail,
+  );
+  trace.afterLayoutContext = readStatementCount?.() ?? null;
+  const pageContext = await loadOrganizerContext(
+    database,
+    initialOwnerEmail,
+  );
+  trace.afterPageContext = readStatementCount?.() ?? null;
+  assert.equal(
+    layoutContext.membership.organizationId,
+    pageContext.membership.organizationId,
+  );
+  const calendar = await simulateLoadCalendarWorkspaceData(
+    pageContext,
+    take,
+  );
+  trace.afterWorkspace = readStatementCount?.() ?? null;
+  const subscriptions = await listOwnCalendarSubscriptions(
+    database,
+    OWNER_IDENTITY,
+  );
+  trace.afterSubscriptions = readStatementCount?.() ?? null;
+  return Object.freeze({
+    calendar,
+    maintenance,
+    subscriptions,
+    trace: Object.freeze(trace),
+  });
 }
 
 async function simulateMeetupConnectRequest(
@@ -165,18 +329,218 @@ async function simulateMeetupConnectRequest(
   );
 }
 
+async function simulateMeetupRefreshRequest(database, clubId) {
+  assert.equal(await ensureDatabaseInvariants(database), "ready");
+  assert.deepEqual(
+    await runRequestMaintenance(database, {
+      method: "POST",
+      pathname: "/api/organizer/meetup/refresh",
+    }),
+    { kind: "continue" },
+  );
+  await authorizeOrganizerAccess(database, OWNER_IDENTITY);
+  return refreshMeetupCalendarSource(database, OWNER_IDENTITY, {
+    clubId,
+    clock: () => 2_000,
+    fetcher: async () =>
+      new Response(meetupBudgetCalendar(), {
+        headers: { "content-type": "text/calendar; charset=utf-8" },
+        status: 200,
+      }),
+    nowUtcMs: 2_000,
+  });
+}
+
+function meetupBudgetCalendar() {
+  const events = [1, 2, 3]
+    .map(
+      (index) => `BEGIN:VEVENT
+UID:route-budget-${index}@meetup.com
+DTSTART:2032081${index}T030000Z
+DTEND:2032081${index}T040000Z
+SUMMARY:Route budget ${index}
+URL:https://www.meetup.com/vancouver-meetup-group/events/route-budget-${index}/
+STATUS:CONFIRMED
+SEQUENCE:1
+LAST-MODIFIED:20260724T020000Z
+END:VEVENT`,
+    )
+    .join("\n");
+  return `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Meetup//Official calendar export//EN
+METHOD:PUBLISH
+${events}
+END:VCALENDAR`;
+}
+
 async function loadOrganizerContext(database, initialOwnerEmail) {
   const membership = await authorizeOrganizerAccess(
     database,
     OWNER_IDENTITY,
     { initialOwnerEmail },
   );
-  await Promise.all([
+  const [settings, profile, unreadNotificationCount] = await Promise.all([
     getWorkspaceSettings(database, OWNER_IDENTITY),
     getOrganizerProfile(database, OWNER_IDENTITY),
     getUnreadNotificationCount(database, membership),
   ]);
-  return membership;
+  return Object.freeze({
+    database,
+    defaultTimezone: settings.defaultTimezone,
+    identity: OWNER_IDENTITY,
+    membership,
+    organizerDisplayName: profile.displayName,
+    organizerInitials: profile.initials,
+    unreadNotificationCount,
+    workspaceName: settings.workspaceName,
+  });
+}
+
+async function simulateLoadCalendarWorkspaceData(context, take) {
+  const [calendar, clubs, team, taxonomy] = await Promise.all([
+    listOrganizerCalendarEvents(context.database, context.identity, {
+      limit: take,
+    }),
+    listOrganizerClubs(context.database, context.identity),
+    listTeamMembers(context.database, context.identity),
+    loadCalendarTaxonomyOptions(context),
+  ]);
+  assert.ok(Array.isArray(clubs));
+  assert.ok(Array.isArray(team));
+  assert.ok(Array.isArray(taxonomy.categories));
+  assert.ok(Array.isArray(taxonomy.lanes));
+  return calendar;
+}
+
+function assertCalendarRouteComposition() {
+  const dataSource = readFileSync(
+    join(process.cwd(), "app", "_organizer", "data.ts"),
+    "utf8",
+  );
+  const pageSource = readFileSync(
+    join(process.cwd(), "app", "organizer", "calendar", "page.tsx"),
+    "utf8",
+  );
+  const workerSource = readFileSync(
+    join(process.cwd(), "worker", "index.ts"),
+    "utf8",
+  );
+  assert.match(
+    dataSource,
+    /loadCalendarWorkspaceData[\s\S]*?Promise\.all\(\[\s*listOrganizerCalendarEvents[\s\S]*?listOrganizerClubs[\s\S]*?listTeamMembers[\s\S]*?loadTaxonomyOptions/u,
+  );
+  assert.match(
+    pageSource,
+    /loadOrganizerPageContext\("\/organizer\/calendar"\)[\s\S]*?loadCalendarWorkspaceData\([\s\S]*?listOwnCalendarSubscriptions\(/u,
+  );
+  assert.match(
+    workerSource,
+    /const maintenance = await runRequestMaintenance\([\s\S]*?if \(maintenance\.kind === "unavailable"\) \{[\s\S]*?return secureResponse\([\s\S]*?if \(maintenance\.kind === "redirect"\) \{[\s\S]*?return secureResponse\([\s\S]*?const response = await handler\.fetch/u,
+    "maintenance failures and redirects must return before route dispatch",
+  );
+}
+
+async function loadCalendarTaxonomyOptions(context) {
+  const [lanes, categories] = await Promise.all([
+    context.database
+      .prepare(
+        `SELECT id, name, deleted_at
+         FROM event_lanes
+         WHERE organization_id = ?
+         ORDER BY (deleted_at IS NOT NULL) ASC,
+                  sort_order ASC,
+                  name COLLATE NOCASE ASC
+         LIMIT 100`,
+      )
+      .bind(context.membership.organizationId)
+      .all(),
+    context.database
+      .prepare(
+        `SELECT category.id, category.name, category.deleted_at
+         FROM categories AS category
+         LEFT JOIN category_taxonomy_states AS state
+           ON state.category_id = category.id
+          AND state.organization_id = category.organization_id
+         WHERE category.organization_id = ?
+         ORDER BY (category.deleted_at IS NOT NULL) ASC,
+                  COALESCE(state.sort_order, 100000) ASC,
+                  category.name COLLATE NOCASE ASC,
+                  category.id ASC
+         LIMIT 250`,
+      )
+      .bind(context.membership.organizationId)
+      .all(),
+  ]);
+  return Object.freeze({
+    categories: Object.freeze([...(categories.results ?? [])]),
+    lanes: Object.freeze([...(lanes.results ?? [])]),
+  });
+}
+
+async function seedDueHold(database, clubId) {
+  const draft = await createOrganizerEvent(database, OWNER_IDENTITY, {
+    bufferAfterMinutes: 0,
+    bufferBeforeMinutes: 0,
+    clubId,
+    coOrganizerProfileIds: [],
+    endLocal: "2032-08-15T20:30",
+    planningStatus: "draft",
+    primaryOrganizerProfileId: "profile_owner",
+    publicationStatus: "private",
+    scheduleShape: "timed",
+    startLocal: "2032-08-15T18:30",
+    timeZone: "America/Vancouver",
+    title: "Budgeted due hold",
+    venueId: null,
+  });
+  const held = await performOrganizerLifecycleAction(
+    database,
+    OWNER_IDENTITY,
+    draft.id,
+    {
+      action: "place_hold",
+      expectedContentVersion: draft.contentVersion,
+      expectedScheduleVersion: draft.scheduleVersion,
+      holdDurationHours: 1,
+    },
+  );
+  assert.equal(held.outcome, "applied");
+  assert.equal(held.event.planningStatus, "tentative_hold");
+}
+
+function seedMaximumCalendarCandidates(database, clubId, count) {
+  const chunkSize = 250;
+  for (let start = 0; start < count; start += chunkSize) {
+    const values = Array.from(
+      { length: Math.min(chunkSize, count - start) },
+      (_, chunkIndex) => {
+        const index = start + chunkIndex;
+        const suffix = String(index).padStart(4, "0");
+        return `(
+          'calendar-budget-${suffix}', 'org_vcc', '${clubId}', 'profile_owner',
+          'Calendar budget candidate ${suffix}', 'calendar-budget-${suffix}',
+          'idea', 'private', 'unscheduled', 'America/Vancouver',
+          1, 1, 'profile_owner', 'profile_owner', ${index + 10}, ${index + 10}
+        )`;
+      },
+    ).join(",\n");
+    database.exec(`
+      INSERT INTO organizer_events (
+        id, organization_id, club_id, primary_organizer_profile_id,
+        title, slug, planning_status, publication_status, schedule_shape,
+        timezone, content_version, schedule_version,
+        created_by_profile_id, updated_by_profile_id, created_at, updated_at
+      ) VALUES ${values};
+    `);
+  }
+}
+
+async function tableCount(database, table, predicate = "1 = 1") {
+  const row = await database
+    .prepare(`SELECT count(*) AS total FROM ${table} WHERE ${predicate}`)
+    .first();
+  return row?.total ?? 0;
 }
 
 async function existingOwnerDatabase(t) {
@@ -297,12 +661,12 @@ function assertInvocationCount(counter, expected, label) {
     `${label} statement composition drifted`,
   );
   assert.ok(
-    counts.statementCount <= D1_STATEMENT_LIMIT,
+    counts.statementCount < D1_STATEMENT_LIMIT,
     `${label} used ${counts.statementCount} D1 statements`,
   );
   assert.ok(
     counts.batchLengths.every(
-      (length) => length <= D1_STATEMENT_LIMIT,
+      (length) => length < D1_STATEMENT_LIMIT,
     ),
     `${label} contained an oversized D1 batch`,
   );

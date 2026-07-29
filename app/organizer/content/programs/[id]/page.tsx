@@ -15,6 +15,7 @@ import {
   ProgramContentEditor,
   type CmsParentClubOption,
 } from "@/app/_organizer/ProgramContentEditor";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import { listMediaAssets } from "@/lib/server/media/storage";
 import { readCmsEntityWorkspace } from "@/lib/server/organizer/cms";
 import { writeSafeLog } from "@/lib/validation/server-observability";
@@ -103,6 +104,12 @@ export default async function OrganizerProgramContentPage(
           .bind(loaded.context.membership.organizationId)
           .all<Record<string, unknown>>(),
       ]);
+    await revalidateAuthorizedMembership(
+      loaded.context.database,
+      loaded.context.identity,
+      loaded.context.membership,
+      { allowedRoles: ["owner", "administrator"] },
+    );
     data = Object.freeze({
       clubs: Object.freeze(
         (clubRows.results ?? []).flatMap((row) =>

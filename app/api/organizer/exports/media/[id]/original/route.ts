@@ -1,6 +1,7 @@
 import { getRuntimeMediaBucket } from "@/lib/server/media/runtime";
 import { getOwnerMediaOriginal } from "@/lib/server/phase7/private-exports";
 import {
+  assertTrustedOrganizerRead,
   organizerApiError,
   requireOrganizerApiActor,
 } from "../../../../_shared";
@@ -12,10 +13,11 @@ type RouteContext = Readonly<{
 }>;
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<Response> {
   try {
+    assertTrustedOrganizerRead(request);
     const { database, identity } = await requireOrganizerApiActor(["owner"]);
     const { id } = await context.params;
     const media = await getOwnerMediaOriginal(

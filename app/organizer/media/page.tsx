@@ -34,18 +34,16 @@ export default async function OrganizerMediaPage() {
   let assets: readonly MediaAssetView[] | null = null;
   let cleanupPending: readonly MediaCleanupPendingView[] = [];
   try {
-    [assets, cleanupPending] = await Promise.all([
-      listMediaAssets(
-        loaded.context.database,
-        loaded.context.identity,
-        { limit: 50 },
-      ),
-      listPendingMediaCleanups(
-        loaded.context.database,
-        loaded.context.identity,
-        { limit: 25 },
-      ),
-    ]);
+    cleanupPending = await listPendingMediaCleanups(
+      loaded.context.database,
+      loaded.context.identity,
+      { limit: 25 },
+    );
+    assets = await listMediaAssets(
+      loaded.context.database,
+      loaded.context.identity,
+      { limit: 50 },
+    );
   } catch {
     writeSafeLog("error", "organizer_page_failed", {
       code: "internal_error",

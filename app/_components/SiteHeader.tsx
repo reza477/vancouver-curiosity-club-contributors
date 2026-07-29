@@ -54,6 +54,7 @@ export function SiteHeader({
         className="wordmark"
         href="/"
         aria-label={`${brandName} home`}
+        prefetch={false}
       >
         {logoAssetId ? (
           <Image
@@ -124,6 +125,7 @@ function NavigationLinks({
             href={item.href}
             key={item.href}
             onClick={onNavigate}
+            prefetch={false}
           >
             {item.label}
           </Link>

@@ -1,10 +1,14 @@
-import type {
-  D1DatabaseLike,
-  TrustedServerIdentity,
+import {
+  authorizeMembership,
+  type D1DatabaseLike,
+  type TrustedServerIdentity,
 } from "../auth";
 import { parseOfficialMeetupEventUrl } from "../meetup/url";
 import { SafeApplicationError } from "../../validation/server-observability";
-import { getOrganizerEvent } from "./events";
+import {
+  assertCurrentOrganizerEventReadAccess,
+  getOrganizerEventForAuthorizedActor,
+} from "./events";
 
 export type OrganizerEventConflictSummaryDto = Readonly<{
   clubName: string;
@@ -34,7 +38,12 @@ export async function listOrganizerEventConflictSummaries(
   identity: TrustedServerIdentity,
   eventId: unknown,
 ): Promise<readonly OrganizerEventConflictSummaryDto[]> {
-  const target = await getOrganizerEvent(database, identity, eventId);
+  const actor = await authorizeMembership(database, identity);
+  const target = await getOrganizerEventForAuthorizedActor(
+    database,
+    actor,
+    eventId,
+  );
   const result = await database
     .prepare(
       `SELECT incident.id,
@@ -193,9 +202,17 @@ export async function listOrganizerEventConflictSummaries(
     )
     .all<Record<string, unknown>>();
 
-  return Object.freeze(
+  const summaries = Object.freeze(
     (result.results ?? []).map(readConflictSummary),
   );
+  await assertCurrentOrganizerEventReadAccess(
+    database,
+    identity,
+    actor,
+    [target.id],
+    true,
+  );
+  return summaries;
 }
 
 function readConflictSummary(

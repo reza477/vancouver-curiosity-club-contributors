@@ -22,6 +22,7 @@ import {
   buildRootMetadataIcons,
   SHIPPED_BRAND_NAME,
 } from "@/lib/brand";
+import { isPrivateOrIdentityPath } from "@/lib/request-pathname";
 import "./globals.css";
 
 const title = SHIPPED_BRAND_NAME;
@@ -47,28 +48,16 @@ const exactApplicationPaths = new Set([
 
 function isKnownApplicationPath(pathname: string | null): boolean {
   if (!pathname || exactApplicationPaths.has(pathname)) return true;
+  if (isPrivateOrIdentityPath(pathname)) return true;
   return [
-    "/accept-invitation/",
-    "/api/",
-    "/auth/",
     "/clubs/",
     "/events/",
     "/media/",
-    "/organizer/",
-    "/preview/",
-    "/signin-with-chatgpt/",
-    "/signout-with-chatgpt/",
   ].some((prefix) => pathname.startsWith(prefix));
 }
 
 function isPrivateApplicationPath(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return (
-    pathname === "/accept-invitation" ||
-    pathname.startsWith("/accept-invitation/") ||
-    pathname === "/organizer" ||
-    pathname.startsWith("/organizer/")
-  );
+  return pathname !== null && isPrivateOrIdentityPath(pathname);
 }
 
 export async function generateMetadata(): Promise<Metadata> {

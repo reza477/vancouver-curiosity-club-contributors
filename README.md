@@ -133,7 +133,9 @@ manual and bounded refresh-on-view behavior honestly.
   styles
 
 No alternate host, database, authentication provider, email service, custom
-domain, or external repository is used.
+domain, or separately provisioned/GitHub repository is used. The established
+Sites source repository is used only to save an exact unpublished Sites
+candidate.
 
 The high-resolution brand source remains under `design-assets/`; only optimized
 consumer icons and the social card ship from `public/`.
@@ -187,6 +189,12 @@ behavior when the public D1 service cannot be read.
 `BUILD_STATUS.md` is the authoritative evidence ledger,
 `OWNER_INPUTS.md` records missing factual approvals without inventing them, and
 `MASTER_BUILD_SPEC.md` remains the unchanged multi-phase reference.
+
+Phase-specific verification procedures:
+
+- `docs/phase6-local-testing.md`
+- `docs/phase7-local-testing.md`
+- `docs/phase8-local-testing.md`
 
 ## Phase 3 private organizer workspace
 
@@ -522,3 +530,49 @@ Meetup iCalendar source workflow.
 Phase 7 remains unpublished. Its local implementation and verification are
 complete; exact saved-candidate provenance is recorded in `BUILD_STATUS.md`.
 Live owner-only version 8 is unchanged.
+
+## Phase 8 security and release hardening
+
+Phase 8 audits and hardens the existing Phase 1 through 7 product; it does not
+start deployment. Its accepted architecture covers:
+
+- canonical, single-decode pathname classification before routing, trusted
+  request context, invitation-token capture, maintenance, cache, robots,
+  referrer, and error handling;
+- a practical nonce-based production CSP plus framing, MIME-sniffing,
+  permissions, referrer, opener/resource, transport, private-cache, and robots
+  protections;
+- exact current membership, role, club, assignment, ownership, receipt,
+  projection, media, and token seals immediately before protected data is
+  returned or a conditional action commits;
+- explicit public/download allowlists and strict D1, R2, bearer-token,
+  identity, safe-error, audit, and structured-log boundaries;
+- complete-route D1 accounting under the 50-statement invocation limit;
+- automated and manual WCAG 2.2 AA-oriented checks, exact-width browser
+  verification, local-production performance measurement, dependency review,
+  artifact leakage scans, and internal-link/content review; and
+- exact-source build/package verification without a schema change. The
+  migration chain remains `0016_phase7_import_export_forms.sql` with no
+  `0017`.
+
+Phase 8 evidence is not inferred from this overview. Exact commands, measured
+results, hashes, counts, performance/accessibility data, and any unpublished
+Sites-version readback are recorded in `BUILD_STATUS.md` only after the final
+exact-source gate.
+
+See:
+
+- `docs/architecture/0012-phase-8-hardening.md`
+- `docs/phase8-local-testing.md`
+- `docs/known-limitations-phase8.md`
+- `docs/owner-guide-phase8.md`
+- `docs/organizer-guide-phase8.md`
+
+Phase 8 does not deploy or change live version 8, access, domains, bindings,
+runtime values, or hosted D1/R2. Deployment remains Phase 9 and requires
+separate authorization.
+
+The Phase 8 implementation and pre-freeze local hardening matrix are complete.
+The exact committed-source rebuild and single unpublished-candidate readback
+remain the release checkpoint recorded in `BUILD_STATUS.md`; no live behavior
+is implied before that checkpoint. **Phase 9 — Not started.**

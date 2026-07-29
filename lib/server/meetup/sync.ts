@@ -1,5 +1,9 @@
-import { authorizeMembership } from "../auth";
+import {
+  authorizeMembership,
+  revalidateAuthorizedMembership,
+} from "../auth";
 import type {
+  AuthorizedMembership,
   D1DatabaseLike,
   D1ResultLike,
   TrustedServerIdentity,
@@ -59,16 +63,16 @@ const CONFIGURE_ACTOR_GUARD_SQL = `EXISTS (
     AND actor_membership.normalized_email = ?
     AND actor_membership.normalized_email =
         actor_profile.normalized_email
-    AND actor_membership.role IN ('owner', 'administrator')
+    AND actor_membership.role = ?
     AND actor_membership.status = 'active'
     AND actor_membership.deleted_at IS NULL
     AND actor_profile.status = 'active'
     AND actor_profile.deleted_at IS NULL
 )`;
-// Keeps the worst-case D1 query count below the documented 50-query Free
-// Worker invocation ceiling, including a conflict rollback plus rejection
-// record for every component in this slice.
-export const MAX_MEETUP_ROWS_PER_REFRESH = 3;
+// The manual API route also pays the runtime invariant preflight and its
+// server-side identity envelope. Two rows keep the complete Worker invocation
+// below D1's 50-statement ceiling even on the densest successful row shape.
+export const MAX_MEETUP_ROWS_PER_REFRESH = 2;
 const MAX_MEETUP_ROWS_PER_REFRESH_ON_VIEW = 2;
 
 type SourceRecord = Readonly<{
@@ -118,6 +122,59 @@ type SourceMapping = Readonly<{
 
 type RefreshMode = "if_due" | "manual";
 type RefreshTriggerMode = "manual" | "refresh_on_view";
+type ManualRefreshAuthority = Readonly<{
+  identity: TrustedServerIdentity;
+  membership: AuthorizedMembership;
+}>;
+const EXACT_MANUAL_ACTOR_GUARD_SQL = `EXISTS (
+  SELECT 1
+  FROM organization_memberships AS manual_actor_membership
+  JOIN profiles AS manual_actor_profile
+    ON manual_actor_profile.id = manual_actor_membership.profile_id
+   AND manual_actor_profile.normalized_email = ?
+   AND manual_actor_profile.status = 'active'
+   AND manual_actor_profile.deleted_at IS NULL
+  JOIN organizations AS manual_actor_organization
+    ON manual_actor_organization.id =
+       manual_actor_membership.organization_id
+   AND manual_actor_organization.deleted_at IS NULL
+  WHERE manual_actor_membership.id = ?
+    AND manual_actor_membership.organization_id = ?
+    AND manual_actor_membership.profile_id = ?
+    AND manual_actor_membership.normalized_email = ?
+    AND manual_actor_membership.role = ?
+    AND manual_actor_membership.role IN ('owner', 'administrator')
+    AND manual_actor_membership.status = 'active'
+    AND manual_actor_membership.deleted_at IS NULL
+)`;
+
+function manualActorBindings(
+  authority: ManualRefreshAuthority,
+): readonly string[] {
+  return Object.freeze([
+    authority.identity.email,
+    authority.membership.membershipId,
+    authority.membership.organizationId,
+    authority.membership.profileId,
+    authority.identity.email,
+    authority.membership.role,
+  ]);
+}
+
+function manualActorWhereClause(
+  authority: ManualRefreshAuthority | null,
+): Readonly<{ bindings: readonly string[]; sql: string }> {
+  if (!authority) {
+    return Object.freeze({
+      bindings: Object.freeze([]),
+      sql: "",
+    });
+  }
+  return Object.freeze({
+    bindings: manualActorBindings(authority),
+    sql: `AND ${EXACT_MANUAL_ACTOR_GUARD_SQL}`,
+  });
+}
 
 type PendingGeneration = Readonly<{
   cursor: number;
@@ -177,15 +234,20 @@ export async function configureMeetupCalendarSource(
     .first<Record<string, unknown>>();
   if (exactSource) {
     if (readOptionalString(exactSource, "club_id") !== clubId) {
+      await revalidateAuthorizedMembership(database, identity, actor, {
+        allowedRoles: ["owner", "administrator"],
+        clubId,
+      });
       throw validationIssue(
         "feedUrl",
         "meetup_feed_already_connected",
         "This official Meetup feed is already assigned to another program.",
       );
     }
-    return connectionStateForOrganization(
+    return connectionStateForAuthorizedActor(
       database,
-      actor.organizationId,
+      identity,
+      actor,
       now,
     );
   }
@@ -205,13 +267,18 @@ export async function configureMeetupCalendarSource(
     existingSource &&
     readOptionalString(existingSource, "source_url") === sourceUrl
   ) {
-    return connectionStateForOrganization(
+    return connectionStateForAuthorizedActor(
       database,
-      actor.organizationId,
+      identity,
+      actor,
       now,
     );
   }
   if (existingSource) {
+    await revalidateAuthorizedMembership(database, identity, actor, {
+      allowedRoles: ["owner", "administrator"],
+      clubId,
+    });
     throw validationIssue(
       "clubId",
       "meetup_program_already_connected",
@@ -261,6 +328,7 @@ export async function configureMeetupCalendarSource(
           actor.organizationId,
           actor.profileId,
           identity.email,
+          actor.role,
         ),
       database
         .prepare(
@@ -296,6 +364,7 @@ export async function configureMeetupCalendarSource(
           actor.organizationId,
           actor.profileId,
           identity.email,
+          actor.role,
           sourceId,
           JSON.stringify({
             sourceType: SOURCE_TYPE,
@@ -305,7 +374,7 @@ export async function configureMeetupCalendarSource(
     ]);
   } catch (error) {
     if (isConfigureAuditSentinelFailure(error)) {
-      await authorizeMembership(database, identity, {
+      await revalidateAuthorizedMembership(database, identity, actor, {
         allowedRoles: ["owner", "administrator"],
         clubId,
       });
@@ -318,7 +387,7 @@ export async function configureMeetupCalendarSource(
     throw error;
   }
   if (changes(results[0]) !== 1 || changes(results[1]) !== 1) {
-    await authorizeMembership(database, identity, {
+    await revalidateAuthorizedMembership(database, identity, actor, {
       allowedRoles: ["owner", "administrator"],
       clubId,
     });
@@ -328,9 +397,10 @@ export async function configureMeetupCalendarSource(
       "The selected Meetup connection changed before it could be saved.",
     );
   }
-  return connectionStateForOrganization(
+  return connectionStateForAuthorizedActor(
     database,
-    actor.organizationId,
+    identity,
+    actor,
     now,
   );
 }
@@ -341,11 +411,13 @@ export async function getMeetupConnectionState(
   nowUtcMs = Date.now(),
 ): Promise<MeetupConnectionState> {
   const actor = await authorizeMembership(database, identity);
-  return connectionStateForOrganization(
+  const state = await connectionStateForOrganization(
     database,
     actor.organizationId,
     parseNow(nowUtcMs),
   );
+  await revalidateAuthorizedMembership(database, identity, actor);
+  return state;
 }
 
 export async function refreshMeetupCalendarSource(
@@ -377,7 +449,10 @@ export async function refreshMeetupCalendarSource(
     "manual",
     options.fetcher,
     parseNow(options.nowUtcMs ?? Date.now()),
-    actor.profileId,
+    Object.freeze({
+      identity,
+      membership: actor,
+    }),
     options.clock ??
       (() => parseNow(options.nowUtcMs ?? Date.now())),
   );
@@ -429,12 +504,16 @@ async function refreshSources(
   mode: RefreshMode,
   fetcher: typeof fetch | undefined,
   now: number,
-  manualActorProfileId: string | null,
+  manualAuthority: ManualRefreshAuthority | null,
   clock: () => number,
 ): Promise<MeetupRefreshResult> {
-  if (sources.length === 0) return result("not_connected", notConnectedState());
+  if (sources.length === 0) {
+    await sealManualRefreshAuthority(database, manualAuthority);
+    return result("not_connected", notConnectedState());
+  }
   const enabled = sources.filter((source) => source.enabled);
   if (enabled.length === 0) {
+    await sealManualRefreshAuthority(database, manualAuthority);
     return result("disabled", aggregateConnectionState(sources, now));
   }
 
@@ -460,6 +539,7 @@ async function refreshSources(
       (item) =>
         item.leaseExpiresAt !== null && item.leaseExpiresAt > now,
     );
+    await sealManualRefreshAuthority(database, manualAuthority);
     return result(
       busy ? "busy" : "not_due",
       aggregateConnectionState(sources, now),
@@ -470,11 +550,12 @@ async function refreshSources(
   // slice below this stays below D1's documented Free Worker query ceiling.
   return refreshOrganizationSource(database, {
     actorProfileId:
-      manualActorProfileId ?? source.updatedByProfileId,
+      manualAuthority?.membership.profileId ?? source.updatedByProfileId,
     fetcher,
     mode,
     now,
     organizationId: source.organizationId,
+    manualAuthority,
     source,
     clock,
   });
@@ -488,6 +569,7 @@ async function refreshOrganizationSource(
     mode: RefreshMode;
     now: number;
     organizationId: string;
+    manualAuthority: ManualRefreshAuthority | null;
     source: SourceRecord;
     clock: () => number;
   }>,
@@ -495,6 +577,9 @@ async function refreshOrganizationSource(
   const triggerMode: RefreshTriggerMode =
     input.mode === "manual" ? "manual" : "refresh_on_view";
   const initialSource = input.source;
+  const manualActorWhere = manualActorWhereClause(
+    input.manualAuthority,
+  );
 
   const leaseToken = crypto.randomUUID();
   const leaseExpiresAt = input.now + LEASE_DURATION_MS;
@@ -520,6 +605,7 @@ async function refreshOrganizationSource(
            OR next_refresh_at IS NULL
            OR next_refresh_at <= ?
          )
+         ${manualActorWhere.sql}
        RETURNING id, organization_id, club_id, source_url, enabled,
                  next_refresh_at, lease_token, lease_expires_at,
                  last_attempt_at, last_success_at, last_error_at,
@@ -539,14 +625,23 @@ async function refreshOrganizationSource(
       input.now,
       input.mode,
       input.now,
+      ...manualActorWhere.bindings,
     )
     .first<Record<string, unknown>>();
   if (!acquiredSourceRow) {
     const current = await readSourceById(database, initialSource.id);
     if (!current) {
+      await sealManualRefreshAuthority(
+        database,
+        input.manualAuthority,
+      );
       return result("not_connected", notConnectedState());
     }
     if (!current.enabled) {
+      await sealManualRefreshAuthority(
+        database,
+        input.manualAuthority,
+      );
       return result(
         "disabled",
         stateFromSource(current, input.now),
@@ -558,6 +653,10 @@ async function refreshOrganizationSource(
       current.leaseExpiresAt > input.now
         ? "busy"
         : "not_due";
+    await sealManualRefreshAuthority(
+      database,
+      input.manualAuthority,
+    );
     return result(outcome, stateFromSource(current, input.now));
   }
 
@@ -588,6 +687,7 @@ async function refreshOrganizationSource(
       input.now,
       null,
       triggerMode,
+      input.manualAuthority,
     );
   }
 
@@ -602,6 +702,7 @@ async function refreshOrganizationSource(
         input.now,
         null,
         triggerMode,
+        input.manualAuthority,
       );
     }
     await finalizeNotModified(
@@ -613,14 +714,20 @@ async function refreshOrganizationSource(
       fetched.etag,
       fetched.httpLastModified,
       triggerMode,
+      input.manualAuthority,
+    );
+    const state = await connectionStateForOrganization(
+      database,
+      input.organizationId,
+      input.now,
+    );
+    await sealManualRefreshAuthority(
+      database,
+      input.manualAuthority,
     );
     return result(
       "not_modified",
-      await connectionStateForOrganization(
-        database,
-        input.organizationId,
-        input.now,
-      ),
+      state,
     );
   }
 
@@ -637,6 +744,7 @@ async function refreshOrganizationSource(
       input.now,
       null,
       triggerMode,
+      input.manualAuthority,
     );
   }
 
@@ -651,6 +759,7 @@ async function refreshOrganizationSource(
       now: parseNow(input.clock()),
       snapshotHash,
       source,
+      manualAuthority: input.manualAuthority,
     });
   } catch (error) {
     return finalizeFailedRefresh(
@@ -662,6 +771,7 @@ async function refreshOrganizationSource(
       parseNow(input.clock()),
       null,
       triggerMode,
+      input.manualAuthority,
     );
   }
   const cursor = generation.cursor;
@@ -678,6 +788,9 @@ async function refreshOrganizationSource(
 
   const importBatchId = crypto.randomUUID();
   const batchNow = parseNow(input.clock());
+  const importBatchActorWhere = manualActorWhereClause(
+    input.manualAuthority,
+  );
   const batchCreated = await database
     .prepare(
       `INSERT INTO import_batches (
@@ -689,7 +802,8 @@ async function refreshOrganizationSource(
        WHERE id = ?
          AND lease_token = ?
          AND lease_expires_at > ?
-         AND deleted_at IS NULL`,
+         AND deleted_at IS NULL
+         ${importBatchActorWhere.sql}`,
     )
     .bind(
       importBatchId,
@@ -700,9 +814,19 @@ async function refreshOrganizationSource(
       source.id,
       leaseToken,
       batchNow,
+      ...importBatchActorWhere.bindings,
     )
     .run();
   if (changes(batchCreated) !== 1) {
+    await sealManualRefreshAuthority(
+      database,
+      input.manualAuthority,
+      Object.freeze({
+        leaseToken,
+        organizationId: source.organizationId,
+        sourceId: source.id,
+      }),
+    );
     throw new MeetupSyncError("lease_lost");
   }
 
@@ -729,6 +853,7 @@ async function refreshOrganizationSource(
           sourcePayload: {
             componentIndex: item.componentIndex,
           },
+          manualAuthority: input.manualAuthority,
         });
         mutableCounts.rejected += 1;
         continue;
@@ -747,6 +872,7 @@ async function refreshOrganizationSource(
           rowNumber: event.componentIndex + 1,
           sourceId: source.id,
           sourcePayload: sanitizedSourceFacts(event, identityHash),
+          manualAuthority: input.manualAuthority,
         });
         mutableCounts.rejected += 1;
         continue;
@@ -764,6 +890,7 @@ async function refreshOrganizationSource(
           now: rowNow,
           organizationId: source.organizationId,
           sourceId: source.id,
+          manualAuthority: input.manualAuthority,
         });
         if (rowResult === "created") mutableCounts.created += 1;
         if (rowResult === "updated") mutableCounts.updated += 1;
@@ -782,6 +909,7 @@ async function refreshOrganizationSource(
           rowNumber: event.componentIndex + 1,
           sourceId: source.id,
           sourcePayload: sanitizedSourceFacts(event, identityHash),
+          manualAuthority: input.manualAuthority,
         });
         mutableCounts.rejected += 1;
       }
@@ -802,6 +930,7 @@ async function refreshOrganizationSource(
         processedItemCount: workSlice.length,
         source,
         triggerMode,
+        manualAuthority: input.manualAuthority,
       });
     } else {
       const removed = await finalizeCompletedRefresh(database, {
@@ -817,18 +946,24 @@ async function refreshOrganizationSource(
         snapshotHash,
         source,
         triggerMode,
+        manualAuthority: input.manualAuthority,
       });
       mutableCounts.removed = removed;
     }
     const finalCounts = Object.freeze({ ...mutableCounts });
+    const state = await connectionStateForOrganization(
+      database,
+      input.organizationId,
+      finishNow,
+    );
+    await sealManualRefreshAuthority(
+      database,
+      input.manualAuthority,
+    );
     return Object.freeze({
       counts: finalCounts,
       outcome: hasMore ? ("partial" as const) : ("completed" as const),
-      state: await connectionStateForOrganization(
-        database,
-        input.organizationId,
-        finishNow,
-      ),
+      state,
     });
   } catch (error) {
     return finalizeFailedRefresh(
@@ -840,6 +975,7 @@ async function refreshOrganizationSource(
       parseNow(input.clock()),
       importBatchId,
       triggerMode,
+      input.manualAuthority,
     );
   }
 }
@@ -857,6 +993,7 @@ async function importEventRow(
     now: number;
     organizationId: string;
     sourceId: string;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ): Promise<"created" | "skipped" | "updated"> {
   const fingerprint = await eventFingerprint(input.event);
@@ -1061,6 +1198,7 @@ async function createMappedEvent(
     organizationId: string;
     replaceExistingLink: boolean;
     sourceId: string;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ): Promise<void> {
   const scheduleVersion = 1;
@@ -1125,6 +1263,7 @@ async function createMappedEvent(
       },
       now: input.now,
       organizationId: input.organizationId,
+      manualAuthority: input.manualAuthority,
     }),
     stageEventSnapshotStatement(database, input),
     ...externalReservationStatements,
@@ -1151,6 +1290,7 @@ async function updateMappedEvent(
     organizationId: string;
     sourceId: string;
     scheduleChanged: boolean;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ): Promise<void> {
   const scheduleVersion =
@@ -1180,6 +1320,7 @@ async function updateMappedEvent(
     },
     now: input.now,
     organizationId: input.organizationId,
+    manualAuthority: input.manualAuthority,
   });
   const revisionStatement = database
     .prepare(
@@ -1225,6 +1366,7 @@ async function updateMappedEvent(
       metadata: { sourceType: SOURCE_TYPE },
       now: input.now,
       organizationId: input.organizationId,
+      manualAuthority: input.manualAuthority,
     }),
     stageEventSnapshotStatement(database, input),
     ...externalReservationStatements,
@@ -1249,6 +1391,7 @@ async function recordSkippedRow(
     sourceId: string;
     staleRevision: boolean;
     existingMapping: SourceMapping;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ): Promise<void> {
   const externalReservationStatements =
@@ -1288,6 +1431,7 @@ async function recordSkippedRow(
       metadata: { sourceType: SOURCE_TYPE },
       now: input.now,
       organizationId: input.organizationId,
+      manualAuthority: input.manualAuthority,
     }),
     input.staleRevision
       ? stageExistingSnapshotStatement(database, input)
@@ -1308,6 +1452,7 @@ async function recordRejectedRow(
     rowNumber: number;
     sourceId: string;
     sourcePayload: Record<string, unknown>;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ): Promise<void> {
   await database.batch([
@@ -1342,6 +1487,7 @@ async function recordRejectedRow(
       },
       now: input.now,
       organizationId: input.organizationId,
+      manualAuthority: input.manualAuthority,
     }),
   ]);
 }
@@ -2308,6 +2454,7 @@ async function ensurePendingGeneration(
     now: number;
     snapshotHash: string;
     source: SourceRecord;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ): Promise<PendingGeneration> {
   if (
@@ -2347,6 +2494,9 @@ async function ensurePendingGeneration(
   }
 
   const generationId = crypto.randomUUID();
+  const manualActorWhere = manualActorWhereClause(
+    input.manualAuthority,
+  );
   const results = await database.batch([
     database
       .prepare(
@@ -2360,6 +2510,7 @@ async function ensurePendingGeneration(
            AND organization_id = ?
            AND lease_token = ?
            AND lease_expires_at > ?
+           ${manualActorWhere.sql}
            AND deleted_at IS NULL`,
       )
       .bind(
@@ -2371,6 +2522,7 @@ async function ensurePendingGeneration(
         input.source.organizationId,
         input.leaseToken,
         input.now,
+        ...manualActorWhere.bindings,
       ),
     database
       .prepare(
@@ -2425,8 +2577,15 @@ function auditAfterChangedStatement(
     metadata: Record<string, unknown>;
     now: number;
     organizationId: string;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ) {
+  const actorGuard = input.manualAuthority
+    ? `AND ${EXACT_MANUAL_ACTOR_GUARD_SQL}`
+    : "";
+  const actorBindings = input.manualAuthority
+    ? manualActorBindings(input.manualAuthority)
+    : [];
   return database
     .prepare(
       `INSERT INTO audit_logs (
@@ -2434,7 +2593,11 @@ function auditAfterChangedStatement(
          entity_type, entity_id, metadata_json, created_at
        ) VALUES (
          ?, ?, ?, ?, ?,
-         CASE WHEN changes() = 1 THEN ? ELSE NULL END,
+         CASE
+           WHEN changes() = 1 ${actorGuard}
+           THEN ?
+           ELSE NULL
+         END,
          ?, ?
        )`,
     )
@@ -2444,6 +2607,7 @@ function auditAfterChangedStatement(
       input.actorProfileId,
       input.action,
       input.entityType,
+      ...actorBindings,
       input.entityId,
       JSON.stringify(input.metadata),
       input.now,
@@ -2460,8 +2624,15 @@ function completionAuditStatement(
     now: number;
     source: SourceRecord;
     triggerMode: RefreshTriggerMode;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ) {
+  const actorGuard = input.manualAuthority
+    ? `AND ${EXACT_MANUAL_ACTOR_GUARD_SQL}`
+    : "";
+  const actorBindings = input.manualAuthority
+    ? manualActorBindings(input.manualAuthority)
+    : [];
   return database
     .prepare(
       `INSERT INTO audit_logs (
@@ -2469,7 +2640,11 @@ function completionAuditStatement(
          entity_type, entity_id, metadata_json, created_at
        ) VALUES (
          ?, ?, ?, 'meetup.sync_completed', 'import_batch',
-         CASE WHEN changes() = 1 THEN ? ELSE NULL END,
+         CASE
+           WHEN changes() = 1 ${actorGuard}
+           THEN ?
+           ELSE NULL
+         END,
          (
            SELECT json_object(
              'counts', json_object(
@@ -2495,6 +2670,7 @@ function completionAuditStatement(
       crypto.randomUUID(),
       input.source.organizationId,
       input.actorProfileId,
+      ...actorBindings,
       input.importBatchId,
       input.counts.cancelled,
       input.counts.created,
@@ -2518,11 +2694,13 @@ async function finalizeNotModified(
   etag: string | null,
   httpLastModified: string | null,
   triggerMode: RefreshTriggerMode,
+  manualAuthority: ManualRefreshAuthority | null,
 ): Promise<void> {
-  await database.batch([
-    database
-      .prepare(
-        `UPDATE sync_sources
+  try {
+    await database.batch([
+      database
+        .prepare(
+          `UPDATE sync_sources
          SET lease_token = NULL,
              lease_expires_at = NULL,
              next_refresh_at = ?,
@@ -2539,27 +2717,40 @@ async function finalizeNotModified(
            AND lease_token = ?
            AND pending_generation_id IS NULL
            AND deleted_at IS NULL`,
-      )
-      .bind(
-        now + REFRESH_INTERVAL_MS,
-        now,
-        etag,
-        httpLastModified,
+        )
+        .bind(
+          now + REFRESH_INTERVAL_MS,
+          now,
+          etag,
+          httpLastModified,
+          actorProfileId,
+          now,
+          source.id,
+          leaseToken,
+        ),
+      auditAfterChangedStatement(database, {
+        action: "meetup.sync_not_modified",
         actorProfileId,
+        entityId: source.id,
+        entityType: "sync_source",
+        metadata: { sourceType: SOURCE_TYPE, triggerMode },
         now,
-        source.id,
+        organizationId: source.organizationId,
+        manualAuthority,
+      }),
+    ]);
+  } catch {
+    await sealManualRefreshAuthority(
+      database,
+      manualAuthority,
+      Object.freeze({
         leaseToken,
-      ),
-    auditAfterChangedStatement(database, {
-      action: "meetup.sync_not_modified",
-      actorProfileId,
-      entityId: source.id,
-      entityType: "sync_source",
-      metadata: { sourceType: SOURCE_TYPE, triggerMode },
-      now,
-      organizationId: source.organizationId,
-    }),
-  ]);
+        organizationId: source.organizationId,
+        sourceId: source.id,
+      }),
+    );
+    throw new MeetupSyncError("lease_lost");
+  }
 }
 
 async function finalizePartialRefresh(
@@ -2576,6 +2767,7 @@ async function finalizePartialRefresh(
     snapshotHash: string;
     source: SourceRecord;
     triggerMode: RefreshTriggerMode;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ): Promise<void> {
   await database.batch([
@@ -2678,6 +2870,7 @@ async function finalizePartialRefresh(
       },
       now: input.now,
       organizationId: input.source.organizationId,
+      manualAuthority: input.manualAuthority,
     }),
   ]);
 }
@@ -2697,6 +2890,7 @@ async function finalizeCompletedRefresh(
     snapshotHash: string;
     source: SourceRecord;
     triggerMode: RefreshTriggerMode;
+    manualAuthority: ManualRefreshAuthority | null;
   }>,
 ): Promise<number> {
   const todayDate = calendarDateInTimeZone(
@@ -3046,6 +3240,7 @@ async function finalizeFailedRefresh(
   now: number,
   importBatchId: string | null,
   triggerMode: RefreshTriggerMode,
+  manualAuthority: ManualRefreshAuthority | null,
 ): Promise<MeetupRefreshResult> {
   const statements = [
     database
@@ -3099,6 +3294,7 @@ async function finalizeFailedRefresh(
       },
       now,
       organizationId: source.organizationId,
+      manualAuthority,
     }),
   );
   try {
@@ -3106,14 +3302,24 @@ async function finalizeFailedRefresh(
   } catch {
     // A lost lease must not be overwritten by the stale worker.
   }
+  const state = await connectionStateForOrganization(
+    database,
+    source.organizationId,
+    now,
+  );
+  await sealManualRefreshAuthority(
+    database,
+    manualAuthority,
+    Object.freeze({
+      leaseToken,
+      organizationId: source.organizationId,
+      sourceId: source.id,
+    }),
+  );
   return Object.freeze({
     counts: EMPTY_COUNTS,
     outcome: "failed" as const,
-    state: await connectionStateForOrganization(
-      database,
-      source.organizationId,
-      now,
-    ),
+    state,
   });
 }
 
@@ -3128,6 +3334,65 @@ async function connectionStateForOrganization(
     null,
   );
   return aggregateConnectionState(sources, now);
+}
+
+async function connectionStateForAuthorizedActor(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  actor: AuthorizedMembership,
+  now: number,
+): Promise<MeetupConnectionState> {
+  const state = await connectionStateForOrganization(
+    database,
+    actor.organizationId,
+    now,
+  );
+  await revalidateAuthorizedMembership(database, identity, actor, {
+    allowedRoles: ["owner", "administrator"],
+  });
+  return state;
+}
+
+async function sealManualRefreshAuthority(
+  database: D1DatabaseLike,
+  authority: ManualRefreshAuthority | null,
+  lease: Readonly<{
+    leaseToken: string;
+    organizationId: string;
+    sourceId: string;
+  }> | null = null,
+): Promise<void> {
+  if (!authority) return;
+  try {
+    await revalidateAuthorizedMembership(
+      database,
+      authority.identity,
+      authority.membership,
+      {
+        allowedRoles: ["owner", "administrator"],
+      },
+    );
+  } catch (error) {
+    if (lease) {
+      await database
+        .prepare(
+          `UPDATE sync_sources
+           SET lease_token = NULL,
+               lease_expires_at = NULL
+           WHERE id = ?
+             AND organization_id = ?
+             AND lease_token = ?
+             AND deleted_at IS NULL`,
+        )
+        .bind(
+          lease.sourceId,
+          lease.organizationId,
+          lease.leaseToken,
+        )
+        .run();
+    }
+    throw error;
+  }
 }
 
 async function readSourcesForOrganization(

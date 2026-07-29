@@ -20,6 +20,7 @@ import {
   listUpcomingPublicMeetupEvents,
   queryPublicEvents,
   queryPublicEventsForExport,
+  revalidatePublicEventExportRecords,
   resolveEditorialPublishedEventSelections,
   resolvePublishedEventSelections,
 } from "../../lib/server/public/events.ts";
@@ -147,6 +148,21 @@ test("public event statements compile and execute through real Miniflare D1", as
     [],
   );
   assert.equal(
+    await revalidatePublicEventExportRecords(database, {
+      organizationId: ORGANIZATION_ID,
+      records: [
+        {
+          clubProjectionToken: "[]",
+          event: { slug: "missing-event" },
+          programProjectionToken: null,
+          sourceIdentity: "legacy:missing-event",
+          sourceVersion: 1,
+        },
+      ],
+    }),
+    false,
+  );
+  assert.equal(
     await getPublicEventExportRecordBySlug(database, {
       organizationId: ORGANIZATION_ID,
       slug: "missing-event",
@@ -270,6 +286,13 @@ test("public event statements compile and execute through real Miniflare D1", as
   );
 
   assert.ok(preparedSql.length >= 14);
+  const finalExportRevalidationSql = preparedSql.find((sql) =>
+    sql.includes("requested_public_event AS"),
+  );
+  assert.ok(finalExportRevalidationSql);
+  assert.ok(
+    new TextEncoder().encode(finalExportRevalidationSql).byteLength < 90_000,
+  );
   assert.ok(maximumStatementBytes < 90_000);
   assert.ok(maximumBindings < 100);
 });

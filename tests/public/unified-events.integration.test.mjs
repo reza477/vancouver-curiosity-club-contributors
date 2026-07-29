@@ -858,6 +858,143 @@ test("public ICS and CSV downloads execute against the exact public projection a
   assert.doesNotMatch(serialized, /source_synthetic|generation_active/iu);
 });
 
+test("public ICS revalidates exact event and materialization proofs after revision reconciliation", async (t) => {
+  const slug = "manual-ideas-gathering";
+  const mutations = [
+    {
+      label: "unpublish",
+      mutate(database) {
+        database.exec(`
+          UPDATE events
+          SET visibility = 'private', updated_at = 2
+          WHERE id = 'event_manual_upcoming'
+        `);
+      },
+    },
+    {
+      label: "club materialization tamper",
+      mutate(database) {
+        database.exec(`
+          UPDATE clubs
+          SET name = 'Raced public ICS club identity'
+          WHERE id = 'club_vcc'
+        `);
+      },
+    },
+    {
+      label: "event edit",
+      mutate(database) {
+        database.exec(`
+          UPDATE events
+          SET title = 'Raced public ICS title', updated_at = 2
+          WHERE id = 'event_manual_upcoming'
+        `);
+      },
+    },
+    {
+      async arrange(database) {
+        await insertOrganizerPublicEvent(database, {
+          id: "organizer_ics_collision",
+          slug: "organizer-ics-collision",
+          title: "Organizer ICS collision candidate",
+        });
+      },
+      label: "cross-source slug collision",
+      mutate(database) {
+        database.exec(`
+          UPDATE organizer_events
+          SET slug = 'manual-ideas-gathering', updated_at = 11
+          WHERE id = 'organizer_ics_collision'
+        `);
+      },
+    },
+  ];
+  const surfaces = [
+    {
+      label: "one-event",
+      async read(database) {
+        return createOneEventIcsDownload(database, {
+          generatedAt: NOW_UTC_MS,
+          origin: "https://vcc.example.test",
+          slug,
+        });
+      },
+      async verify(read) {
+        assert.equal(await read(), null);
+      },
+    },
+    {
+      label: "filtered",
+      async read(database) {
+        return createFilteredPublicIcsDownload(database, {
+          generatedAt: NOW_UTC_MS,
+          origin: "https://vcc.example.test",
+          searchParams: new URLSearchParams(
+            "state=upcoming&from=2026-08-01&to=2026-08-05",
+          ),
+        });
+      },
+      async verify(read) {
+        await assert.rejects(
+          read,
+          (error) =>
+            error?.code === "service_unavailable" &&
+            error?.status === 503,
+        );
+      },
+    },
+  ];
+
+  for (const mutation of mutations) {
+    for (const surface of surfaces) {
+      await t.test(`${surface.label}: ${mutation.label}`, async (surfaceTest) => {
+        const database = await createFixture(surfaceTest);
+        database.exec(`
+          UPDATE organizations
+          SET slug = 'vancouver-curiosity-and-education-society'
+          WHERE id = '${ORGANIZATION_ID}'
+        `);
+        await mutation.arrange?.(database);
+        let revalidationReads = 0;
+        let mutated = false;
+        const racedDatabase = injectBeforeMatchingQuery(
+          database,
+          "requested_public_event AS",
+          2,
+          async () => {
+            assert.equal(
+              database.sqlite
+                .prepare(
+                  `SELECT count(*) AS revision_count
+                   FROM event_calendar_component_revisions
+                   WHERE organization_id = ?
+                     AND scope = 'public'
+                     AND event_key = 'legacy:event_manual_upcoming'`,
+                )
+                .get(ORGANIZATION_ID).revision_count,
+              1,
+              "the race must land after component revision reconciliation",
+            );
+            mutated = true;
+            mutation.mutate(database);
+          },
+          () => {
+            revalidationReads += 1;
+          },
+        );
+
+        await surface.verify(() => surface.read(racedDatabase));
+        assert.equal(mutated, true);
+        assert.equal(
+          revalidationReads,
+          2,
+          "the initial proof and post-reconciliation proof must both execute",
+        );
+      });
+    }
+  }
+});
+
 test("public filtered ICS and CSV reject exact max-plus-one result sets instead of truncating", async (t) => {
   const database = await createFixture(t);
   database.exec(
@@ -4156,6 +4293,48 @@ function injectAfterQuery(database, afterQuery) {
               const result = await bound.first();
               await afterQuery();
               return result;
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+function injectBeforeMatchingQuery(
+  database,
+  sqlNeedle,
+  matchingQueryNumber,
+  beforeQuery,
+  onMatchingQuery = () => {},
+) {
+  let matchingQueries = 0;
+  return {
+    batch(statements) {
+      return database.batch(statements);
+    },
+    prepare(sql) {
+      const statement = database.prepare(sql);
+      if (!sql.includes(sqlNeedle)) return statement;
+      return {
+        bind(...values) {
+          const bound = statement.bind(...values);
+          return {
+            async all() {
+              matchingQueries += 1;
+              onMatchingQuery();
+              if (matchingQueries === matchingQueryNumber) {
+                await beforeQuery();
+              }
+              return bound.all();
+            },
+            async first() {
+              matchingQueries += 1;
+              onMatchingQuery();
+              if (matchingQueries === matchingQueryNumber) {
+                await beforeQuery();
+              }
+              return bound.first();
             },
           };
         },

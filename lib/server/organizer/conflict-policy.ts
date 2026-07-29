@@ -1,5 +1,7 @@
 import {
   authorizeMembership,
+  OrganizerAccessDeniedError,
+  type AuthorizedMembership,
   type D1DatabaseLike,
   type TrustedServerIdentity,
 } from "../auth";
@@ -25,10 +27,27 @@ export type OrganizerConflictPolicyDto = Readonly<{
 }>;
 
 const POLICY_SELECT_SQL = `
-SELECT id, organization_id, mode, policy_version, default_hold_hours,
-       nearing_expiry_hours
-FROM organizer_conflict_policies
-WHERE organization_id = ?
+SELECT policy.id, policy.organization_id, policy.mode,
+       policy.policy_version, policy.default_hold_hours,
+       policy.nearing_expiry_hours
+FROM organization_memberships AS membership
+JOIN profiles AS profile
+  ON profile.id = membership.profile_id
+ AND profile.normalized_email = ?
+ AND profile.status = 'active'
+ AND profile.deleted_at IS NULL
+JOIN organizations AS organization
+  ON organization.id = membership.organization_id
+ AND organization.deleted_at IS NULL
+JOIN organizer_conflict_policies AS policy
+  ON policy.organization_id = membership.organization_id
+WHERE membership.id = ?
+  AND membership.organization_id = ?
+  AND membership.profile_id = ?
+  AND membership.role = ?
+  AND membership.normalized_email = ?
+  AND membership.status = 'active'
+  AND membership.deleted_at IS NULL
 LIMIT 1`;
 
 export async function getOrganizerConflictPolicy(
@@ -36,10 +55,7 @@ export async function getOrganizerConflictPolicy(
   identity: TrustedServerIdentity,
 ): Promise<OrganizerConflictPolicyDto> {
   const actor = await authorizeMembership(database, identity);
-  let row = await database
-    .prepare(POLICY_SELECT_SQL)
-    .bind(actor.organizationId)
-    .first<Record<string, unknown>>();
+  let row = await readCurrentPolicy(database, identity, actor);
   if (!row) {
     const now = Date.now();
     await database
@@ -54,11 +70,17 @@ export async function getOrganizerConflictPolicy(
            FROM organization_memberships AS membership
            JOIN profiles AS profile
              ON profile.id = membership.profile_id
+            AND profile.normalized_email = ?
             AND profile.status = 'active'
             AND profile.deleted_at IS NULL
+           JOIN organizations AS organization
+             ON organization.id = membership.organization_id
+            AND organization.deleted_at IS NULL
            WHERE membership.id = ?
              AND membership.organization_id = ?
              AND membership.profile_id = ?
+             AND membership.role = ?
+             AND membership.normalized_email = ?
              AND membership.status = 'active'
              AND membership.deleted_at IS NULL
          )
@@ -70,17 +92,38 @@ export async function getOrganizerConflictPolicy(
         actor.profileId,
         now,
         now,
+        identity.email,
         actor.membershipId,
         actor.organizationId,
         actor.profileId,
+        actor.role,
+        identity.email,
       )
       .run();
-    row = await database
-      .prepare(POLICY_SELECT_SQL)
-      .bind(actor.organizationId)
-      .first<Record<string, unknown>>();
+    row = await readCurrentPolicy(database, identity, actor);
+    if (!row) {
+      throw new OrganizerAccessDeniedError("inactive_membership");
+    }
   }
   return readPolicy(row);
+}
+
+function readCurrentPolicy(
+  database: D1DatabaseLike,
+  identity: TrustedServerIdentity,
+  actor: AuthorizedMembership,
+): Promise<Record<string, unknown> | null> {
+  return database
+    .prepare(POLICY_SELECT_SQL)
+    .bind(
+      identity.email,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+    )
+    .first<Record<string, unknown>>();
 }
 
 export async function updateOrganizerConflictPolicy(

@@ -17,6 +17,7 @@ import {
   revokeOrganizerInvitation,
 } from "../../lib/server/organizer/invitations.ts";
 import {
+  getTeamMemberById,
   TeamMutationBlockedError,
   listTeamMembers,
   transferWorkspaceOwnership,
@@ -32,6 +33,11 @@ import {
   getWorkspaceSettings,
   updateWorkspaceSettings,
 } from "../../lib/server/organizer/settings.ts";
+import {
+  getOrganizerConflictPolicy,
+  updateOrganizerConflictPolicy,
+} from "../../lib/server/organizer/conflict-policy.ts";
+import { listOrganizerVenues } from "../../lib/server/organizer/venues.ts";
 import {
   listNotifications,
   markAllNotificationsRead,
@@ -61,8 +67,18 @@ import {
   startSqliteD1StatementRecording,
 } from "../auth/sqlite-d1.mjs";
 import {
+  countD1Statements,
+  interceptD1Statements,
+} from "../auth/intercept-d1.mjs";
+import {
   assertRecordedD1ShapesCompile,
 } from "../database/d1-recorded-shapes.mjs";
+import {
+  ensureDatabaseInvariants,
+} from "../../lib/server/database/invariants.ts";
+import {
+  runRequestMaintenance,
+} from "../../lib/server/database/request-maintenance.ts";
 
 const profileSqlRecording = startSqliteD1StatementRecording({
   sourceIncludes: ["lib/server/organizer/profiles.ts"],
@@ -1517,6 +1533,101 @@ test("profiles, private settings, notifications, clubs, and allowlisted history 
   assert.equal(serialized.includes("Discuss scope internally"), false);
 });
 
+test("activity is manager-only and team, invitation, and activity reads seal current authorization", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  seedMember(database, {
+    clubIds: ["club_think"],
+    email: "read-seal-organizer@example.com",
+    membershipId: "membership_read_seal_organizer",
+    profileId: "profile_read_seal_organizer",
+    role: "organizer",
+  });
+  seedMember(database, {
+    email: "read-seal-admin@example.com",
+    membershipId: "membership_read_seal_admin",
+    profileId: "profile_read_seal_admin",
+    role: "administrator",
+  });
+
+  await assert.rejects(
+    listActivityHistory(
+      database,
+      identity("read-seal-organizer@example.com"),
+    ),
+    (error) =>
+      error instanceof OrganizerAccessDeniedError &&
+      error.code === "authorization_denied",
+  );
+
+  const suspend = (membershipId, updatedAt) => {
+    database.exec(`
+      UPDATE organization_memberships
+      SET status = 'suspended', updated_at = ${updatedAt}
+      WHERE id = '${membershipId}';
+    `);
+  };
+  const reactivate = (membershipId, updatedAt) => {
+    database.exec(`
+      UPDATE organization_memberships
+      SET status = 'active', updated_at = ${updatedAt}
+      WHERE id = '${membershipId}';
+    `);
+  };
+
+  await assert.rejects(
+    listActivityHistory(
+      afterMatchingAllDatabase(
+        database,
+        (sql) => sql.includes("FROM audit_logs AS audit"),
+        () => suspend("membership_read_seal_admin", 50_001),
+      ),
+      identity("read-seal-admin@example.com"),
+    ),
+    (error) =>
+      error?.code === "authorization_denied" &&
+      error?.status === 403,
+  );
+  reactivate("membership_read_seal_admin", 50_002);
+
+  await assert.rejects(
+    listTeamMembers(
+      afterMatchingAllDatabase(
+        database,
+        (sql) =>
+          sql.includes(
+            "SELECT membership.id AS membership_id",
+          ),
+        () =>
+          suspend(
+            "membership_read_seal_organizer",
+            50_003,
+          ),
+      ),
+      identity("read-seal-organizer@example.com"),
+    ),
+    (error) =>
+      error instanceof OrganizerAccessDeniedError &&
+      error.code === "authorization_denied",
+  );
+  reactivate("membership_read_seal_organizer", 50_004);
+
+  await assert.rejects(
+    listOrganizerInvitations(
+      afterMatchingAllDatabase(
+        database,
+        (sql) => sql.includes("FROM invitations AS invitation"),
+        () => suspend("membership_read_seal_admin", 50_005),
+      ),
+      identity("read-seal-admin@example.com"),
+      50_005,
+    ),
+    (error) =>
+      error instanceof OrganizerAccessDeniedError &&
+      error.code === "authorization_denied",
+  );
+});
+
 test("public profile photo confirmation creates one exact published usage and revoke suppresses it", async (t) => {
   const database = await newDatabase();
   t.after(() => database.close());
@@ -2751,9 +2862,613 @@ function synchronizedBatchBindings(database, count) {
   }));
 }
 
+function afterMatchingAllDatabase(database, matches, afterRead) {
+  let fired = false;
+  const wrap = (statement, sql) => ({
+    bind(...values) {
+      return wrap(statement.bind(...values), sql);
+    },
+    first(...args) {
+      return statement.first(...args);
+    },
+    run(...args) {
+      return statement.run(...args);
+    },
+    async all(...args) {
+      const result = await statement.all(...args);
+      if (!fired && matches(sql)) {
+        fired = true;
+        await afterRead();
+      }
+      return result;
+    },
+  });
+  return {
+    batch(statements) {
+      return database.batch(statements);
+    },
+    prepare(sql) {
+      return wrap(database.prepare(sql), sql);
+    },
+  };
+}
+
+test("private profile, notification, and club reads deny authorization changes before their final seals", async (t) => {
+  await t.test("profile read denies a suspended profile", async (t) => {
+    const database = await newDatabase();
+    t.after(() => database.close());
+    seedMember(database, {
+      clubIds: ["club_think"],
+      email: "profile-race@example.test",
+      membershipId: "membership_profile_race",
+      profileId: "profile_profile_race",
+      role: "organizer",
+    });
+    const reader = identity("profile-race@example.test", "Profile race");
+    const intercepted = interceptD1Statements(database, {
+      after: (sql) => sql.includes("FROM media_assets AS asset"),
+      before: (sql) =>
+        sql.includes("SELECT membership.id AS membership_id") &&
+        sql.includes("membership.organization_id = ?"),
+      hook: async () => {
+        database.exec(`
+          UPDATE profiles
+          SET status = 'suspended', updated_at = updated_at + 1
+          WHERE id = 'profile_profile_race'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      getOrganizerProfile(intercepted.database, reader),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+
+  await t.test("notification read denies a suspended membership", async (t) => {
+    const database = await newDatabase();
+    t.after(() => database.close());
+    seedMember(database, {
+      email: "notification-race@example.test",
+      membershipId: "membership_notification_race",
+      profileId: "profile_notification_race",
+      role: "organizer",
+    });
+    const reader = identity(
+      "notification-race@example.test",
+      "Notification race",
+    );
+    const intercepted = interceptD1Statements(database, {
+      after: (sql) => sql.includes("FROM notifications AS notification"),
+      before: (sql) =>
+        sql.includes("SELECT membership.id AS membership_id") &&
+        sql.includes("membership.organization_id = ?"),
+      hook: async () => {
+        database.exec(`
+          UPDATE organization_memberships
+          SET status = 'suspended', updated_at = updated_at + 1
+          WHERE id = 'membership_notification_race'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      listNotifications(intercepted.database, reader),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+
+  await t.test("club list denies a removed Organizer assignment", async (t) => {
+    const database = await newDatabase();
+    t.after(() => database.close());
+    seedMember(database, {
+      clubIds: ["club_think"],
+      email: "club-race@example.test",
+      membershipId: "membership_club_race",
+      profileId: "profile_club_race",
+      role: "organizer",
+    });
+    const reader = identity("club-race@example.test", "Club race");
+    const intercepted = interceptD1Statements(database, {
+      before: (sql) => sql.includes("WITH selected_club_ids AS"),
+      hook: async () => {
+        database.exec(`
+          UPDATE club_memberships
+          SET status = 'revoked', updated_at = updated_at + 1
+          WHERE organization_membership_id = 'membership_club_race'
+            AND club_id = 'club_think'
+        `);
+      },
+    });
+
+    await assert.rejects(
+      listOrganizerClubs(intercepted.database, reader),
+      (error) => error instanceof OrganizerAccessDeniedError,
+    );
+    assert.equal(intercepted.fired(), true);
+  });
+});
+
+test("notification writes reject authorization drift at mutation time without residue", async (t) => {
+  const cases = [
+    {
+      label: "single notification read state",
+      mutate: async (database, actor, notificationId) =>
+        setNotificationReadState(
+          database,
+          actor,
+          notificationId,
+          true,
+          31_001,
+        ),
+      sqlNeedle: "UPDATE notifications",
+      verify: async (database, notificationId) =>
+        assert.equal(
+          (
+            await database
+              .prepare(
+                `SELECT read_at
+                 FROM notifications
+                 WHERE id = ?`,
+              )
+              .bind(notificationId)
+              .first()
+          )?.read_at ?? null,
+          null,
+        ),
+    },
+    {
+      label: "mark all notifications read",
+      mutate: async (database, actor) =>
+        markAllNotificationsRead(database, actor, 31_002),
+      sqlNeedle: "UPDATE notifications",
+      verify: async (database, notificationId) =>
+        assert.equal(
+          (
+            await database
+              .prepare(
+                `SELECT read_at
+                 FROM notifications
+                 WHERE id = ?`,
+              )
+              .bind(notificationId)
+              .first()
+          )?.read_at ?? null,
+          null,
+        ),
+    },
+    {
+      label: "notification preference",
+      mutate: async (database, actor) =>
+        updateNotificationPreferenceMode(
+          database,
+          actor,
+          "important_only",
+          31_003,
+        ),
+      sqlNeedle: "INSERT INTO organizer_profile_preferences",
+      verify: async (database) => {
+        assert.equal(
+          await database
+            .prepare(
+              `SELECT COUNT(*) AS preference_count
+               FROM organizer_profile_preferences
+               WHERE profile_id = 'profile_notification_write_race'`,
+            )
+            .first("preference_count"),
+          0,
+        );
+        assert.equal(
+          await database
+            .prepare(
+              `SELECT COUNT(*) AS audit_count
+               FROM audit_logs
+               WHERE actor_profile_id =
+                     'profile_notification_write_race'
+                 AND action =
+                     'profile.notification_preference_changed'`,
+            )
+            .first("audit_count"),
+          0,
+        );
+      },
+    },
+  ];
+
+  for (const { label, mutate, sqlNeedle, verify } of cases) {
+    await t.test(label, async (t) => {
+      const database = await newDatabase();
+      t.after(() => database.close());
+      seedMember(database, {
+        email: "notification-write-race@example.test",
+        membershipId: "membership_notification_write_race",
+        profileId: "profile_notification_write_race",
+        role: "organizer",
+      });
+      const actor = identity(
+        "notification-write-race@example.test",
+        "Notification write race",
+      );
+      const notificationId = `notification_${label.replaceAll(" ", "_")}`;
+      await database.batch([
+        prepareNotificationInsert(database, {
+          createdAt: 31_000,
+          id: notificationId,
+          organizationId: "org_vcc",
+          payload: {
+            eventId: "event_notification_write_race",
+            title: "Race-safe notification",
+            type: "event_schedule_changed",
+          },
+          recipientProfileId: "profile_notification_write_race",
+        }),
+      ]);
+      const suspendActor = () => {
+        database.exec(`
+          UPDATE organization_memberships
+          SET status = 'suspended', updated_at = updated_at + 1
+          WHERE id = 'membership_notification_write_race'
+        `);
+      };
+      let batchFired = false;
+      const intercepted =
+        label === "notification preference"
+          ? {
+              database: {
+                batch(statements) {
+                  if (!batchFired) {
+                    batchFired = true;
+                    suspendActor();
+                  }
+                  return database.batch(statements);
+                },
+                prepare(sql) {
+                  return database.prepare(sql);
+                },
+              },
+              fired: () => batchFired,
+            }
+          : interceptD1Statements(database, {
+              before: (sql) => sql.includes(sqlNeedle),
+              hook: async () => suspendActor(),
+            });
+
+      await assert.rejects(
+        mutate(intercepted.database, actor, notificationId),
+      );
+      assert.equal(intercepted.fired(), true);
+      await verify(database, notificationId);
+    });
+  }
+});
+
+test("private venue, settings, and conflict-policy reads bind exact live authorization in their data statements", async (t) => {
+  const owner = identity("owner@example.com", "Owner");
+
+  await t.test("authorized empty and populated reads stay at two statements", async () => {
+    const database = await newDatabase();
+    try {
+      const venueCounter = countD1Statements(database);
+      assert.deepEqual(
+        await listOrganizerVenues(venueCounter.database, owner),
+        [],
+      );
+      assert.equal(venueCounter.count(), 2);
+
+      const settingsCounter = countD1Statements(database);
+      assert.deepEqual(
+        await getWorkspaceSettings(settingsCounter.database, owner),
+        {
+          defaultTimezone: "America/Vancouver",
+          workspaceName: "Vancouver Curiosity Club",
+        },
+      );
+      assert.equal(settingsCounter.count(), 2);
+
+      const policyCounter = countD1Statements(database);
+      assert.equal(
+        (await getOrganizerConflictPolicy(policyCounter.database, owner)).mode,
+        "warn_reason",
+      );
+      assert.equal(policyCounter.count(), 2);
+    } finally {
+      database.close();
+    }
+  });
+
+  for (const [label, read, sqlNeedle] of [
+    [
+      "venue list",
+      listOrganizerVenues,
+      "SELECT venue.id, venue.name, venue.timezone",
+    ],
+    [
+      "workspace settings",
+      getWorkspaceSettings,
+      "SELECT setting.value_json",
+    ],
+    [
+      "conflict policy",
+      getOrganizerConflictPolicy,
+      "SELECT policy.id, policy.organization_id, policy.mode",
+    ],
+  ]) {
+    await t.test(`${label} denies suspension before its final data read`, async () => {
+      const database = await newDatabase();
+      try {
+        seedMember(database, {
+          email: "read-seal-admin@example.com",
+          membershipId: "membership_read_seal_admin",
+          profileId: "profile_read_seal_admin",
+          role: "administrator",
+        });
+        const administrator = identity(
+          "read-seal-admin@example.com",
+          "Read seal administrator",
+        );
+        const intercepted = interceptD1Statements(database, {
+          before: (sql) => sql.includes(sqlNeedle),
+          hook: async () => {
+            database.exec(
+              `UPDATE profiles
+               SET status = 'suspended', updated_at = updated_at + 1
+               WHERE id = 'profile_read_seal_admin'`,
+            );
+          },
+        });
+        await assert.rejects(
+          read(intercepted.database, administrator),
+          (error) => error instanceof OrganizerAccessDeniedError,
+        );
+        assert.equal(intercepted.fired(), true);
+      } finally {
+        database.close();
+      }
+    });
+  }
+});
+
+test("settings route-equivalent read and mutation compositions include the invariant fast path and remain below the Worker cap", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  const owner = identity("owner@example.com", "Owner");
+  const counts = {};
+
+  const runComposition = async ({
+    label,
+    method,
+    pathname,
+    work,
+  }) => {
+    await ensureDatabaseInvariantsReady(database);
+    const counter = countD1Statements(database);
+    assert.equal(
+      await ensureDatabaseInvariants(counter.database),
+      "ready",
+      `${label} must enter through the invariant fast path`,
+    );
+    assert.deepEqual(
+      await runRequestMaintenance(counter.database, {
+        method,
+        pathname,
+      }),
+      { kind: "continue" },
+      `${label} must continue past request maintenance`,
+    );
+    const value = await work(counter.database);
+    counts[label] = counter.count();
+    assert.ok(
+      counts[label] < 50,
+      `${label} used ${counts[label]} D1 statements`,
+    );
+    return value;
+  };
+
+  await runComposition({
+    label: "workspace_read",
+    method: "GET",
+    pathname: "/api/organizer/settings",
+    work: (binding) => getWorkspaceSettings(binding, owner),
+  });
+  await runComposition({
+    label: "workspace_update",
+    method: "PATCH",
+    pathname: "/api/organizer/settings",
+    work: (binding) =>
+      updateWorkspaceSettings(
+        binding,
+        owner,
+        {
+          defaultTimezone: "America/Toronto",
+          workspaceName: "Budgeted planning room",
+        },
+        40_000,
+      ),
+  });
+  const policy = await runComposition({
+    label: "conflict_policy_read",
+    method: "GET",
+    pathname: "/api/organizer/settings/conflict-policy",
+    work: (binding) => getOrganizerConflictPolicy(binding, owner),
+  });
+  await runComposition({
+    label: "conflict_policy_update",
+    method: "PATCH",
+    pathname: "/api/organizer/settings/conflict-policy",
+    work: (binding) =>
+      updateOrganizerConflictPolicy(binding, owner, {
+        defaultHoldHours: policy.defaultHoldHours,
+        expectedPolicyVersion: policy.version,
+        mode: "block",
+        nearingExpiryHours: policy.nearingExpiryHours,
+      }),
+  });
+
+  assert.deepEqual(counts, {
+    conflict_policy_read: 4,
+    conflict_policy_update: 10,
+    workspace_read: 4,
+    workspace_update: 5,
+  });
+});
+
+test("missing conflict-policy adoption rejects actor, organization, and exact-role drift without residue", async (t) => {
+  const races = [
+    [
+      "profile suspension",
+      `UPDATE profiles
+       SET status = 'suspended', updated_at = updated_at + 1
+       WHERE id = 'profile_policy_seed_admin'`,
+    ],
+    [
+      "organization reassignment",
+      `INSERT INTO organizations (
+         id, name, slug, timezone, owner_bootstrap_closed_at,
+         owner_bootstrap_claimed_by_profile_id, created_by_profile_id,
+         created_at, updated_at
+       ) VALUES (
+         'org_policy_other', 'Other policy organization',
+         'other-policy-organization', 'America/Vancouver', 1,
+         'profile_owner', 'profile_owner', 2, 2
+       );
+       UPDATE organization_memberships
+       SET status = 'suspended', updated_at = updated_at + 1
+       WHERE id = 'membership_policy_seed_admin'`,
+    ],
+    [
+      "allowed-role change",
+      `UPDATE organization_memberships
+       SET role = 'organizer', updated_at = updated_at + 1
+       WHERE id = 'membership_policy_seed_admin'`,
+    ],
+  ];
+
+  for (const [label, mutation] of races) {
+    await t.test(label, async () => {
+      const database = await newDatabase();
+      try {
+        seedMember(database, {
+          email: "policy-seed-admin@example.test",
+          membershipId: "membership_policy_seed_admin",
+          profileId: "profile_policy_seed_admin",
+          role: "administrator",
+        });
+        database.exec(
+          `DELETE FROM organizer_conflict_policies
+           WHERE organization_id = 'org_vcc'`,
+        );
+        const administrator = identity(
+          "policy-seed-admin@example.test",
+          "Policy seed administrator",
+        );
+        const intercepted = interceptD1Statements(database, {
+          before: (sql) =>
+            sql.includes("INSERT INTO organizer_conflict_policies"),
+          hook: async () => {
+            database.exec(mutation);
+            if (label === "organization reassignment") {
+              database.exec(`
+                INSERT INTO organization_memberships (
+                  id, organization_id, profile_id, normalized_email,
+                  role, status, created_by_profile_id, created_at,
+                  updated_at
+                ) VALUES (
+                  'membership_policy_seed_admin_other',
+                  'org_policy_other', 'profile_policy_seed_admin',
+                  'policy-seed-admin@example.test', 'administrator',
+                  'active', 'profile_owner', 3, 3
+                )
+              `);
+            }
+          },
+        });
+
+        await assert.rejects(
+          getOrganizerConflictPolicy(
+            intercepted.database,
+            administrator,
+          ),
+          (error) => error instanceof OrganizerAccessDeniedError,
+        );
+        assert.equal(intercepted.fired(), true);
+        assert.equal(
+          await database
+            .prepare(
+              `SELECT count(*) AS count
+               FROM organizer_conflict_policies
+               WHERE organization_id = 'org_vcc'`,
+            )
+            .first("count"),
+          0,
+        );
+      } finally {
+        database.close();
+      }
+    });
+  }
+});
+
+test("team member detail seals the exact actor role after reading target assignments", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  seedMember(database, {
+    email: "team-read-admin@example.com",
+    membershipId: "membership_team_read_admin",
+    profileId: "profile_team_read_admin",
+    role: "administrator",
+  });
+  seedMember(database, {
+    clubIds: ["club_think"],
+    email: "team-read-target@example.com",
+    membershipId: "membership_team_read_target",
+    profileId: "profile_team_read_target",
+    role: "organizer",
+  });
+  const administrator = identity(
+    "team-read-admin@example.com",
+    "Team read administrator",
+  );
+
+  const counter = countD1Statements(database);
+  assert.equal(
+    (
+      await getTeamMemberById(
+        counter.database,
+        administrator,
+        "membership_team_read_target",
+      )
+    )?.email,
+    "team-read-target@example.com",
+  );
+  assert.equal(counter.count(), 4);
+
+  const intercepted = interceptD1Statements(database, {
+    after: (sql) => sql.includes("FROM club_memberships AS assignment"),
+    before: (sql) => sql.includes("SELECT membership.id"),
+    hook: async () => {
+      database.exec(
+        `UPDATE organization_memberships
+         SET role = 'organizer', updated_at = updated_at + 1
+         WHERE id = 'membership_team_read_admin'`,
+      );
+    },
+  });
+  await assert.rejects(
+    getTeamMemberById(
+      intercepted.database,
+      administrator,
+      "membership_team_read_target",
+    ),
+    (error) => error instanceof OrganizerAccessDeniedError,
+  );
+  assert.equal(intercepted.fired(), true);
+});
+
 test("all exercised profile SQL shapes compile through real D1", async () => {
   await assertRecordedD1ShapesCompile(profileSqlRecording.stop(), {
-    expectedCount: 28,
+    expectedCount: 29,
     label: "organizer profile service",
   });
 });

@@ -84,17 +84,18 @@ society-registration, tax, or charity claim.
   organizer inbox and explicitly sends no confirmation email.
 - Owner-only Sites origin: **Available for the deployed Phase 2 version 8**.
   Public/shared access is not authorized, and unpublished Phase 3, Phase 4, or
-  Phase 5 candidates, the Phase 6 candidate, or the current Phase 7 work must
-  not be represented as live there. QR downloads remain an authorized cut and
-  require a separately authorized stable destination.
+  Phase 5 candidates, the Phase 6 candidate, or the unpublished Phase 7 and
+  Phase 8 candidates must not be represented as live there. QR downloads
+  remain an authorized cut and require a separately authorized stable
+  destination.
 - Custom domain: **Not requested and not required**
 
 ## Photography and consent
 
 - Real photographs: **Missing**
-- Approved-real-artwork browser smoke: **Awaiting owner**. Synthetic local
-  non-person artwork may verify mechanics but cannot satisfy this factual
-  owner-approval step.
+- Approved-real-artwork browser smoke: **Awaiting owner smoke test**.
+  Synthetic local non-person artwork may verify mechanics but cannot satisfy
+  this factual owner-approval step.
 - Owner-approved logo or Open Graph replacement artwork: **Missing**. The
   existing Field Notes brand icon and social card remain the safe published
   fallback.
@@ -118,3 +119,23 @@ No AI-generated attendee faces or unapproved photographs may be substituted.
 
 The public projection defaults organizer attribution to private and requires
 both consent gates before displaying a name.
+
+## Phase 8 Owner verification
+
+- Five-minute Phase 8 Owner smoke test: **Awaiting owner smoke test**. Local
+  synthetic browser checks do not constitute Owner approval.
+- Mobile Owner workflow at 320 and 390 CSS pixels: **Awaiting owner smoke
+  test** for browse, sign-in, event edit, conflict review, save/cancel, broken
+  links, dead controls, overflow, and validation readability.
+- Keyboard-only Owner workflow: **Awaiting owner smoke test** for navigation,
+  sign-in boundary, organizer agenda, event create/edit, conflict review,
+  save/cancel, public forms, imports, submissions, CMS/media, and downloads.
+- Approved-real-artwork browser check: **Awaiting owner smoke test**. It cannot
+  be replaced by synthetic local artwork.
+- Hosted Phase 8 behavior: **Not run**. Phase 8 does not authorize deployment,
+  preview deployment, public/shared access, access-policy changes, domain
+  changes, runtime-value changes, or hosted D1/R2 test data.
+
+The Owner smoke checks above do not authorize Phase 9 or a deployment. The
+owner-only live URL must continue serving version 8 until a separate deployment
+authorization is given.

@@ -12,6 +12,7 @@ import {
 } from "@/app/_organizer/ClubContentEditor";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
 import { PageHeader } from "@/app/_organizer/PageHeader";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import { listMediaAssets } from "@/lib/server/media/storage";
 import { readCmsEntityWorkspace } from "@/lib/server/organizer/cms";
 import { writeSafeLog } from "@/lib/validation/server-observability";
@@ -85,6 +86,12 @@ export default async function OrganizerClubContentPage(context: RouteContext) {
         .bind(loaded.context.membership.organizationId)
         .all<Record<string, unknown>>(),
     ]);
+    await revalidateAuthorizedMembership(
+      loaded.context.database,
+      loaded.context.identity,
+      loaded.context.membership,
+      { allowedRoles: ["owner", "administrator"] },
+    );
     data = Object.freeze({
       lanes: Object.freeze(
         (laneRows.results ?? []).flatMap((row) =>

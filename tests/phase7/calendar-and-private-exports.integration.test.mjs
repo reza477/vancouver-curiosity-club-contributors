@@ -19,7 +19,11 @@ import {
   runRequestMaintenance,
 } from "../../lib/server/database/request-maintenance.ts";
 import {
+  ensureCmsAdoption,
+} from "../../lib/server/organizer/cms-adoption.ts";
+import {
   createOwnCalendarSubscription,
+  listOwnCalendarSubscriptions,
   readPrivateCalendarSubscription,
   revokeOwnCalendarSubscription,
 } from "../../lib/server/phase7/calendar-subscriptions.ts";
@@ -36,6 +40,7 @@ import {
 import {
   createFilteredPublicCsvDownload,
   createFilteredPublicIcsDownload,
+  createOneEventIcsDownload,
 } from "../../lib/server/phase7/public-exports.ts";
 import {
   productionMigrationFragments,
@@ -47,6 +52,7 @@ import {
 import {
   assertRecordedD1ShapesCompile,
 } from "../database/d1-recorded-shapes.mjs";
+import { interceptD1Statements } from "../auth/intercept-d1.mjs";
 
 const OWNER = trustedIdentityFromSites({
   displayName: "Calendar Owner",
@@ -61,6 +67,8 @@ const ORGANIZER = trustedIdentityFromSites({
   email: "calendar-organizer@example.invalid",
 });
 const NOW = Date.UTC(2026, 6, 28, 12, 0, 0);
+const ARBITRARY_PRIVATE_URL_SENTINEL =
+  "https://whereby.com/private-planning-room/WHEREBY-PRIVATE-SENTINEL";
 const SOURCE_REVISION = execFileSync("git", ["rev-parse", "HEAD"], {
   cwd: process.cwd(),
   encoding: "utf8",
@@ -79,6 +87,183 @@ const NESTED_BACKUP_SENTINELS = Object.freeze([
   "NESTED-FEED-SENTINEL",
   "NESTED-MEETING-SENTINEL",
 ]);
+
+test("private calendar subscription list and revoke return paths seal live membership within bounded budgets", async (t) => {
+  await t.test("list", async () => {
+    const database = fixture();
+    try {
+      seedCalendarAdministrator(database);
+      const counter = countedBinding(database);
+      assert.deepEqual(
+        await listOwnCalendarSubscriptions(counter.binding, ADMIN),
+        [],
+      );
+      assert.deepEqual(counter.counts(), {
+        batchLengths: [],
+        statementCount: 3,
+      });
+
+      const intercepted = interceptD1Statements(database, {
+        after: (sql) =>
+          sql.includes("FROM ics_subscription_tokens AS token") &&
+          sql.includes("ORDER BY"),
+        before: (sql) => sql.includes("SELECT membership.id"),
+        hook: async () => suspendCalendarAdministrator(database),
+      });
+      await assert.rejects(
+        listOwnCalendarSubscriptions(intercepted.database, ADMIN),
+        (error) => error?.code === "authorization_denied",
+      );
+      assert.equal(intercepted.fired(), true);
+    } finally {
+      database.close();
+    }
+  });
+
+  await t.test("successful revoke", async () => {
+    const database = fixture();
+    try {
+      seedCalendarAdministrator(database);
+      const created = await createOwnCalendarSubscription(
+        database,
+        ADMIN,
+        "Successful revoke",
+        NOW,
+      );
+      const counter = countedBinding(database);
+      assert.equal(
+        (
+          await revokeOwnCalendarSubscription(
+            counter.binding,
+            ADMIN,
+            created.subscription.id,
+            NOW + 1,
+          )
+        ).revokedAt,
+        NOW + 1,
+      );
+      assert.deepEqual(counter.counts(), {
+        batchLengths: [2],
+        statementCount: 5,
+      });
+    } finally {
+      database.close();
+    }
+
+    const racedDatabase = fixture();
+    try {
+      seedCalendarAdministrator(racedDatabase);
+      const created = await createOwnCalendarSubscription(
+        racedDatabase,
+        ADMIN,
+        "Successful revoke race",
+        NOW,
+      );
+      await assert.rejects(
+        revokeOwnCalendarSubscription(
+          afterNextD1Batch(racedDatabase, async () =>
+            suspendCalendarAdministrator(racedDatabase),
+          ),
+          ADMIN,
+          created.subscription.id,
+          NOW + 1,
+        ),
+        (error) => error?.code === "authorization_denied",
+      );
+    } finally {
+      racedDatabase.close();
+    }
+  });
+
+  await t.test("already-revoked no-op", async () => {
+    const database = fixture();
+    try {
+      seedCalendarAdministrator(database);
+      const created = await createOwnCalendarSubscription(
+        database,
+        ADMIN,
+        "No-op revoke",
+        NOW,
+      );
+      await revokeOwnCalendarSubscription(
+        database,
+        ADMIN,
+        created.subscription.id,
+        NOW + 1,
+      );
+      const counter = countedBinding(database);
+      assert.equal(
+        (
+          await revokeOwnCalendarSubscription(
+            counter.binding,
+            ADMIN,
+            created.subscription.id,
+            NOW + 2,
+          )
+        ).revokedAt,
+        NOW + 1,
+      );
+      assert.deepEqual(counter.counts(), {
+        batchLengths: [],
+        statementCount: 3,
+      });
+
+      const intercepted = interceptD1Statements(database, {
+        after: (sql) =>
+          sql.includes("FROM ics_subscription_tokens") &&
+          sql.includes("WHERE id = ?"),
+        before: (sql) => sql.includes("SELECT membership.id"),
+        hook: async () => suspendCalendarAdministrator(database),
+      });
+      await assert.rejects(
+        revokeOwnCalendarSubscription(
+          intercepted.database,
+          ADMIN,
+          created.subscription.id,
+          NOW + 3,
+        ),
+        (error) => error?.code === "authorization_denied",
+      );
+      assert.equal(intercepted.fired(), true);
+    } finally {
+      database.close();
+    }
+  });
+
+  await t.test("lost-response retry", async () => {
+    const database = fixture();
+    try {
+      seedCalendarAdministrator(database);
+      const created = await createOwnCalendarSubscription(
+        database,
+        ADMIN,
+        "Concurrent revoke retry",
+        NOW,
+      );
+      const raced = revokeRetryRaceDatabase(
+        database,
+        created.subscription.id,
+      );
+      await assert.rejects(
+        revokeOwnCalendarSubscription(
+          raced.database,
+          ADMIN,
+          created.subscription.id,
+          NOW + 2,
+        ),
+        (error) => error?.code === "authorization_denied",
+      );
+      assert.equal(raced.firedWinner(), true);
+      assert.equal(raced.firedSealDrift(), true);
+      assert.deepEqual(raced.counts(), {
+        batchLengths: [2],
+        statementCount: 6,
+      });
+    } finally {
+      database.close();
+    }
+  });
+});
 
 test("simultaneous first private-feed reads converge to one daily touch", async () => {
   const database = fixture();
@@ -147,6 +332,81 @@ test("simultaneous first private-feed reads converge to one daily touch", async 
   } finally {
     database.close();
   }
+});
+
+test("private feed revalidates revocation and suspension after component reconciliation", async (t) => {
+  await t.test("revocation after reconciliation denies the feed", async () => {
+    const database = fixture();
+    try {
+      seedEvents(database);
+      const created = await createOwnCalendarSubscription(
+        database,
+        OWNER,
+        "Revocation race",
+        NOW,
+      );
+      let raced = false;
+      const racedDatabase = afterCalendarRevisionRead(
+        database,
+        () => {
+          database.sqlite
+            .prepare(
+              `UPDATE ics_subscription_tokens
+               SET revoked_at = ?
+               WHERE id = ?`,
+            )
+            .run(
+              NOW + 1_001,
+              created.subscription.id,
+            );
+          raced = true;
+        },
+      );
+      await assertPrivateCalendarNotFound(
+        racedDatabase,
+        created.token,
+        NOW + 1_000,
+      );
+      assert.equal(raced, true);
+    } finally {
+      database.close();
+    }
+  });
+
+  await t.test("suspension after reconciliation denies the feed", async () => {
+    const database = fixture();
+    try {
+      seedEvents(database);
+      const created = await createOwnCalendarSubscription(
+        database,
+        OWNER,
+        "Suspension race",
+        NOW,
+      );
+      let raced = false;
+      const racedDatabase = afterCalendarRevisionRead(
+        database,
+        () => {
+          database.sqlite
+            .prepare(
+              `UPDATE organization_memberships
+               SET status = 'suspended', updated_at = ?
+               WHERE id = 'membership-owner'`,
+            )
+            .run(NOW + 1_001);
+          raced = true;
+        },
+      );
+      await assertPrivateCalendarNotFound(
+        racedDatabase,
+        created.token,
+        NOW + 1_000,
+      );
+      assert.equal(raced, true);
+    } finally {
+      database.close();
+    }
+  });
 });
 
 test("private feed includes only an approved public venue label and eligible planning states", async () => {
@@ -437,6 +697,10 @@ test("Owner backup uses explicit pseudonyms and excludes identity and token data
       visibleEvent.privateNotes,
       /\[redacted-email\]/u,
     );
+    assert.match(
+      visibleEvent.privateNotes,
+      /\[redacted-private-url\]/u,
+    );
     const revision = backup.sections.eventRevisions.find(
       (candidate) => candidate.id === "revision-sensitive",
     );
@@ -460,6 +724,7 @@ test("Owner backup uses explicit pseudonyms and excludes identity and token data
     assert.doesNotMatch(download.body, /QUERY-TOKEN-SENTINEL/u);
     assert.doesNotMatch(download.body, /PRIVATE-FEED-SENTINEL/u);
     assert.doesNotMatch(download.body, /NESTED-SECRET-SENTINEL/u);
+    assert.doesNotMatch(download.body, /WHEREBY-PRIVATE-SENTINEL/u);
     assert.doesNotMatch(download.body, /private_meeting_details/iu);
     assert.doesNotMatch(download.body, /"(?:tokenHash|objectKey)"\s*:/u);
     assert.equal(
@@ -670,17 +935,26 @@ test("Owner backup SQL is bounded and compiles with exact bindings on real D1", 
 test("whole Worker export and calendar routes retain exact D1 statement headroom", async () => {
   const database = fixture();
   try {
+    const routeNow = Date.now();
     seedEvents(database);
     seedMedia(database);
-    seedPublicRouteBudgetEvent(database);
+    seedPublicRouteBudgetEvent(database, routeNow);
+    const adoptionActor = await authorizeOrganizerAccess(database, OWNER);
+    assert.equal(
+      await ensureCmsAdoption(database, adoptionActor, routeNow + 1),
+      "adopted",
+    );
     await installInvariantFastPath(database);
     const counter = countedBinding(database);
-    const routeNow = Date.now();
+    const fromDate = new Date(routeNow).toISOString().slice(0, 10);
+    const toDate = new Date(routeNow + 2 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
     const publicInput = {
       generatedAt: routeNow,
       origin: "https://example.invalid",
       searchParams: new URLSearchParams(
-        "from=2026-07-28&to=2026-07-30",
+        `from=${fromDate}&to=${toDate}`,
       ),
     };
     const runRoute = async ({
@@ -744,8 +1018,8 @@ test("whole Worker export and calendar routes retain exact D1 statement headroom
       expected: {
         invariantStatements: 2,
         maintenanceStatements: 2,
-        routeStatements: 5,
-        totalStatements: 9,
+        routeStatements: 6,
+        totalStatements: 10,
       },
       method: "GET",
       pathname: "/events/calendar.ics",
@@ -753,6 +1027,24 @@ test("whole Worker export and calendar routes retain exact D1 statement headroom
         createFilteredPublicIcsDownload(binding, publicInput),
     });
     assert.match(calendar.body, /Budget public event/u);
+
+    const oneEventCalendar = await runRoute({
+      expected: {
+        invariantStatements: 2,
+        maintenanceStatements: 2,
+        routeStatements: 6,
+        totalStatements: 10,
+      },
+      method: "GET",
+      pathname: "/events/budget-public-event/calendar.ics",
+      work: (binding) =>
+        createOneEventIcsDownload(binding, {
+          generatedAt: routeNow,
+          origin: "https://example.invalid",
+          slug: "budget-public-event",
+        }),
+    });
+    assert.match(oneEventCalendar?.body ?? "", /Budget public event/u);
 
     const publicCsv = await runRoute({
       expected: {
@@ -855,8 +1147,8 @@ test("whole Worker export and calendar routes retain exact D1 statement headroom
       expected: {
         invariantStatements: 2,
         maintenanceStatements: 0,
-        routeStatements: 4,
-        totalStatements: 6,
+        routeStatements: 5,
+        totalStatements: 7,
       },
       method: "POST",
       pathname: "/api/organizer/calendar-tokens",
@@ -878,8 +1170,8 @@ test("whole Worker export and calendar routes retain exact D1 statement headroom
       expected: {
         invariantStatements: 2,
         maintenanceStatements: 0,
-        routeStatements: 5,
-        totalStatements: 7,
+        routeStatements: 6,
+        totalStatements: 8,
       },
       method: "GET",
       pathname: "/api/calendar/private/[token]",
@@ -894,8 +1186,8 @@ test("whole Worker export and calendar routes retain exact D1 statement headroom
       expected: {
         invariantStatements: 2,
         maintenanceStatements: 0,
-        routeStatements: 5,
-        totalStatements: 7,
+        routeStatements: 6,
+        totalStatements: 8,
       },
       method: "POST",
       pathname:
@@ -1374,6 +1666,46 @@ function backupSectionSqlMarker(section, sql) {
   return sql.includes(markers[section]);
 }
 
+function afterCalendarRevisionRead(database, afterRead) {
+  let fired = false;
+  const wrap = (statement, sql) => ({
+    inner: statement,
+    bind(...values) {
+      return wrap(statement.bind(...values), sql);
+    },
+    first(...args) {
+      return statement.first(...args);
+    },
+    run(...args) {
+      return statement.run(...args);
+    },
+    async all(...args) {
+      const result = await statement.all(...args);
+      if (
+        !fired &&
+        sql.includes(
+          "JOIN event_calendar_component_revisions AS revision",
+        ) &&
+        sql.includes("ORDER BY requested.ordinal ASC")
+      ) {
+        fired = true;
+        await afterRead();
+      }
+      return result;
+    },
+  });
+  return {
+    batch(statements) {
+      return database.batch(
+        statements.map((statement) => statement.inner ?? statement),
+      );
+    },
+    prepare(sql) {
+      return wrap(database.prepare(sql), sql);
+    },
+  };
+}
+
 async function assertPrivateCalendarNotFound(
   database,
   rawToken,
@@ -1457,6 +1789,101 @@ function countedBinding(database) {
   };
 }
 
+function afterNextD1Batch(database, hook) {
+  let fired = false;
+  return {
+    async batch(statements) {
+      const results = await database.batch(statements);
+      if (!fired) {
+        fired = true;
+        await hook();
+      }
+      return results;
+    },
+    exec(sql) {
+      return database.exec(sql);
+    },
+    prepare(sql) {
+      return database.prepare(sql);
+    },
+  };
+}
+
+function revokeRetryRaceDatabase(database, tokenId) {
+  let batchLengths = [];
+  let firedSealDrift = false;
+  let firedWinner = false;
+  let ownSubscriptionReads = 0;
+  let statementCount = 0;
+
+  const racedDatabase = {
+    async batch(statements) {
+      statementCount += statements.length;
+      batchLengths.push(statements.length);
+      return database.batch(
+        statements.map((statement) => statement.inner ?? statement),
+      );
+    },
+    exec(sql) {
+      return database.exec(sql);
+    },
+    prepare(sql) {
+      return wrap(database.prepare(sql), sql);
+    },
+  };
+  return Object.freeze({
+    counts: () => ({
+      batchLengths: [...batchLengths],
+      statementCount,
+    }),
+    database: racedDatabase,
+    firedSealDrift: () => firedSealDrift,
+    firedWinner: () => firedWinner,
+  });
+
+  function wrap(statement, sql) {
+    return {
+      inner: statement,
+      bind(...values) {
+        return wrap(statement.bind(...values), sql);
+      },
+      async all(...arguments_) {
+        statementCount += 1;
+        return statement.all(...arguments_);
+      },
+      async first(...arguments_) {
+        statementCount += 1;
+        const result = await statement.first(...arguments_);
+        if (
+          sql.includes(
+            "SELECT id, label, created_at, last_used_at, revoked_at",
+          ) &&
+          sql.includes("FROM ics_subscription_tokens")
+        ) {
+          ownSubscriptionReads += 1;
+          if (ownSubscriptionReads === 1) {
+            await revokeOwnCalendarSubscription(
+              database,
+              ADMIN,
+              tokenId,
+              NOW + 1,
+            );
+            firedWinner = true;
+          } else if (ownSubscriptionReads === 2) {
+            await suspendCalendarAdministrator(database);
+            firedSealDrift = true;
+          }
+        }
+        return result;
+      },
+      async run(...arguments_) {
+        statementCount += 1;
+        return statement.run(...arguments_);
+      },
+    };
+  }
+}
+
 async function installInvariantFastPath(database) {
   for (const statement of DATABASE_INVARIANT_TRIGGER_STATEMENTS) {
     database.exec(statement);
@@ -1473,6 +1900,37 @@ async function installInvariantFastPath(database) {
       await getExpectedDatabaseInvariantFingerprint(),
       Date.now(),
     );
+}
+
+function seedCalendarAdministrator(database) {
+  database.exec(`
+    INSERT INTO profiles (
+      id, siwc_subject, normalized_email, display_name, status,
+      created_at, updated_at, deleted_at
+    ) VALUES (
+      'profile-admin', 'email:calendar-admin@example.invalid',
+      'calendar-admin@example.invalid', 'Calendar Administrator',
+      'active', ${NOW}, ${NOW}, NULL
+    );
+    INSERT INTO organization_memberships (
+      id, organization_id, profile_id, normalized_email, role, status,
+      created_by_profile_id, created_at, updated_at, deleted_at
+    ) VALUES (
+      'membership-admin', 'org-vcc', 'profile-admin',
+      'calendar-admin@example.invalid', 'administrator', 'active',
+      'profile-owner', ${NOW}, ${NOW}, NULL
+    );
+  `);
+}
+
+function suspendCalendarAdministrator(database) {
+  return database
+    .prepare(
+      `UPDATE profiles
+       SET status = 'suspended', updated_at = updated_at + 1
+       WHERE id = 'profile-admin'`,
+    )
+    .run();
 }
 
 function fixture() {
@@ -1519,7 +1977,8 @@ function seedEvents(database) {
       id, organization_id, name, slug, description,
       created_by_profile_id, created_at, updated_at, deleted_at
     ) VALUES (
-      'club-vcc', 'org-vcc', 'Vancouver Curiosity Club', 'vcc', NULL,
+      'club-vcc', 'org-vcc', 'Vancouver Curiosity Club', 'vcc',
+      'Public route budget fixture.',
       'profile-owner', ${NOW}, ${NOW}, NULL
     );
     INSERT INTO venues (
@@ -1551,7 +2010,7 @@ function seedEvents(database) {
       'event-visible', 'org-vcc', 'club-vcc', NULL, 'lane-think',
       NULL, 'venue-public', 'profile-owner',
       'Visible private plan', 'visible-private-plan', NULL, NULL,
-      'Contact calendar-owner@example.invalid',
+      'Contact calendar-owner@example.invalid at ${ARBITRARY_PRIVATE_URL_SENTINEL}',
       'Private meeting sentinel', NULL, 'draft', 'private', 'timed',
       ${NOW + 86_400_000}, ${NOW + 90_000_000}, 'America/Vancouver',
       NULL, NULL, 0, 0, 1, 1,
@@ -1569,7 +2028,7 @@ function seedEvents(database) {
   `);
 }
 
-function seedPublicRouteBudgetEvent(database) {
+function seedPublicRouteBudgetEvent(database, now) {
   database.exec(`
     UPDATE organizations
     SET slug = 'vancouver-curiosity-and-education-society'
@@ -1580,7 +2039,19 @@ function seedPublicRouteBudgetEvent(database) {
       published_at, created_at, updated_at, deleted_at
     ) VALUES (
       'club-vcc', 'org-vcc', 'lane-think', 'published', 1,
-      'Public route budget fixture.', NULL, ${NOW}, ${NOW}, ${NOW}, NULL
+      'Public route budget fixture.', NULL, ${now}, ${now}, ${now}, NULL
+    );
+    INSERT INTO club_public_profile_details (
+      club_id, organization_id, public_display_name, short_summary,
+      full_description, program_type, theme_color, seo_title,
+      meta_description, confirmed_social_links_json, related_resources_json,
+      updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'club-vcc', 'org-vcc', 'Vancouver Curiosity Club',
+      'Public route budget fixture.', 'Public route budget fixture.',
+      'club', '#0C665E', 'Vancouver Curiosity Club',
+      'Public route budget fixture.', '[]', '[]', 'profile-owner',
+      ${now}, ${now}
     );
     INSERT INTO events (
       id, organization_id, club_id, event_lane_id, category_id, venue_id,
@@ -1597,9 +2068,9 @@ function seedPublicRouteBudgetEvent(database) {
       'venue-public', 'profile-owner', 'Budget public event',
       'budget-public-event', 'A bounded public route fixture.',
       'A bounded public route fixture.', 'confirmed', 'public', 'timed',
-      ${NOW + 86_400_000}, ${NOW + 90_000_000}, 'America/Vancouver',
-      NULL, NULL, 0, 0, '[]', 1, 'unreviewed', NULL, NULL, NULL, ${NOW},
-      'profile-owner', 'profile-owner', ${NOW}, ${NOW}, NULL
+      ${now + 86_400_000}, ${now + 90_000_000}, 'America/Vancouver',
+      NULL, NULL, 0, 0, '[]', 1, 'unreviewed', NULL, NULL, NULL, ${now},
+      'profile-owner', 'profile-owner', ${now}, ${now}, NULL
     );
   `);
 }

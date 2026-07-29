@@ -94,6 +94,14 @@ function routeSource(relativePath) {
   );
 }
 
+test("session role comes from the final-sealed profile read", () => {
+  const source = routeSource("session/route.ts");
+  assert.match(source, /await authorizeOrganizerAccess\(/u);
+  assert.match(source, /const profile = await getOrganizerProfile\(/u);
+  assert.match(source, /role:\s*profile\.role/u);
+  assert.doesNotMatch(source, /role:\s*membership\.role/u);
+});
+
 test("every organizer JSON route revalidates trusted server membership and uses private response helpers", () => {
   for (const relativePath of ROUTES) {
     const source = routeSource(relativePath);

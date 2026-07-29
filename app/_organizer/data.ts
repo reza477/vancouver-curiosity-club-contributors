@@ -3,6 +3,7 @@ import "server-only";
 import {
   getMeetupConnectionState,
 } from "@/lib/server/meetup";
+import { revalidateAuthorizedMembership } from "@/lib/server/auth";
 import type {
   OrganizerEventDto,
   OrganizerEventIndexQuery,
@@ -87,6 +88,11 @@ export async function loadOrganizerDashboard(
       ),
     );
 
+  await revalidateAuthorizedMembership(
+    context.database,
+    context.identity,
+    context.membership,
+  );
   return Object.freeze({
     assignedClubs: profile.assignedClubs,
     attentionDrafts,
@@ -130,6 +136,11 @@ export async function loadCalendarWorkspaceData(
   const laneById = new Map(taxonomy.lanes.map((lane) => [lane.id, lane.label]));
   const categoryById = new Map(
     taxonomy.categories.map((category) => [category.id, category.label]),
+  );
+  await revalidateAuthorizedMembership(
+    context.database,
+    context.identity,
+    context.membership,
   );
   return Object.freeze({
     defaultTimezone: context.defaultTimezone,
@@ -184,6 +195,11 @@ export async function loadEventIndexData(
     listOrganizerClubs(context.database, context.identity),
   ]);
   const clubNames = new Map(clubs.map((club) => [club.id, club.name]));
+  await revalidateAuthorizedMembership(
+    context.database,
+    context.identity,
+    context.membership,
+  );
   return Object.freeze({
     events: Object.freeze(
       eventPage.events.map((event) =>
@@ -227,6 +243,11 @@ export async function loadEventFormOptions(
   );
   const clubIds = schedulableClubs.map((club) => club.id);
   const programs = await loadPrograms(context, clubIds);
+  await revalidateAuthorizedMembership(
+    context.database,
+    context.identity,
+    context.membership,
+  );
   return Object.freeze({
     categories: taxonomy.categories,
     clubs: Object.freeze(

@@ -40,6 +40,10 @@ import {
   ensureDatabaseInvariants,
 } from "../../lib/server/database/invariants.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import {
+  countD1Statements,
+  interceptD1Statements,
+} from "../auth/intercept-d1.mjs";
 
 const ownerIdentity = Object.freeze({
   displayName: "Owner",
@@ -413,6 +417,103 @@ test("CSV import detail rows use stable bounded pagination instead of one aggreg
     ),
     (error) => error?.code === "validation_failed",
   );
+});
+
+test("CSV import history and detail revalidate the exact manager after their private rows are read", async (t) => {
+  await t.test("authorized result paths each stay at four statements", async () => {
+    const database = await newDatabase();
+    try {
+      const preview = await createCsvRowsPreview(database, [{
+        attendance_mode: "undecided",
+        club: "main-club",
+        planning_status: "idea",
+        primary_organizer_email: "owner@example.test",
+        publication_status: "private",
+        schedule_type: "unscheduled",
+        title: "Import read seal budget",
+      }], "phase7-read-seal-budget");
+
+      const historyCounter = countD1Statements(database);
+      assert.equal(
+        (await listCsvImportBatches(
+          historyCounter.database,
+          administratorIdentity,
+          { limit: 10 },
+        )).items.length,
+        1,
+      );
+      assert.equal(historyCounter.count(), 4);
+
+      const detailCounter = countD1Statements(database);
+      assert.equal(
+        (await getCsvImportBatch(
+          detailCounter.database,
+          administratorIdentity,
+          preview.batch.batchId,
+          { limit: 10 },
+        )).rows.length,
+        1,
+      );
+      assert.equal(detailCounter.count(), 4);
+    } finally {
+      database.close();
+    }
+  });
+
+  for (const [label, afterSql, read] of [
+    [
+      "history",
+      "SELECT count(*) AS exact_count",
+      (database) =>
+        listCsvImportBatches(database, administratorIdentity, {
+          limit: 10,
+        }),
+    ],
+    [
+      "detail",
+      "WITH page_rows AS",
+      (database, batchId) =>
+        getCsvImportBatch(
+          database,
+          administratorIdentity,
+          batchId,
+          { limit: 10 },
+        ),
+    ],
+  ]) {
+    await t.test(`${label} denies suspension before its final seal`, async () => {
+      const database = await newDatabase();
+      try {
+        const preview = await createCsvRowsPreview(database, [{
+          attendance_mode: "undecided",
+          club: "main-club",
+          planning_status: "idea",
+          primary_organizer_email: "owner@example.test",
+          publication_status: "private",
+          schedule_type: "unscheduled",
+          title: `Import ${label} suspension race`,
+        }], `phase7-${label}-read-seal`);
+        const intercepted = interceptD1Statements(database, {
+          after: (sql) => sql.includes(afterSql),
+          before: (sql) => sql.includes("SELECT membership.id"),
+          hook: async () => {
+            database.exec(
+              `UPDATE profiles
+               SET status = 'suspended', updated_at = updated_at + 1
+               WHERE id = 'profile-admin'`,
+            );
+          },
+        });
+        await assert.rejects(
+          read(intercepted.database, preview.batch.batchId),
+          (error) => error?.code === "authorization_denied",
+        );
+        assert.equal(intercepted.fired(), true);
+      } finally {
+        database.close();
+      }
+    });
+  }
 });
 
 test("CSV source redaction is Owner-only, terminal-only, and age-gated", async (t) => {
@@ -1236,8 +1337,91 @@ test("CSV max-organizer apply route stays below the whole Worker D1 statement ca
     database.prepare = originalPrepare;
   }
   assert.equal(applied.row.resultCode, "imported_private");
-  assert.equal(statementCount, 47);
+  assert.equal(statementCount, 48);
   assert.ok(statementCount < 50);
+});
+
+test("ordinary organizer event create, edit, and lifecycle route-equivalent compositions include the invariant fast path and stay below the Worker cap", async (t) => {
+  const database = await newDatabase();
+  t.after(() => database.close());
+  seedImportCoOrganizers(database, 12);
+  const coOrganizerProfileIds = Array.from(
+    { length: 12 },
+    (_, index) => `phase7-profile-co-${index + 1}`,
+  );
+  const counts = {};
+
+  const runComposition = async ({
+    label,
+    method,
+    pathname,
+    work,
+  }) => {
+    await ensureReady(database);
+    const counter = countD1Statements(database);
+    assert.equal(
+      await ensureDatabaseInvariants(counter.database),
+      "ready",
+      `${label} must enter through the invariant fast path`,
+    );
+    assert.deepEqual(
+      await runRequestMaintenance(counter.database, {
+        method,
+        pathname,
+      }),
+      { kind: "continue" },
+      `${label} must continue past request maintenance`,
+    );
+    const value = await work(counter.database);
+    counts[label] = counter.count();
+    assert.ok(
+      counts[label] < 50,
+      `${label} used ${counts[label]} D1 statements`,
+    );
+    return value;
+  };
+
+  const createInput = timedDraftInput({
+    coOrganizerProfileIds,
+    title: "Budgeted ordinary event create",
+  });
+  const created = await runComposition({
+    label: "create",
+    method: "POST",
+    pathname: "/api/organizer/events",
+    work: (binding) =>
+      createOrganizerEvent(binding, ownerIdentity, createInput),
+  });
+  const edited = await runComposition({
+    label: "edit",
+    method: "PATCH",
+    pathname: `/api/organizer/events/${created.id}`,
+    work: (binding) =>
+      updateOrganizerEvent(
+        binding,
+        ownerIdentity,
+        created.id,
+        created.contentVersion,
+        {
+          ...createInput,
+          title: "Budgeted ordinary event edit",
+          venueId: "venue-alt",
+        },
+      ),
+  });
+  const held = await runComposition({
+    label: "place_hold",
+    method: "POST",
+    pathname: `/api/organizer/events/${created.id}/lifecycle`,
+    work: (binding) => placeHold(binding, ownerIdentity, edited),
+  });
+  assert.equal(held.event.planningStatus, "tentative_hold");
+
+  assert.deepEqual(counts, {
+    create: 28,
+    edit: 34,
+    place_hold: 36,
+  });
 });
 
 test("two synchronized blocking import applications permit at most one unreviewed reservation", async (t) => {
@@ -2727,10 +2911,23 @@ test("concurrent hold reconciliation emits one nearing and one exact-boundary ex
   );
 
   setD1Now(database, reservation.hold_expires_at - 12 * 60 * 60_000);
-  await Promise.all([
+  const nearingOutcomes = await Promise.all([
     reconcileOrganizerHoldNotices(database, ownerIdentity),
     reconcileOrganizerHoldNotices(database, ownerIdentity),
   ]);
+  assert.equal(
+    nearingOutcomes.reduce(
+      (total, outcome) => total + outcome.created,
+      0,
+    ),
+    1,
+  );
+  assert.ok(
+    nearingOutcomes.every(
+      ({ created, examined }) =>
+        created <= 1 && examined <= 1,
+    ),
+  );
   assert.equal(
     await countWhere(
       database,
@@ -2743,10 +2940,23 @@ test("concurrent hold reconciliation emits one nearing and one exact-boundary ex
   );
 
   setD1Now(database, reservation.hold_expires_at);
-  await Promise.all([
+  const expiredOutcomes = await Promise.all([
     reconcileOrganizerHoldNotices(database, ownerIdentity),
     reconcileOrganizerHoldNotices(database, ownerIdentity),
   ]);
+  assert.equal(
+    expiredOutcomes.reduce(
+      (total, outcome) => total + outcome.created,
+      0,
+    ),
+    1,
+  );
+  assert.ok(
+    expiredOutcomes.every(
+      ({ created, examined }) =>
+        created <= 1 && examined <= 1,
+    ),
+  );
   assert.equal(
     await countWhere(
       database,
@@ -2767,6 +2977,31 @@ test("concurrent hold reconciliation emits one nearing and one exact-boundary ex
       "profile-admin",
     ),
     2,
+  );
+  assert.deepEqual(
+    (
+      await database
+        .prepare(
+          `SELECT notice_type, recipient_profile_id, schedule_version
+           FROM organizer_hold_notice_receipts
+           WHERE organizer_event_id = ?
+           ORDER BY notice_type, recipient_profile_id`,
+        )
+        .bind(draft.id)
+        .all()
+    ).results.map((receipt) => ({ ...receipt })),
+    [
+      {
+        notice_type: "expired",
+        recipient_profile_id: "profile-admin",
+        schedule_version: held.event.scheduleVersion,
+      },
+      {
+        notice_type: "nearing_expiry",
+        recipient_profile_id: "profile-admin",
+        schedule_version: held.event.scheduleVersion,
+      },
+    ],
   );
 });
 
@@ -3248,14 +3483,21 @@ test("hold notices use D1 time, notify only affected organizers, and dedupe acro
   const held = (await placeHold(database, ownerIdentity, draft)).event;
   assert.equal(typeof held.holdExpiresAt, "number");
   setD1Now(database, held.holdExpiresAt - 23 * 60 * 60_000);
-  const nearing = await Promise.all([
-    reconcileOrganizerHoldNotices(database, ownerIdentity),
-    reconcileOrganizerHoldNotices(database, ownerIdentity),
-  ]);
+  const nearing = await reconcileHoldNoticesUntilConverged(
+    database,
+    ownerIdentity,
+  );
   assert.equal(
     nearing.reduce((total, result) => total + result.created, 0),
     2,
   );
+  assert.ok(
+    nearing.every(
+      ({ created, examined }) =>
+        created <= 1 && examined <= 1,
+    ),
+  );
+  assert.deepEqual(nearing.at(-1), { created: 0, examined: 0 });
   assert.deepEqual(
     (
       await database
@@ -3287,23 +3529,77 @@ test("hold notices use D1 time, notify only affected organizers, and dedupe acro
     ],
   );
   setD1Now(database, held.holdExpiresAt);
-  const expired = await reconcileOrganizerHoldNotices(
+  const expired = await reconcileHoldNoticesUntilConverged(
     database,
     ownerIdentity,
   );
-  assert.equal(expired.created, 2);
-  assert.deepEqual(
-    await reconcileOrganizerHoldNotices(database, ownerIdentity),
-    { created: 0, examined: 0 },
-  );
   assert.equal(
-    await countWhere(
-      database,
-      "organizer_hold_notice_receipts",
-      "organizer_event_id = ?",
-      draft.id,
+    expired.reduce((total, result) => total + result.created, 0),
+    2,
+  );
+  assert.ok(
+    expired.every(
+      ({ created, examined }) =>
+        created <= 1 && examined <= 1,
     ),
-    4,
+  );
+  assert.deepEqual(expired.at(-1), { created: 0, examined: 0 });
+  assert.deepEqual(
+    (
+      await database
+        .prepare(
+          `SELECT receipt.notice_type,
+                  receipt.recipient_profile_id,
+                  receipt.schedule_version,
+                  notification.type AS notification_type,
+                  json_extract(
+                    notification.payload_json,
+                    '$.eventId'
+                  ) AS event_id
+           FROM organizer_hold_notice_receipts AS receipt
+           JOIN notifications AS notification
+             ON notification.id = receipt.notification_id
+            AND notification.organization_id =
+                receipt.organization_id
+            AND notification.recipient_profile_id =
+                receipt.recipient_profile_id
+           WHERE receipt.organizer_event_id = ?
+           ORDER BY receipt.notice_type,
+                    receipt.recipient_profile_id`,
+        )
+        .bind(draft.id)
+        .all()
+    ).results.map((receipt) => ({ ...receipt })),
+    [
+      {
+        event_id: draft.id,
+        notice_type: "expired",
+        notification_type: "hold_expired",
+        recipient_profile_id: "profile-organizer-a",
+        schedule_version: held.scheduleVersion,
+      },
+      {
+        event_id: draft.id,
+        notice_type: "expired",
+        notification_type: "hold_expired",
+        recipient_profile_id: "profile-owner",
+        schedule_version: held.scheduleVersion,
+      },
+      {
+        event_id: draft.id,
+        notice_type: "nearing_expiry",
+        notification_type: "hold_nearing_expiry",
+        recipient_profile_id: "profile-organizer-a",
+        schedule_version: held.scheduleVersion,
+      },
+      {
+        event_id: draft.id,
+        notice_type: "nearing_expiry",
+        notification_type: "hold_nearing_expiry",
+        recipient_profile_id: "profile-owner",
+        schedule_version: held.scheduleVersion,
+      },
+    ],
   );
   const serialized = JSON.stringify(
     (
@@ -3325,6 +3621,25 @@ test("hold notices use D1 time, notify only affected organizers, and dedupe acro
     assert.equal(serialized.includes(forbidden), false);
   }
 });
+
+async function reconcileHoldNoticesUntilConverged(
+  database,
+  identity,
+) {
+  const outcomes = await Promise.all([
+    reconcileOrganizerHoldNotices(database, identity),
+    reconcileOrganizerHoldNotices(database, identity),
+  ]);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const outcome = await reconcileOrganizerHoldNotices(
+      database,
+      identity,
+    );
+    outcomes.push(outcome);
+    if (outcome.examined === 0) return outcomes;
+  }
+  assert.fail("hold notice reconciliation did not converge");
+}
 
 async function newDatabase() {
   const schemaSql = readdirSync(join(process.cwd(), "drizzle"))

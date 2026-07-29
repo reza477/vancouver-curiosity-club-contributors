@@ -775,7 +775,7 @@ test("real D1 Meetup route compositions include maintenance plus both organizer 
   const cases = [
     {
       binding: "GET_HEALTHY",
-      expected: 23,
+      expected: 26,
       label: "GET healthy catalog",
       method: "get",
       seedCatalog: true,
@@ -783,7 +783,7 @@ test("real D1 Meetup route compositions include maintenance plus both organizer 
     },
     {
       binding: "GET_FRESH",
-      expected: 37,
+      expected: 40,
       label: "GET existing owner with fresh catalog",
       method: "get",
       seedCatalog: false,
@@ -791,7 +791,7 @@ test("real D1 Meetup route compositions include maintenance plus both organizer 
     },
     {
       binding: "GET_FIRST_OWNER",
-      expected: 43,
+      expected: 46,
       initialOwnerEmail: CATALOG_OWNER.email,
       label: "GET first owner with fresh catalog",
       method: "get",
@@ -800,7 +800,7 @@ test("real D1 Meetup route compositions include maintenance plus both organizer 
     },
     {
       binding: "POST_HEALTHY",
-      expected: 14,
+      expected: 15,
       label: "POST healthy catalog with a new source",
       method: "post",
       seedCatalog: true,
@@ -808,7 +808,7 @@ test("real D1 Meetup route compositions include maintenance plus both organizer 
     },
     {
       binding: "POST_FRESH",
-      expected: 28,
+      expected: 29,
       label: "POST existing owner with fresh catalog and a new source",
       method: "post",
       seedCatalog: false,
@@ -816,7 +816,7 @@ test("real D1 Meetup route compositions include maintenance plus both organizer 
     },
     {
       binding: "POST_FIRST_OWNER",
-      expected: 34,
+      expected: 35,
       initialOwnerEmail: CATALOG_OWNER.email,
       label: "POST first owner with fresh catalog and a new source",
       method: "post",
@@ -825,7 +825,7 @@ test("real D1 Meetup route compositions include maintenance plus both organizer 
     },
     {
       binding: "POST_RETRY",
-      expected: 11,
+      expected: 12,
       label: "POST healthy exact-source retry",
       method: "post",
       seedCatalog: true,

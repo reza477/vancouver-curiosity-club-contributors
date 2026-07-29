@@ -8,7 +8,11 @@ import {
   invitationTokenCookie,
   isInvitationToken,
 } from "../lib/server/organizer/invitation-token-cookie";
-import { normalizeEncodedRequestPathname } from "../lib/request-pathname";
+import {
+  isPrivateOrIdentityPath,
+  normalizeEncodedRequestPathname,
+  safeRequestPathname,
+} from "../lib/request-pathname";
 
 interface Env {
   ASSETS: Fetcher;
@@ -28,44 +32,9 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-const PRIVATE_OR_IDENTITY_PATHS = [
-  "/organizer",
-  "/api",
-  "/auth",
-  "/accept-invitation",
-  "/drafts",
-  "/invitations",
-  "/preview",
-  "/signin-with-chatgpt",
-  "/signout-with-chatgpt",
-  "/callback",
-] as const;
-
 const TRUSTED_REQUEST_ORIGIN_HEADER = "x-vcc-request-origin";
 const TRUSTED_REQUEST_PATHNAME_HEADER = "x-vcc-request-pathname";
 const TRUSTED_CSP_NONCE_HEADER = "x-vcc-csp-nonce";
-
-function isPrivateOrIdentityPath(pathname: string): boolean {
-  return (
-    isPrivateCalendarSubscriptionPath(pathname) ||
-    PRIVATE_OR_IDENTITY_PATHS.some(
-      (path) => pathname === path || pathname.startsWith(`${path}/`),
-    )
-  );
-}
-
-function isPrivateCalendarSubscriptionPath(pathname: string): boolean {
-  return (
-    pathname === "/api/calendar/private" ||
-    pathname.startsWith("/api/calendar/private/")
-  );
-}
-
-function safeRequestPathname(pathname: string): string {
-  return isPrivateCalendarSubscriptionPath(pathname)
-    ? "/api/calendar/private/[token]"
-    : pathname;
-}
 
 function isLocalRequest(requestUrl: URL): boolean {
   return (
@@ -106,7 +75,7 @@ function contentSecurityPolicy(requestUrl: URL, nonce: string | null): string {
 
   return [
     "default-src 'self'",
-    "base-uri 'self'",
+    "base-uri 'none'",
     `connect-src ${connectSources.join(" ")}`,
     "font-src 'self' data:",
     "form-action 'self'",
@@ -175,10 +144,7 @@ function secureResponse(
   headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
   headers.set(
     "Referrer-Policy",
-    requestPathname === null ||
-      requestPathname === "/accept-invitation" ||
-      requestPathname.startsWith("/accept-invitation/") ||
-      isPrivateCalendarSubscriptionPath(requestPathname)
+    isPrivateRequest
       ? "no-referrer"
       : "strict-origin-when-cross-origin",
   );
@@ -198,7 +164,12 @@ function secureResponse(
     response.status >= 400
   ) {
     headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
-  } else if (requestUrl.search.length > 0) {
+  } else if (
+    requestUrl.search.length > 0 &&
+    !/(?:^|,\s*)noindex(?:\s*,|$)/iu.test(
+      headers.get("X-Robots-Tag") ?? "",
+    )
+  ) {
     headers.set("X-Robots-Tag", "noindex, follow, noarchive");
   }
   if (isPrivateRequest || response.status >= 500) {

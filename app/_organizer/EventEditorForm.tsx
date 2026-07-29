@@ -31,7 +31,7 @@ export function EventEditorForm({
   const scheduleHeadingRef = useRef<HTMLHeadingElement>(null);
   const previewSequenceRef = useRef(0);
   const [value, setValue] = useState(initialValue);
-  const [errors, setErrors] = useState<readonly string[]>([]);
+  const [errors, setErrors] = useState<readonly EventFormError[]>([]);
   const [notice, setNotice] = useState("");
   const [conflictReason, setConflictReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -165,7 +165,7 @@ export function EventEditorForm({
           ? "The private planning record could not be created."
           : "Your changes were not saved.";
       const message = safeNotice(error, fallback);
-      setErrors([message]);
+      setErrors([{ fieldId: null, message }]);
       setNotice(message);
       window.requestAnimationFrame(() => summaryRef.current?.focus());
     } finally {
@@ -212,7 +212,13 @@ export function EventEditorForm({
           <h2>Review this form</h2>
           <ul>
             {errors.map((error) => (
-              <li key={error}>{error}</li>
+              <li key={`${error.fieldId ?? "form"}:${error.message}`}>
+                {error.fieldId ? (
+                  <a href={`#${error.fieldId}`}>{error.message}</a>
+                ) : (
+                  error.message
+                )}
+              </li>
             ))}
           </ul>
         </div>
@@ -231,16 +237,23 @@ export function EventEditorForm({
           <label className={styles.fieldFull}>
             <span>Title <strong aria-hidden="true">*</strong></span>
             <input
+              aria-describedby={errorDescription(errors, "event-title")}
+              aria-invalid={hasFieldError(errors, "event-title")}
               autoComplete="off"
+              id="event-title"
               maxLength={180}
               onChange={(event) => update("title", event.target.value)}
               required
               value={value.title}
             />
+            <FieldError errors={errors} fieldId="event-title" />
           </label>
           <label>
             <span>Club <strong aria-hidden="true">*</strong></span>
             <select
+              aria-describedby={errorDescription(errors, "event-club")}
+              aria-invalid={hasFieldError(errors, "event-club")}
+              id="event-club"
               onChange={(event) => {
                 const nextClubId = event.target.value;
                 setValue((current) =>
@@ -260,6 +273,7 @@ export function EventEditorForm({
                 <option key={option.id} value={option.id}>{option.label}</option>
               ))}
             </select>
+            <FieldError errors={errors} fieldId="event-club" />
           </label>
         </div>
       </section>
@@ -276,7 +290,13 @@ export function EventEditorForm({
           </p>
         </header>
         <div className={styles.formFields}>
-          <fieldset className={styles.segmentedFieldset}>
+          <fieldset
+            aria-describedby={errorDescription(errors, "event-schedule-shape")}
+            aria-invalid={hasFieldError(errors, "event-schedule-shape")}
+            className={styles.segmentedFieldset}
+            id="event-schedule-shape"
+            tabIndex={-1}
+          >
             <legend>Schedule shape</legend>
             {[
               ["unscheduled", "Unscheduled"],
@@ -298,25 +318,62 @@ export function EventEditorForm({
                 <span>{label}</span>
               </label>
             ))}
+            <FieldError errors={errors} fieldId="event-schedule-shape" />
           </fieldset>
 
           {value.scheduleShape === "timed" ? (
             <>
               <label>
                 <span>Start date <strong aria-hidden="true">*</strong></span>
-                <input onChange={(event) => update("startDate", event.target.value)} required type="date" value={value.startDate} />
+                <input
+                  aria-describedby={errorDescription(errors, "event-start-date")}
+                  aria-invalid={hasFieldError(errors, "event-start-date")}
+                  id="event-start-date"
+                  onChange={(event) => update("startDate", event.target.value)}
+                  required
+                  type="date"
+                  value={value.startDate}
+                />
+                <FieldError errors={errors} fieldId="event-start-date" />
               </label>
               <label>
                 <span>Start time <strong aria-hidden="true">*</strong></span>
-                <input onChange={(event) => update("startTime", event.target.value)} required type="time" value={value.startTime} />
+                <input
+                  aria-describedby={errorDescription(errors, "event-start-time")}
+                  aria-invalid={hasFieldError(errors, "event-start-time")}
+                  id="event-start-time"
+                  onChange={(event) => update("startTime", event.target.value)}
+                  required
+                  type="time"
+                  value={value.startTime}
+                />
+                <FieldError errors={errors} fieldId="event-start-time" />
               </label>
               <label>
                 <span>End date <strong aria-hidden="true">*</strong></span>
-                <input onChange={(event) => update("endDate", event.target.value)} required type="date" value={value.endDate} />
+                <input
+                  aria-describedby={errorDescription(errors, "event-end-date")}
+                  aria-invalid={hasFieldError(errors, "event-end-date")}
+                  id="event-end-date"
+                  onChange={(event) => update("endDate", event.target.value)}
+                  required
+                  type="date"
+                  value={value.endDate}
+                />
+                <FieldError errors={errors} fieldId="event-end-date" />
               </label>
               <label>
                 <span>End time <strong aria-hidden="true">*</strong></span>
-                <input onChange={(event) => update("endTime", event.target.value)} required type="time" value={value.endTime} />
+                <input
+                  aria-describedby={errorDescription(errors, "event-end-time")}
+                  aria-invalid={hasFieldError(errors, "event-end-time")}
+                  id="event-end-time"
+                  onChange={(event) => update("endTime", event.target.value)}
+                  required
+                  type="time"
+                  value={value.endTime}
+                />
+                <FieldError errors={errors} fieldId="event-end-time" />
               </label>
             </>
           ) : null}
@@ -325,18 +382,34 @@ export function EventEditorForm({
             <>
               <label>
                 <span>First day <strong aria-hidden="true">*</strong></span>
-                <input onChange={(event) => update("allDayStartDate", event.target.value)} required type="date" value={value.allDayStartDate} />
+                <input
+                  aria-describedby={errorDescription(errors, "event-all-day-start")}
+                  aria-invalid={hasFieldError(errors, "event-all-day-start")}
+                  id="event-all-day-start"
+                  onChange={(event) => update("allDayStartDate", event.target.value)}
+                  required
+                  type="date"
+                  value={value.allDayStartDate}
+                />
+                <FieldError errors={errors} fieldId="event-all-day-start" />
               </label>
               <label>
                 <span>End date, exclusive <strong aria-hidden="true">*</strong></span>
                 <input
-                  aria-describedby="all-day-end-help"
+                  aria-describedby={errorDescription(
+                    errors,
+                    "event-all-day-end",
+                    "all-day-end-help",
+                  )}
+                  aria-invalid={hasFieldError(errors, "event-all-day-end")}
+                  id="event-all-day-end"
                   onChange={(event) => update("allDayEndDateExclusive", event.target.value)}
                   required
                   type="date"
                   value={value.allDayEndDateExclusive}
                 />
                 <small id="all-day-end-help">For one day, choose the following date.</small>
+                <FieldError errors={errors} fieldId="event-all-day-end" />
               </label>
             </>
           ) : null}
@@ -345,7 +418,10 @@ export function EventEditorForm({
             <label className={styles.fieldFull}>
               <span>Original timezone <strong aria-hidden="true">*</strong></span>
               <input
+                aria-describedby={errorDescription(errors, "event-timezone")}
+                aria-invalid={hasFieldError(errors, "event-timezone")}
                 autoComplete="off"
+                id="event-timezone"
                 list="organizer-timezones"
                 onChange={(event) => update("timezone", event.target.value)}
                 required
@@ -359,6 +435,7 @@ export function EventEditorForm({
                 <option value="UTC" />
               </datalist>
               <small>Use an IANA timezone such as America/Vancouver, never a fixed UTC offset.</small>
+              <FieldError errors={errors} fieldId="event-timezone" />
             </label>
           ) : null}
         </div>
@@ -374,7 +451,13 @@ export function EventEditorForm({
           <label className={styles.fieldFull}>
             <span>Primary organizer <strong aria-hidden="true">*</strong></span>
             <select
+              aria-describedby={errorDescription(
+                errors,
+                "event-primary-organizer",
+              )}
+              aria-invalid={hasFieldError(errors, "event-primary-organizer")}
               disabled={primaryOrganizerLocked}
+              id="event-primary-organizer"
               onChange={(event) => update("primaryOrganizerProfileId", event.target.value)}
               required
               value={value.primaryOrganizerProfileId}
@@ -389,8 +472,15 @@ export function EventEditorForm({
                 As a co-organizer, you may edit the record but cannot reassign its primary organizer.
               </small>
             ) : null}
+            <FieldError errors={errors} fieldId="event-primary-organizer" />
           </label>
-          <fieldset className={`${styles.checkboxGroup} ${styles.fieldFull}`}>
+          <fieldset
+            aria-describedby={errorDescription(errors, "event-co-organizers")}
+            aria-invalid={hasFieldError(errors, "event-co-organizers")}
+            className={`${styles.checkboxGroup} ${styles.fieldFull}`}
+            id="event-co-organizers"
+            tabIndex={-1}
+          >
             <legend>Co-organizers</legend>
             {availableOrganizers
               .filter((organizer) => organizer.id !== value.primaryOrganizerProfileId)
@@ -429,6 +519,7 @@ export function EventEditorForm({
                 club-assigned Organizers only.
               </p>
             )}
+            <FieldError errors={errors} fieldId="event-co-organizers" />
           </fieldset>
           <label className={styles.fieldFull}>
             <span>Venue</span>
@@ -458,6 +549,9 @@ export function EventEditorForm({
           <label>
             <span>Setup buffer, minutes</span>
             <input
+              aria-describedby={errorDescription(errors, "event-setup-buffer")}
+              aria-invalid={hasFieldError(errors, "event-setup-buffer")}
+              id="event-setup-buffer"
               max={1_440}
               min={0}
               onChange={(event) =>
@@ -467,10 +561,14 @@ export function EventEditorForm({
               type="number"
               value={value.setupBufferMinutes}
             />
+            <FieldError errors={errors} fieldId="event-setup-buffer" />
           </label>
           <label>
             <span>Cleanup or travel buffer, minutes</span>
             <input
+              aria-describedby={errorDescription(errors, "event-cleanup-buffer")}
+              aria-invalid={hasFieldError(errors, "event-cleanup-buffer")}
+              id="event-cleanup-buffer"
               max={1_440}
               min={0}
               onChange={(event) =>
@@ -480,6 +578,7 @@ export function EventEditorForm({
               type="number"
               value={value.cleanupBufferMinutes}
             />
+            <FieldError errors={errors} fieldId="event-cleanup-buffer" />
           </label>
         </div>
       </section>
@@ -742,6 +841,9 @@ export function EventEditorForm({
           <label className={styles.fieldFull}>
             <span>Real Meetup event URL, if one already exists</span>
             <input
+              aria-describedby={errorDescription(errors, "event-meetup-url")}
+              aria-invalid={hasFieldError(errors, "event-meetup-url")}
+              id="event-meetup-url"
               inputMode="url"
               maxLength={2048}
               onChange={(event) => update("meetupEventUrl", event.target.value)}
@@ -751,6 +853,7 @@ export function EventEditorForm({
               value={value.meetupEventUrl}
             />
             <small>This does not turn the manual record into a synced source record.</small>
+            <FieldError errors={errors} fieldId="event-meetup-url" />
           </label>
         </div>
       </section>
@@ -789,55 +892,135 @@ function selectedArchivedTaxonomyOption(
   );
 }
 
-function validate(value: EventEditorValue): readonly string[] {
-  const errors: string[] = [];
-  if (!value.title.trim()) errors.push("Add a title.");
-  if (!value.clubId) errors.push("Choose a club.");
-  if (!value.primaryOrganizerProfileId) errors.push("Choose a primary organizer.");
+type EventFormError = Readonly<{
+  fieldId: string | null;
+  message: string;
+}>;
+
+function validate(value: EventEditorValue): readonly EventFormError[] {
+  const errors: EventFormError[] = [];
+  const add = (fieldId: string, message: string) => {
+    errors.push(Object.freeze({ fieldId, message }));
+  };
+  if (!value.title.trim()) add("event-title", "Add a title.");
+  if (!value.clubId) add("event-club", "Choose a club.");
+  if (!value.primaryOrganizerProfileId) {
+    add("event-primary-organizer", "Choose a primary organizer.");
+  }
   if (value.coOrganizerProfileIds.length > 12) {
-    errors.push("Choose no more than 12 co-organizers.");
+    add("event-co-organizers", "Choose no more than 12 co-organizers.");
   }
   if (value.planningStatus === "draft" && value.scheduleShape === "unscheduled") {
-    errors.push("A Draft needs a timed or all-day schedule.");
+    add("event-schedule-shape", "A Draft needs a timed or all-day schedule.");
   }
   if (
     (value.planningStatus === "tentative_hold" ||
       value.planningStatus === "confirmed") &&
     value.scheduleShape === "unscheduled"
   ) {
-    errors.push("A hold or confirmed event needs a real schedule.");
+    add(
+      "event-schedule-shape",
+      "A hold or confirmed event needs a real schedule.",
+    );
   }
   if (value.scheduleShape === "timed") {
-    if (!value.startDate || !value.startTime || !value.endDate || !value.endTime) {
-      errors.push("Complete the timed start and end.");
-    } else if (`${value.endDate}T${value.endTime}` <= `${value.startDate}T${value.startTime}`) {
-      errors.push("The timed end must be after the start.");
+    if (!value.startDate) add("event-start-date", "Add the start date.");
+    if (!value.startTime) add("event-start-time", "Add the start time.");
+    if (!value.endDate) add("event-end-date", "Add the end date.");
+    if (!value.endTime) add("event-end-time", "Add the end time.");
+    if (
+      value.startDate &&
+      value.startTime &&
+      value.endDate &&
+      value.endTime &&
+      `${value.endDate}T${value.endTime}` <=
+        `${value.startDate}T${value.startTime}`
+    ) {
+      add("event-end-time", "The timed end must be after the start.");
     }
   }
   if (value.scheduleShape === "all_day") {
-    if (!value.allDayStartDate || !value.allDayEndDateExclusive) {
-      errors.push("Complete the all-day date range.");
-    } else if (value.allDayEndDateExclusive <= value.allDayStartDate) {
-      errors.push("The all-day exclusive end date must be after the first day.");
+    if (!value.allDayStartDate) {
+      add("event-all-day-start", "Add the first day.");
+    }
+    if (!value.allDayEndDateExclusive) {
+      add("event-all-day-end", "Add the exclusive end date.");
+    }
+    if (
+      value.allDayStartDate &&
+      value.allDayEndDateExclusive &&
+      value.allDayEndDateExclusive <= value.allDayStartDate
+    ) {
+      add(
+        "event-all-day-end",
+        "The all-day exclusive end date must be after the first day.",
+      );
     }
   }
   if (value.scheduleShape !== "unscheduled" && !value.timezone.trim()) {
-    errors.push("Add the original IANA timezone.");
+    add("event-timezone", "Add the original IANA timezone.");
   }
   if (value.meetupEventUrl && !isValidHttpsUrl(value.meetupEventUrl)) {
-    errors.push("Enter a valid HTTPS Meetup event URL or leave it blank.");
+    add(
+      "event-meetup-url",
+      "Enter a valid HTTPS Meetup event URL or leave it blank.",
+    );
   }
   if (
     !Number.isSafeInteger(value.setupBufferMinutes) ||
     value.setupBufferMinutes < 0 ||
-    value.setupBufferMinutes > 1_440 ||
+    value.setupBufferMinutes > 1_440
+  ) {
+    add(
+      "event-setup-buffer",
+      "Setup buffer must be whole minutes from 0 through 1440.",
+    );
+  }
+  if (
     !Number.isSafeInteger(value.cleanupBufferMinutes) ||
     value.cleanupBufferMinutes < 0 ||
     value.cleanupBufferMinutes > 1_440
   ) {
-    errors.push("Buffers must be whole minutes from 0 through 1440.");
+    add(
+      "event-cleanup-buffer",
+      "Cleanup or travel buffer must be whole minutes from 0 through 1440.",
+    );
   }
-  return errors;
+  return Object.freeze(errors);
+}
+
+function hasFieldError(
+  errors: readonly EventFormError[],
+  fieldId: string,
+): boolean {
+  return errors.some((error) => error.fieldId === fieldId);
+}
+
+function errorDescription(
+  errors: readonly EventFormError[],
+  fieldId: string,
+  existingId?: string,
+): string | undefined {
+  const ids = [
+    existingId,
+    hasFieldError(errors, fieldId) ? `${fieldId}-error` : undefined,
+  ].filter((value): value is string => Boolean(value));
+  return ids.length > 0 ? ids.join(" ") : undefined;
+}
+
+function FieldError({
+  errors,
+  fieldId,
+}: Readonly<{
+  errors: readonly EventFormError[];
+  fieldId: string;
+}>) {
+  const error = errors.find((item) => item.fieldId === fieldId);
+  return error ? (
+    <small className={styles.fieldError} id={`${fieldId}-error`}>
+      {error.message}
+    </small>
+  ) : null;
 }
 
 function isValidHttpsUrl(value: string): boolean {

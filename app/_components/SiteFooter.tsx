@@ -42,7 +42,9 @@ export function SiteFooter({
           {footerNavigation.policies.map((item) => (
             <FooterLink item={item} key={item.href} />
           ))}
-          <Link href="/organizer">Organizer Login</Link>
+          <Link href="/organizer" prefetch={false}>
+            Organizer Login
+          </Link>
         </div>
         {externalLinks.length > 0 ? (
           <div className="footer-nav-group">
@@ -73,7 +75,9 @@ function FooterLink({
   item,
 }: Readonly<{ item: PublicNavigationItemDto }>) {
   return item.href.startsWith("/") ? (
-    <Link href={item.href}>{item.label}</Link>
+    <Link href={item.href} prefetch={false}>
+      {item.label}
+    </Link>
   ) : (
     <a href={item.href} rel="noreferrer noopener" target="_blank">
       {item.label}

@@ -1,5 +1,6 @@
 import {
   authorizeMembership,
+  OrganizerAccessDeniedError,
   type D1DatabaseLike,
   type TrustedServerIdentity,
 } from "../auth";
@@ -28,16 +29,48 @@ export async function getWorkspaceSettings(
   const actor = await authorizeMembership(database, identity);
   const row = await database
     .prepare(
-      `SELECT value_json
-       FROM site_settings
-       WHERE organization_id = ?
-         AND key = ?
-         AND is_public = 0
+      `WITH current_actor AS (
+         SELECT membership.organization_id
+         FROM organization_memberships AS membership
+         JOIN profiles AS profile
+           ON profile.id = membership.profile_id
+          AND profile.normalized_email = ?
+          AND profile.status = 'active'
+          AND profile.deleted_at IS NULL
+         JOIN organizations AS organization
+           ON organization.id = membership.organization_id
+          AND organization.deleted_at IS NULL
+         WHERE membership.id = ?
+           AND membership.organization_id = ?
+           AND membership.profile_id = ?
+           AND membership.role = ?
+           AND membership.normalized_email = ?
+           AND membership.status = 'active'
+           AND membership.deleted_at IS NULL
+         LIMIT 1
+       )
+       SELECT setting.value_json
+       FROM current_actor
+       LEFT JOIN site_settings AS setting
+         ON setting.organization_id = current_actor.organization_id
+        AND setting.key = ?
+        AND setting.is_public = 0
        LIMIT 1`,
     )
-    .bind(actor.organizationId, WORKSPACE_SETTINGS_KEY)
+    .bind(
+      identity.email,
+      actor.membershipId,
+      actor.organizationId,
+      actor.profileId,
+      actor.role,
+      identity.email,
+      WORKSPACE_SETTINGS_KEY,
+    )
     .first<Record<string, unknown>>();
   if (!row) {
+    throw new OrganizerAccessDeniedError("inactive_membership");
+  }
+  if (row.value_json === null || row.value_json === undefined) {
     return Object.freeze({
       workspaceName: DEFAULT_WORKSPACE_NAME,
       defaultTimezone: DEFAULT_TIMEZONE,

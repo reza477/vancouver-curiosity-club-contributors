@@ -56,10 +56,78 @@ test("required private organizer routes share server membership revalidation and
   assert.match(shell, /More/u);
 });
 
+test("multi-read private pages seal authorization at their composition boundary", () => {
+  const calendar = source("app", "organizer", "calendar", "page.tsx");
+  const settings = source("app", "organizer", "settings", "page.tsx");
+  const revision = source(
+    "app",
+    "organizer",
+    "content",
+    "revisions",
+    "[id]",
+    "page.tsx",
+  );
+  const event = source(
+    "app",
+    "organizer",
+    "events",
+    "[id]",
+    "page.tsx",
+  );
+  const cmsPages = [
+    ["content", "page.tsx"],
+    ["content", "clubs", "[id]", "page.tsx"],
+    ["content", "pages", "[id]", "page.tsx"],
+    ["content", "programs", "[id]", "page.tsx"],
+  ];
+
+  assert.match(
+    calendar,
+    /const currentData = await loadCalendarWorkspaceData[\s\S]*?const currentSubscriptions = await listOwnCalendarSubscriptions[\s\S]*?await revalidateAuthorizedMembership[\s\S]*?data = currentData;[\s\S]*?subscriptions = currentSubscriptions;/u,
+  );
+  assert.match(
+    settings,
+    /await revalidateAuthorizedMembership\([\s\S]*?loaded\.context\.membership,[\s\S]*?\);[\s\S]*?return \(/u,
+  );
+  assert.match(
+    revision,
+    /await revalidateAuthorizedMembership\([\s\S]*?allowedRoles: \["owner", "administrator"\][\s\S]*?previewData = Object\.freeze/u,
+  );
+  assert.match(
+    event,
+    /if \(!isEditableManualRecord\(record\)\) \{[\s\S]*?await revalidateAuthorizedMembership[\s\S]*?return Object\.freeze/u,
+  );
+  assert.match(
+    event,
+    /await assertCurrentOrganizerEventReadAccess\([\s\S]*?\[record\.id\],[\s\S]*?true,[\s\S]*?\);[\s\S]*?return Object\.freeze/u,
+  );
+  for (const segments of cmsPages) {
+    const cmsPage = source("app", "organizer", ...segments);
+    assert.match(
+      cmsPage,
+      /await revalidateAuthorizedMembership\([\s\S]*?allowedRoles: \["owner", "administrator"\]/u,
+      `${segments.join("/")} must seal the complete private CMS composition`,
+    );
+  }
+  const dashboard = source("app", "organizer", "content", "page.tsx");
+  assert.match(
+    dashboard,
+    /const currentEntities = await listCmsEntities[\s\S]*?await revalidateAuthorizedMembership[\s\S]*?entities = currentEntities;/u,
+  );
+});
+
 test("private shell has no public chrome, canonical, Open Graph, or structured data", () => {
   const rootLayout = source("app", "layout.tsx");
   const organizerLayout = source("app", "organizer", "layout.tsx");
   assert.match(rootLayout, /isPrivateApplicationPath/u);
+  assert.match(
+    rootLayout,
+    /import \{ isPrivateOrIdentityPath \} from "@\/lib\/request-pathname"/u,
+  );
+  assert.match(
+    rootLayout,
+    /pathname !== null && isPrivateOrIdentityPath\(pathname\)/u,
+  );
   assert.match(rootLayout, /"\/accept-invitation"/u);
   assert.match(rootLayout, /"\/organizer"/u);
   assert.match(rootLayout, /isPrivatePath \? null : \(\s*<SiteHeader/u);

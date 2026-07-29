@@ -26,6 +26,7 @@ export async function POST(request: Request): Promise<Response> {
     requestUrl.hostname === "127.0.0.1" ||
     requestUrl.hostname === "::1";
   const clearCookie = clearInvitationTokenCookie(isLocal);
+  let reachedTokenAttempt = false;
 
   try {
     const user = await getChatGPTUser();
@@ -38,6 +39,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     // Authenticate first. Only then validate same-origin and the bounded body.
     await readOrganizerMutationBody(request, 64);
+    reachedTokenAttempt = true;
     const token = readInvitationTokenCookie(
       request.headers.get("cookie"),
       isLocal,
@@ -69,7 +71,15 @@ export async function POST(request: Request): Promise<Response> {
       "/accept-invitation/consume",
       { noReferrer: true },
     );
-    response.headers.append("Set-Cookie", clearCookie);
+    if (
+      reachedTokenAttempt &&
+      error instanceof SafeApplicationError &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      error.status !== 429
+    ) {
+      response.headers.append("Set-Cookie", clearCookie);
+    }
     return response;
   }
 }

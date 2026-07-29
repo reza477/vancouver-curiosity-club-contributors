@@ -148,6 +148,7 @@ export function ProfileForm({
         <div
           aria-label={`${profile.calendarColor} calendar color`}
           className={`${styles.profileAvatar} ${styles[`color${capitalize(profile.calendarColor)}`]}`}
+          role="img"
         >
           {profile.initials}
         </div>

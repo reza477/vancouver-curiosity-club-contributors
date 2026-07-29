@@ -108,7 +108,7 @@ test("maximum CSV preview and approval payload statements compile within real D1
     },
   );
   const allShapes = recording.stop();
-  assert.equal(allShapes.length, 26);
+  assert.equal(allShapes.length, 27);
   assert.deepEqual({
     maxBinds: Math.max(
       ...allShapes.map(({ bindings }) => bindings.length),
@@ -188,7 +188,7 @@ test("maximum CSV preview and approval payload statements compile within real D1
     },
   ]);
   await assertRecordedD1ShapesCompile(allShapes, {
-    expectedCount: 26,
+    expectedCount: 27,
     label: "maximum Phase 7 import preview and approval path",
   });
 
