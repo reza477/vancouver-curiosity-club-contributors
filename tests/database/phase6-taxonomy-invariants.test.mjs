@@ -141,9 +141,26 @@ async function taxonomyViolationCount(database) {
 async function assertInvariantEventuallyFailsClosed(database) {
   for (let attempt = 0; attempt < 16; attempt += 1) {
     try {
-      await ensureDatabaseInvariants(
+      const status = await ensureDatabaseInvariants(
         distinctDatabaseBinding(database),
         DATABASE_INVARIANT_VERSION,
+      );
+      assert.equal(
+        status,
+        "repaired",
+        "malformed taxonomy may advance only a bounded fail-closed repair slice",
+      );
+      const marker = await database
+        .prepare(
+          `SELECT count(*) AS count
+           FROM database_invariant_state
+           WHERE singleton_key = 'database-guards'`,
+        )
+        .first();
+      assert.equal(
+        Number(marker?.count ?? 0),
+        0,
+        "no intermediate repair may certify malformed taxonomy",
       );
     } catch (error) {
       assert.equal(error?.name, "DatabaseInvariantError");
@@ -2078,13 +2095,7 @@ test("taxonomy adoption refuses over-cap legacy rows without a marker or partial
       created_by_profile_id, created_at, updated_at
     ) VALUES ${values};
   `);
-  await assert.rejects(
-    ensureDatabaseInvariants(
-      distinctDatabaseBinding(database),
-      DATABASE_INVARIANT_VERSION,
-    ),
-    { name: "DatabaseInvariantError" },
-  );
+  await assertInvariantEventuallyFailsClosed(database);
   const residue = await database
     .prepare(
       `SELECT
