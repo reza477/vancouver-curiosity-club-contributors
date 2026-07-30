@@ -28,6 +28,12 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
 - Store one active `meetup_ics` source per club while allowing multiple clubs
   and distinct feeds in the same organization. Enforce both organization/club
   uniqueness and organization/source-URL uniqueness.
+- Cross-posted gatherings receive distinct group-specific source identities.
+  If two configured feeds would reserve the same time, the Phase 4 overlap
+  guard fails closed rather than silently merging by title/time or showing
+  duplicate reservations. Until an explicit owner-reviewed cross-post alias
+  model exists, operators must connect only the non-overlapping feed coverage
+  they intend to show.
 - Resolve the three owner-approved program clubs idempotently using their exact
   public names and stable organization-scoped records. The protected connection
   form submits an explicit club ID. Server authorization proves that club
@@ -58,7 +64,7 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
 - Parse bounded iCalendar input, including `VTIMEZONE`, TZID-aware timed events,
   UID plus normalized recurrence identity, explicit calendar/event
   cancellation, and safe rejection of unexpanded recurrence.
-- Process one source and at most three calendar rows per request. Persist a
+- Process one source and at most two calendar rows per request. Persist a
   snapshot hash, pending generation ID, and cursor for resumable partial
   imports. Stage public-safe facts in an isolated pending generation; its rows
   and counters may change until finalization. Published snapshots are immutable
@@ -118,6 +124,10 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
   and misrepresented.
 - With no guaranteed scheduler, freshness depends on owner refreshes and public
   views. The UI labels that cadence explicitly.
+- Meetup's official iCalendar export supplies no approved poster-image field.
+  Imported events use separately rights-approved website media when available
+  and controlled category artwork otherwise; the sync does not scrape or
+  hotlink Meetup posters.
 - No Meetup OAuth/API credential, Meetup Pro plan, password, scraper, external
   queue, alternate database, or alternate host is introduced.
 

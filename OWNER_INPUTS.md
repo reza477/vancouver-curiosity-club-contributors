@@ -35,17 +35,22 @@ data.
 - Any confirmed social-profile, future community-platform, or other public
   Community destination beyond the three Meetup groups: **Missing**. No future
   platform may be named or seeded without the exact owner-confirmed URL.
-- One owner-selected real confirmed event and its exact individual Meetup event
-  RSVP URL for the future Phase 6 hosted publication smoke test: **Missing**.
-  The earlier isolated feed smoke test verified official RSVP destinations
-  without committing them as fixtures; the local review database intentionally
-  contains no real event.
-
-No Meetup source was configured during Phase 9 production verification, so
-hosted imported event data remains empty. If the Owner later enters a feed
-through the authenticated organizer workspace, its URL remains private
-configuration and must not be copied into public content, client state, logs,
-or this file.
+- Production source configuration on 2026-07-30: **Completed by the Owner**
+  through the authenticated organizer workspace for all three official group
+  feeds. The private source addresses remain intentionally absent from this
+  file, source, logs, and client state.
+- Source-backed event verification: **Completed for 11 current published
+  events** from the completed Vancouver Literature and Film and Vancouver
+  Fantasy & Sci-Fi Group snapshots. Their public event destinations are the
+  exact individual Meetup URLs supplied by those feeds.
+- Vancouver Curiosity Club feed activation: **Blocked safely by cross-post
+  conflicts.** Several of its gatherings are also present in another group
+  feed with a different Meetup source identity. The authoritative scheduling
+  guard rejected the duplicate reservations and kept the last completed
+  snapshots visible. No automatic title/time merge was performed.
+- Exact Eventbrite, Flock, and Instagram destinations: **Missing**. They must
+  not be guessed. Confirmed global URLs can be added to Community; distinct
+  event-level destinations require a later additive event-signup model.
 
 ## British Columbia legal identity
 
@@ -141,8 +146,11 @@ both consent gates before displaying a name.
 - Approved-real-artwork browser check: **Awaiting owner smoke test**. The
   hosted Media workspace contains no uploaded artwork, and synthetic artwork
   cannot replace rights, consent, credit, or Owner approval.
+- Owner calendar-first product feedback and authenticated sign-in:
+  **Completed on 2026-07-30.** This is not the complete five-minute Owner smoke
+  card, which remains awaiting Owner review.
 - Real published-event detail and individual Meetup-event URL:
-  **Not run — no approved real published event**.
+  **Completed for source-backed Meetup events on 2026-07-30.**
 - Hosted second-identity role/suspension/reassignment: **Not run**. The access
   policy permits one owner and zero groups.
 - External private calendar-client behavior: **Implemented but not externally

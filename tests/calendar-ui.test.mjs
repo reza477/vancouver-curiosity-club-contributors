@@ -41,10 +41,16 @@ test("homepage puts the bounded public calendar path before secondary content", 
   assert.match(renderer, /href="\/calendar"/);
   assert.match(renderer, /View the calendar/);
   assert.match(renderer, /events\.slice\(0,\s*4\)/);
-  assert.ok(
-    renderer.indexOf('className="home-events"') <
-      renderer.indexOf('className="lane-index"'),
+  assert.match(renderer, /website does not create visitor accounts\./u);
+  assert.match(
+    renderer,
+    /official\s+signup\s+link\s+shown\s+for\s+each\s+event/u,
   );
+  assert.doesNotMatch(renderer, /className="lane-index"/u);
+  assert.doesNotMatch(renderer, /className="home-clubs"/u);
+  assert.match(renderer, /className="home-cms-sections"/u);
+  assert.match(renderer, /loadEditorialRenderContext/u);
+  assert.match(renderer, /previewMediaAssets/u);
   assert.match(renderer, /No upcoming event is published here yet\./);
   assert.match(renderer, /As soon as an event is ready for everyone to see/u);
   assert.match(styles, /\.home-hero\s*\{[\s\S]*?min-height:\s*min\(30rem/u);
@@ -204,6 +210,7 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
     controls,
     /clubId\.length === 0[\s\S]*feedUrl\.length === 0/,
   );
+  assert.doesNotMatch(controls, /primary Meetup feed/u);
   assert.doesNotMatch(
     model,
     /^\s*(feedUrl|lastErrorCode|organizationId)\s*:/mu,
@@ -215,7 +222,7 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
   assert.match(model, /Explicitly strips organization identifiers/);
 });
 
-test("manual Meetup APIs derive authority server-side and restrict both mutations", async () => {
+test("manual Meetup APIs derive authority server-side and restrict every mutation", async () => {
   const [shared, connect, refresh, model, worker, requestPathname] =
     await Promise.all([
     readFile(
@@ -386,10 +393,14 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
   );
 });
 
-test("narrow navigation preserves every primary destination and organizer login", async () => {
-  const [header, css] = await Promise.all([
+test("narrow navigation prioritizes the four public destinations and keeps organizer login in the footer", async () => {
+  const [header, footer, css] = await Promise.all([
     readFile(
       new URL("app/_components/SiteHeader.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("app/_components/SiteFooter.tsx", projectRoot),
       "utf8",
     ),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
@@ -398,27 +409,27 @@ test("narrow navigation preserves every primary destination and organizer login"
   for (const destination of [
     "/calendar",
     "/events",
-    "/clubs",
     "/community",
     "/about",
-    "/get-involved",
-    "/organizer",
   ]) {
     assert.match(
       header,
       new RegExp(`href:\\s*"${destination}"|href="${destination}"`),
     );
   }
+  assert.doesNotMatch(
+    header,
+    /\{ href: "\/organizer", label: "Organizer Login" \}/u,
+  );
+  assert.match(footer, /<Link href="\/organizer" prefetch=\{false\}>/u);
+  assert.match(footer, /Organizer Login/u);
   assert.match(header, /className="site-navigation"/);
   assert.match(header, /<summary>/);
   assert.match(header, /onKeyDown=\{closeMobileMenuWithEscape\}/);
   assert.match(header, /mobileMenu\.current\.open = false/);
   assert.match(header, /querySelector\("summary"\)\?\.focus\(\)/);
   assert.match(header, /onClick=\{onNavigate\}/);
-  assert.match(
-    header,
-    /\.slice\(0, 1\)/u,
-  );
+  assert.match(header, /return Object\.freeze\(required\)/u);
   assert.match(css, /@media \(max-width: 70rem\)/u);
   assert.match(css, /\.site-navigation > \.primary-nav\s*\{/);
   assert.match(

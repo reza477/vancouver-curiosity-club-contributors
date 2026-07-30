@@ -19,6 +19,7 @@ import {
   queryPublicEvents,
   type PublicEventCardDto,
 } from "@/lib/server/public/events";
+import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
 import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
@@ -72,6 +73,7 @@ export default async function CalendarPage({
   const todayDate = vancouverCalendarDate(nowUtcMs);
   const resolvedMonth = resolvePublicCalendarMonth(raw.month, todayDate);
   const bounds = publicCalendarMonthBounds(resolvedMonth.month);
+  const origin = await getTrustedRequestOrigin();
   let events: readonly PublicEventCardDto[] = [];
   let hasMore = false;
   let sync: Readonly<{
@@ -127,7 +129,8 @@ export default async function CalendarPage({
         <h1>Calendar</h1>
         <p>
           See the month at a glance. Hover, focus, or tap a day for event
-          times, places, artwork, and Meetup links.
+          times, places, artwork, signup links, and one-tap calendar options.
+          The website does not create visitor accounts.
         </p>
       </header>
 
@@ -158,6 +161,7 @@ export default async function CalendarPage({
         maxMonth={resolvedMonth.maxMonth}
         minMonth={resolvedMonth.minMonth}
         month={resolvedMonth.month}
+        siteOrigin={origin?.origin ?? null}
         todayDate={todayDate}
       />
 

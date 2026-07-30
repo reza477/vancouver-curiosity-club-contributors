@@ -5,7 +5,17 @@ import test from "node:test";
 const projectRoot = new URL("../", import.meta.url);
 
 test("Field Notes carries the honest D1-backed Phase 2 public foundation", async () => {
-  const [page, homeData, homeRenderer, layout, header, catalog, css, packageJson] =
+  const [
+    page,
+    homeData,
+    homeRenderer,
+    layout,
+    header,
+    footer,
+    catalog,
+    css,
+    packageJson,
+  ] =
     await Promise.all([
     readFile(new URL("app/page.tsx", projectRoot), "utf8"),
     readFile(new URL("lib/server/public/home.ts", projectRoot), "utf8"),
@@ -16,6 +26,10 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     readFile(new URL("app/layout.tsx", projectRoot), "utf8"),
     readFile(
       new URL("app/_components/SiteHeader.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("app/_components/SiteFooter.tsx", projectRoot),
       "utf8",
     ),
     readFile(
@@ -38,7 +52,8 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(layout, /<SiteHeader[\s\S]*brandName=\{shell\?\.brandName\}/);
   assert.match(layout, /<SiteFooter/);
   assert.match(header, /aria-label="Primary navigation"/);
-  assert.match(header, /Organizer Login/);
+  assert.doesNotMatch(header, /Organizer Login/);
+  assert.match(footer, /Organizer Login/);
   assert.match(layout, /generateMetadata/);
   assert.match(layout, /const isUnknownPath = !isKnownApplicationPath/);
   assert.match(layout, /robots:\s*isUnknownPath/);

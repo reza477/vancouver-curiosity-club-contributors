@@ -9,11 +9,8 @@ import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 const requiredNavigation = [
   { href: "/calendar", label: "Calendar" },
   { href: "/events", label: "Events" },
-  { href: "/clubs", label: "Clubs" },
-  { href: "/community", label: "Community" },
   { href: "/about", label: "About" },
-  { href: "/get-involved", label: "Get Involved" },
-  { href: "/organizer", label: "Organizer Login" },
+  { href: "/community", label: "Community" },
 ] as const;
 
 export function SiteHeader({
@@ -163,31 +160,14 @@ function normalizedPrimaryNavigation(
   const configuredByHref = new Map(
     configured.map((item) => [item.href, item]),
   );
-  const requiredTargets = new Set<string>(
-    requiredNavigation.map((item) => item.href),
-  );
   const required = requiredNavigation.map((item) => {
     const configuredItem = configuredByHref.get(item.href);
-    if (
-      item.href === "/calendar" ||
-      item.href === "/events" ||
-      item.href === "/organizer"
-    ) {
+    if (item.href === "/calendar" || item.href === "/events") {
       return item;
     }
     return configuredItem ?? item;
   });
-  const optional = configured
-    .filter((item) => !requiredTargets.has(item.href))
-    .filter(
-      (item, index, source) =>
-        source.findIndex((candidate) => candidate.href === item.href) ===
-        index,
-    )
-    .slice(0, 1);
-  return Object.freeze(
-    [...required.slice(0, -1), ...optional, required.at(-1)!],
-  );
+  return Object.freeze(required);
 }
 
 function isCurrentNavigationPath(

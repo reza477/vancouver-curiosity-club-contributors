@@ -509,10 +509,9 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(html, /A social calendar with a brain\./u);
   assert.match(html, /View the calendar/u);
-  assert.ok(
-    html.indexOf("The next events") < html.indexOf("The event lanes"),
-    "Home must put upcoming events directly after its short introduction",
-  );
+  assert.match(html, /website does not create visitor accounts\./u);
+  assert.match(html, /The next events/u);
+  assert.doesNotMatch(html, /The event lanes/u);
   assert.match(html, /\bclass="[^"]*\bhome-invitation\b[^"]*"/u);
   assert.ok(
     robotsMetaContents(html).every(
@@ -852,6 +851,10 @@ test("Calendar is an indexable month-at-a-glance public destination", async () =
   );
   assert.match(html, /Month at a glance/u);
   assert.match(html, /public-calendar__grid/u);
+  assert.match(html, /website does not create visitor accounts\./u);
+  assert.match(html, /one-tap calendar options/u);
+  assert.match(html, /Upcoming iCalendar/u);
+  assert.doesNotMatch(html, /Add to calendar/u);
   assert.match(html, /List and filters/u);
   assertNoPrivateSentinels(html);
 

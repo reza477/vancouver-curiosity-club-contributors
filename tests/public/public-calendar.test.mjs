@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PublicMonthCalendar } from "../../app/_components/PublicMonthCalendar.tsx";
 import {
   eventOccursOnCalendarDate,
+  googleCalendarEventUrl,
   publicCalendarMonthBounds,
   publicCalendarMonthCells,
   publicEventCalendarStartDate,
@@ -168,7 +169,37 @@ test("timed and all-day events occupy every intended local calendar day", () => 
   assert.equal(eventOccursOnCalendarDate(allDay, "2026-02-30"), false);
 });
 
-test("month calendar renders an accessible date grid with approved artwork and fallback art", () => {
+test("Google Calendar links preserve exact timed and all-day schedules", () => {
+  const timed = new URL(
+    googleCalendarEventUrl(
+      timedEvent(),
+      "https://club.example/events/night-walk",
+    ),
+  );
+  assert.equal(timed.origin, "https://calendar.google.com");
+  assert.equal(timed.pathname, "/calendar/render");
+  assert.equal(timed.searchParams.get("action"), "TEMPLATE");
+  assert.equal(
+    timed.searchParams.get("dates"),
+    "20260706T063000Z/20260706T083000Z",
+  );
+  assert.equal(timed.searchParams.get("text"), "Night walk");
+  assert.equal(timed.searchParams.get("location"), "Stanley Park");
+  assert.equal(timed.searchParams.get("ctz"), "America/Vancouver");
+  assert.match(
+    timed.searchParams.get("details") ?? "",
+    /https:\/\/club\.example\/events\/night-walk/u,
+  );
+
+  const allDay = new URL(googleCalendarEventUrl(allDayEvent()));
+  assert.equal(
+    allDay.searchParams.get("dates"),
+    "20260707/20260709",
+  );
+  assert.equal(allDay.searchParams.get("ctz"), null);
+});
+
+test("month calendar renders an accessible date grid, calendar actions, approved artwork, and fallback art", () => {
   const markup = renderToStaticMarkup(
     createElement(PublicMonthCalendar, {
       complete: true,
@@ -194,6 +225,7 @@ test("month calendar renders an accessible date grid with approved artwork and f
       maxMonth: "2027-07",
       minMonth: "2025-07",
       month: "2026-07",
+      siteOrigin: "https://club.example",
       todayDate: "2026-07-06",
     }),
   );
@@ -225,6 +257,14 @@ test("month calendar renders an accessible date grid with approved artwork and f
   assert.match(
     markup,
     /href="https:\/\/www\.meetup\.com\/example\/events\/123456789\/"/u,
+  );
+  assert.equal((markup.match(/>Add to calendar<\/summary>/gu) ?? []).length, 2);
+  assert.equal((markup.match(/>Google Calendar/gu) ?? []).length, 2);
+  assert.match(markup, />Apple Calendar \/ download \.ics<\/a>/u);
+  assert.match(markup, /href="\/events\/night-walk\/calendar\.ics"/u);
+  assert.match(
+    markup,
+    /https%3A%2F%2Fclub\.example%2Fevents%2Fnight-walk/u,
   );
 });
 
@@ -261,6 +301,7 @@ test("calendar interaction contract supports pointer, touch/click, focus, and ke
   assert.match(source, /tabIndex=\{cell\.date === focusDate \? 0 : -1\}/u);
   assert.match(source, /aria-controls="public-calendar-day-panel"/u);
   assert.match(source, /publicEventStatusLabel/u);
+  assert.match(source, /<AddToCalendar/u);
 });
 
 test("the public calendar route renders the month experience instead of redirecting", async () => {
@@ -270,6 +311,8 @@ test("the public calendar route renders the month experience instead of redirect
   );
 
   assert.match(page, /PublicMonthCalendar/u);
+  assert.match(page, /website does not create visitor accounts\./u);
+  assert.match(page, /siteOrigin=\{origin\?\.origin \?\? null\}/u);
   assert.doesNotMatch(page, /permanentRedirect/u);
   assert.doesNotMatch(page, /redirect\(\s*["']\/events["']\s*\)/u);
 });

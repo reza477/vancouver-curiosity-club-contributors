@@ -174,7 +174,8 @@ test("global public navigation disables speculative RSC prefetches", () => {
     header,
     /<Link[\s\S]*?href=\{item\.href\}[\s\S]*?prefetch=\{false\}/u,
   );
-  assert.match(
+  assert.match(header, /return Object\.freeze\(required\)/u);
+  assert.doesNotMatch(
     header,
     /\{ href: "\/organizer", label: "Organizer Login" \}/u,
   );

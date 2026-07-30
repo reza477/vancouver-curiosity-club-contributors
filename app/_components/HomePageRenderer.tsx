@@ -44,19 +44,6 @@ export async function HomePageRenderer({
     previewMediaAssets,
     privatePreview,
   });
-  const hasFeaturedClubs = sections.some(
-    (section) => normalizedType(section) === "featured-clubs",
-  );
-  const hasCommunityLinks = sections.some(
-    (section) => normalizedType(section) === "community-links",
-  );
-  const missingRequiredSections = HOME_REQUIRED_SECTIONS.filter(
-    (required) =>
-      !sections.some((section) => section.key === required.key),
-  );
-  const featuredClubs = catalog.clubs
-    .filter((club) => club.featured)
-    .slice(0, 3);
 
   return (
     <main className="home-page">
@@ -72,6 +59,10 @@ export async function HomePageRenderer({
           {hero?.content.text ? (
             <p className="home-hero__deck">{hero.content.text}</p>
           ) : null}
+          <p className="home-hero__public-note">
+            Browse the calendar, then use the official signup link shown for
+            each event. The website does not create visitor accounts.
+          </p>
           <div className="home-hero__actions">
             <Link className="primary-action" href="/calendar">
               View the calendar <span aria-hidden="true">→</span>
@@ -109,52 +100,33 @@ export async function HomePageRenderer({
         )}
       </section>
 
-      <section className="lane-index" aria-labelledby="lane-index-title">
-        <div className="section-heading">
+      {catalog.communityLinks.length > 0 ? (
+        <section
+          aria-labelledby="home-community-title"
+          className="home-community home-community-links"
+        >
           <div>
-            <p className="section-kicker">Four ways to follow curiosity</p>
-            <h2 id="lane-index-title">The event lanes</h2>
+            <p className="section-kicker">Official destinations</p>
+            <h2 id="home-community-title">Follow the club elsewhere</h2>
+            <p>
+              Event signup stays on the official platform listed for that
+              event. These are the club&apos;s confirmed public pages.
+            </p>
           </div>
-        </div>
-        <div className="lane-index__grid">
-          {catalog.lanes.map((lane, index) => (
-            <article className="lane-note" key={lane.slug}>
-              <div>
-                <span aria-hidden="true">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <FieldArtwork tone={laneTone(lane.slug)} />
-              </div>
-              <h3>{lane.name}</h3>
-              {lane.description ? <p>{lane.description}</p> : null}
-              <Link href={`/events?lane=${lane.slug}`}>
-                Explore {lane.name} events
-              </Link>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {!hasFeaturedClubs ? (
-        <section className="home-clubs" aria-labelledby="home-clubs-title">
-          <div className="section-heading">
-            <div>
-              <p className="section-kicker">The public program shelf</p>
-              <h2 id="home-clubs-title">Featured clubs</h2>
-            </div>
-            <Link href="/clubs">All public clubs</Link>
-          </div>
-          <div className="home-clubs__grid">
-            {featuredClubs.map((club) => (
-              <article key={club.slug}>
-                <p>{club.lane.name}</p>
-                <h3>
-                  <Link href={`/clubs/${club.slug}`}>{club.name}</Link>
-                </h3>
-                {club.description ? <p>{club.description}</p> : null}
-              </article>
+          <ul>
+            {catalog.communityLinks.slice(0, 6).map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  rel="noreferrer noopener"
+                  target="_blank"
+                >
+                  {link.label}
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       ) : null}
 
@@ -163,20 +135,6 @@ export async function HomePageRenderer({
           {sections.map((section) => (
             <HomeSection
               catalog={catalog}
-              hasCommunityLinks={hasCommunityLinks}
-              key={section.key}
-              renderContext={renderContext}
-              section={section}
-            />
-          ))}
-        </div>
-      ) : null}
-      {missingRequiredSections.length > 0 ? (
-        <div className="home-cms-sections">
-          {missingRequiredSections.map((section) => (
-            <HomeSection
-              catalog={catalog}
-              hasCommunityLinks={hasCommunityLinks}
               key={section.key}
               renderContext={renderContext}
               section={section}
@@ -210,44 +168,12 @@ export async function HomePageRenderer({
   );
 }
 
-const HOME_REQUIRED_SECTIONS: readonly PublicPageSectionDto[] = Object.freeze([
-  Object.freeze({
-    content: Object.freeze({
-      heading: "Come curious",
-      paragraphs: Object.freeze([
-        "Expect a clear reason to gather, room for conversation, and no requirement to arrive as an expert.",
-        "Each listing carries the facts we know. When a detail is undecided, we say so.",
-      ]),
-    }),
-    key: "attending",
-    type: "prose",
-  }),
-  Object.freeze({
-    content: Object.freeze({
-      heading: "Help make the calendar",
-      text: "Have an idea, want to host, volunteer, or explore a community partnership? Start with the ways to get involved.",
-    }),
-    key: "invitation",
-    type: "callout",
-  }),
-  Object.freeze({
-    content: Object.freeze({
-      heading: "Continue on the confirmed group pages",
-      text: "This site lists only confirmed public community destinations.",
-    }),
-    key: "community",
-    type: "prose",
-  }),
-]);
-
 function HomeSection({
   catalog,
-  hasCommunityLinks,
   renderContext,
   section,
 }: Readonly<{
   catalog: PublicCatalogDto;
-  hasCommunityLinks: boolean;
   renderContext: Awaited<ReturnType<typeof loadEditorialRenderContext>>;
   section: PublicPageSectionDto;
 }>) {
@@ -297,16 +223,8 @@ function HomeSection({
           </h2>
           {section.content.text ? <p>{section.content.text}</p> : null}
         </div>
-        {!hasCommunityLinks ? (
-          <ul>
-            {catalog.communityLinks.map((link) => (
-              <li key={link.url}>
-                <a href={link.url} rel="noreferrer noopener">
-                  {link.label} <span aria-hidden="true">↗</span>
-                </a>
-              </li>
-            ))}
-          </ul>
+        {catalog.communityLinks.length === 0 ? (
+          <p>No confirmed public community destination is listed yet.</p>
         ) : null}
       </section>
     );
@@ -318,11 +236,4 @@ function HomeSection({
 
 function normalizedType(section: PublicPageSectionDto) {
   return section.type.replaceAll("_", "-");
-}
-
-function laneTone(slug: string) {
-  if (slug === "reset-and-make") return "reset-make" as const;
-  if (slug === "explore") return "explore" as const;
-  if (slug === "eat-and-play") return "eat-play" as const;
-  return "think" as const;
 }

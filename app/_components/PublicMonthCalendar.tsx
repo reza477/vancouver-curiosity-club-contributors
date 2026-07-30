@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import { AddToCalendar } from "./AddToCalendar";
 import { FieldArtwork } from "./FieldArtwork";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import {
@@ -35,6 +36,7 @@ export function PublicMonthCalendar({
   maxMonth,
   minMonth,
   month,
+  siteOrigin = null,
   todayDate,
 }: Readonly<{
   complete: boolean;
@@ -42,6 +44,7 @@ export function PublicMonthCalendar({
   maxMonth: string;
   minMonth: string;
   month: string;
+  siteOrigin?: string | null;
   todayDate: string;
 }>) {
   const cells = useMemo(() => publicCalendarMonthCells(month), [month]);
@@ -149,7 +152,7 @@ export function PublicMonthCalendar({
       </header>
 
       <div className="public-calendar__layout">
-          <div className="public-calendar__month">
+        <div className="public-calendar__month">
           <table className="public-calendar__grid">
             <caption className="sr-only">
               {formatPublicCalendarMonth(month)} event calendar
@@ -294,7 +297,11 @@ export function PublicMonthCalendar({
           {activeEvents.length > 0 ? (
             <div className="public-calendar__day-events">
               {activeEvents.map((event) => (
-                <CalendarEventPreview event={event} key={event.slug} />
+                <CalendarEventPreview
+                  event={event}
+                  key={event.slug}
+                  siteOrigin={siteOrigin}
+                />
               ))}
             </div>
           ) : (
@@ -328,7 +335,11 @@ export function PublicMonthCalendar({
 
 function CalendarEventPreview({
   event,
-}: Readonly<{ event: PublicEventCardDto }>) {
+  siteOrigin,
+}: Readonly<{
+  event: PublicEventCardDto;
+  siteOrigin: string | null;
+}>) {
   const location =
     event.attendanceMode === "online"
       ? "Online"
@@ -406,6 +417,17 @@ function CalendarEventPreview({
               RSVP on Meetup
             </a>
           ) : null}
+          <AddToCalendar
+            canonicalUrl={
+              siteOrigin
+                ? new URL(
+                    `/events/${encodeURIComponent(event.slug)}`,
+                    siteOrigin,
+                  ).href
+                : null
+            }
+            event={event}
+          />
         </div>
       </div>
     </article>

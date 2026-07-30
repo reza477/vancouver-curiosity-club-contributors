@@ -159,6 +159,56 @@ export function formatPublicCalendarEventTime(
   return `${startTime}-${endTime}`;
 }
 
+export function googleCalendarEventUrl(
+  event: PublicEventCardDto,
+  canonicalUrl: string | null = null,
+): string {
+  const parameters = new URLSearchParams({
+    action: "TEMPLATE",
+    dates:
+      event.schedule.kind === "all_day"
+        ? `${compactCalendarDate(event.schedule.startDate)}/${compactCalendarDate(
+            event.schedule.endDateExclusive,
+          )}`
+        : `${compactUtcDateTime(event.schedule.startsAtUtc)}/${compactUtcDateTime(
+            event.schedule.endsAtUtc,
+          )}`,
+    text: event.title,
+  });
+  const details = [
+    event.summary,
+    canonicalUrl ? `Event details: ${canonicalUrl}` : null,
+  ].filter((value): value is string => Boolean(value));
+  if (details.length > 0) parameters.set("details", details.join("\n\n"));
+  const location = event.venue
+    ? [event.venue.name, event.venue.address].filter(Boolean).join(", ")
+    : null;
+  if (location) parameters.set("location", location);
+  if (event.schedule.kind === "timed") {
+    parameters.set("ctz", event.schedule.timeZone);
+  }
+  return `https://calendar.google.com/calendar/render?${parameters.toString()}`;
+}
+
+function compactCalendarDate(value: string): string {
+  if (!validCalendarDate(value)) {
+    throw new RangeError("Invalid public calendar date.");
+  }
+  return value.replaceAll("-", "");
+}
+
+function compactUtcDateTime(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    throw new RangeError("Invalid public event time.");
+  }
+  return date
+    .toISOString()
+    .replaceAll("-", "")
+    .replaceAll(":", "")
+    .replace(".000", "");
+}
+
 function dateKeyInTimeZone(value: string, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     day: "2-digit",

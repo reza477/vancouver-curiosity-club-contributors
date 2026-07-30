@@ -41,11 +41,8 @@ test("Phase 2 exposes the complete public route contract", async () => {
   for (const [href, label] of [
     ["/calendar", "Calendar"],
     ["/events", "Events"],
-    ["/clubs", "Clubs"],
     ["/community", "Community"],
     ["/about", "About"],
-    ["/get-involved", "Get Involved"],
-    ["/organizer", "Organizer Login"],
   ]) {
     assert.match(header, new RegExp(`href[:=]\\s*["']${href}["']|href:\\s*["']${href}["']`));
     assert.match(header, new RegExp(label));
@@ -60,6 +57,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "/conduct",
     "/accessibility",
     "/privacy",
+    "/organizer",
   ]) {
     assert.match(
       footer,

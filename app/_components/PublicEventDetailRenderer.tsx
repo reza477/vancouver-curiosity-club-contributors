@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AddToCalendar } from "@/app/_components/AddToCalendar";
 import { formatEventSchedule } from "@/app/_components/EventCard";
 import { FieldArtwork } from "@/app/_components/FieldArtwork";
 import { ShareControls } from "@/app/_components/ShareControls";
@@ -200,12 +201,7 @@ export function PublicEventDetailRenderer({
               </p>
             ) : null}
             {showCalendarDownload ? (
-              <Link
-                className="event-detail__calendar-link"
-                href={`/events/${event.slug}/calendar.ics`}
-              >
-                Download this event (.ics)
-              </Link>
+              <AddToCalendar canonicalUrl={canonicalUrl} event={event} />
             ) : null}
           </section>
 

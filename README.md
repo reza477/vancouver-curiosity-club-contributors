@@ -31,11 +31,24 @@ No submission, import, media asset, invitation, notification, calendar token,
 Meetup source, or public event was created. Exact evidence and remaining Owner
 actions are recorded in `BUILD_STATUS.md`.
 
-## Phase 2 public website
+## Calendar-first public website
 
-The public website is now implemented at:
+The public website keeps the visitor path deliberately short:
+
+- Home gives a brief introduction and immediately shows the next events.
+- Calendar is the primary destination, with a month-at-a-glance grid and a
+  detailed day panel on hover, focus, or tap.
+- Every public event can open Google Calendar or download a standards-compliant
+  `.ics` file for Apple Calendar and other calendar clients.
+- The application does not create visitor accounts. Organizer authentication
+  remains a separate private workspace. The current Sites deployment still
+  has an owner-only platform gate, so anonymous visitors cannot reach these
+  routes until a separate access-policy change is explicitly authorized.
+
+The public routes include:
 
 - `/`
+- `/calendar`
 - `/events` and `/events/[slug]`
 - `/clubs` and `/clubs/[slug]`
 - `/community`
@@ -48,8 +61,8 @@ The public website is now implemented at:
 - `/privacy`
 - a custom public 404, public-only sitemap, and restrictive robots rules
 
-`/events` is the canonical event hub. `/calendar` is a permanent,
-non-indexable redirect to it.
+`/calendar` is the primary month view. `/events` remains the detailed list,
+filter, and download view.
 
 All public catalog copy, lanes, clubs, community links, and event facts are
 D1-backed. The authorized idempotent catalog seed creates four lanes, three
@@ -139,10 +152,22 @@ To connect hosted production data after a separately authorized deployment:
    calendar subscription URL.
 4. Choose **Refresh now** until the bounded generation completes.
 
+When the same gathering is cross-posted into several Meetup groups, each group
+feed supplies a different source identity. The overlap guard therefore fails
+closed instead of silently merging or duplicating the gathering. Connect only
+the non-overlapping feed coverage you intend to show until an explicit
+owner-reviewed cross-post alias model is added.
+
 Feed addresses remain private operator-entered D1 configuration. They are not
 committed, rendered, logged, placed in metadata, or derived from public group
 links. Sites does not guarantee a scheduler, so the application labels its
 manual and bounded refresh-on-view behavior honestly.
+
+Meetup's official iCalendar export contains event titles, times, statuses, and
+event URLs, but it does not contain an approved poster-image field. Imported
+events therefore use rights-approved website artwork when one exists and the
+site's category artwork otherwise. The application does not scrape Meetup
+posters or claim a guaranteed daily background job.
 
 ## Platform
 

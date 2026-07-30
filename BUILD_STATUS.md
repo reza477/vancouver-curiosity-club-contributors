@@ -1,6 +1,6 @@
 # Vancouver Curiosity Club — Build Status
 
-Last updated: 2026-07-29 (America/Vancouver)
+Last updated: 2026-07-30 (America/Vancouver)
 
 ## Active phase and release state
 
@@ -24,6 +24,54 @@ Last updated: 2026-07-29 (America/Vancouver)
   logical bindings and runtime revision 1 remain unchanged.
 - Phase 9 did not create another version, preview, domain, access policy,
   binding, runtime value, host, or deployment surface.
+
+## Owner-directed calendar-first update (post-Phase 9)
+
+Status at this source checkpoint: **Implemented and locally verified; private
+Sites save/deployment readback pending.** This is an owner-directed refinement
+of the completed product, not a new numbered phase.
+
+- Home now gives a short introduction and immediately shows the next four
+  published events. Existing owner-edited Home CMS sections remain functional
+  below the calendar-first content.
+- `/calendar` is a real month-at-a-glance view rather than a redirect. Hover,
+  keyboard focus, and tap/click select a day and reveal the event title,
+  schedule, approved artwork or controlled category fallback, public location,
+  event detail link, and confirmed external signup link.
+- Each public event offers a Google Calendar action and an RFC-compliant
+  `.ics` download for Apple Calendar and other calendar clients.
+- The public header is intentionally reduced to Calendar, Events, About, and
+  Community. Organizer Login remains in the footer and at `/organizer`.
+- The application does not create public visitor accounts. The Sites platform
+  remains custom owner-only, so anonymous visitors still cannot reach the
+  application until a separate access-policy change is explicitly authorized.
+- All three official Meetup iCalendar feeds were entered through the
+  authenticated production portal. Completed Literature and Fantasy feeds
+  currently contribute 11 real source-backed events. Activation of the main
+  Vancouver Curiosity Club feed failed closed because the same gatherings are
+  cross-posted under different Meetup source identities; the two completed
+  snapshots remain visible and no conflict guard was weakened.
+- Meetup remains one-way and request/manual-refresh driven; Sites does not
+  guarantee a daily scheduler. The official iCalendar feeds contain no
+  approved poster-image field, so the site uses rights-approved website media
+  when present and a controlled category illustration otherwise. It does not
+  scrape or hotlink Meetup posters.
+- Per-event signup is currently the exact confirmed Meetup event URL. Exact
+  Eventbrite, Flock, and Instagram destinations have not been supplied and are
+  not invented; confirmed global destinations can be added through Community,
+  while event-specific multi-platform signup would need a later additive data
+  model.
+
+Verification at this checkpoint:
+
+- final complete repository suite: 857/857 passed;
+- final focused calendar, Meetup, route, accessibility, and rendering source
+  matrix: 76/76 passed;
+- strict TypeScript: passed;
+- zero-warning lint: passed;
+- `git diff --check`: passed;
+- fresh exact-commit production build, rendered Worker, browser widths, and
+  Sites version/deployment readback: pending below the source-freeze gate.
 
 ## Previous-phase preservation
 

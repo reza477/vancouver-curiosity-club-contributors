@@ -72,6 +72,17 @@ test("the shared detail renderer supports a preview-safe discovery mode", async 
   );
   assert.match(liveMarkup, /aria-label="Share this event"/u);
   assert.match(liveMarkup, /Email link/u);
+  assert.match(liveMarkup, />Add to calendar<\/summary>/u);
+  assert.match(liveMarkup, />Google Calendar/u);
+  assert.match(liveMarkup, />Apple Calendar \/ download \.ics<\/a>/u);
+  assert.match(
+    liveMarkup,
+    /href="\/events\/timezone-event\/calendar\.ics"/u,
+  );
+  assert.match(
+    liveMarkup,
+    /https%3A%2F%2Fpreview\.example%2Fevents%2Ftimezone-event/u,
+  );
 
   const eventPage = await readFile(
     new URL("app/events/[slug]/page.tsx", projectRoot),
@@ -80,6 +91,22 @@ test("the shared detail renderer supports a preview-safe discovery mode", async 
   assert.match(eventPage, /<PublicEventDetailRenderer/u);
   assert.doesNotMatch(eventPage, /<article className="event-detail">/u);
   assert.doesNotMatch(eventPage, /<ShareControls/u);
+});
+
+test("cancelled event calendar actions expose only the cancellation file", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PublicEventDetailRenderer, {
+      canonicalUrl: "https://preview.example/events/timezone-event",
+      event: Object.freeze({
+        ...TORONTO_EVENT,
+        isCancelled: true,
+      }),
+    }),
+  );
+
+  assert.match(markup, />Add to calendar<\/summary>/u);
+  assert.match(markup, />Download cancellation \(\.ics\)<\/a>/u);
+  assert.doesNotMatch(markup, />Google Calendar/u);
 });
 
 test("public event artwork renders only allowlisted media presentation fields", () => {
