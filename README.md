@@ -9,17 +9,19 @@ charity claim is approved for public use.
 
 ## Production
 
-The calendar-first owner refinement is privately deployed as Sites version 15
+The calendar-first owner refinement is publicly available as Sites version 15
 at:
 
 - https://vancouver-curiosity-club.reza5777.chatgpt.site
 
 Deployment
 `appgdep_6a6ba12078f08191bfd0693e7726921a` completed successfully from source
-`af3477b439a1e06b07a077747f903643abb7da09`. Access remains custom
-owner-only with one allowed owner and zero groups. There is no public/shared
-access, preview deployment, or custom domain. The logical `DB` and `MEDIA`
-bindings and runtime revision 1 are unchanged.
+`af3477b439a1e06b07a077747f903643abb7da09`. Sites access revision 2 allows
+anyone with the URL to browse public routes without an account. Organizer
+routes still require Sign in with ChatGPT and server-side invitation,
+membership, role, organization, and suspension checks. There is no preview
+deployment or custom domain. The one project Owner, zero groups, logical `DB`
+and `MEDIA` bindings, and runtime revision 1 are unchanged.
 
 Phase 9 production verification covered the owner gate, canonical public and
 private routes, exact-host metadata/sitemap output, security and private-cache
@@ -48,9 +50,8 @@ The public website keeps the visitor path deliberately short:
   and a controlled category illustration otherwise; the site does not scrape
   or hotlink Meetup posters.
 - The application does not create visitor accounts. Organizer authentication
-  remains a separate private workspace. The current Sites deployment still
-  has an owner-only platform gate, so anonymous visitors cannot reach these
-  routes until a separate access-policy change is explicitly authorized.
+  remains a separate private workspace. Public pages are now available without
+  sign-in; public access does not grant organizer membership or authorization.
 
 The public routes include:
 
@@ -651,7 +652,8 @@ remain **Not run — no approved real published event** and
 **Awaiting owner smoke test**, respectively.
 
 Public form instances were verified without submitting production content.
-External anonymous form use is unavailable while Sites remains owner-only.
+External anonymous form access is now available; no production form submission
+was created during the access change.
 External private-calendar client behavior remains **Implemented but not
 externally verified**. The Owner backup restore rehearsal remains **Not run**.
 This is the final planned build phase; no Phase 10 is started or authorized.

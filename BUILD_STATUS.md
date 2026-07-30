@@ -19,9 +19,10 @@ Last updated: 2026-07-30 (America/Vancouver)
   and production-verification scope.
 - Exact saved version 15 is now the active, terminally succeeded deployment at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
-- Access remains custom owner-only with one allowed owner and zero groups.
-  There is no custom domain or preview deployment. The `DB` and `MEDIA`
-  logical bindings and runtime revision 1 remain unchanged.
+- Access is now public by explicit Owner authorization, at access-policy
+  revision 2. The Owner remains the sole project owner and there are zero
+  groups. There is no custom domain or preview deployment. The `DB` and
+  `MEDIA` logical bindings and runtime revision 1 remain unchanged.
 - Phase 9 did not create another version, preview, domain, access policy,
   binding, runtime value, host, or deployment surface.
 
@@ -42,9 +43,10 @@ product, not a new numbered phase.
   `.ics` download for Apple Calendar and other calendar clients.
 - The public header is intentionally reduced to Calendar, Events, About, and
   Community. Organizer Login remains in the footer and at `/organizer`.
-- The application does not create public visitor accounts. The Sites platform
-  remains custom owner-only, so anonymous visitors still cannot reach the
-  application until a separate access-policy change is explicitly authorized.
+- The application does not create public visitor accounts. Anonymous visitors
+  can now browse the public routes without signing in. Organizer routes remain
+  protected by Sign in with ChatGPT plus current invitation, membership, role,
+  organization, and suspension checks.
 - All three official Meetup iCalendar feeds were entered through the
   authenticated production portal. Completed Literature and Fantasy feeds
   currently contribute 11 real source-backed events. Activation of the main
@@ -92,11 +94,16 @@ Verification at this checkpoint:
   responsive source tests are green, but exact 320px and 390px manual browser
   passes were not rerun for this refinement.
 
-The private deployment preserved custom access revision 1 with exactly one
-allowed owner and zero groups, no custom domain, no preview URL, runtime
-revision 1, and the existing `DB` / `MEDIA` bindings. Anonymous visitors still
-cannot reach the application until a separate access-policy change is
-explicitly authorized.
+The deployment originally preserved custom access revision 1. After the Owner
+explicitly continued with public launch, Sites access revision 2 changed only
+the visitor access mode to `public`. Version 15, its source/content hash,
+runtime revision 1, the one project Owner, zero groups, no custom domain, no
+preview URL, and the existing `DB` / `MEDIA` bindings remain unchanged.
+Anonymous checks returned `200` for Home, Calendar, Events, robots, and sitemap;
+one real event detail returned its exact Meetup destination plus Google and
+Apple/ICS calendar actions; `/organizer` still redirected to Sign in with
+ChatGPT, the organizer API returned `401`, and a guessed private-calendar token
+returned `404` with private/no-store/noindex protections.
 
 ## Previous-phase preservation
 
@@ -148,8 +155,8 @@ No award is claimed.
   `sha256:0b65ec790f59acd1ceb1d8ac62350e8914352c6b251aa78ecefbf743c81505d1`
 - Version readback: 168 files / 10,311,680 stored bytes / `tar` archive /
   null screenshot / no preview URL.
-- The existing custom access policy remains exactly one allowed owner and zero
-  groups. Public/shared access remains disabled.
+- At the Phase 9 deployment checkpoint, the custom access policy remained
+  exactly one allowed owner and zero groups; public/shared access was disabled.
 - There are no custom domains and no preview deployment. Runtime revision 1
   still contains only the redacted `INITIAL_OWNER_EMAIL` setting. Logical
   bindings remain `DB` and `MEDIA`.
@@ -225,8 +232,9 @@ private-calendar token, or Meetup source was committed.
   contrast assertion. No production Lighthouse score was taken.
 - All four public form-instance endpoints returned `200` with private
   protection headers. No public form POST or production submission mutation
-  was performed. Because Sites remains owner-only, external anonymous form
-  usability is unavailable by design.
+  was performed at that checkpoint. Following the later Owner-authorized
+  public-access change, anonymous visitors can reach the forms; no production
+  form submission was made while changing access.
 - No approved production artwork exists; the Media workspace reports no
   uploaded artwork. Approved-real-artwork review remains
   **Awaiting owner smoke test**.
@@ -819,13 +827,13 @@ binding, runtime, D1, or R2 mutation was invoked. The connector exposes the
 live URL but not its deployed-version number; the established ledger records
 live version 8, and the unpublished save did not alter production.
 
-Current immutable Sites identity:
+Current Sites identity:
 
 - project ID: `appgprj_6a62eaf79c4881919bb8e47998af851a`;
 - logical D1 binding: `DB`;
 - logical R2 binding: `MEDIA`;
-- live owner-only version: 15;
-- access: one allowed owner, zero groups;
+- live public version: 15;
+- access: public revision 2; one project Owner and zero groups;
 - custom domains: none;
 - preview URL: none;
 - runtime revision: 1 with only the redacted `INITIAL_OWNER_EMAIL` value.
@@ -895,6 +903,13 @@ readback retained the same access, domain, preview, runtime, and binding state.
 - Access readback: custom revision 1, exactly one allowed owner, zero groups,
   no custom domain, no preview URL, runtime revision 1, and unchanged `DB` /
   `MEDIA` logical bindings.
+- Subsequent explicit Owner access change: public revision 2. No version,
+  deployment, domain, preview, runtime, binding, D1, or R2 change accompanied
+  the access update.
+- Anonymous production checks: Home, Calendar, Events, robots, and sitemap
+  returned `200`; `/organizer` retained its Sign in with ChatGPT redirect;
+  the organizer API returned `401`; and a guessed private-calendar token
+  returned `404` with private/no-store/noindex headers.
 - The current status-only documentation ledger commit is reported in the
   terminal handoff because a commit cannot contain its own hash.
 
@@ -903,8 +918,8 @@ readback retained the same access, domain, preview, runtime, and binding state.
 Overall status: **Awaiting owner smoke test.**
 
 1. Sign in as the Owner.
-2. Confirm the exact production URL opens version 15 and remains behind the
-   owner-only Sites gate.
+2. Confirm the exact production URL opens version 15 without a visitor login,
+   while Organizer Login still requires Sign in with ChatGPT.
 3. At 320px and 390px, browse Home, Events, Contact, and organizer Calendar;
    confirm no horizontal overflow or clipped focus.
 4. Open one real published event and verify its individual Meetup destination,
@@ -920,8 +935,8 @@ Overall status: **Awaiting owner smoke test.**
    pending until real rights/consent facts and artwork are supplied.
 9. Confirm no venue, charity, award, email, automatic-backup, two-way-sync, or
    response-time claim appears without an approved fact.
-10. Confirm version 15 remains active with one allowed owner, zero groups, no
-    custom domain, and no preview deployment.
+10. Confirm version 15 remains active with public visitor access, one project
+    Owner, zero groups, no custom domain, and no preview deployment.
 
 ## Exact next phase and stop condition
 

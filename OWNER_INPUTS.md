@@ -7,13 +7,13 @@ data.
 
 - `INITIAL_OWNER_EMAIL`: **Configured in Sites runtime settings as a secret**
   from the existing owner identity in Sites access metadata. Runtime revision
-  1 is active on the current owner-only version-15 deployment; the value is
+  1 is active on the current public version-15 deployment; the value is
   never copied into this file, source, logs, or build artifacts.
-- Second invited test identity: **Not available under the current Sites access
-  policy**, which permits exactly the owner account and zero groups. Phase 3
-  invitation acceptance and Phase 4 role/club authorization are verified
-  through isolated local and built-Worker seams; hosted second-identity
-  verification requires a separate explicit access-policy authorization.
+- Second invited test identity: **Not supplied**. Public visitor access does
+  not grant organizer membership. Phase 3 invitation acceptance and Phase 4
+  role/club authorization are verified through isolated local and built-Worker
+  seams; hosted second-identity verification still requires a real invited
+  second identity.
 
 ## Meetup connection
 
@@ -88,11 +88,11 @@ society-registration, tax, or charity claim.
 - Confirmed public contact email address: **Missing**. Phase 7 does not invent
   one: the public Contact form stores a reply email and message in the private
   organizer inbox and explicitly sends no confirmation email.
-- Owner-only Sites origin: **Available for deployed version 15** at
-  `https://vancouver-curiosity-club.reza5777.chatgpt.site`. Public/shared
-  access is not authorized. Phase 9 preserved custom access with one allowed
-  owner and zero groups, no preview deployment, and no custom domain. QR
-  downloads remain an authorized cut.
+- Public Sites origin: **Available for deployed version 15** at
+  `https://vancouver-curiosity-club.reza5777.chatgpt.site`. The Owner
+  explicitly authorized public visitor access on 2026-07-30. Access revision 2
+  retains one project Owner and zero groups, no preview deployment, and no
+  custom domain. QR downloads remain an authorized cut.
 - Custom domain: **Not requested and not required**
 
 ## Photography and consent
@@ -136,6 +136,10 @@ both consent gates before displaying a name.
   `succeeded` from source
   `af3477b439a1e06b07a077747f903643abb7da09`, with the same one-owner,
   zero-group access boundary and no preview or custom domain.
+- Public visitor access: **Completed and verified** after explicit Owner
+  authorization. Access revision 2 changed only the Sites visitor access mode;
+  version 15, organizer authorization, runtime, bindings, domains, preview,
+  D1, and R2 remained unchanged.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,
