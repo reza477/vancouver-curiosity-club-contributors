@@ -4,17 +4,23 @@ import test from "node:test";
 
 const ROOT = process.cwd();
 
-test("Phase 8 ledger preserves Phase 7 and advances without invented provenance", () => {
+test("Phase 9 ledger preserves local evidence and records the exact private deployment", () => {
   const status = source("BUILD_STATUS.md");
   const readme = source("README.md");
 
-  assert.match(status, /Active phase: Phase 8/u);
+  assert.match(status, /Active phase: Phase 9/u);
   assert.match(status, /Phase 6 is \*\*Completed and verified\*\*/u);
   assert.match(
     status,
     /Phase 7 implementation[\s\S]*\*\*Completed and verified\*\*/u,
   );
-  assert.match(status, /Phase 9 [^\r\n]* Not started/u);
+  assert.match(
+    status,
+    /Phase 9 is \*\*Completed and verified\*\*[\s\S]*private-deployment/u,
+  );
+  assert.doesNotMatch(status, /Phase 9 [^\r\n]* Not started/u);
+  assert.doesNotMatch(status, /Active phase: Phase 10/iu);
+  assert.match(status, /No Phase 10 is started or authorized/u);
   assert.doesNotMatch(status, /\*\*Phase 8 [^\r\n]* Not started\.\*\*/u);
   assert.match(
     status,
@@ -30,14 +36,31 @@ test("Phase 8 ledger preserves Phase 7 and advances without invented provenance"
   );
   assert.match(
     status,
-    /New unpublished Sites version 14: (?:\*\*Not run\*\*|`appgprj_[^`\s]+~appgver_[^`\s]+`)/u,
+    /Saved Sites version 14: `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_69aafba5ef148191b00042bce388a678`/u,
   );
+  assert.match(
+    status,
+    /appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9/u,
+  );
+  assert.match(
+    status,
+    /aaeb6a648e93a7dd2e41f329085b611b8b7d10b1/u,
+  );
+  assert.match(
+    status,
+    /sha256:0b65ec790f59acd1ceb1d8ac62350e8914352c6b251aa78ecefbf743c81505d1/u,
+  );
+  assert.match(status, /one allowed owner and zero groups/u);
   assert.match(status, /Awaiting owner smoke test/u);
-  assert.match(status, /Awaiting a future authorized deployment/u);
   assert.match(
     status,
     /\*\*ICS file import — Not implemented — authorized cut\.\*\*/u,
   );
+  assert.match(status, /849 passed/u);
+  assert.match(status, /15 exact-artifact runs/u);
+  assert.match(status, /Local production performance/u);
+  assert.match(status, /Not run — no approved real published event/u);
+  assert.match(status, /Implemented but not externally verified/u);
 
   const smokeSteps = [
     ...status.matchAll(/^(\d+)\. /gmu),
@@ -65,7 +88,13 @@ test("Phase 8 ledger preserves Phase 7 and advances without invented provenance"
     assert.match(readme, new RegExp(escapeRegex(path), "u"), path);
   }
   assert.doesNotMatch(readme, /Phase 7 imports,[\s\S]*have not started/u);
-  assert.match(readme, /Phase 9 [^\r\n]* Not started/u);
+  assert.match(readme, /Phase 9 private deployment and production verification/u);
+  assert.match(
+    readme,
+    /https:\/\/vancouver-curiosity-club\.reza5777\.chatgpt\.site/u,
+  );
+  assert.match(readme, /Sites version 14/u);
+  assert.doesNotMatch(readme, /Phase 9 [^\r\n]* Not started/u);
 });
 
 test("Phase 7 ADR pins persisted approval, resumability, conflict, atomicity, retention, and privacy", () => {

@@ -1,8 +1,8 @@
 # Owner guide — Phase 8 hardening
 
-Phase 8 changes the safety and verification envelope around the completed
-Phase 1–7 product. It does not add a new public workflow and it does not deploy
-the unpublished candidate.
+Phase 8 changed the safety and verification envelope around the completed
+Phase 1–7 product. Phase 9 has now deployed that exact saved candidate as
+owner-only Sites version 14.
 
 ## What the Owner should expect
 
@@ -33,12 +33,24 @@ the unpublished candidate.
 Do not copy SQL errors, private URLs, tokens, form content, source-feed
 addresses, or R2 keys into support messages or screenshots.
 
-## Phase 8 Owner smoke boundary
+## Phase 9 production boundary
 
 The concise Owner smoke-test card and its status are maintained in
 `BUILD_STATUS.md`. Local synthetic checks do not constitute Owner approval.
-Hosted, approved-real-artwork, second-identity, and external calendar-client
-checks remain pending until their factual prerequisites and a separately
-authorized deployment exist.
+The production engineering pass verified representative view-only Owner
+routes, exact owner-only access, private response headers, responsive/reflow
+behavior, and safe empty downloads. It also created one clearly labelled
+private production-smoke Draft, verified that it never appeared publicly, and
+then archived and moved it to deleted items through the normal Owner workflow.
+Its immutable audit trace remains; no public event was created.
 
-Live owner-only version 8 is unchanged. Phase 9 deployment has not started.
+Approved-real-artwork review and the Owner's own five-minute smoke remain
+**Awaiting owner smoke test**. There is no approved real published event, so
+individual event/Meetup-link smoke is **Not run — no approved real published
+event**. Hosted second-identity verification and the external calendar-client
+check also remain unavailable.
+
+Live version 14 is available only through the existing custom owner-only Sites
+access policy at
+`https://vancouver-curiosity-club.reza5777.chatgpt.site`. Do not widen access
+or create synthetic production data merely to complete a pending check.

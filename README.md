@@ -7,6 +7,30 @@ uses the existing Field Notes identity and Sites-managed D1/R2, Sign in with
 ChatGPT, and vinext Worker runtime. No legal-status, Society-registration, or
 charity claim is approved for public use.
 
+## Production
+
+The exact Phase 8 candidate is privately deployed as Sites version 14 at:
+
+- https://vancouver-curiosity-club.reza5777.chatgpt.site
+
+Deployment
+`appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9` completed successfully from source
+`aaeb6a648e93a7dd2e41f329085b611b8b7d10b1`. Access remains custom
+owner-only with one allowed owner and zero groups. There is no public/shared
+access, preview deployment, or custom domain. The logical `DB` and `MEDIA`
+bindings and runtime revision 1 are unchanged.
+
+Phase 9 production verification covered the owner gate, canonical public and
+private routes, exact-host metadata/sitemap output, security and private-cache
+headers, the three confirmed Meetup group destinations, representative Owner
+workspaces, responsive/reduced-motion behavior, and public download/form
+boundaries. One clearly labelled private production-smoke Draft was created,
+verified absent from every checked public projection, archived, and moved to
+deleted items through the normal workflow; its immutable audit trace remains.
+No submission, import, media asset, invitation, notification, calendar token,
+Meetup source, or public event was created. Exact evidence and remaining Owner
+actions are recorded in `BUILD_STATUS.md`.
+
 ## Phase 2 public website
 
 The public website is now implemented at:
@@ -134,8 +158,8 @@ manual and bounded refresh-on-view behavior honestly.
 
 No alternate host, database, authentication provider, email service, custom
 domain, or separately provisioned/GitHub repository is used. The established
-Sites source repository is used only to save an exact unpublished Sites
-candidate.
+Sites source repository is used only to save exact Sites candidates; Phase 9
+deployed the already-saved version 14 through Sites.
 
 The high-resolution brand source remains under `design-assets/`; only optimized
 consumer icons and the social card ship from `public/`.
@@ -260,9 +284,9 @@ See:
 - `docs/owner-guide-phase3.md`
 - `docs/organizer-guide-phase3.md`
 
-The existing owner-only live URL continues to serve the deployed Phase 2
-version 8. Phase 3 is not live unless a later turn explicitly authorizes its
-deployment.
+At the Phase 3 checkpoint, the owner-only live URL still served Phase 2
+version 8 and Phase 3 remained unpublished. Phase 9 later deployed the exact
+Phase 8 candidate containing the completed Phase 1–8 work.
 
 ## Phase 4 authoritative private scheduling
 
@@ -316,9 +340,9 @@ See:
 - `docs/owner-guide-phase4.md`
 - `docs/organizer-guide-phase4.md`
 
-The existing owner-only live URL continues to serve version 8. Phase 4 is saved
-only as an unpublished Sites version unless a later turn explicitly authorizes
-deployment.
+At the Phase 4 checkpoint, the owner-only live URL still served version 8 and
+Phase 4 existed only in an unpublished Sites version. Phase 9 later deployed
+the exact completed Phase 8 candidate.
 
 ## Phase 5 private-to-public publication
 
@@ -369,9 +393,9 @@ See:
 - `docs/owner-guide-phase5.md`
 - `docs/organizer-guide-phase5.md`
 
-Phase 5 was saved as exactly one unpublished Sites version 11. The existing
-owner-only live version 8 remains unchanged unless a separate turn explicitly
-authorizes deployment.
+Phase 5 was saved as exactly one unpublished Sites version 11. At that
+checkpoint, owner-only live version 8 remained unchanged. Phase 9 later
+deployed exact version 14.
 
 ## Phase 6 structured content and media
 
@@ -483,8 +507,9 @@ message, forum, or chat feature.
 Publishing a CMS revision changes D1-backed public content. Saving a Sites
 version records an immutable source/build candidate. Deploying a saved version
 changes what the live URL serves. These are separate actions: the Phase 6
-candidate is not deployed, live owner-only version 8 remains unchanged unless
-a separate turn explicitly authorizes deployment.
+candidate was not deployed during Phase 6, so live owner-only version 8
+remained unchanged at that checkpoint. Phase 9 later deployed exact version
+14.
 
 ## Phase 7 imports, exports, calendars, and public intake
 
@@ -527,9 +552,9 @@ Phase 7 guides:
 ICS downloads, the read-only private calendar subscription, or the established
 Meetup iCalendar source workflow.
 
-Phase 7 remains unpublished. Its local implementation and verification are
-complete; exact saved-candidate provenance is recorded in `BUILD_STATUS.md`.
-Live owner-only version 8 is unchanged.
+Phase 7 completed as an unpublished checkpoint. Its implementation and local
+verification remain preserved in the deployed Phase 8 candidate; exact
+provenance is recorded in `BUILD_STATUS.md`.
 
 ## Phase 8 security and release hardening
 
@@ -568,11 +593,33 @@ See:
 - `docs/owner-guide-phase8.md`
 - `docs/organizer-guide-phase8.md`
 
-Phase 8 does not deploy or change live version 8, access, domains, bindings,
-runtime values, or hosted D1/R2. Deployment remains Phase 9 and requires
-separate authorization.
+Phase 8 itself did not deploy or change live version 8, access, domains,
+bindings, runtime values, or hosted D1/R2. Separately authorized Phase 9 later
+deployed the exact saved version 14 while preserving the owner-only boundary.
 
-The Phase 8 implementation and pre-freeze local hardening matrix are complete.
-The exact committed-source rebuild and single unpublished-candidate readback
-remain the release checkpoint recorded in `BUILD_STATUS.md`; no live behavior
-is implied before that checkpoint. **Phase 9 — Not started.**
+The Phase 8 implementation, exact committed-source build, local hardening
+matrix, and saved-candidate readback are complete. Their measured
+accessibility and performance numbers remain local exact-artifact evidence.
+
+## Phase 9 private deployment and production verification
+
+Phase 9 deployed exact saved Sites version 14 to the existing owner-only
+production URL. The terminal deployment succeeded without creating another
+version, preview, domain, access change, binding change, runtime-value change,
+or alternate host.
+
+Production checks verified the Sites owner gate; Sign in with ChatGPT
+boundary; expected private-cache, robots, and referrer behavior; canonical,
+Open Graph, JSON-LD, sitemap, redirects, public downloads, and guessed-resource
+denials; 14 canonical routes; 48 internal links; all three confirmed Meetup
+group destinations; representative Owner workspaces; and responsive,
+200%-reflow, reduced-motion, and console behavior. Hosted public content
+contains no approved real individual event or artwork, so those factual checks
+remain **Not run — no approved real published event** and
+**Awaiting owner smoke test**, respectively.
+
+Public form instances were verified without submitting production content.
+External anonymous form use is unavailable while Sites remains owner-only.
+External private-calendar client behavior remains **Implemented but not
+externally verified**. The Owner backup restore rehearsal remains **Not run**.
+This is the final planned build phase; no Phase 10 is started or authorized.

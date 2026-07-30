@@ -29,8 +29,20 @@ state changes fail closed.
 ## Verification status
 
 The exact local security, accessibility, responsive, performance, dependency,
-and regression evidence is recorded in `BUILD_STATUS.md`. Owner smoke,
-approved-real-artwork, hosted second-identity, and external calendar-client
-checks are not implied by local synthetic verification.
+and regression evidence is recorded in `BUILD_STATUS.md`. Phase 9 separately
+verified representative production Organizer workspaces in view-only mode,
+the private cache/indexing boundary, and safe validation behavior without
+committing a synthetic event or other product record.
 
-Live owner-only version 8 is unchanged. Phase 9 deployment has not started.
+Live Sites version 14 is now active at
+`https://vancouver-curiosity-club.reza5777.chatgpt.site` behind the unchanged
+owner-only policy. Organizer access still requires Sign in with ChatGPT plus a
+current active membership. The current Sites access policy contains only the
+Owner, so hosted second-identity Organizer behavior is **Not run** rather than
+inferred from the local test seam.
+
+Owner smoke, approved-real-artwork review, and external calendar-client
+behavior remain pending. There is no approved real published event in hosted
+D1. The one production-smoke event was a clearly labelled private Draft; after
+its public-absence check it was archived and moved to deleted items, leaving
+only the expected private record and immutable audit trace.

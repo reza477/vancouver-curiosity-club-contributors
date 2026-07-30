@@ -5,7 +5,8 @@ Last updated: 2026-07-29 (America/Vancouver)
 ## Active phase and release state
 
 - Workspace: `C:\Users\user\Documents\Website`
-- **Active phase: Phase 8 — Security and release hardening.**
+- **Active phase: Phase 9 — Private Sites deployment and production
+  verification.**
 - Phase 6 is **Completed and verified** for its authorized scope.
 - Phase 7 implementation and the complete local repository, migration,
   production-build, rendered-Worker, browser, archive, source-readback, and
@@ -14,14 +15,15 @@ Last updated: 2026-07-29 (America/Vancouver)
   security, dependency, migration, D1-budget, accessibility, responsive,
   performance, link/content, complete repository, exact-source build,
   archive, pushed-source, and unpublished Sites-version gates are green.
-- **Phase 9 — Not started.**
-- No Phase 8 deployment, preview deployment, access-policy change, domain
-  change, binding change, runtime-value change, or hosted D1/R2 data mutation
-  has been performed.
-- The existing owner-only live deployment remains version 8 at
+- Phase 9 is **Completed and verified** for its authorized private-deployment
+  and production-verification scope.
+- Exact saved version 14 is now the active, terminally succeeded deployment at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
-- Phase 8 is not viewable at that live URL unless a later separately authorized
-  deployment occurs.
+- Access remains custom owner-only with one allowed owner and zero groups.
+  There is no custom domain or preview deployment. The `DB` and `MEDIA`
+  logical bindings and runtime revision 1 remain unchanged.
+- Phase 9 did not create another version, preview, domain, access policy,
+  binding, runtime value, host, or deployment surface.
 
 ## Previous-phase preservation
 
@@ -55,15 +57,125 @@ Phase 7 preserves:
 
 No award is claimed.
 
+## Phase 9 private deployment and production verification
+
+### Exact deployment and unchanged Sites boundary
+
+- Production URL:
+  `https://vancouver-curiosity-club.reza5777.chatgpt.site`
+- Deployment ID:
+  `appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9`
+- Deployment result: **Completed and verified**; terminal status `succeeded`.
+- Active version:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_69aafba5ef148191b00042bce388a678`
+  (version 14).
+- Deployed source commit:
+  `aaeb6a648e93a7dd2e41f329085b611b8b7d10b1`
+- Version content hash:
+  `sha256:0b65ec790f59acd1ceb1d8ac62350e8914352c6b251aa78ecefbf743c81505d1`
+- Version readback: 168 files / 10,311,680 stored bytes / `tar` archive /
+  null screenshot / no preview URL.
+- The existing custom access policy remains exactly one allowed owner and zero
+  groups. Public/shared access remains disabled.
+- There are no custom domains and no preview deployment. Runtime revision 1
+  still contains only the redacted `INITIAL_OWNER_EMAIL` setting. Logical
+  bindings remain `DB` and `MEDIA`.
+- No rollback, additional Sites version, second deployment, access/domain
+  change, binding change, runtime-value change, alternate host, or external
+  service was created.
+
+Normal bounded first-run hosted effects were limited to the existing migration
+and invariant repair path, Owner/organization/public-catalog bootstrap, the
+exact-match legacy CMS copy upgrade, and form-protection key/cookie checks. No
+fabricated event, submission, import, media asset, invitation, notification,
+private-calendar token, or Meetup source was committed.
+
+### Hosted route, authentication, privacy, and content checks
+
+- Without the Sites authorization boundary, `/`, `/organizer`, an organizer
+  API path, and a guessed private-calendar token path each returned the
+  platform's `401 Sign in required` boundary.
+- Through the Sites-authorized application boundary without an organizer
+  identity, `/organizer` returned the expected `307` Sign in with ChatGPT
+  redirect, the session endpoint returned `401`, and the guessed private token
+  returned `404`.
+- Private responses retained `no-store`, `noindex`, and `no-referrer`.
+  Encoded private-equivalent paths remained private, and invitation-token
+  capture retained its safe boundary.
+- `robots.txt` reached `200` after bounded invariant convergence. The hosted
+  application exposes no raw schema or foreign-key introspection endpoint;
+  86 tables, 249 runtime triggers, and zero known foreign-key violations are
+  exact source/package provenance, not a claim of direct hosted SQL
+  enumeration.
+- Owner sign-in completed the organization/catalog bootstrap. Fourteen
+  canonical public routes returned `200` after bounded one-time CMS
+  maintenance. The sitemap contained 17 exact-host locations and no private
+  path.
+- Forty-eight internal links were checked with zero dead links. The calendar
+  redirect behaved as designed. A guessed event ICS URL returned `404`;
+  empty public ICS and CSV downloads contained no private data.
+- Home canonical and Open Graph URLs used the exact Sites production origin.
+  JSON-LD used the exact site URL and only the three verified Meetup group
+  destinations as external `sameAs` links.
+- All three confirmed Meetup group URLs resolved to their intended live group
+  pages. Individual event-detail and real individual Meetup-link verification
+  is **Not run — no approved real published event**.
+
+### Owner view-only and production browser checks
+
+- Representative Owner-authenticated views were healthy for Dashboard,
+  Events, Calendar, Conflicts, Clubs, Imports, Submissions, Exports, Content,
+  Media, Meetup, Profile, Settings, Notifications, and Team.
+- Those workspaces initially contained no events, imports, submissions,
+  uploaded media, invitations, notifications, or Meetup source. An
+  intentionally invalid private-event submission showed an accessible error
+  summary and field errors and persisted no data.
+- After Owner sign-in, one clearly labelled private production-smoke Draft was
+  created through the normal event workflow. Its title was absent from Home,
+  Events, sitemap, public ICS, public CSV, guessed public detail, and guessed
+  event ICS. It was never published, confirmed, placed on hold, linked to
+  Meetup, or given public copy. It was then archived and moved to deleted
+  items through the normal Owner workflow. The active organizer Events list
+  returned to zero records; the deleted record and its immutable
+  create/archive/delete audit history remain as the truthful production-smoke
+  trace.
+- Production browser checks covered 320px Home, Events, Contact, and organizer
+  Calendar; 390px Home and organizer Calendar; 1280px Home; and a 640
+  CSS-pixel 200%-zoom reflow equivalent. Tested pages had no horizontal
+  overflow and measured 16px body text where applicable.
+- Reduced-motion mode was honored with effective transition durations of
+  `0.00001s`. The browser console reported zero warnings or errors.
+- Focused production axe-core runs on Home, Contact, and Owner Calendar found
+  zero accessibility violations (21, 30, and 22 passing rules). Home and
+  Calendar each retained one manual/incomplete contrast review; Calendar's
+  incomplete item covered 38 nodes and is not reported as a passed automated
+  contrast assertion. No production Lighthouse score was taken.
+- All four public form-instance endpoints returned `200` with private
+  protection headers. No public form POST or production submission mutation
+  was performed. Because Sites remains owner-only, external anonymous form
+  usability is unavailable by design.
+- No approved production artwork exists; the Media workspace reports no
+  uploaded artwork. Approved-real-artwork review remains
+  **Awaiting owner smoke test**.
+
+The broader Phase 8 axe matrix and all Phase 8 Lighthouse numbers below are
+local exact-artifact evidence, not production reruns. External private
+calendar-client behavior remains **Implemented but not externally verified**.
+Hosted second-identity role/suspension/reassignment remains **Not run**
+because the access policy has one owner and zero groups. The Owner backup
+restore rehearsal remains **Not run**.
+
 ## Phase 8 hardening status
 
 ### Important fixed decisions
 
-- Phase 8 hardens the completed Phase 1–7 product; it adds no Phase 9
+- Phase 8 hardened the completed Phase 1–7 product; it added no Phase 9
   deployment behavior.
 - Sites remains the only host. The existing `DB` and `MEDIA` logical bindings,
-  platform-owned Sign in with ChatGPT, owner-only live version 8, access
-  policy, domains, runtime values, and hosted D1/R2 data remain unchanged.
+  platform-owned Sign in with ChatGPT, access policy, domains, runtime values,
+  and hosted D1/R2 boundaries remain unchanged. At the Phase 8 checkpoint,
+  live version 8 was still active; Phase 9 later deployed exact version 14
+  within the same owner-only boundary.
 - Phase 8 changes no D1 schema. The migration chain still ends at the sole
   `0016_phase7_import_export_forms.sql`; there is no `0017`.
 - The Worker canonicalizes the request pathname once before routing, trusted
@@ -320,14 +432,14 @@ process or audit helper remained.
   nonprofit, charity, venue-accessibility, and media-rights claims remain
   suppressed.
 
-### Phase 8 decisions awaiting real prerequisites
+### Remaining decisions awaiting real prerequisites
 
 - Approved-real-artwork browser smoke: **Awaiting owner smoke test**.
 - Five-minute Owner smoke card: **Awaiting owner smoke test**.
 - Hosted second-identity role/suspension/reassignment: **Not run**; access
   changes are not authorized.
 - External private calendar-client behavior: **Implemented but not externally
-  verified** before a future authorized deployment.
+  verified**; no external calendar client was connected during Phase 9.
 - Venue-specific accessibility facts, approved production photography/rights,
   confirmed public contact email, and other items in `OWNER_INPUTS.md` remain
   missing owner facts; no value is invented.
@@ -592,7 +704,7 @@ Approved-real-artwork smoke remains **Awaiting owner smoke test**.
 - Retention review is flagged; there is no automatic purge.
 - The private calendar is read-only and not a two-way sync.
 - External calendar-client behavior is **Implemented but not externally
-  verified** before a future authorized deployment.
+  verified**; no external calendar client was used in Phase 9.
 - Owner backup deliberately excludes identity, tokens, source-feed secrets,
   public forms, and rate-limit state.
 - Approved-real-artwork browser smoke — **Awaiting owner smoke test**.
@@ -600,6 +712,10 @@ Approved-real-artwork smoke remains **Awaiting owner smoke test**.
   non-person fixtures verify mechanics only.
 
 ## Source, build, Sites, and live-state provenance
+
+The Phase 7 and Phase 8 lines below preserve their historical save-checkpoint
+state. The current production state is the Phase 9 version-14 deployment
+recorded afterward.
 
 - Phase 7 saved source commit: `f39fcb3fc6ab97a21fa8cc00d3b180f5ccf84842`
 - Phase 7 status-only ledger commit:
@@ -630,19 +746,20 @@ binding, runtime, D1, or R2 mutation was invoked. The connector exposes the
 live URL but not its deployed-version number; the established ledger records
 live version 8, and the unpublished save did not alter production.
 
-Required immutable Sites identity:
+Current immutable Sites identity:
 
 - project ID: `appgprj_6a62eaf79c4881919bb8e47998af851a`;
 - logical D1 binding: `DB`;
 - logical R2 binding: `MEDIA`;
-- live owner-only version: 8;
+- live owner-only version: 14;
 - access: one allowed owner, zero groups;
 - custom domains: none;
 - preview URL: none;
 - runtime revision: 1 with only the redacted `INITIAL_OWNER_EMAIL` value.
 
-Exactly one new unpublished Phase 8 Sites version was saved after every final
-gate was green. It was not deployed.
+Exactly one unpublished Phase 8 Sites version was saved after every Phase 8
+gate was green. It was not deployed during Phase 8; Phase 9 later deployed
+that exact saved version without creating another version.
 
 ### Phase 8 source/save checkpoint
 
@@ -653,61 +770,67 @@ gate was green. It was not deployed.
   `50ae0f49e078da9f44488fe4a115b4b5670b7f70f13c435013e310e097fbcbb0`,
   2,494,040 compressed bytes, 168 files / 10,171,557 staged bytes, 184 tar
   entries, one `dist/` root, and 9/9 source-equal migrations.
-- New unpublished Sites version 14: `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_69aafba5ef148191b00042bce388a678`
+- Saved Sites version 14: `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_69aafba5ef148191b00042bce388a678`
 - Version 14 source commit:
   `aaeb6a648e93a7dd2e41f329085b611b8b7d10b1`
 - Version 14 content hash:
   `sha256:0b65ec790f59acd1ceb1d8ac62350e8914352c6b251aa78ecefbf743c81505d1`
 - Version 14 readback: 168 files / 10,311,680 stored bytes / null
   screenshot / no preview URL.
-- Phase 8 status-only ledger commit: this final ledger payload; its exact SHA
-  is reported in the terminal handoff because a commit cannot contain its own
-  hash.
-- Deployment: **Not run**
+- Phase 8 status-only ledger commit:
+  `23b7b6e57bb0ced218cc75311755e2609a224105`
+- Phase 9 deployment:
+  `appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9`, terminal `succeeded`
+- Phase 9 status-only documentation ledger commit: **Pending final ledger
+  commit**; its exact SHA is reported in the terminal handoff because a commit
+  cannot contain its own hash.
 - Preview deployment: **Not run**
-- Live-access/domain/binding/runtime/D1/R2 change: **Not run**
+- Live access/domain/binding/runtime/R2 change: **Not run**
+- Hosted D1 effects: bounded migration/invariant readiness,
+  Owner/organization/catalog bootstrap, exact-match CMS copy upgrade, and
+  form-protection key/cookie checks, plus one clearly labelled private
+  production-smoke Draft that was verified nonpublic, archived, and moved to
+  deleted items. No public projection, submission, import, media asset,
+  invitation, notification, calendar token, or Meetup source was created.
 
-Pre/post-save readback confirmed exactly versions 1–14 with one version 14,
-the unchanged live URL, no preview URL, no custom domains, custom access
+Phase 8 pre/post-save readback confirmed exactly versions 1–14 with one version
+14, the unchanged live URL, no preview URL, no custom domains, custom access
 revision 1 with exactly one allowed owner and zero groups, and runtime revision
-1 with only the redacted `INITIAL_OWNER_EMAIL` key. No deploy, preview, access,
-domain, binding, runtime, D1, or R2 mutation was invoked. The connector exposes
-the live URL but not its deployed-version number; the established ledger
-records live version 8, and this unpublished save did not alter production.
+1 with only the redacted `INITIAL_OWNER_EMAIL` key. Phase 9 then deployed that
+exact version 14 through the private deployment operation. Post-deployment
+readback retained the same access, domain, preview, runtime, and binding state.
 
-## Five-minute Phase 8 Owner smoke-test card
+## Five-minute Phase 9 Owner smoke-test card
 
 Overall status: **Awaiting owner smoke test.**
 
 1. Sign in as the Owner.
-2. At 390px or a narrow phone, browse Events, open one real published event,
-   and confirm its real Meetup destination is correct.
-3. Follow the organizer sign-in boundary and confirm no private page appears
-   before authorization.
-4. In the organizer agenda, use only the keyboard to open an event, edit a
-   safe field, review any conflict state, then Save or Cancel.
-5. Trigger one validation error and confirm the summary receives focus, names
-   the exact field, and remains readable at 200% zoom.
-6. Keyboard-check one public form, Imports, Submissions, CMS/media, and an
-   export/download. Confirm focus stays visible and no control is dead.
-7. At 320px and 390px, check the same core route for horizontal overflow,
-   clipped text, undersized controls, and inaccessible sticky/dialog content.
-8. Confirm a private draft/hold, note, conflict reason, submission, token,
-   private feed, backup, and media original cannot be reached anonymously or
-   inferred through an error.
-9. Confirm the Accessibility Statement and public copy make no unverified
-   venue, charity, award, email, backup, sync, or response-time claim.
-10. Confirm the live owner-only URL still serves version 8 and Phase 8 was not
-    deployed.
-
-Items that require Phase 8 to be accessible through hosted infrastructure are
-**Awaiting a future authorized deployment**. They are not marked passed by
-local implementation or an unpublished Sites save.
+2. Confirm the exact production URL opens version 14 and remains behind the
+   owner-only Sites gate.
+3. At 320px and 390px, browse Home, Events, Contact, and organizer Calendar;
+   confirm no horizontal overflow or clipped focus.
+4. Open one real published event and verify its individual Meetup destination,
+   or record **Not run — no approved real published event**.
+5. Using only the keyboard, review organizer Calendar, Events, Conflicts,
+   Imports, Submissions, Content, Media, and Exports without committing
+   synthetic production data.
+6. Trigger one private-event validation error and confirm the error summary
+   and exact field errors receive useful focus and persist no event.
+7. Verify a guessed draft, submission, import, token, private feed, backup, or
+   media-original URL reveals no private data.
+8. Review the empty Media library and leave approved-real-artwork review
+   pending until real rights/consent facts and artwork are supplied.
+9. Confirm no venue, charity, award, email, automatic-backup, two-way-sync, or
+   response-time claim appears without an approved fact.
+10. Confirm version 14 remains active with one allowed owner, zero groups, no
+    custom domain, and no preview deployment.
 
 ## Exact next phase and stop condition
 
 - Phase 7 is completed and verified for its authorized scope.
 - Phase 8 is **Completed and verified** for its authorized scope.
-- Do not deploy.
+- Phase 9 is **Completed and verified** for its authorized private-deployment
+  and production-verification scope.
 - Owner smoke status remains **Awaiting owner smoke test**.
-- **Phase 9 — Not started.**
+- Approved-real-artwork review remains **Awaiting owner smoke test**.
+- This is the final planned build phase. No Phase 10 is started or authorized.

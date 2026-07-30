@@ -7,7 +7,7 @@ data.
 
 - `INITIAL_OWNER_EMAIL`: **Configured in Sites runtime settings as a secret**
   from the existing owner identity in Sites access metadata. Runtime revision
-  1 is active on the current owner-only version-8 deployment; the value is
+  1 is active on the current owner-only version-14 deployment; the value is
   never copied into this file, source, logs, or build artifacts.
 - Second invited test identity: **Not available under the current Sites access
   policy**, which permits exactly the owner account and zero groups. Phase 3
@@ -41,10 +41,11 @@ data.
   without committing them as fixtures; the local review database intentionally
   contains no real event.
 
-Until the feeds are entered through an authenticated organizer workspace into
-Sites-managed D1, hosted imported event data remains empty. Feed URLs are
-private configuration: they must not be copied into public content, client
-state, logs, or this file.
+No Meetup source was configured during Phase 9 production verification, so
+hosted imported event data remains empty. If the Owner later enters a feed
+through the authenticated organizer workspace, its URL remains private
+configuration and must not be copied into public content, client state, logs,
+or this file.
 
 ## British Columbia legal identity
 
@@ -82,12 +83,11 @@ society-registration, tax, or charity claim.
 - Confirmed public contact email address: **Missing**. Phase 7 does not invent
   one: the public Contact form stores a reply email and message in the private
   organizer inbox and explicitly sends no confirmation email.
-- Owner-only Sites origin: **Available for the deployed Phase 2 version 8**.
-  Public/shared access is not authorized, and unpublished Phase 3, Phase 4, or
-  Phase 5 candidates, the Phase 6 candidate, or the unpublished Phase 7 and
-  Phase 8 candidates must not be represented as live there. QR downloads
-  remain an authorized cut and require a separately authorized stable
-  destination.
+- Owner-only Sites origin: **Available for deployed version 14** at
+  `https://vancouver-curiosity-club.reza5777.chatgpt.site`. Public/shared
+  access is not authorized. Phase 9 preserved custom access with one allowed
+  owner and zero groups, no preview deployment, and no custom domain. QR
+  downloads remain an authorized cut.
 - Custom domain: **Not requested and not required**
 
 ## Photography and consent
@@ -120,22 +120,31 @@ No AI-generated attendee faces or unapproved photographs may be substituted.
 The public projection defaults organizer attribution to private and requires
 both consent gates before displaying a name.
 
-## Phase 8 Owner verification
+## Phase 9 production and Owner verification
 
-- Five-minute Phase 8 Owner smoke test: **Awaiting owner smoke test**. Local
-  synthetic browser checks do not constitute Owner approval.
-- Mobile Owner workflow at 320 and 390 CSS pixels: **Awaiting owner smoke
-  test** for browse, sign-in, event edit, conflict review, save/cancel, broken
-  links, dead controls, overflow, and validation readability.
-- Keyboard-only Owner workflow: **Awaiting owner smoke test** for navigation,
-  sign-in boundary, organizer agenda, event create/edit, conflict review,
-  save/cancel, public forms, imports, submissions, CMS/media, and downloads.
-- Approved-real-artwork browser check: **Awaiting owner smoke test**. It cannot
-  be replaced by synthetic local artwork.
-- Hosted Phase 8 behavior: **Not run**. Phase 8 does not authorize deployment,
-  preview deployment, public/shared access, access-policy changes, domain
-  changes, runtime-value changes, or hosted D1/R2 test data.
-
-The Owner smoke checks above do not authorize Phase 9 or a deployment. The
-owner-only live URL must continue serving version 8 until a separate deployment
-authorization is given.
+- Version 14 private deployment and representative production verification:
+  **Completed and verified**. Deployment
+  `appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9` reached terminal `succeeded`
+  without changing the owner-only access policy.
+- Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
+  Production engineering checks do not constitute Owner approval.
+- Owner-authenticated production views for dashboard, events, calendar,
+  conflicts, clubs, imports, submissions, exports, content, media, Meetup,
+  profile, settings, notifications, and team were healthy. One clearly
+  labelled private production-smoke Draft was created, verified nonpublic,
+  archived, and moved to deleted items through the normal Owner workflow; its
+  immutable audit trace remains.
+- Production responsive checks covered 320px and 390px representative public
+  and organizer routes, 1280px Home, and a 200%-reflow equivalent. The
+  Owner's own end-to-end mobile and keyboard acceptance remains
+  **Awaiting owner smoke test**.
+- Approved-real-artwork browser check: **Awaiting owner smoke test**. The
+  hosted Media workspace contains no uploaded artwork, and synthetic artwork
+  cannot replace rights, consent, credit, or Owner approval.
+- Real published-event detail and individual Meetup-event URL:
+  **Not run — no approved real published event**.
+- Hosted second-identity role/suspension/reassignment: **Not run**. The access
+  policy permits one owner and zero groups.
+- External private calendar-client behavior: **Implemented but not externally
+  verified**.
+- Owner backup restore rehearsal: **Not run**.

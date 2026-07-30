@@ -2,15 +2,19 @@
 
 ## Verification and hosting limits
 
-- Phase 8 hardening uses local synthetic `.invalid` identities and data. The
-  exact committed-source verification and save status is recorded only in
-  `BUILD_STATUS.md`; neither local evidence nor an unpublished candidate
-  authorizes deployment.
-- The live owner-only URL continues to serve version 8. A saved unpublished
-  candidate is not visible at that URL and is not a preview deployment.
-- Hosted Owner, second-identity, approved-real-artwork, and external
-  calendar-client smoke checks remain **Awaiting owner smoke test** or
-  **Not run** until their factual and deployment prerequisites exist.
+- Phase 8 hardening used local synthetic `.invalid` identities and data.
+  Its axe, Lighthouse, exact-width, dependency, and full-suite measurements
+  remain local exact-artifact evidence; they are not relabelled as production
+  measurements.
+- Phase 9 deployed exact saved version 14 to
+  `https://vancouver-curiosity-club.reza5777.chatgpt.site`. The deployment
+  succeeded and remains behind the existing custom owner-only policy.
+- There is no preview deployment, custom domain, public/shared access, or
+  second production surface. External anonymous visitors therefore see the
+  Sites owner gate rather than the application public pages or forms.
+- Representative Owner views and production browser/header checks passed.
+  The Owner's own five-minute smoke and approved-real-artwork review remain
+  **Awaiting owner smoke test**.
 - The current Sites access policy has one Owner and no groups. A real
   second-identity role/suspension/reassignment check cannot be performed
   against hosted state without a separately authorized access change.
@@ -18,6 +22,9 @@
   supplied. Synthetic artwork can verify rendering, media authorization, and
   responsive behavior but cannot establish rights, consent, credit, or Owner
   approval.
+- There is no approved real individual published event in hosted D1. Live
+  individual-event and individual Meetup-event-link smoke is
+  **Not run — no approved real published event**.
 - Venue-specific accessibility facts are missing. The application can expose
   confirmed event accessibility information, but the Accessibility Statement
   must not promise facts that the Owner has not supplied.
@@ -41,8 +48,9 @@
 - Private and public media correctness depends on the exact current D1
   metadata/usage proof plus the `MEDIA` object. R2 object keys are not public
   URLs and are never a supported download input.
-- A saved Sites version is an immutable candidate, not a deployment, data
-  backup, uptime promise, or rollback of hosted D1/R2.
+- A saved Sites version is an immutable candidate, not a data backup, uptime
+  promise, or rollback of hosted D1/R2. Phase 9 deployed version 14 through
+  Sites; that deployment does not make it an infrastructure backup.
 
 ## Backup, restore, and dependency limits
 
@@ -52,14 +60,17 @@
 - Restore is documented for a disposable nonproduction database. There is no
   one-click or automatic in-application restore, and no production restore is
   performed during Phase 8.
-- Dependency audits distinguish production-reachable packages from build/test
-  tooling. Any compatible remediation and any residual advisory must be
-  recorded with exact counts and reachability in `BUILD_STATUS.md`; this file
-  does not predeclare a final audit result.
+- The final production dependency audit is zero. The full development/tooling
+  audit retains 16 advisory nodes: 12 high and four moderate, all `dev: true`.
+  The packaged Sites artifact excludes the affected toolchains; compatible
+  remediation and reachability rationale are recorded in `BUILD_STATUS.md`.
 - Local Lighthouse and accessibility measurements do not prove Internet
   latency, hosted multi-user behavior, or third-party calendar-client
   behavior. Exact local measurements and limitations belong in
   `BUILD_STATUS.md`.
+- External private-calendar client behavior remains **Implemented but not
+  externally verified**. The disposable Owner-backup restore rehearsal remains
+  **Not run**.
 
 ## Preserved authorized cuts
 
