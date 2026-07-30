@@ -9,13 +9,14 @@ charity claim is approved for public use.
 
 ## Production
 
-The exact Phase 8 candidate is privately deployed as Sites version 14 at:
+The calendar-first owner refinement is privately deployed as Sites version 15
+at:
 
 - https://vancouver-curiosity-club.reza5777.chatgpt.site
 
 Deployment
-`appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9` completed successfully from source
-`aaeb6a648e93a7dd2e41f329085b611b8b7d10b1`. Access remains custom
+`appgdep_6a6ba12078f08191bfd0693e7726921a` completed successfully from source
+`af3477b439a1e06b07a077747f903643abb7da09`. Access remains custom
 owner-only with one allowed owner and zero groups. There is no public/shared
 access, preview deployment, or custom domain. The logical `DB` and `MEDIA`
 bindings and runtime revision 1 are unchanged.
@@ -40,6 +41,12 @@ The public website keeps the visitor path deliberately short:
   detailed day panel on hover, focus, or tap.
 - Every public event can open Google Calendar or download a standards-compliant
   `.ics` file for Apple Calendar and other calendar clients.
+- The current production calendar contains 11 source-backed Meetup events from
+  the two feeds that completed without cross-source scheduling conflicts.
+- The official Meetup iCalendar feeds do not contain an approved poster-image
+  field. Event cards therefore use rights-approved site media when available
+  and a controlled category illustration otherwise; the site does not scrape
+  or hotlink Meetup posters.
 - The application does not create visitor accounts. Organizer authentication
   remains a separate private workspace. The current Sites deployment still
   has an owner-only platform gate, so anonymous visitors cannot reach these

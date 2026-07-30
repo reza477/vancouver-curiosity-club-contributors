@@ -17,7 +17,7 @@ Last updated: 2026-07-30 (America/Vancouver)
   archive, pushed-source, and unpublished Sites-version gates are green.
 - Phase 9 is **Completed and verified** for its authorized private-deployment
   and production-verification scope.
-- Exact saved version 14 is now the active, terminally succeeded deployment at
+- Exact saved version 15 is now the active, terminally succeeded deployment at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
 - Access remains custom owner-only with one allowed owner and zero groups.
   There is no custom domain or preview deployment. The `DB` and `MEDIA`
@@ -27,9 +27,9 @@ Last updated: 2026-07-30 (America/Vancouver)
 
 ## Owner-directed calendar-first update (post-Phase 9)
 
-Status at this source checkpoint: **Implemented and locally verified; private
-Sites save/deployment readback pending.** This is an owner-directed refinement
-of the completed product, not a new numbered phase.
+Status at this source checkpoint: **Completed and verified; privately deployed
+as Sites version 15.** This is an owner-directed refinement of the completed
+product, not a new numbered phase.
 
 - Home now gives a short introduction and immediately shows the next four
   published events. Existing owner-edited Home CMS sections remain functional
@@ -70,8 +70,33 @@ Verification at this checkpoint:
 - strict TypeScript: passed;
 - zero-warning lint: passed;
 - `git diff --check`: passed;
-- fresh exact-commit production build, rendered Worker, browser widths, and
-  Sites version/deployment readback: pending below the source-freeze gate.
+- exact source commit:
+  `af3477b439a1e06b07a077747f903643abb7da09`;
+- fresh exact-commit production build: passed;
+- rendered Worker: 25/25 passed;
+- final artifact/privacy contract: 6/6 passed;
+- production dependency audit: 0 findings;
+- exact deployed Sites version:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_55bc8063b394819187383a908b631554`
+  (version 15);
+- version content hash:
+  `sha256:2dbb36488593cbe050120c6888139beccbdb31c970d743ce3ea2b2caa26d226a`;
+- version readback: 170 files / 10,373,120 stored bytes / screenshot available /
+  no preview URL;
+- deployment:
+  `appgdep_6a6ba12078f08191bfd0693e7726921a`, terminal `succeeded`;
+- live browser verification confirmed the simplified Home, 11 source-backed
+  events, the August month calendar, hover/focus/tap day detail, exact Meetup
+  event links, Google Calendar, and Apple Calendar / `.ics` actions;
+- local desktop browser verification was rerun at 1280px. The calendar-first
+  responsive source tests are green, but exact 320px and 390px manual browser
+  passes were not rerun for this refinement.
+
+The private deployment preserved custom access revision 1 with exactly one
+allowed owner and zero groups, no custom domain, no preview URL, runtime
+revision 1, and the existing `DB` / `MEDIA` bindings. Anonymous visitors still
+cannot reach the application until a separate access-policy change is
+explicitly authorized.
 
 ## Previous-phase preservation
 
@@ -762,8 +787,8 @@ Approved-real-artwork smoke remains **Awaiting owner smoke test**.
 ## Source, build, Sites, and live-state provenance
 
 The Phase 7 and Phase 8 lines below preserve their historical save-checkpoint
-state. The current production state is the Phase 9 version-14 deployment
-recorded afterward.
+state. Phase 9 deployed version 14; the later owner-directed calendar-first
+release is the current version-15 production state recorded afterward.
 
 - Phase 7 saved source commit: `f39fcb3fc6ab97a21fa8cc00d3b180f5ccf84842`
 - Phase 7 status-only ledger commit:
@@ -799,7 +824,7 @@ Current immutable Sites identity:
 - project ID: `appgprj_6a62eaf79c4881919bb8e47998af851a`;
 - logical D1 binding: `DB`;
 - logical R2 binding: `MEDIA`;
-- live owner-only version: 14;
+- live owner-only version: 15;
 - access: one allowed owner, zero groups;
 - custom domains: none;
 - preview URL: none;
@@ -829,9 +854,8 @@ that exact saved version without creating another version.
   `23b7b6e57bb0ced218cc75311755e2609a224105`
 - Phase 9 deployment:
   `appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9`, terminal `succeeded`
-- Phase 9 status-only documentation ledger commit: **Pending final ledger
-  commit**; its exact SHA is reported in the terminal handoff because a commit
-  cannot contain its own hash.
+- Phase 9 status-only documentation ledger commit:
+  `3a89dfee4423446a947121d9cc7462e2a0f0911e`
 - Preview deployment: **Not run**
 - Live access/domain/binding/runtime/R2 change: **Not run**
 - Hosted D1 effects: bounded migration/invariant readiness,
@@ -848,12 +872,38 @@ revision 1 with exactly one allowed owner and zero groups, and runtime revision
 exact version 14 through the private deployment operation. Post-deployment
 readback retained the same access, domain, preview, runtime, and binding state.
 
+### Owner-directed calendar-first release
+
+- Exact substantive source commit:
+  `af3477b439a1e06b07a077747f903643abb7da09`
+- Exact pushed `refs/heads/main` readback:
+  `af3477b439a1e06b07a077747f903643abb7da09`
+- Exact production archive: SHA-256
+  `e31fd4006bead100a61e5131022665c0cf989a61e0a8d5fe4722b077c1f07df5`,
+  2,510,890 compressed bytes, 186 tar entries, one `dist/` root, and source-
+  equal packaged migrations `0008` through `0016`.
+- Saved Sites version 15:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_55bc8063b394819187383a908b631554`
+- Version 15 source commit:
+  `af3477b439a1e06b07a077747f903643abb7da09`
+- Version 15 content hash:
+  `sha256:2dbb36488593cbe050120c6888139beccbdb31c970d743ce3ea2b2caa26d226a`
+- Version 15 readback: 170 files / 10,373,120 stored bytes / screenshot
+  available / no preview URL.
+- Private deployment:
+  `appgdep_6a6ba12078f08191bfd0693e7726921a`, terminal `succeeded`.
+- Access readback: custom revision 1, exactly one allowed owner, zero groups,
+  no custom domain, no preview URL, runtime revision 1, and unchanged `DB` /
+  `MEDIA` logical bindings.
+- The current status-only documentation ledger commit is reported in the
+  terminal handoff because a commit cannot contain its own hash.
+
 ## Five-minute Phase 9 Owner smoke-test card
 
 Overall status: **Awaiting owner smoke test.**
 
 1. Sign in as the Owner.
-2. Confirm the exact production URL opens version 14 and remains behind the
+2. Confirm the exact production URL opens version 15 and remains behind the
    owner-only Sites gate.
 3. At 320px and 390px, browse Home, Events, Contact, and organizer Calendar;
    confirm no horizontal overflow or clipped focus.
@@ -870,7 +920,7 @@ Overall status: **Awaiting owner smoke test.**
    pending until real rights/consent facts and artwork are supplied.
 9. Confirm no venue, charity, award, email, automatic-backup, two-way-sync, or
    response-time claim appears without an approved fact.
-10. Confirm version 14 remains active with one allowed owner, zero groups, no
+10. Confirm version 15 remains active with one allowed owner, zero groups, no
     custom domain, and no preview deployment.
 
 ## Exact next phase and stop condition

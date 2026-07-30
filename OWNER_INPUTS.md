@@ -7,7 +7,7 @@ data.
 
 - `INITIAL_OWNER_EMAIL`: **Configured in Sites runtime settings as a secret**
   from the existing owner identity in Sites access metadata. Runtime revision
-  1 is active on the current owner-only version-14 deployment; the value is
+  1 is active on the current owner-only version-15 deployment; the value is
   never copied into this file, source, logs, or build artifacts.
 - Second invited test identity: **Not available under the current Sites access
   policy**, which permits exactly the owner account and zero groups. Phase 3
@@ -88,7 +88,7 @@ society-registration, tax, or charity claim.
 - Confirmed public contact email address: **Missing**. Phase 7 does not invent
   one: the public Contact form stores a reply email and message in the private
   organizer inbox and explicitly sends no confirmation email.
-- Owner-only Sites origin: **Available for deployed version 14** at
+- Owner-only Sites origin: **Available for deployed version 15** at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`. Public/shared
   access is not authorized. Phase 9 preserved custom access with one allowed
   owner and zero groups, no preview deployment, and no custom domain. QR
@@ -131,6 +131,11 @@ both consent gates before displaying a name.
   **Completed and verified**. Deployment
   `appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9` reached terminal `succeeded`
   without changing the owner-only access policy.
+- Calendar-first version 15 private deployment: **Completed and verified**.
+  Deployment `appgdep_6a6ba12078f08191bfd0693e7726921a` reached terminal
+  `succeeded` from source
+  `af3477b439a1e06b07a077747f903643abb7da09`, with the same one-owner,
+  zero-group access boundary and no preview or custom domain.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,
