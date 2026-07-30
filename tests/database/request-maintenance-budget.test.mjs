@@ -155,6 +155,10 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
     true,
   );
   assert.equal(
+    shouldReconcileScheduledPublication("GET", "/calendar"),
+    true,
+  );
+  assert.equal(
     shouldReconcileScheduledPublication("HEAD", "/events/example"),
     true,
   );
@@ -164,6 +168,28 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
   );
   assert.equal(
     shouldRefreshPublicMeetupCalendar("GET", "/events"),
+    true,
+  );
+  assert.equal(
+    shouldRefreshPublicMeetupCalendar("GET", "/"),
+    true,
+  );
+  assert.equal(
+    shouldRefreshPublicMeetupCalendar("HEAD", "/calendar"),
+    true,
+  );
+  for (const pathname of ["/.rsc", "/calendar.rsc", "/events.rsc"]) {
+    assert.equal(
+      shouldReconcileScheduledPublication("GET", pathname),
+      true,
+    );
+    assert.equal(
+      shouldRefreshPublicMeetupCalendar("GET", pathname),
+      true,
+    );
+  }
+  assert.equal(
+    shouldReconcilePhase7StarterCopy("GET", "/contact.rsc"),
     true,
   );
   assert.equal(

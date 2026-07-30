@@ -31,7 +31,11 @@ export async function HomePageRenderer({
     page.sections.find(
       (section) => normalizedType(section) === "hero",
     ) ?? page.sections.find((section) => section.key === "hero");
-  const sections = page.sections.filter((section) => section !== hero);
+  const sections = page.sections.filter(
+    (section) =>
+      section !== hero &&
+      normalizedType(section) !== "featured-events",
+  );
   const renderContext = await loadEditorialRenderContext({
     page,
     previewCommunityLinks: privatePreview
@@ -40,9 +44,6 @@ export async function HomePageRenderer({
     previewMediaAssets,
     privatePreview,
   });
-  const hasFeaturedEvents = sections.some(
-    (section) => normalizedType(section) === "featured-events",
-  );
   const hasFeaturedClubs = sections.some(
     (section) => normalizedType(section) === "featured-clubs",
   );
@@ -72,43 +73,41 @@ export async function HomePageRenderer({
             <p className="home-hero__deck">{hero.content.text}</p>
           ) : null}
           <div className="home-hero__actions">
-            <Link className="primary-action" href="/events">
-              Explore Upcoming Events <span aria-hidden="true">→</span>
+            <Link className="primary-action" href="/calendar">
+              View the calendar <span aria-hidden="true">→</span>
             </Link>
-            <Link href="/clubs">Meet the clubs</Link>
+            <Link href="/about">What is this club?</Link>
           </div>
         </div>
         <FieldArtwork tone="think" />
       </section>
 
-      {!hasFeaturedEvents ? (
-        <section className="home-events" aria-labelledby="home-events-title">
-          <div className="section-heading">
-            <div>
-              <p className="section-kicker">The next field notes</p>
-              <h2 id="home-events-title">Upcoming published events</h2>
-            </div>
-            <Link href="/events">Full calendar</Link>
+      <section className="home-events" aria-labelledby="home-events-title">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Coming up</p>
+            <h2 id="home-events-title">The next events</h2>
           </div>
-          {events.length > 0 ? (
-            <div className="event-list">
-              {events.map((event) => (
-                <EventCard event={event} key={event.slug} />
-              ))}
-            </div>
-          ) : (
-            <div className="public-empty-state">
-              <p className="section-kicker">Nothing fabricated</p>
-              <h3>No upcoming event is published here yet.</h3>
-              <p>
-                When a real event reaches the completed public calendar, it
-                will appear in this space.
-              </p>
-              <Link href="/events">Check the calendar state</Link>
-            </div>
-          )}
-        </section>
-      ) : null}
+          <Link href="/calendar">Open the full calendar</Link>
+        </div>
+        {events.length > 0 ? (
+          <div className="event-list">
+            {events.slice(0, 4).map((event) => (
+              <EventCard event={event} key={event.slug} />
+            ))}
+          </div>
+        ) : (
+          <div className="public-empty-state">
+            <p className="section-kicker">Calendar</p>
+            <h3>No upcoming event is published here yet.</h3>
+            <p>
+              As soon as an event is ready for everyone to see, it will appear
+              here and on the calendar.
+            </p>
+            <Link href="/calendar">Open the calendar</Link>
+          </div>
+        )}
+      </section>
 
       <section className="lane-index" aria-labelledby="lane-index-title">
         <div className="section-heading">

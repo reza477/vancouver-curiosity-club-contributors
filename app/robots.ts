@@ -19,7 +19,6 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
         "/api/",
         "/auth",
         "/callback",
-        "/calendar",
         "/drafts",
         "/invitations",
         "/organizer",

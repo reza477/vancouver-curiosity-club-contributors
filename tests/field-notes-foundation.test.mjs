@@ -30,8 +30,8 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(homeData, /loadPublicCatalog/);
   assert.match(homeData, /getPublicPageContent/);
   assert.match(homeData, /queryPublicEvents/);
-  assert.match(homeRenderer, /Nothing fabricated/);
-  assert.match(homeRenderer, /Explore Upcoming Events/);
+  assert.match(homeRenderer, /View the calendar/);
+  assert.match(homeRenderer, /The next events/);
   assert.match(catalog, /A social calendar with a brain\./);
   assert.match(catalog, /Vancouver Curiosity Club/);
   assert.match(layout, /Skip to main content/);

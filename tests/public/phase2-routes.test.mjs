@@ -10,6 +10,7 @@ import {
 const projectRoot = new URL("../../", import.meta.url);
 const requiredPublicRoutes = [
   "app/page.tsx",
+  "app/calendar/page.tsx",
   "app/events/page.tsx",
   "app/events/[slug]/page.tsx",
   "app/clubs/page.tsx",
@@ -38,6 +39,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
     readFile(new URL("app/layout.tsx", projectRoot), "utf8"),
   ]);
   for (const [href, label] of [
+    ["/calendar", "Calendar"],
     ["/events", "Events"],
     ["/clubs", "Clubs"],
     ["/community", "Community"],
@@ -78,7 +80,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });
 
-test("Events is canonical and filtered views are non-indexable", async () => {
+test("Calendar and Events are distinct public views and filtered queries are non-indexable", async () => {
   const [calendar, events, filters] = await Promise.all([
     readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
@@ -88,8 +90,10 @@ test("Events is canonical and filtered views are non-indexable", async () => {
     ),
   ]);
 
-  assert.match(calendar, /permanentRedirect\("\/events"\)/u);
-  assert.match(calendar, /index:\s*false/u);
+  assert.match(calendar, /path:\s*"\/calendar"/u);
+  assert.match(calendar, /PublicMonthCalendar/u);
+  assert.match(calendar, /Object\.keys\(params\)\.length === 0/u);
+  assert.doesNotMatch(calendar, /permanentRedirect/u);
   assert.match(events, /Object\.keys\(params\)\.length === 0/u);
   assert.match(events, /path:\s*"\/events"/u);
   assert.match(filters, /method="get"/u);

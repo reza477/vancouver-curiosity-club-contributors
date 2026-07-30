@@ -2,10 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useRef, type KeyboardEvent } from "react";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 const requiredNavigation = [
+  { href: "/calendar", label: "Calendar" },
   { href: "/events", label: "Events" },
   { href: "/clubs", label: "Clubs" },
   { href: "/community", label: "Community" },
@@ -114,14 +116,23 @@ function NavigationLinks({
   navigation: readonly PublicNavigationItemDto[];
   onNavigate?: () => void;
 }>) {
+  const pathname = usePathname();
   return (
     <>
       {navigation.map((item) =>
         item.href.startsWith("/") ? (
           <Link
-            className={
-              item.href === "/organizer" ? "portal-link" : undefined
+            aria-current={
+              isCurrentNavigationPath(pathname, item.href)
+                ? "page"
+                : undefined
             }
+            className={[
+              item.href === "/calendar" ? "calendar-link" : "",
+              item.href === "/organizer" ? "portal-link" : "",
+            ]
+              .filter(Boolean)
+              .join(" ") || undefined}
             href={item.href}
             key={item.href}
             onClick={onNavigate}
@@ -138,6 +149,7 @@ function NavigationLinks({
             target="_blank"
           >
             {item.label}
+            <span className="sr-only"> (opens in a new tab)</span>
           </a>
         ),
       )}
@@ -148,36 +160,42 @@ function NavigationLinks({
 function normalizedPrimaryNavigation(
   configured: readonly PublicNavigationItemDto[],
 ): readonly PublicNavigationItemDto[] {
-  const source =
-    configured.length > 0 ? configured : requiredNavigation;
-  const candidates: PublicNavigationItemDto[] = [];
-  const seen = new Set<string>();
-  for (const item of source) {
-    if (seen.has(item.href)) continue;
-    seen.add(item.href);
-    candidates.push(
-      item.href === "/organizer"
-        ? Object.freeze({ href: "/organizer", label: "Organizer Login" })
-        : item,
-    );
-  }
-  for (const required of requiredNavigation) {
-    if (seen.has(required.href)) continue;
-    candidates.push(required);
-  }
+  const configuredByHref = new Map(
+    configured.map((item) => [item.href, item]),
+  );
   const requiredTargets = new Set<string>(
     requiredNavigation.map((item) => item.href),
   );
-  const optionalTargets = new Set(
-    candidates
-      .filter((item) => !requiredTargets.has(item.href))
-      .slice(0, 12 - requiredNavigation.length)
-      .map((item) => item.href),
-  );
+  const required = requiredNavigation.map((item) => {
+    const configuredItem = configuredByHref.get(item.href);
+    if (
+      item.href === "/calendar" ||
+      item.href === "/events" ||
+      item.href === "/organizer"
+    ) {
+      return item;
+    }
+    return configuredItem ?? item;
+  });
+  const optional = configured
+    .filter((item) => !requiredTargets.has(item.href))
+    .filter(
+      (item, index, source) =>
+        source.findIndex((candidate) => candidate.href === item.href) ===
+        index,
+    )
+    .slice(0, 1);
   return Object.freeze(
-    candidates.filter(
-      (item) =>
-        requiredTargets.has(item.href) || optionalTargets.has(item.href),
-    ),
+    [...required.slice(0, -1), ...optional, required.at(-1)!],
+  );
+}
+
+function isCurrentNavigationPath(
+  pathname: string,
+  href: string,
+): boolean {
+  return (
+    href.startsWith("/") &&
+    (pathname === href || pathname.startsWith(`${href}/`))
   );
 }

@@ -128,11 +128,12 @@ export function shouldReconcilePhase7StarterCopy(
   pathname: string,
 ): boolean {
   if (method !== "GET" && method !== "HEAD") return false;
+  const routePathname = requestRoutePathname(pathname);
   return (
-    pathname === "/contact" ||
-    pathname === "/get-involved" ||
-    pathname === "/host-an-event" ||
-    pathname === "/privacy"
+    routePathname === "/contact" ||
+    routePathname === "/get-involved" ||
+    routePathname === "/host-an-event" ||
+    routePathname === "/privacy"
   );
 }
 
@@ -141,14 +142,16 @@ export function shouldReconcileScheduledPublication(
   pathname: string,
 ): boolean {
   if (method !== "GET" && method !== "HEAD") return false;
+  const routePathname = requestRoutePathname(pathname);
   return (
-    pathname === "/" ||
-    pathname === "/events" ||
-    pathname.startsWith("/events/") ||
-    pathname.startsWith("/clubs/") ||
-    pathname === "/sitemap.xml" ||
-    pathname === "/organizer" ||
-    pathname.startsWith("/organizer/events/")
+    routePathname === "/" ||
+    routePathname === "/calendar" ||
+    routePathname === "/events" ||
+    routePathname.startsWith("/events/") ||
+    routePathname.startsWith("/clubs/") ||
+    routePathname === "/sitemap.xml" ||
+    routePathname === "/organizer" ||
+    routePathname.startsWith("/organizer/events/")
   );
 }
 
@@ -156,10 +159,19 @@ export function shouldRefreshPublicMeetupCalendar(
   method: string,
   pathname: string,
 ): boolean {
+  const routePathname = requestRoutePathname(pathname);
   return (
     (method === "GET" || method === "HEAD") &&
-    pathname === "/events"
+    (routePathname === "/" ||
+      routePathname === "/calendar" ||
+      routePathname === "/events")
   );
+}
+
+function requestRoutePathname(pathname: string): string {
+  return pathname.endsWith(".rsc")
+    ? pathname.slice(0, -4) || "/"
+    : pathname;
 }
 
 function attemptedMeetupRefresh(

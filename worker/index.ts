@@ -160,7 +160,6 @@ function secureResponse(
 
   if (
     isPrivateRequest ||
-    requestPathname === "/calendar" ||
     response.status >= 400
   ) {
     headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");

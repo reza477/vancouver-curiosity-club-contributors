@@ -9,8 +9,8 @@ import {
 
 const projectRoot = new URL("../", import.meta.url);
 
-test("homepage uses the bounded unified public data service and canonical Events hub", async () => {
-  const [page, homeData, renderer, catalog] = await Promise.all([
+test("homepage puts the bounded public calendar path before secondary content", async () => {
+  const [page, homeData, renderer, catalog, styles] = await Promise.all([
     readFile(new URL("app/page.tsx", projectRoot), "utf8"),
     readFile(
       new URL("lib/server/public/home.ts", projectRoot),
@@ -24,6 +24,7 @@ test("homepage uses the bounded unified public data service and canonical Events
       new URL("lib/server/public/catalog-definitions.ts", projectRoot),
       "utf8",
     ),
+    readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
   assert.match(page, /loadPublicHomeData/);
@@ -37,12 +38,21 @@ test("homepage uses the bounded unified public data service and canonical Events
     /Promise\.all\(\[\s*getPublicPageContent\(database,\s*"home"\),\s*queryPublicEvents/,
   );
   assert.match(homeData, /pageSize:\s*6/);
-  assert.match(renderer, /href="\/events"/);
-  assert.match(renderer, /Explore Upcoming Events/);
+  assert.match(renderer, /href="\/calendar"/);
+  assert.match(renderer, /View the calendar/);
+  assert.match(renderer, /events\.slice\(0,\s*4\)/);
+  assert.ok(
+    renderer.indexOf('className="home-events"') <
+      renderer.indexOf('className="lane-index"'),
+  );
   assert.match(renderer, /No upcoming event is published here yet\./);
-  assert.match(renderer, /Nothing fabricated/);
+  assert.match(renderer, /As soon as an event is ready for everyone to see/u);
+  assert.match(styles, /\.home-hero\s*\{[\s\S]*?min-height:\s*min\(30rem/u);
+  assert.match(
+    styles,
+    /@media \(max-width:\s*52rem\)[\s\S]*?\.home-hero > \.field-artwork\s*\{[\s\S]*?display:\s*none/u,
+  );
   assert.match(catalog, /A social calendar with a brain\./);
-  assert.doesNotMatch(renderer, /href="\/calendar"/);
   assert.doesNotMatch(
     `${page}\n${renderer}`,
     /sampleEvents|fictional examples/i,
@@ -97,8 +107,10 @@ test("Events renders honest source states through the safe unified projection", 
   assert.match(page, /readPublicMeetupSyncState/);
   assert.match(filters, /method="get"/);
   assert.match(filters, /Clear Filters/);
-  assert.match(calendar, /permanentRedirect\("\/events"\)/);
-  assert.match(calendar, /index:\s*false/);
+  assert.match(calendar, /PublicMonthCalendar/);
+  assert.match(calendar, /path:\s*"\/calendar"/);
+  assert.match(calendar, /queryPublicEvents/);
+  assert.doesNotMatch(calendar, /permanentRedirect/);
   assert.match(projection, /UNIFIED_PUBLIC_EVENT_CTE_SQL/);
   assert.match(projection, /generation\.state = 'published'/);
   assert.match(
@@ -383,12 +395,8 @@ test("narrow navigation preserves every primary destination and organizer login"
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
-  const narrowRules =
-    css.match(
-      /@media \(max-width: 90rem\)\s*\{([\s\S]*?)\n\}\n\n@media \(max-width: 38rem\)/,
-    )?.[1] ?? "";
-
   for (const destination of [
+    "/calendar",
     "/events",
     "/clubs",
     "/community",
@@ -409,15 +417,18 @@ test("narrow navigation preserves every primary destination and organizer login"
   assert.match(header, /onClick=\{onNavigate\}/);
   assert.match(
     header,
-    /\.slice\(0, 12 - requiredNavigation\.length\)/u,
+    /\.slice\(0, 1\)/u,
   );
-  assert.match(css, /@media \(max-width: 90rem\)/u);
-  assert.match(narrowRules, /\.site-navigation > \.primary-nav\s*\{/);
+  assert.match(css, /@media \(max-width: 70rem\)/u);
+  assert.match(css, /\.site-navigation > \.primary-nav\s*\{/);
   assert.match(
-    narrowRules,
+    css,
     /\.site-navigation > \.primary-nav \.portal-link\s*\{[\s\S]*?grid-column:\s*1 \/ -1/,
   );
-  assert.doesNotMatch(narrowRules, /\.portal-link\s*\{[\s\S]*?display:\s*none/);
+  assert.doesNotMatch(
+    css,
+    /\.portal-link\s*\{[^}]*display:\s*none/u,
+  );
 });
 
 test("small metadata labels keep a readable 0.75rem floor", async () => {

@@ -92,6 +92,7 @@ function normalizedFooterNavigation(
   policies: readonly PublicNavigationItemDto[];
 }> {
   const fallbackExplore = [
+    { href: "/calendar", label: "Calendar" },
     { href: "/events", label: "Events" },
     { href: "/clubs", label: "Clubs" },
     { href: "/community", label: "Community" },

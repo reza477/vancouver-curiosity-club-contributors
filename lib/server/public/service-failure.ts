@@ -22,7 +22,9 @@ export function publicServiceSurfaceForPathname(
 ): PublicServiceSurface | null {
   const normalized = normalizeAppRouterPathname(pathname);
   if (normalized === "/") return "home";
-  if (normalized === "/events") return "events";
+  if (normalized === "/events" || normalized === "/calendar") {
+    return "events";
+  }
   return null;
 }
 

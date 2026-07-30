@@ -508,7 +508,11 @@ test("the built public root is indexable and carries the production security con
     /name="description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
   );
   assert.match(html, /A social calendar with a brain\./u);
-  assert.match(html, /Explore Upcoming Events/u);
+  assert.match(html, /View the calendar/u);
+  assert.ok(
+    html.indexOf("The next events") < html.indexOf("The event lanes"),
+    "Home must put upcoming events directly after its short introduction",
+  );
   assert.match(html, /\bclass="[^"]*\bhome-invitation\b[^"]*"/u);
   assert.ok(
     robotsMetaContents(html).every(
@@ -737,10 +741,10 @@ test("Events is canonical, empty honestly, and filter URLs are non-indexable", a
   );
 });
 
-test("Home and Events public-service failures return truthful noindex 503 responses", async () => {
+test("Home, Calendar, and Events public-service failures return truthful noindex 503 responses", async () => {
   const unavailableRuntime = createBuiltRuntime();
   try {
-    for (const path of ["/", "/events"]) {
+    for (const path of ["/", "/calendar", "/events"]) {
       const response = await unavailableRuntime.dispatchFetch(
         new URL(path, "https://preview.example"),
       );
@@ -836,16 +840,26 @@ test("a cancelled event detail renders only published facts and accurate structu
   assertNoPrivateSentinels(html);
 });
 
-test("Calendar is a permanent non-indexable compatibility redirect", async () => {
-  const response = await fetchPath("/calendar", { redirect: "manual" });
-  assert.equal(response.status, 308);
-  assert.equal(
-    new URL(response.headers.get("location"), "https://preview.example").href,
-    "https://preview.example/events",
+test("Calendar is an indexable month-at-a-glance public destination", async () => {
+  const response = await fetchPath("/calendar");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-robots-tag"), null);
+  const html = await response.text();
+  assert.match(html, /<title>Calendar · Vancouver Curiosity Club<\/title>/iu);
+  assert.match(
+    html,
+    /rel="canonical" href="https:\/\/preview\.example\/calendar"/iu,
   );
+  assert.match(html, /Month at a glance/u);
+  assert.match(html, /public-calendar__grid/u);
+  assert.match(html, /List and filters/u);
+  assertNoPrivateSentinels(html);
+
+  const filtered = await fetchPath("/calendar?month=2026-07");
+  assert.equal(filtered.status, 200);
   assert.equal(
-    response.headers.get("x-robots-tag"),
-    "noindex, nofollow, noarchive",
+    filtered.headers.get("x-robots-tag"),
+    "noindex, follow, noarchive",
   );
 });
 
@@ -868,6 +882,7 @@ test("robots and sitemap contain only public canonical routes", async () => {
   ]) {
     assert.match(robots, new RegExp(escapeRegex(line), "u"));
   }
+  assert.doesNotMatch(robots, /Disallow: \/calendar(?:\r?\n|$)/u);
   assertNoPrivateSentinels(robots);
 
   const sitemapResponse = await fetchPath("/sitemap.xml");
@@ -879,6 +894,7 @@ test("robots and sitemap contain only public canonical routes", async () => {
   const sitemap = await sitemapResponse.text();
   for (const path of [
     "/",
+    "/calendar",
     "/events",
     "/clubs",
     "/community",
@@ -906,7 +922,7 @@ test("robots and sitemap contain only public canonical routes", async () => {
   }
   assert.doesNotMatch(
     sitemap,
-    /<loc>[^<]*(?:\/calendar|\/organizer|\/api\/|\?|off-radar-eats|draft-private)[^<]*<\/loc>/u,
+    /<loc>[^<]*(?:\/organizer|\/api\/|\?|off-radar-eats|draft-private)[^<]*<\/loc>/u,
   );
   assertNoPrivateSentinels(sitemap);
 });

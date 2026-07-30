@@ -112,9 +112,13 @@ export function EventCard({
           </div>
         </dl>
       </div>
-      <span className="event-card__arrow" aria-hidden="true">
-        →
-      </span>
+      <Link
+        aria-label={`View details for ${event.title}`}
+        className="event-card__arrow"
+        href={`/events/${event.slug}`}
+      >
+        <span aria-hidden="true">→</span>
+      </Link>
     </article>
   );
 }
