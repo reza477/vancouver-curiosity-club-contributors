@@ -8,7 +8,6 @@ import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 const requiredNavigation = [
   { href: "/calendar", label: "Calendar" },
-  { href: "/events", label: "Events" },
   { href: "/about", label: "About" },
   { href: "/community", label: "Community" },
 ] as const;
@@ -162,7 +161,7 @@ function normalizedPrimaryNavigation(
   );
   const required = requiredNavigation.map((item) => {
     const configuredItem = configuredByHref.get(item.href);
-    if (item.href === "/calendar" || item.href === "/events") {
+    if (item.href === "/calendar") {
       return item;
     }
     return configuredItem ?? item;

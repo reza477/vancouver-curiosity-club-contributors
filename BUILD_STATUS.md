@@ -28,9 +28,10 @@ Last updated: 2026-07-30 (America/Vancouver)
 
 ## Owner-directed calendar-first update (post-Phase 9)
 
-Status at this source checkpoint: **Completed and verified; privately deployed
-as Sites version 15.** This is an owner-directed refinement of the completed
-product, not a new numbered phase.
+Status at this source checkpoint: **Owner-requested usability refinement in
+final verification.** The previously verified version 15 remains live until
+the replacement passes its exact-source gates. This is an owner-directed
+refinement of the completed product, not a new numbered phase.
 
 - Home now gives a short introduction and immediately shows the next four
   published events. Existing owner-edited Home CMS sections remain functional
@@ -41,8 +42,8 @@ product, not a new numbered phase.
   event detail link, and confirmed external signup link.
 - Each public event offers a Google Calendar action and an RFC-compliant
   `.ics` download for Apple Calendar and other calendar clients.
-- The public header is intentionally reduced to Calendar, Events, About, and
-  Community. Organizer Login remains in the footer and at `/organizer`.
+- The public header is intentionally reduced to Calendar, About, and Community.
+  Organizer Login remains in the footer and at `/organizer`.
 - The application does not create public visitor accounts. Anonymous visitors
   can now browse the public routes without signing in. Organizer routes remain
   protected by Sign in with ChatGPT plus current invitation, membership, role,
@@ -55,9 +56,17 @@ product, not a new numbered phase.
   snapshots remain visible and no conflict guard was weakened.
 - Meetup remains one-way and request/manual-refresh driven; Sites does not
   guarantee a daily scheduler. The official iCalendar feeds contain no
-  approved poster-image field, so the site uses rights-approved website media
-  when present and a controlled category illustration otherwise. It does not
-  scrape or hotlink Meetup posters.
+  poster-image field. At the Owner's direction, exact local copies of the 11
+  current public Meetup event posters are now matched by numeric Meetup event
+  ID and rendered across cards, details, metadata, and calendar day panels.
+  New events retain the controlled category fallback until an approved poster
+  is deliberately added. Public requests never scrape or hotlink Meetup.
+- `/events` now renders the same canonical month calendar as `/calendar`, so
+  older bookmarks never reopen the retired search form. When no month is
+  selected, the calendar opens the nearest month containing a published
+  upcoming event; an explicitly selected month is always preserved. Desktop
+  and tablet month cells show event titles at a glance, and hover/focus/tap
+  opens the rich day panel.
 - Per-event signup is currently the exact confirmed Meetup event URL. Exact
   Eventbrite, Flock, and Instagram destinations have not been supplied and are
   not invented; confirmed global destinations can be added through Community,

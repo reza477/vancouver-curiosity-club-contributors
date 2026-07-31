@@ -142,7 +142,7 @@ export function PublicMonthCalendar({
           ) : (
             <span aria-hidden="true" />
           )}
-          <Link href="/calendar">Today</Link>
+          <Link href={calendarHref(todayDate.slice(0, 7))}>Today</Link>
           {nextMonth ? (
             <Link href={calendarHref(nextMonth)}>Next month</Link>
           ) : (

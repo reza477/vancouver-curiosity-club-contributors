@@ -2950,8 +2950,10 @@ main,
   text-decoration: none;
 }
 
-.event-card h3 a:hover {
-  text-decoration: underline;
+.event-card h3 a:hover,
+.event-card h3 a:focus-visible {
+  color: var(--forest);
+  text-decoration: none;
 }
 
 .event-card__body > p {

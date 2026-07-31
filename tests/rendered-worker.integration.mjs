@@ -114,7 +114,7 @@ const OWNER_AUTH_HEADERS = Object.freeze({
 const INVITATION_TOKEN = "R".repeat(43);
 const PUBLIC_PATHS = [
   "/",
-  "/events",
+  "/calendar",
   "/clubs",
   "/clubs/vancouver-curiosity-club",
   "/community",
@@ -689,26 +689,17 @@ test("all required public pages render shared chrome without private sentinels",
   }
 });
 
-test("Events is canonical, empty honestly, and filter URLs are non-indexable", async () => {
+test("Events renders the same canonical calendar-first destination", async () => {
   const response = await fetchPath("/events");
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get("x-robots-tag"), null);
   const html = await response.text();
-  assert.match(html, /name="robots" content="index, follow"/iu);
   assert.match(
     html,
-    /rel="canonical" href="https:\/\/preview\.example\/events"/iu,
+    /rel="canonical" href="https:\/\/preview\.example\/calendar"/iu,
   );
-  assert.match(html, /0(?:<!-- -->|\s)*results/u);
-  assert.match(
-    html,
-    /When a real event is published, it will appear here\./u,
-  );
-  assert.match(html, /<form[^>]*action="\/events"[^>]*method="get"/iu);
-  assert.match(html, /Clear Filters/u);
-  assert.doesNotMatch(html, /href="\/events\/[^"?]+"/iu);
-  assert.doesNotMatch(html, /RSVP on Meetup/u);
-  assert.equal(jsonLdDocuments(html).length, 0);
+  assert.match(html, /See the month at a glance/u);
+  assert.doesNotMatch(html, /Find your next field note|Apply filters/u);
+  assertSharedChrome(html);
   assertNoPrivateSentinels(html);
 
   const filtered = await fetchPath("/events?q=unlikely-match&lane=think");
@@ -717,33 +708,12 @@ test("Events is canonical, empty honestly, and filter URLs are non-indexable", a
     filtered.headers.get("x-robots-tag"),
     "noindex, follow, noarchive",
   );
-  const filteredHtml = await filtered.text();
-  assert.match(
-    filteredHtml,
-    /name="robots" content="noindex, follow, noarchive"/iu,
-  );
-  assert.match(
-    filteredHtml,
-    /No published event matches this combination\./u,
-  );
-  assert.doesNotMatch(filteredHtml, /href="\/events\/[^"?]+"/iu);
-
-  const malformed = await fetchPath(`/events?q=${"x".repeat(101)}`);
-  assert.equal(malformed.status, 200);
-  assert.equal(
-    malformed.headers.get("x-robots-tag"),
-    "noindex, follow, noarchive",
-  );
-  assert.match(
-    await malformed.text(),
-    /One or more filters could not be validated\./u,
-  );
 });
 
-test("Home, Calendar, and Events public-service failures return truthful noindex 503 responses", async () => {
+test("Home and Calendar public-service failures return truthful noindex 503 responses", async () => {
   const unavailableRuntime = createBuiltRuntime();
   try {
-    for (const path of ["/", "/calendar", "/events"]) {
+    for (const path of ["/", "/calendar"]) {
       const response = await unavailableRuntime.dispatchFetch(
         new URL(path, "https://preview.example"),
       );
@@ -855,7 +825,7 @@ test("Calendar is an indexable month-at-a-glance public destination", async () =
   assert.match(html, /one-tap calendar options/u);
   assert.match(html, /Upcoming iCalendar/u);
   assert.doesNotMatch(html, /Add to calendar/u);
-  assert.match(html, /List and filters/u);
+  assert.doesNotMatch(html, /List and filters/u);
   assertNoPrivateSentinels(html);
 
   const filtered = await fetchPath("/calendar?month=2026-07");
@@ -1146,7 +1116,7 @@ test("unknown, guessed, and draft routes use the custom noindex 404", async () =
       );
       assert.match(html, /name="robots" content="noindex, nofollow/u);
     }
-    assert.match(html, /Explore events/u);
+    assert.match(html, /Explore the calendar/u);
     assertSharedChrome(html);
     assertNoPrivateSentinels(html);
   }
@@ -1566,10 +1536,10 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   ];
   const draft = await createRenderedTimedDraft({
     description: publicDescription,
-    endLocal: "2036-10-08T20:00",
+    endLocal: "2026-10-08T20:00",
     privateMeetingDetails: privateValues[1],
     privateNotes: privateValues[0],
-    startLocal: "2036-10-08T18:00",
+    startLocal: "2026-10-08T18:00",
     summary: publicSummary,
     title: publicTitle,
   });
@@ -1605,7 +1575,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   async function assertAbsentFromPublicSurfaces(label) {
     for (const [path, status] of [
       ["/", 200],
-      ["/events", 200],
+      ["/calendar?month=2026-10", 200],
       ["/clubs/vancouver-curiosity-club", 200],
       ["/sitemap.xml", 200],
       [detailPath, 404],
@@ -1776,12 +1746,12 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
     new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
   );
 
-  const eventsResponse = await fetchPath("/events");
-  assert.equal(eventsResponse.status, 200);
-  const eventsHtml = await eventsResponse.text();
-  assert.match(eventsHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  const calendarResponse = await fetchPath("/calendar?month=2026-10");
+  assert.equal(calendarResponse.status, 200);
+  const calendarHtml = await calendarResponse.text();
+  assert.match(calendarHtml, new RegExp(escapeRegex(publicTitle), "u"));
   assert.match(
-    eventsHtml,
+    calendarHtml,
     new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
   );
 
@@ -1869,7 +1839,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   );
   for (const body of [
     homeHtml,
-    eventsHtml,
+    calendarHtml,
     detailHtml,
     clubHtml,
     publishedSitemap,
@@ -2378,7 +2348,8 @@ test("local development keeps only the HMR-required relaxed script policy", asyn
 function assertSharedChrome(html) {
   assert.match(html, /Vancouver Curiosity Club/u);
   assert.match(html, /aria-label="Primary navigation"/u);
-  assert.match(html, /href="\/events"/u);
+  assert.match(html, /href="\/calendar"/u);
+  assert.doesNotMatch(html, /href="\/events"/u);
   assert.match(html, /href="\/clubs"/u);
   assert.match(html, /href="\/community"/u);
   assert.match(html, /href="\/about"/u);

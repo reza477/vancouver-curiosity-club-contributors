@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 const PUBLIC_PAGE_PATHS = new Map([
   ["home", "/"],
-  ["events", "/events"],
+  ["events", "/calendar"],
   ["clubs", "/clubs"],
   ["community", "/community"],
   ["about", "/about"],
@@ -56,12 +56,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         url: publicUrl(path, origin),
         lastModified: new Date(page.lastModified),
       });
-      if (page.slug === "events") {
-        result.push({
-          url: publicUrl("/calendar", origin),
-          lastModified: new Date(page.lastModified),
-        });
-      }
     }
     for (const club of catalogEntries.clubs) {
       result.push({

@@ -241,14 +241,19 @@ test("community editor identity changes cannot retain the previous link form", (
   assert.match(editor, /required/u);
 });
 
-test("public routes and private previews share the production renderers and one focus target", () => {
+test("public routes keep canonical renderers or the calendar alias and private previews keep one focus target", () => {
   const homeRoute = source("app", "page.tsx");
   const eventsRoute = source("app", "events", "page.tsx");
+  const calendarRoute = source("app", "calendar", "page.tsx");
   const clubRoute = source("app", "clubs", "[slug]", "page.tsx");
   const preview = source("app", "_organizer", "PublicPreviewShell.tsx");
 
   assert.match(homeRoute, /<HomePageRenderer/u);
-  assert.match(eventsRoute, /<EventsPageRenderer/u);
+  assert.match(
+    eventsRoute,
+    /export \{ default, dynamic, generateMetadata \} from "\.\.\/calendar\/page"/u,
+  );
+  assert.match(calendarRoute, /<PublicMonthCalendar/u);
   assert.match(clubRoute, /<ClubDetailRenderer/u);
   assert.match(preview, /<HomePageRenderer/u);
   assert.match(preview, /<EventsPageRenderer/u);

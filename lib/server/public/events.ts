@@ -26,6 +26,7 @@ import {
   publicProgramProjectionParityD1Sql,
 } from "./cms-projection-contract";
 import { currentPublishedOrganizerProfilePhotoUsageTargetSql } from "../media/public-usage-contract";
+import { curatedMeetupPosterForEventUrl } from "../../meetup-event-posters";
 
 export type PublicEventDto = Readonly<{
   category: Readonly<{
@@ -5029,8 +5030,41 @@ export function toPublicEventCardDto(
   ) {
     return invalidProjection();
   }
+  const approvedArtwork = publicArtwork(row);
+  const curatedMeetupPoster =
+    approvedArtwork === null
+      ? curatedMeetupPosterForEventUrl(rsvpUrl)
+      : null;
   return Object.freeze({
-    artwork: publicArtwork(row),
+    artwork:
+      approvedArtwork ??
+      (curatedMeetupPoster
+        ? Object.freeze({
+            altText: curatedMeetupPoster.altText,
+            credit: curatedMeetupPoster.credit,
+            dimensions: Object.freeze({
+              large: Object.freeze({
+                height: curatedMeetupPoster.height,
+                width: curatedMeetupPoster.width,
+              }),
+              medium: Object.freeze({
+                height: curatedMeetupPoster.height,
+                width: curatedMeetupPoster.width,
+              }),
+              small: Object.freeze({
+                height: curatedMeetupPoster.height,
+                width: curatedMeetupPoster.width,
+              }),
+            }),
+            focalPoint: Object.freeze({ x: 5_000, y: 5_000 }),
+            srcSet: Object.freeze({
+              large: curatedMeetupPoster.localPath,
+              medium: curatedMeetupPoster.localPath,
+              small: curatedMeetupPoster.localPath,
+            }),
+            url: curatedMeetupPoster.localPath,
+          })
+        : null),
     slug: parseIdentifier(row.slug, "event.slug"),
     title: parseBoundedString(row.title, {
       path: "event.title",

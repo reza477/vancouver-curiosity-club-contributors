@@ -18,13 +18,14 @@
 - The current Sites access policy has one Owner and no groups. A real
   second-identity role/suspension/reassignment check cannot be performed
   against hosted state without a separately authorized access change.
-- No approved production photography or replacement artwork has been
-  supplied. Synthetic artwork can verify rendering, media authorization, and
-  responsive behavior but cannot establish rights, consent, credit, or Owner
-  approval.
-- There is no approved real individual published event in hosted D1. Live
-  individual-event and individual Meetup-event-link smoke is
-  **Not run — no approved real published event**.
+- The Owner subsequently approved copying the poster images from the 11
+  current public Meetup event listings into the site. Those files are matched
+  to exact Meetup event IDs and served locally. New events still need a
+  deliberate approved poster addition because the official iCalendar feed has
+  no image field.
+- Hosted D1 now contains real source-backed published Meetup events. Individual
+  event, poster, and exact Meetup-link smoke must be rerun against the
+  calendar-first refinement before its release is recorded as verified.
 - Venue-specific accessibility facts are missing. The application can expose
   confirmed event accessibility information, but the Accessibility Statement
   must not promise facts that the Owner has not supplied.

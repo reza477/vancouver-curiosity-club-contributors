@@ -40,7 +40,6 @@ test("Phase 2 exposes the complete public route contract", async () => {
   ]);
   for (const [href, label] of [
     ["/calendar", "Calendar"],
-    ["/events", "Events"],
     ["/community", "Community"],
     ["/about", "About"],
   ]) {
@@ -48,7 +47,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
     assert.match(header, new RegExp(label));
   }
   for (const href of [
-    "/events",
+    "/calendar",
     "/clubs",
     "/community",
     "/about",
@@ -78,7 +77,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });
 
-test("Calendar and Events are distinct public views and filtered queries are non-indexable", async () => {
+test("Calendar is the single simple month-at-a-glance experience", async () => {
   const [calendar, events, filters] = await Promise.all([
     readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
@@ -92,8 +91,11 @@ test("Calendar and Events are distinct public views and filtered queries are non
   assert.match(calendar, /PublicMonthCalendar/u);
   assert.match(calendar, /Object\.keys\(params\)\.length === 0/u);
   assert.doesNotMatch(calendar, /permanentRedirect/u);
-  assert.match(events, /Object\.keys\(params\)\.length === 0/u);
-  assert.match(events, /path:\s*"\/events"/u);
+  assert.match(
+    events,
+    /export \{ default, dynamic, generateMetadata \} from "\.\.\/calendar\/page"/u,
+  );
+  assert.doesNotMatch(events, /EventsPageRenderer|EventFilters/u);
   assert.match(filters, /method="get"/u);
   assert.match(filters, /key=\{filterFormKey\(values\)\}/u);
   assert.match(filters, /href=\{`\/events\?state=\$\{values\.state\}`\}/u);

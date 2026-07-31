@@ -65,7 +65,23 @@ test("homepage puts the bounded public calendar path before secondary content", 
   );
 });
 
-test("Events renders honest source states through the safe unified projection", async () => {
+test("event titles use a clean color change instead of a hover underline", async () => {
+  const styles = await readFile(
+    new URL("app/globals.css", projectRoot),
+    "utf8",
+  );
+
+  assert.match(
+    styles,
+    /\.event-card h3 a:hover,\s*\.event-card h3 a:focus-visible\s*\{[^}]*color:\s*var\(--forest\);[^}]*text-decoration:\s*none;/su,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.event-card h3 a:hover\s*\{[^}]*text-decoration:\s*underline;/su,
+  );
+});
+
+test("Events uses the same calendar-first experience instead of the legacy search form", async () => {
   const [page, renderer, calendar, filters, projection, worker, maintenance] =
     await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
@@ -103,17 +119,23 @@ test("Events renders honest source states through the safe unified projection", 
   ]) {
     assert.match(renderer, new RegExp(`${status}:`));
   }
+  assert.match(
+    page,
+    /export \{ default, dynamic, generateMetadata \} from "\.\.\/calendar\/page"/u,
+  );
+  assert.doesNotMatch(page, /EventsPageRenderer|EventFilters|queryPublicEvents/u);
   assert.doesNotMatch(page, /refreshMeetupCalendarSourceIfDue/);
   assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/);
   assert.match(maintenance, /attemptedMeetupRefresh/);
   assert.match(worker, /maintenanceRedirect/);
   assert.match(renderer, /The last completed snapshot remains visible/);
   assert.match(renderer, /not on a guaranteed schedule/);
-  assert.match(page, /queryPublicEvents/);
-  assert.match(page, /readPublicMeetupSyncState/);
+  assert.match(calendar, /queryPublicEvents/);
+  assert.match(calendar, /readPublicMeetupSyncState/);
   assert.match(filters, /method="get"/);
   assert.match(filters, /Clear Filters/);
   assert.match(calendar, /PublicMonthCalendar/);
+  assert.doesNotMatch(calendar, />List and filters</u);
   assert.match(calendar, /path:\s*"\/calendar"/);
   assert.match(calendar, /queryPublicEvents/);
   assert.doesNotMatch(calendar, /permanentRedirect/);
@@ -393,7 +415,7 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
   );
 });
 
-test("narrow navigation prioritizes the four public destinations and keeps organizer login in the footer", async () => {
+test("narrow navigation prioritizes the three simple public destinations and keeps organizer login in the footer", async () => {
   const [header, footer, css] = await Promise.all([
     readFile(
       new URL("app/_components/SiteHeader.tsx", projectRoot),
@@ -408,7 +430,6 @@ test("narrow navigation prioritizes the four public destinations and keeps organ
 
   for (const destination of [
     "/calendar",
-    "/events",
     "/community",
     "/about",
   ]) {
@@ -417,6 +438,7 @@ test("narrow navigation prioritizes the four public destinations and keeps organ
       new RegExp(`href:\\s*"${destination}"|href="${destination}"`),
     );
   }
+  assert.doesNotMatch(header, /\{ href: "\/events", label: "Events" \}/u);
   assert.doesNotMatch(
     header,
     /\{ href: "\/organizer", label: "Organizer Login" \}/u,

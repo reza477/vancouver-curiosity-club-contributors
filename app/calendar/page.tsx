@@ -5,6 +5,7 @@ import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
 import {
   publicCalendarMonthBounds,
   publicEventCalendarStartDate,
+  resolvePublicCalendarLandingMonth,
   resolvePublicCalendarMonth,
 } from "@/lib/public-calendar";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
@@ -71,8 +72,7 @@ export default async function CalendarPage({
   const raw = await searchParams;
   const nowUtcMs = readServerUtcMs();
   const todayDate = vancouverCalendarDate(nowUtcMs);
-  const resolvedMonth = resolvePublicCalendarMonth(raw.month, todayDate);
-  const bounds = publicCalendarMonthBounds(resolvedMonth.month);
+  let resolvedMonth = resolvePublicCalendarMonth(raw.month, todayDate);
   const origin = await getTrustedRequestOrigin();
   let events: readonly PublicEventCardDto[] = [];
   let hasMore = false;
@@ -85,6 +85,24 @@ export default async function CalendarPage({
     const { database } = getRuntimeAuthConfiguration();
     const organization = await resolvePublicOrganization(database);
     if (organization) {
+      if (raw.month === undefined) {
+        const firstUpcoming = await queryPublicEvents(database, {
+          organizationId: organization.id,
+          nowUtcMs,
+          todayDate,
+          view: "upcoming",
+          page: 1,
+          pageSize: 1,
+        });
+        resolvedMonth = resolvePublicCalendarLandingMonth(
+          raw.month,
+          todayDate,
+          firstUpcoming.events[0]
+            ? publicEventCalendarStartDate(firstUpcoming.events[0])
+            : null,
+        );
+      }
+      const bounds = publicCalendarMonthBounds(resolvedMonth.month);
       const [past, upcoming, sourceState] = await Promise.all([
         queryPublicEvents(database, {
           organizationId: organization.id,
@@ -136,7 +154,6 @@ export default async function CalendarPage({
 
       <nav className="calendar-view-switcher" aria-label="Event views">
         <span aria-current="page">Month calendar</span>
-        <Link href="/events">List and filters</Link>
         <Link href="/events/calendar.ics">Upcoming iCalendar</Link>
         <Link href="/events/events.csv">Upcoming spreadsheet</Link>
       </nav>
@@ -147,10 +164,17 @@ export default async function CalendarPage({
           current month is shown instead.
         </div>
       ) : null}
+      {raw.month === undefined &&
+      resolvedMonth.month !== todayDate.slice(0, 7) ? (
+        <div className="calendar-notice" role="status">
+          Showing the nearest month with a published upcoming event. Choose
+          Today to return to the current month.
+        </div>
+      ) : null}
       {hasMore ? (
         <div className="calendar-notice" role="status">
           This month contains more published events than one calendar page can
-          safely load. Use the list and filters view to see every result.
+          safely load.
         </div>
       ) : null}
 

@@ -39,6 +39,27 @@ export function resolvePublicCalendarMonth(
   });
 }
 
+export function resolvePublicCalendarLandingMonth(
+  value: unknown,
+  todayDate: string,
+  firstUpcomingDate: string | null,
+): ResolvedPublicCalendarMonth {
+  const resolved = resolvePublicCalendarMonth(value, todayDate);
+  if (value !== undefined || !firstUpcomingDate) return resolved;
+  if (!validCalendarDate(firstUpcomingDate)) return resolved;
+  const upcomingMonth = firstUpcomingDate.slice(0, 7);
+  if (
+    upcomingMonth < resolved.minMonth ||
+    upcomingMonth > resolved.maxMonth
+  ) {
+    return resolved;
+  }
+  return Object.freeze({
+    ...resolved,
+    month: upcomingMonth,
+  });
+}
+
 export function publicCalendarMonthBounds(month: string): Readonly<{
   endDate: string;
   startDate: string;

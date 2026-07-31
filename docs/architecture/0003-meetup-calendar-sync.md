@@ -125,9 +125,13 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
 - With no guaranteed scheduler, freshness depends on owner refreshes and public
   views. The UI labels that cadence explicitly.
 - Meetup's official iCalendar export supplies no approved poster-image field.
-  Imported events use separately rights-approved website media when available
-  and controlled category artwork otherwise; the sync does not scrape or
-  hotlink Meetup posters.
+  The Owner explicitly approved importing local copies of the 11 posters on
+  the current public Meetup listings. A curated manifest binds each bundled
+  file to its exact numeric Meetup event ID and retains the original
+  `meetupstatic.com` URL only as provenance; public pages never hotlink it.
+  Newly synced events use separately approved website media or controlled
+  category artwork until their poster is deliberately added. The request-time
+  sync does not scrape Meetup pages.
 - No Meetup OAuth/API credential, Meetup Pro plan, password, scraper, external
   queue, alternate database, or alternate host is introduced.
 

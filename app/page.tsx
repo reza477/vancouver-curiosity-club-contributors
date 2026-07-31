@@ -38,7 +38,7 @@ export default async function HomePage() {
             No events, people, legal details, or community claims are being
             invented to fill this review state.
           </p>
-          <Link href="/events">Open the event calendar</Link>
+          <Link href="/calendar">Open the event calendar</Link>
         </section>
       </main>
     );

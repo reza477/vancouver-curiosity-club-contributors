@@ -10,6 +10,7 @@ import {
   publicCalendarMonthBounds,
   publicCalendarMonthCells,
   publicEventCalendarStartDate,
+  resolvePublicCalendarLandingMonth,
   resolvePublicCalendarMonth,
   shiftPublicCalendarMonth,
 } from "../../lib/public-calendar.ts";
@@ -123,6 +124,38 @@ test("calendar month resolution enforces the bounded twelve-month window", () =>
       true,
     );
   }
+});
+
+test("calendar landing opens the nearest upcoming month but preserves an explicit month", () => {
+  assert.deepEqual(
+    resolvePublicCalendarLandingMonth(
+      undefined,
+      "2026-07-30",
+      "2026-08-02",
+    ),
+    {
+      invalid: false,
+      maxMonth: "2027-07",
+      minMonth: "2025-07",
+      month: "2026-08",
+    },
+  );
+  assert.equal(
+    resolvePublicCalendarLandingMonth(
+      "2026-07",
+      "2026-07-30",
+      "2026-08-02",
+    ).month,
+    "2026-07",
+  );
+  assert.equal(
+    resolvePublicCalendarLandingMonth(
+      undefined,
+      "2026-07-30",
+      null,
+    ).month,
+    "2026-07",
+  );
 });
 
 test("month helpers return exact boundaries and a stable 42-day grid", () => {
@@ -244,6 +277,11 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.equal((markup.match(/<th scope="col">/gu) ?? []).length, 7);
   assert.match(markup, /tabindex="0"/u);
   assert.match(markup, /Hover, tap, or focus a date/u);
+  assert.match(
+    markup,
+    /data-public-calendar-date="2026-07-06"[\s\S]*?public-calendar__day-titles[\s\S]*?>Night walk<[\s\S]*?>Reading retreat</u,
+  );
+  assert.match(markup, /href="\/calendar\?month=2026-07">Today<\/a>/u);
 
   assert.match(markup, /src="\/media\/poster-1\/webp_1600"/u);
   assert.match(markup, /alt="A colourful Meetup event poster\."/u);

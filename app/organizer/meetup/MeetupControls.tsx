@@ -231,18 +231,18 @@ export function MeetupControls({
 
       <aside className="meetup-cadence-note">
         <p>
-          <strong>No scheduled sync:</strong> Home, Calendar, and Events page
-          views may request one opportunistic feed check when a refresh is due.
-          Completed feeds wait at least 15 minutes; partial snapshots resume in
-          bounded chunks. Manual refresh is explicit and still respects an
-          in-progress refresh lease.
+          <strong>No scheduled sync:</strong> Home and Calendar page views may
+          request one opportunistic feed check when a refresh is due. Completed
+          feeds wait at least 15 minutes; partial snapshots resume in bounded
+          chunks. Manual refresh is explicit and still respects an in-progress
+          refresh lease.
         </p>
         <p>
           The official calendar feed updates event titles, times, status, and
           Meetup links. It does not include an approved poster-image contract.
-          Add rights-approved event artwork through the event editor when you
-          want a poster shown; the public calendar uses category artwork
-          otherwise.
+          The current Owner-approved poster copies are bundled with this site
+          and matched to their exact Meetup event IDs. A newly synced event
+          uses category artwork until its approved poster copy is added.
         </p>
       </aside>
 

@@ -93,7 +93,6 @@ function normalizedFooterNavigation(
 }> {
   const fallbackExplore = [
     { href: "/calendar", label: "Calendar" },
-    { href: "/events", label: "Events" },
     { href: "/clubs", label: "Clubs" },
     { href: "/community", label: "Community" },
     { href: "/about", label: "About" },

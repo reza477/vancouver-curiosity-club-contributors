@@ -45,10 +45,11 @@ The public website keeps the visitor path deliberately short:
   `.ics` file for Apple Calendar and other calendar clients.
 - The current production calendar contains 11 source-backed Meetup events from
   the two feeds that completed without cross-source scheduling conflicts.
-- The official Meetup iCalendar feeds do not contain an approved poster-image
-  field. Event cards therefore use rights-approved site media when available
-  and a controlled category illustration otherwise; the site does not scrape
-  or hotlink Meetup posters.
+- The official Meetup iCalendar feeds do not contain a poster-image field.
+  The 11 current Owner-approved Meetup posters are copied into the site and
+  matched to exact Meetup event IDs; public pages do not hotlink them. A newly
+  synced event uses approved site media or a controlled category illustration
+  until its poster is deliberately added.
 - The application does not create visitor accounts. Organizer authentication
   remains a separate private workspace. Public pages are now available without
   sign-in; public access does not grant organizer membership or authorization.
@@ -69,20 +70,21 @@ The public routes include:
 - `/privacy`
 - a custom public 404, public-only sitemap, and restrictive robots rules
 
-`/calendar` is the primary month view. `/events` remains the detailed list,
-filter, and download view.
+`/calendar` is the canonical month view. The older `/events` address renders
+that same calendar-first experience so bookmarks never reopen the retired
+search form.
 
 All public catalog copy, lanes, clubs, community links, and event facts are
 D1-backed. The authorized idempotent catalog seed creates four lanes, three
 published clubs with their confirmed clean Meetup group URLs, and two
 inaccessible draft clubs. Public GET requests never create production data.
 
-The review database deliberately contains no fake production events. Home and
-Events therefore render a truthful empty state until a real manual event is
-published or a completed Meetup generation becomes active.
+The site never seeds fake production events. If no real manual event is
+published and no completed Meetup generation is active, Home and Calendar
+render a truthful empty state.
 
 A missing catalog is a valid review state and remains a truthful HTTP 200.
-An actual D1/public-service exception on Home or Events instead uses the
+An actual D1/public-service exception on Home or Calendar instead uses the
 App Router's server HTTP fallback: the built Worker returns 503, `no-store`,
 and `X-Robots-Tag: noindex, nofollow, noarchive` with an accessible,
 non-invented failure surface. The root layout intentionally emits no explicit
@@ -172,10 +174,14 @@ links. Sites does not guarantee a scheduler, so the application labels its
 manual and bounded refresh-on-view behavior honestly.
 
 Meetup's official iCalendar export contains event titles, times, statuses, and
-event URLs, but it does not contain an approved poster-image field. Imported
-events therefore use rights-approved website artwork when one exists and the
-site's category artwork otherwise. The application does not scrape Meetup
-posters or claim a guaranteed daily background job.
+event URLs, but it does not contain a poster-image field. The Owner explicitly
+approved local copies of the 11 posters on the current published Meetup
+listings. A curated manifest matches those local files to exact numeric Meetup
+event IDs and retains the original `meetupstatic.com` URLs only as provenance.
+Newly synced events use separately approved website artwork or the site's
+category artwork until a poster is deliberately added. The application does
+not scrape Meetup pages during a public request or claim a guaranteed daily
+background job.
 
 ## Platform
 

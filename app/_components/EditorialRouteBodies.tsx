@@ -65,7 +65,7 @@ export function GetInvolvedRouteBody({
           <h2 id="ways-heading">Start with what is available now.</h2>
         </div>
         <div className="editorial-actions__links">
-          <Link href="/events">Explore upcoming events</Link>
+          <Link href="/calendar">Explore upcoming events</Link>
           <Link href="/host-an-event">Read about hosting</Link>
         </div>
       </section>
