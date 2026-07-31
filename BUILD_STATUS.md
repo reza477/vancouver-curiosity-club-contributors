@@ -1,6 +1,6 @@
 # Vancouver Curiosity Club — Build Status
 
-Last updated: 2026-07-30 (America/Vancouver)
+Last updated: 2026-07-31 (America/Vancouver)
 
 ## Active phase and release state
 
@@ -17,7 +17,7 @@ Last updated: 2026-07-30 (America/Vancouver)
   archive, pushed-source, and unpublished Sites-version gates are green.
 - Phase 9 is **Completed and verified** for its authorized private-deployment
   and production-verification scope.
-- Exact saved version 15 is now the active, terminally succeeded deployment at
+- Exact saved version 16 is now the active, terminally succeeded deployment at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
 - Access is now public by explicit Owner authorization, at access-policy
   revision 2. The Owner remains the sole project owner and there are zero
@@ -28,10 +28,9 @@ Last updated: 2026-07-30 (America/Vancouver)
 
 ## Owner-directed calendar-first update (post-Phase 9)
 
-Status at this source checkpoint: **Owner-requested usability refinement in
-final verification.** The previously verified version 15 remains live until
-the replacement passes its exact-source gates. This is an owner-directed
-refinement of the completed product, not a new numbered phase.
+Status at this source checkpoint: **Completed and verified.** Exact Sites
+version 16 is live. This is an Owner-directed refinement of the completed
+product, not a new numbered phase.
 
 - Home now gives a short introduction and immediately shows the next four
   published events. Existing owner-edited Home CMS sections remain functional
@@ -75,33 +74,34 @@ refinement of the completed product, not a new numbered phase.
 
 Verification at this checkpoint:
 
-- final complete repository suite: 857/857 passed;
-- final focused calendar, Meetup, route, accessibility, and rendering source
-  matrix: 76/76 passed;
+- final complete repository suite: 862/862 passed, 0 failed, 0 skipped;
+- final focused calendar, route, and CMS source contracts: 26/26 passed;
 - strict TypeScript: passed;
 - zero-warning lint: passed;
 - `git diff --check`: passed;
 - exact source commit:
-  `af3477b439a1e06b07a077747f903643abb7da09`;
+  `27f6d319544e430aeae1c4367528b30c54fbd6a4`;
 - fresh exact-commit production build: passed;
 - rendered Worker: 25/25 passed;
-- final artifact/privacy contract: 6/6 passed;
+- final artifact, poster, and documentation matrix: 13/13 passed;
 - production dependency audit: 0 findings;
 - exact deployed Sites version:
-  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_55bc8063b394819187383a908b631554`
-  (version 15);
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_a0313813e8d481918a8d9d309560edc8`
+  (version 16);
 - version content hash:
-  `sha256:2dbb36488593cbe050120c6888139beccbdb31c970d743ce3ea2b2caa26d226a`;
-- version readback: 170 files / 10,373,120 stored bytes / screenshot available /
+  `sha256:e7b247f6e44cec2a448620f7148373ef4fdf29f4e2fd834b9dde25e055e6e795`;
+- version readback: 181 files / 10,977,280 stored bytes / screenshot available /
   no preview URL;
 - deployment:
-  `appgdep_6a6ba12078f08191bfd0693e7726921a`, terminal `succeeded`;
+  `appgdep_6a6c4cf1f870819189cc2cb3d7803064`, terminal `succeeded`;
 - live browser verification confirmed the simplified Home, 11 source-backed
-  events, the August month calendar, hover/focus/tap day detail, exact Meetup
-  event links, Google Calendar, and Apple Calendar / `.ics` actions;
-- local desktop browser verification was rerun at 1280px. The calendar-first
-  responsive source tests are green, but exact 320px and 390px manual browser
-  passes were not rerun for this refinement.
+  events, the August month calendar, titles in 1280px and 768px month cells,
+  hover/click/tap day detail, exact Meetup event links, Google Calendar, and
+  Apple Calendar / `.ics` actions;
+- production browser checks at 1280, 768, 390, and 320 CSS pixels found no
+  horizontal overflow or console errors. Phone cells use readable dots/counts
+  and expose the full title, poster, time, Meetup, and calendar actions after a
+  tap. All tested poster images loaded with nonzero natural dimensions.
 
 The deployment originally preserved custom access revision 1. After the Owner
 explicitly continued with public launch, Sites access revision 2 changed only
@@ -889,7 +889,7 @@ revision 1 with exactly one allowed owner and zero groups, and runtime revision
 exact version 14 through the private deployment operation. Post-deployment
 readback retained the same access, domain, preview, runtime, and binding state.
 
-### Owner-directed calendar-first release
+### Owner-directed calendar-first version 15 release
 
 - Exact substantive source commit:
   `af3477b439a1e06b07a077747f903643abb7da09`
@@ -922,12 +922,42 @@ readback retained the same access, domain, preview, runtime, and binding state.
 - The current status-only documentation ledger commit is reported in the
   terminal handoff because a commit cannot contain its own hash.
 
+### Owner-directed month-calendar and Meetup-poster version 16 release
+
+- Exact substantive source commit and pushed `refs/heads/main` readback:
+  `27f6d319544e430aeae1c4367528b30c54fbd6a4`.
+- Exact local production archive: SHA-256
+  `05c84e6bd8b0258c7919a66d6d4c48933ce8a9463fee7aaa5b5feb38c5bea112`,
+  3,099,796 compressed bytes, 198 tar entries, one `dist/` root, and 9/9
+  source-equal packaged migrations `0008` through `0016`.
+- Saved Sites version 16:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_a0313813e8d481918a8d9d309560edc8`.
+- Version 16 source commit:
+  `27f6d319544e430aeae1c4367528b30c54fbd6a4`.
+- Version 16 content hash:
+  `sha256:e7b247f6e44cec2a448620f7148373ef4fdf29f4e2fd834b9dde25e055e6e795`.
+- Version 16 readback: 181 files / 10,977,280 stored bytes / screenshot
+  available / no preview URL.
+- Production deployment:
+  `appgdep_6a6c4cf1f870819189cc2cb3d7803064`, terminal `succeeded`,
+  at `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
+- Post-deployment readback retained public access revision 2, one project
+  Owner, zero groups, no custom domain, no preview, runtime revision 1, and
+  unchanged logical `DB` / `MEDIA` bindings.
+- Production browser checks confirmed the canonical August month calendar,
+  eight populated dates with titles at 1280px and 768px, readable dot/count
+  cells with full tap detail at 390px and 320px, non-underlined title hover,
+  11 source-backed event posters including Cicero, no horizontal overflow,
+  and zero browser-console warnings or errors.
+- The status-only documentation ledger commit is reported in the terminal
+  handoff because a commit cannot contain its own hash.
+
 ## Five-minute Phase 9 Owner smoke-test card
 
 Overall status: **Awaiting owner smoke test.**
 
 1. Sign in as the Owner.
-2. Confirm the exact production URL opens version 15 without a visitor login,
+2. Confirm the exact production URL opens version 16 without a visitor login,
    while Organizer Login still requires Sign in with ChatGPT.
 3. At 320px and 390px, browse Home, Events, Contact, and organizer Calendar;
    confirm no horizontal overflow or clipped focus.
@@ -944,7 +974,7 @@ Overall status: **Awaiting owner smoke test.**
    pending until real rights/consent facts and artwork are supplied.
 9. Confirm no venue, charity, award, email, automatic-backup, two-way-sync, or
    response-time claim appears without an approved fact.
-10. Confirm version 15 remains active with public visitor access, one project
+10. Confirm version 16 remains active with public visitor access, one project
     Owner, zero groups, no custom domain, and no preview deployment.
 
 ## Exact next phase and stop condition

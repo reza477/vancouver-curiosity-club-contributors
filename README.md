@@ -9,14 +9,14 @@ charity claim is approved for public use.
 
 ## Production
 
-The calendar-first owner refinement is publicly available as Sites version 15
+The calendar-first owner refinement is publicly available as Sites version 16
 at:
 
 - https://vancouver-curiosity-club.reza5777.chatgpt.site
 
 Deployment
-`appgdep_6a6ba12078f08191bfd0693e7726921a` completed successfully from source
-`af3477b439a1e06b07a077747f903643abb7da09`. Sites access revision 2 allows
+`appgdep_6a6c4cf1f870819189cc2cb3d7803064` completed successfully from source
+`27f6d319544e430aeae1c4367528b30c54fbd6a4`. Sites access revision 2 allows
 anyone with the URL to browse public routes without an account. Organizer
 routes still require Sign in with ChatGPT and server-side invitation,
 membership, role, organization, and suspension checks. There is no preview
@@ -27,12 +27,10 @@ Phase 9 production verification covered the owner gate, canonical public and
 private routes, exact-host metadata/sitemap output, security and private-cache
 headers, the three confirmed Meetup group destinations, representative Owner
 workspaces, responsive/reduced-motion behavior, and public download/form
-boundaries. One clearly labelled private production-smoke Draft was created,
-verified absent from every checked public projection, archived, and moved to
-deleted items through the normal workflow; its immutable audit trace remains.
-No submission, import, media asset, invitation, notification, calendar token,
-Meetup source, or public event was created. Exact evidence and remaining Owner
-actions are recorded in `BUILD_STATUS.md`.
+boundaries. The later Owner-directed version 16 check verified the simplified
+Home, calendar alias, August month grid, day hover/tap behavior, 11 local Meetup
+posters, and 320/390/768/1280 responsive layouts. Exact evidence and remaining
+Owner actions are recorded in `BUILD_STATUS.md`.
 
 ## Calendar-first public website
 

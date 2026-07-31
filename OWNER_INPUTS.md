@@ -88,7 +88,7 @@ society-registration, tax, or charity claim.
 - Confirmed public contact email address: **Missing**. Phase 7 does not invent
   one: the public Contact form stores a reply email and message in the private
   organizer inbox and explicitly sends no confirmation email.
-- Public Sites origin: **Available for deployed version 15** at
+- Public Sites origin: **Available for deployed version 16** at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`. The Owner
   explicitly authorized public visitor access on 2026-07-30. Access revision 2
   retains one project Owner and zero groups, no preview deployment, and no
@@ -131,7 +131,7 @@ both consent gates before displaying a name.
   **Completed and verified**. Deployment
   `appgdep_6a6a8ade7fa08191a6c1a21cf7d1f0b9` reached terminal `succeeded`
   without changing the owner-only access policy.
-- Calendar-first version 15 private deployment: **Completed and verified**.
+- Calendar-first version 15 deployment: **Completed and verified**.
   Deployment `appgdep_6a6ba12078f08191bfd0693e7726921a` reached terminal
   `succeeded` from source
   `af3477b439a1e06b07a077747f903643abb7da09`, with the same one-owner,
@@ -140,6 +140,12 @@ both consent gates before displaying a name.
   authorization. Access revision 2 changed only the Sites visitor access mode;
   version 15, organizer authorization, runtime, bindings, domains, preview,
   D1, and R2 remained unchanged.
+- Owner-directed month-calendar version 16 deployment: **Completed and
+  verified**. Deployment `appgdep_6a6c4cf1f870819189cc2cb3d7803064`
+  reached terminal `succeeded` from source
+  `27f6d319544e430aeae1c4367528b30c54fbd6a4`; access revision 2, one Owner,
+  zero groups, runtime revision 1, `DB` / `MEDIA`, domains, and preview state
+  remained unchanged.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,
@@ -148,8 +154,9 @@ both consent gates before displaying a name.
   labelled private production-smoke Draft was created, verified nonpublic,
   archived, and moved to deleted items through the normal Owner workflow; its
   immutable audit trace remains.
-- Production responsive checks covered 320px and 390px representative public
-  and organizer routes, 1280px Home, and a 200%-reflow equivalent. The
+- Production responsive checks now cover the calendar-first public release at
+  320px, 390px, 768px, and 1280px, plus the prior representative organizer
+  routes and 200%-reflow equivalent. The
   Owner's own end-to-end mobile and keyboard acceptance remains
   **Awaiting owner smoke test**.
 - Approved-real-artwork browser check: **Awaiting owner smoke test**. The
