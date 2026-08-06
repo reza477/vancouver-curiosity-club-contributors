@@ -73,13 +73,22 @@ When a Meetup refresh is already running, public calendar requests now render
 the last completed snapshot immediately instead of entering a busy redirect
 loop.
 
+The current working candidate adds one focused calendar interaction repair on
+top of version 19: moving the pointer across other dates no longer replaces the
+day panel. Click or tap a date to select it, or use the keyboard; that date and
+its event links stay available until another date is deliberately selected.
+This repair has not yet been saved or deployed, so production remains version
+16.
+
 ## Calendar-first public website
 
 The public website keeps the visitor path deliberately short:
 
 - Home opens directly on the month-at-a-glance grid, with the club introduction
   below it instead of above it.
-- The month view has a detailed day panel on hover, focus, or tap.
+- Click or tap a date to select its detailed day panel. Keyboard focus and
+  arrow-key movement also select a date. Pointer hover is visual only, so the
+  panel stays open while someone moves to its event links.
 - Every public event can open Google Calendar or download a standards-compliant
   `.ics` file for Apple Calendar and other calendar clients.
 - The current production calendar contains 11 source-backed Meetup events from

@@ -276,13 +276,15 @@ test("month calendar renders an accessible date grid, calendar actions, approved
     /aria-label="Monday, July 6, 2026\. 2 events: Night walk, Reading retreat\."/u,
   );
   assert.match(markup, /aria-controls="public-calendar-day-panel"/u);
+  assert.match(markup, /aria-pressed="true"/u);
   assert.match(markup, /aria-current="date"/u);
   assert.match(markup, /<table class="public-calendar__grid">/u);
   assert.match(markup, /<h1 id="public-calendar-title">July 2026<\/h1>/u);
   assert.equal((markup.match(/<h1/gu) ?? []).length, 1);
   assert.equal((markup.match(/<th scope="col">/gu) ?? []).length, 7);
   assert.match(markup, /tabindex="0"/u);
-  assert.match(markup, /Hover, tap, or focus a date/u);
+  assert.match(markup, /Click or tap a date to select it/u);
+  assert.match(markup, /details stay open until you select another date/u);
   assert.match(
     markup,
     /data-public-calendar-date="2026-07-06"[\s\S]*?public-calendar__day-titles[\s\S]*?>Night walk<[\s\S]*?>Reading retreat</u,
@@ -313,7 +315,7 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   );
 });
 
-test("calendar interaction contract supports pointer, touch/click, focus, and keyboard navigation", async () => {
+test("calendar interaction contract locks details to click, touch, focus, and keyboard selection", async () => {
   const source = await readFile(
     new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
     "utf8",
@@ -323,10 +325,10 @@ test("calendar interaction contract supports pointer, touch/click, focus, and ke
     "onClick",
     "onFocus",
     "onKeyDown",
-    "onMouseEnter",
   ]) {
     assert.match(source, new RegExp(`${handler}=`, "u"));
   }
+  assert.doesNotMatch(source, /on(?:Mouse|Pointer)Enter=/u);
   for (const key of [
     "ArrowLeft",
     "ArrowRight",
@@ -345,6 +347,11 @@ test("calendar interaction contract supports pointer, touch/click, focus, and ke
   assert.match(source, /setFocusDate\(cell\.date\)/u);
   assert.match(source, /tabIndex=\{cell\.date === focusDate \? 0 : -1\}/u);
   assert.match(source, /aria-controls="public-calendar-day-panel"/u);
+  assert.match(source, /aria-pressed=\{selected\}/u);
+  assert.match(
+    source,
+    /Its details stay open until you[\s\S]*?select another date\./u,
+  );
   assert.match(source, /publicEventStatusLabel/u);
   assert.match(source, /<AddToCalendar/u);
 });

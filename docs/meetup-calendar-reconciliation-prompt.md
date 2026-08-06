@@ -205,8 +205,9 @@ projections:
 For each event prove:
 
 - the month grid contains its title on the correct day;
-- hover, keyboard focus, and tap show title, sharp poster, time, and verified
-  location;
+- click, tap, or keyboard selection shows title, sharp poster, time, and
+  verified location; pointer hover over another date must not replace the
+  selected day panel;
 - the event detail shows When and Location without relying on a redundant
   Format fact;
 - About this event contains the sanitized Meetup description when supplied;

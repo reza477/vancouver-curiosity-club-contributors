@@ -328,6 +328,33 @@ Final exact-source evidence:
   allowed project user, zero groups, no custom domains, no preview, runtime
   revision 1, `DB` / `MEDIA`, and hosted data remain unchanged.
 
+## Owner-directed stable calendar selection fix
+
+Status: **Implemented and source-verified; not yet saved or deployed.** Live
+production remains exact Sites version 16.
+
+- Date hover is now visual only. Moving the pointer across other calendar
+  cells on the way to the right-hand event panel cannot replace its contents.
+- Click or tap explicitly selects a date. Keyboard focus and Arrow/Home/End
+  navigation remain supported, and an intentional new selection replaces the
+  panel.
+- The selected day exposes `aria-pressed`, remains visibly outlined, and the
+  help text now explains that its details stay open until another date is
+  selected.
+- The change does not alter public projections, Meetup data, event links,
+  organizer authorization, D1/R2, migrations, access, domains, runtime values,
+  or hosted data.
+
+Source verification at this checkpoint:
+
+- focused calendar/foundation contracts: 19/19 passed;
+- complete repository suite: 882/882 passed, 0 failed, 0 skipped;
+- strict TypeScript, zero-warning lint, and `git diff --check`: passed;
+- a fresh exact-commit production build, rendered-Worker check, and real
+  pointer-crossing browser verification are still required before any Sites
+  version save;
+- production deployment: **Not run**. Live version 16 remains unchanged.
+
 ## Previous-phase preservation
 
 Phase 6 remains the verified prerequisite for this work:

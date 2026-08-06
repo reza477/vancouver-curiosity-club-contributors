@@ -206,6 +206,7 @@ export function PublicMonthCalendar({
                                     count === 1 ? "event" : "events"
                                   }`
                             }${titlePreview ? `: ${titlePreview}` : ""}.`}
+                            aria-pressed={selected}
                             className={[
                               "public-calendar__day",
                               "public-calendar__day--in-month",
@@ -233,9 +234,6 @@ export function PublicMonthCalendar({
                             }}
                             onKeyDown={(keyboardEvent) =>
                               moveFocus(keyboardEvent, cell.date)
-                            }
-                            onMouseEnter={() =>
-                              setActiveDate(cell.date)
                             }
                             tabIndex={cell.date === focusDate ? 0 : -1}
                             type="button"
@@ -271,8 +269,8 @@ export function PublicMonthCalendar({
             </tbody>
           </table>
           <p className="public-calendar__keyboard-help">
-            Hover, tap, or focus a date to see its events. Arrow keys move
-            between days. The month links move backward or forward.
+            Click or tap a date to select it. Its details stay open until you
+            select another date. Arrow keys move between days.
           </p>
         </div>
 
