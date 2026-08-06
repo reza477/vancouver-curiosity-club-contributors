@@ -155,11 +155,9 @@ Verification at this source checkpoint:
 
 ## Owner-directed identity, About, and Meetup enrichment candidate
 
-Status: **Implemented in current working source; final exact-source
-verification incomplete; not saved or deployed.** No new Sites version, source
-SHA, archive hash, or readback count is recorded before those facts exist. Live
-production remains exact version 16, and unpublished version 17 remains an
-unchanged historical candidate.
+Status: **Implemented, verified, and saved as unpublished Sites version 18;
+not deployed.** Live production remains exact version 16, and unpublished
+version 17 remains an unchanged historical candidate.
 
 - A Penrose-inspired three-sided mathematical mark replaces the previous brand
   symbol across the favicon, application icons, maskable icon, wordmark, and
@@ -192,9 +190,30 @@ unchanged historical candidate.
   access-policy, runtime-value, hosted D1/R2, preview, domain, or deployment
   change is part of this candidate.
 
-Final full-suite, exact-source build, rendered-Worker, privacy/artifact,
-browser, source-readback, archive, and Sites-version evidence remains pending
-and must replace this paragraph only after those checks genuinely finish.
+Final evidence for this candidate:
+
+- complete repository suite: 868/868 passed, 0 failed;
+- focused public/calendar/icon/enrichment contracts: 95/95 passed;
+- strict TypeScript, zero-warning lint, and `git diff --check`: passed;
+- exact-source production build: passed;
+- rendered Worker: 25/25 passed;
+- post-build artifact/UI contracts: 26/26 passed;
+- local browser verification at desktop, 390px, and 320px confirmed the month
+  grid is the first substantive Home content, the month/year is the only `h1`,
+  one canonical `main` is present, no horizontal overflow occurred, and the
+  browser console reported zero warnings or errors;
+- saved and pushed source commit:
+  `d0560bd1b887dbf63dbf3958ab5e04cd72ff6050`;
+- unpublished Sites version 18:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_1ecfb8d602248191a1cc7673dc4e1459`;
+- version 18 content hash:
+  `sha256:c2b5acb42815fad08608676c0af1e3aeec97b03061734f6bd67a9a356f18724c`;
+- version 18 readback: 209 files / 17,029,120 stored bytes / screenshot
+  unavailable;
+- production deployment: **Not run**;
+- live version 16, public access revision 2, one allowed project user, zero
+  groups, runtime revision 1, `DB` / `MEDIA` bindings, zero custom domains,
+  and null preview URL: unchanged.
 
 ## Previous-phase preservation
 

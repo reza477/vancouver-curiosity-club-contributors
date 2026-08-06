@@ -164,11 +164,12 @@ both consent gates before displaying a name.
   (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_0f5c6d1f80688191b7f8a26d52ec9293`).
   It is not deployed; the live site remains version 16 until the Owner
   explicitly authorizes publishing version 17.
-- Identity/About/Meetup enrichment refinement: **Implemented in current
-  working source; final exact-source verification incomplete; not saved or
-  deployed.** No version number, source SHA, content hash, or readback is
-  recorded before it exists. Live version 16 and historical unpublished
-  version 17 are unchanged.
+- Identity/About/Meetup enrichment refinement: **Implemented, verified, and
+  saved as unpublished Sites version 18**
+  (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_1ecfb8d602248191a1cc7673dc4e1459`).
+  It was saved from exact source
+  `d0560bd1b887dbf63dbf3958ab5e04cd72ff6050` and is not deployed. Live
+  version 16 and historical unpublished version 17 are unchanged.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,

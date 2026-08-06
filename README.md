@@ -39,12 +39,13 @@ introduction follows the calendar. Version 17 is saved but not deployed;
 production remains version 16 until the Owner explicitly authorizes publishing
 the new version.
 
-The current working source contains a newer Owner-directed candidate with a
-mathematical brand mark, fuller club explanation, and exact-ID public Meetup
+Unpublished Sites version 18 contains the newer Owner-directed candidate with
+a mathematical brand mark, fuller club explanation, and exact-ID public Meetup
 event enrichment for descriptions, attendee-visible locations, and responsive
-local poster variants. Final exact-source verification and a Sites save are not
-yet complete. This candidate is not deployed; live production remains version
-16.
+local poster variants. It was saved from exact pushed source
+`d0560bd1b887dbf63dbf3958ab5e04cd72ff6050` after the full source, build,
+rendered-Worker, artifact, and responsive-browser gates passed. It is not
+deployed; live production remains version 16.
 
 ## Calendar-first public website
 
