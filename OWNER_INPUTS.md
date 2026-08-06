@@ -146,6 +146,11 @@ both consent gates before displaying a name.
   `27f6d319544e430aeae1c4367528b30c54fbd6a4`; access revision 2, one Owner,
   zero groups, runtime revision 1, `DB` / `MEDIA`, domains, and preview state
   remained unchanged.
+- Calendar-as-home refinement: **Implemented, verified, and saved as
+  unpublished Sites version 17**
+  (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_0f5c6d1f80688191b7f8a26d52ec9293`).
+  It is not deployed; the live site remains version 16 until the Owner
+  explicitly authorizes publishing version 17.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,

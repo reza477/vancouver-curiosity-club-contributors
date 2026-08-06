@@ -114,7 +114,7 @@ Apple/ICS calendar actions; `/organizer` still redirected to Sign in with
 ChatGPT, the organizer API returned `401`, and a guessed private-calendar token
 returned `404` with private/no-store/noindex protections.
 
-## Owner-directed calendar-as-home refinement (unpublished source checkpoint)
+## Owner-directed calendar-as-home refinement (unpublished Sites version 17)
 
 Status: **Implemented and locally verified; not deployed.** The live public
 site remains exact Sites version 16 until a later explicitly authorized public
@@ -142,7 +142,14 @@ Verification at this source checkpoint:
 - fresh production build: passed;
 - rendered Worker: 25/25 passed;
 - `git diff --check`: passed;
-- Sites version save: **Not run**;
+- saved source commit:
+  `8b368500db2cf65875dffc39918889bc906fe546`;
+- unpublished Sites version 17:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_0f5c6d1f80688191b7f8a26d52ec9293`;
+- version 17 content hash:
+  `sha256:b5b73a715290612a1ac97b4a6f046eb03f47688baa7379a7dcdcbc0e216f546f`;
+- version 17 readback: 181 files / 10,977,280 stored bytes / screenshot
+  unavailable;
 - production deployment: **Not run**;
 - live version 16: unchanged.
 

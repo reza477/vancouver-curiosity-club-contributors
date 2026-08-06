@@ -32,10 +32,12 @@ Home, calendar alias, August month grid, day hover/tap behavior, 11 local Meetup
 posters, and 320/390/768/1280 responsive layouts. Exact evidence and remaining
 Owner actions are recorded in `BUILD_STATUS.md`.
 
-The current source contains one additional Owner-directed refinement that is
-not live until a later Sites publish: `/` now opens directly on the month grid.
-The visible month and year are the page heading, there is no separate
-“Calendar” masthead, and the brief club introduction follows the calendar.
+Unpublished Sites version 17 contains one additional Owner-directed refinement:
+`/` opens directly on the month grid. The visible month and year are the page
+heading, there is no separate “Calendar” masthead, and the brief club
+introduction follows the calendar. Version 17 is saved but not deployed;
+production remains version 16 until the Owner explicitly authorizes publishing
+the new version.
 
 ## Calendar-first public website
 
