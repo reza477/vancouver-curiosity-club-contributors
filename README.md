@@ -39,6 +39,13 @@ introduction follows the calendar. Version 17 is saved but not deployed;
 production remains version 16 until the Owner explicitly authorizes publishing
 the new version.
 
+The current working source contains a newer Owner-directed candidate with a
+mathematical brand mark, fuller club explanation, and exact-ID public Meetup
+event enrichment for descriptions, attendee-visible locations, and responsive
+local poster variants. Final exact-source verification and a Sites save are not
+yet complete. This candidate is not deployed; live production remains version
+16.
+
 ## Calendar-first public website
 
 The public website keeps the visitor path deliberately short:
@@ -55,6 +62,11 @@ The public website keeps the visitor path deliberately short:
   matched to exact Meetup event IDs; public pages do not hotlink them. A newly
   synced event uses approved site media or a controlled category illustration
   until its poster is deliberately added.
+- The current source candidate also contains 13 exact group-slug/event-ID
+  enrichment records across the three confirmed groups. These records become
+  visible only when the ordinary completed-generation and public-publication
+  checks already make that exact event eligible; they do not activate the
+  conflict-blocked main feed or imply that all 13 events are live.
 - The application does not create visitor accounts. Organizer authentication
   remains a separate private workspace. Public pages are now available without
   sign-in; public access does not grant organizer membership or authorization.
@@ -156,8 +168,8 @@ See `docs/architecture/0006-sites-d1-trigger-compatibility.md`.
 
 Meetup remains a one-way source for imported title, schedule, explicit
 status/cancellation, and official RSVP destination. The integration uses the
-official group iCalendar export, never scraping, passwords, GraphQL
-credentials, or write-back.
+official group iCalendar export and never uses passwords, GraphQL credentials,
+or write-back. Request-time synchronization does not scrape Meetup pages.
 
 To connect hosted production data after a separately authorized deployment:
 
@@ -188,6 +200,20 @@ category artwork until a poster is deliberately added. The application does
 not scrape Meetup pages during a public request or claim a guaranteed daily
 background job.
 
+The current source candidate adds a separate owner-invoked maintenance tool for
+13 exact allowlisted public Meetup event pages. It verifies the canonical group
+slug plus numeric event ID, sanitizes attendee-visible description and venue
+facts, rejects private credentials and email addresses, verifies the exact
+high-resolution poster source, and writes local 480px, 960px, and up-to-1600px
+variants without upscaling. Existing owner-authored public summary,
+description, venue, and approved artwork always take precedence. Public
+requests never fetch or hotlink Meetup assets.
+
+The repeatable operator instructions are in the
+[Meetup calendar reconciliation prompt](docs/meetup-calendar-reconciliation-prompt.md).
+They deliberately describe a manual owner-invoked reconciliation, not a
+guaranteed daily scheduler.
+
 ## Platform
 
 - ChatGPT Sites-managed hosting
@@ -205,8 +231,8 @@ domain, or separately provisioned/GitHub repository is used. The established
 Sites source repository is used only to save exact Sites candidates; Phase 9
 deployed the already-saved version 14 through Sites.
 
-The high-resolution brand source remains under `design-assets/`; only optimized
-consumer icons and the social card ship from `public/`.
+The Penrose-inspired mathematical brand source remains under `design-assets/`;
+only optimized consumer icons and the social card ship from `public/`.
 
 ## Local development
 
@@ -657,10 +683,11 @@ boundary; expected private-cache, robots, and referrer behavior; canonical,
 Open Graph, JSON-LD, sitemap, redirects, public downloads, and guessed-resource
 denials; 14 canonical routes; 48 internal links; all three confirmed Meetup
 group destinations; representative Owner workspaces; and responsive,
-200%-reflow, reduced-motion, and console behavior. Hosted public content
-contains no approved real individual event or artwork, so those factual checks
-remain **Not run — no approved real published event** and
-**Awaiting owner smoke test**, respectively.
+200%-reflow, reduced-motion, and console behavior. At that initial version-14
+checkpoint, hosted public content contained no approved real individual event
+or artwork. Live version 16 later added real source-backed Meetup events and
+passed an individual event/poster/Meetup-link check; approved-real-artwork
+review remains **Awaiting owner smoke test**.
 
 Public form instances were verified without submitting production content.
 External anonymous form access is now available; no production form submission

@@ -15,7 +15,10 @@ guaranteed Sites scheduler.
 Meetup's current help documentation supports exporting a group calendar as an
 iCalendar subscription. Meetup's current API documentation says new OAuth
 consumers require an active Meetup Pro subscription and approval, which are not
-available here. Scraping, passwords, guessed URLs, and write-back are excluded.
+available here. Generalized runtime scraping, passwords, guessed URLs, and
+write-back are excluded. The later owner-directed curated public-page
+enrichment amendment below does not change the request-time iCalendar adapter
+or introduce a generalized runtime scraper.
 
 ## Decision
 
@@ -134,6 +137,34 @@ available here. Scraping, passwords, guessed URLs, and write-back are excluded.
   sync does not scrape Meetup pages.
 - No Meetup OAuth/API credential, Meetup Pro plan, password, scraper, external
   queue, alternate database, or alternate host is introduced.
+
+## 2026-08-06 curated public-event enrichment amendment
+
+The Owner later directed the site to use the attendee-visible public Meetup
+description, venue, and sharp poster for current events. This amendment is
+separate from the official iCalendar synchronization above:
+
+- Feed description and location fields remain untrusted, unused, and excluded
+  from the normalized synchronization hash.
+- An owner-invoked source-maintenance tool reads only exact public event pages
+  from the three confirmed group slugs and requires the expected numeric Meetup
+  event ID on every page. It is not invoked by a public request and does not
+  write to Meetup or hosted D1.
+- The current candidate contains 13 explicit group-slug/event-ID records. That
+  source inventory does not activate a blocked source or make an event public;
+  the existing completed-generation, publication, receipt, legal, privacy, and
+  public-projection checks remain authoritative.
+- The generator normalizes public descriptions to safe text, removes URLs,
+  rejects email addresses and meeting credentials, and retains only venue facts
+  visible to an ordinary attendee. Existing owner-authored public summary,
+  description, venue, and approved artwork always take precedence.
+- Each exact poster source must use the allowlisted secure Meetup image host and
+  pass MIME, byte-size, natural-dimension, and aspect-ratio validation. The
+  generator produces local 480px, 960px, and up-to-1600px variants without
+  upscaling; public HTML never hotlinks Meetup.
+- This is a bounded, owner-reviewed, source-controlled reconciliation, not a
+  guaranteed daily scheduler, generalized scraper, alternate importer, OAuth
+  integration, or write-back path.
 
 ## Primary references
 

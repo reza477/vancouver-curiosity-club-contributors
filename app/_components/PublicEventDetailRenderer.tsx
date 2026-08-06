@@ -116,10 +116,6 @@ export function PublicEventDetailRenderer({
                 </dd>
               </div>
               <div>
-                <dt>Format</dt>
-                <dd>{attendanceLabel(event.attendanceMode)}</dd>
-              </div>
-              <div>
                 <dt>Location</dt>
                 <dd>
                   {event.venue ? (
@@ -326,13 +322,4 @@ function availabilityLabel(
   if (value === "full") return "Full";
   if (value === "waitlist") return "Waitlist";
   return "Open";
-}
-
-function attendanceLabel(
-  value: PublicEventDetailDto["attendanceMode"],
-): string {
-  if (value === "in-person") return "In person";
-  if (value === "online") return "Online";
-  if (value === "hybrid") return "Hybrid";
-  return "Location undecided";
 }

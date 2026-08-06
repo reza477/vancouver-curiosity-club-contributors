@@ -170,11 +170,12 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
     ]),
     page("about", "About", [
       section("intro", "intro", 10, {
-        heading: "A community organized around curiosity",
-        text: "Vancouver Curiosity Club brings people together to learn, discuss, explore, make, and play.",
+        eyebrow: "What is this club?",
+        heading: "Curiosity is better in company.",
+        text: "Vancouver Curiosity Club is a Vancouver community built around intelligent, approachable events, shared experiences, and substantive conversation.",
         paragraphs: [
-          "The calendar is intentionally broad: ideas can meet books, films, neighbourhood discoveries, reflective practice, food, and games.",
-          "The common thread is a thoughtful reason to be in the room together.",
+          "Some gatherings begin with a book, film, philosophical question, new technology, or work of art. Others take us on walks, into neighbourhoods and restaurants, or into quieter practices such as journaling, meditation, poetry, and silent reading.",
+          "You do not need to arrive as an expert. Come with a question, an interest, or simply the willingness to join the conversation.",
         ],
       }),
     ]),

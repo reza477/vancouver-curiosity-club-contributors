@@ -245,6 +245,10 @@ test("month calendar renders an accessible date grid, calendar actions, approved
             startsAtUtc: "2026-07-07T01:00:00.000Z",
             timeZone: "America/Vancouver",
           }),
+          venue: Object.freeze({
+            address: "Stanley Park, Vancouver, BC",
+            name: "Stanley Park",
+          }),
         }),
         allDayEvent({
           schedule: Object.freeze({
@@ -293,6 +297,7 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.match(markup, />Tentative<\//u);
   assert.match(markup, />Night walk</u);
   assert.match(markup, />Reading retreat</u);
+  assert.match(markup, /Stanley Park, Vancouver, BC/u);
   assert.match(markup, /href="\/events\/night-walk"/u);
   assert.match(
     markup,
@@ -352,7 +357,7 @@ test("the public calendar route renders the month experience instead of redirect
 
   assert.match(page, /PublicMonthCalendar/u);
   assert.doesNotMatch(page, /<h1>Calendar<\/h1>/u);
-  assert.match(page, /Curious people, thoughtful gatherings\./u);
+  assert.match(page, /Curiosity is better in company\./u);
   assert.match(page, /siteOrigin=\{origin\?\.origin \?\? null\}/u);
   assert.doesNotMatch(page, /permanentRedirect/u);
   assert.doesNotMatch(page, /redirect\(\s*["']\/events["']\s*\)/u);

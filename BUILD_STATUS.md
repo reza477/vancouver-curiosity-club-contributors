@@ -153,6 +153,49 @@ Verification at this source checkpoint:
 - production deployment: **Not run**;
 - live version 16: unchanged.
 
+## Owner-directed identity, About, and Meetup enrichment candidate
+
+Status: **Implemented in current working source; final exact-source
+verification incomplete; not saved or deployed.** No new Sites version, source
+SHA, archive hash, or readback count is recorded before those facts exist. Live
+production remains exact version 16, and unpublished version 17 remains an
+unchanged historical candidate.
+
+- A Penrose-inspired three-sided mathematical mark replaces the previous brand
+  symbol across the favicon, application icons, maskable icon, wordmark, and
+  social card. Its deterministic vector master remains under `design-assets/`.
+- Home's short club introduction and the About route now explain the club's
+  purpose, approachable participation, and the Think, Reset & Make, Explore,
+  and Eat & Play lanes without adding legal, charity, award, venue-access, or
+  other unconfirmed claims.
+- Public event details retain **When** and **Location** and remove the redundant
+  **Format** fact. Calendar day detail includes the attendee-visible public
+  address when it is verified, and event-title hover/focus no longer adds the
+  distracting underline.
+- The current source contains 13 exact `(canonical group slug, numeric event
+  ID)` enrichment records across the three confirmed Meetup groups. The
+  enrichment supplies sanitized public description/summary, ordinary
+  attendee-visible venue facts, and three local responsive poster variants per
+  event at 480px, 960px, and up to 1600px without upscaling.
+- Existing owner-authored public summary, description, venue, and approved CMS
+  artwork always win. Curated values are fallback-only and remain subject to
+  the existing completed-generation, publication, receipt, legal, privacy, and
+  public-projection checks. The conflict-blocked main feed is not activated by
+  this source-controlled enrichment, so the 13-record inventory is not a claim
+  that all 13 events are currently public.
+- Request-time Meetup synchronization remains the official one-way iCalendar
+  workflow for title, schedule, status/cancellation, and exact RSVP URL. It is
+  manual/request-driven and does not promise a daily scheduler. A separate
+  owner-invoked reconciliation prompt is checked in at
+  `docs/meetup-calendar-reconciliation-prompt.md`.
+- Public requests never scrape or hotlink Meetup. No migration, invariant,
+  access-policy, runtime-value, hosted D1/R2, preview, domain, or deployment
+  change is part of this candidate.
+
+Final full-suite, exact-source build, rendered-Worker, privacy/artifact,
+browser, source-readback, archive, and Sites-version evidence remains pending
+and must replace this paragraph only after those checks genuinely finish.
+
 ## Previous-phase preservation
 
 Phase 6 remains the verified prerequisite for this work:

@@ -183,19 +183,21 @@ export default async function CalendarPage({
         aria-labelledby="calendar-home-title"
       >
         <div>
-          <p className="section-kicker">New here?</p>
+          <p className="section-kicker">What is this club?</p>
           <h2 id="calendar-home-title">
-            Curious people, thoughtful gatherings.
+            Curiosity is better in company.
           </h2>
         </div>
         <div>
           <p>
-            Vancouver Curiosity Club brings people together for talks, walks,
-            workshops, and other events for people who like learning out loud.
+            Vancouver Curiosity Club brings people together for books, films,
+            thoughtful conversations, creative practice, walks, food, and
+            other reasons to explore Vancouver with interesting people.
           </p>
           <p>
-            Visitors do not need an account. Open any event to use its official
-            signup and calendar links.
+            You do not need to be an expert or make an account. Open any event
+            to see what it is about, where it is happening, and the official
+            signup and add-to-calendar options.
           </p>
           <Link href="/about">Learn about the club</Link>
         </div>

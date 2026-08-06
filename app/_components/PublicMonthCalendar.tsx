@@ -404,6 +404,11 @@ function CalendarEventPreview({
         <h4>
           <Link href={`/events/${event.slug}`}>{event.title}</Link>
         </h4>
+        {event.venue?.address ? (
+          <p className="public-calendar-event__location">
+            {event.venue.address}
+          </p>
+        ) : null}
         {event.summary ? <p>{event.summary}</p> : null}
         <div className="public-calendar-event__actions">
           <Link href={`/events/${event.slug}`}>Event details</Link>

@@ -6,35 +6,41 @@
   Its axe, Lighthouse, exact-width, dependency, and full-suite measurements
   remain local exact-artifact evidence; they are not relabelled as production
   measurements.
-- Phase 9 deployed exact saved version 14 to
-  `https://vancouver-curiosity-club.reza5777.chatgpt.site`. The deployment
-  succeeded and remains behind the existing custom owner-only policy.
-- There is no preview deployment, custom domain, public/shared access, or
-  second production surface. External anonymous visitors therefore see the
-  Sites owner gate rather than the application public pages or forms.
+- Phase 9 first deployed exact saved version 14 behind the existing owner-only
+  policy. The Owner later authorized the calendar-first releases and public
+  visitor access; exact version 16 is now live at
+  `https://vancouver-curiosity-club.reza5777.chatgpt.site` under public access
+  revision 2.
+- There is no preview deployment, custom domain, or second production surface.
+  Anonymous visitors may browse only the allowlisted public application
+  routes. Organizer routes still require Sign in with ChatGPT plus current
+  invitation, membership, role, organization, and suspension checks.
 - Representative Owner views and production browser/header checks passed.
   The Owner's own five-minute smoke and approved-real-artwork review remain
   **Awaiting owner smoke test**.
 - The current Sites access policy has one Owner and no groups. A real
   second-identity role/suspension/reassignment check cannot be performed
   against hosted state without a separately authorized access change.
-- The Owner subsequently approved copying the poster images from the 11
-  current public Meetup event listings into the site. Those files are matched
-  to exact Meetup event IDs and served locally. New events still need a
-  deliberate approved poster addition because the official iCalendar feed has
-  no image field.
-- Hosted D1 now contains real source-backed published Meetup events. Individual
-  event, poster, and exact Meetup-link smoke must be rerun against the
-  calendar-first refinement before its release is recorded as verified.
+- The live version contains local copies of the 11 posters belonging to its
+  current source-backed Meetup events. The newer unsaved source candidate holds
+  13 exact group-slug/event-ID enrichment records with local responsive poster
+  variants, sanitized attendee-visible description, and public venue fallback.
+  Those records remain gated by the ordinary publication projection and are
+  not a claim that all 13 events are currently public.
+- Hosted D1 contains real source-backed published Meetup events. Individual
+  event, poster, and exact Meetup-link smoke passed for live version 16; the
+  newer identity/About/enrichment candidate still requires its own final
+  exact-source and browser verification before any Sites save.
 - Venue-specific accessibility facts are missing. The application can expose
   confirmed event accessibility information, but the Accessibility Statement
   must not promise facts that the Owner has not supplied.
 
 ## Platform and operational limits
 
-- Sites is the only host. There is no custom domain, second host, public/shared
-  access, preview deployment, external OAuth provider, email provider, or
-  separate database/storage account.
+- Sites is the only host. Public visitor access is enabled for allowlisted
+  public application routes, while the organizer workspace remains protected.
+  There is no custom domain, second host, preview deployment, external OAuth
+  provider, email provider, or separate database/storage account.
 - D1 does not provide row-level security. Server services and runtime triggers
   enforce membership, role, organization, assignment, ownership, and
   publication boundaries.

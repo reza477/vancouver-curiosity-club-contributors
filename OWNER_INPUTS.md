@@ -43,6 +43,13 @@ data.
   events** from the completed Vancouver Literature and Film and Vancouver
   Fantasy & Sci-Fi Group snapshots. Their public event destinations are the
   exact individual Meetup URLs supplied by those feeds.
+- Current curated enrichment candidate: **13 exact public Meetup event pages
+  verified across the three confirmed groups.** This owner-directed,
+  source-controlled inventory supplies sanitized attendee-visible description,
+  location, and poster facts only when the existing public projection already
+  makes that exact event eligible. It does not activate the conflict-blocked
+  main Vancouver Curiosity Club feed and is not a claim that all 13 records are
+  currently public.
 - Vancouver Curiosity Club feed activation: **Blocked safely by cross-post
   conflicts.** Several of its gatherings are also present in another group
   feed with a different Meetup source identity. The authoritative scheduling
@@ -69,9 +76,11 @@ society-registration, tax, or charity claim.
 
 ## Copy approval
 
-- Approved public copy: **Missing**. Phase 2 contains restrained, D1-backed
-  starter copy that remains subject to owner approval and later authorized CMS
-  editing.
+- Final approved public copy: **Missing**. The Owner authorized a fuller
+  explanatory starter for Home and About, including the four existing activity
+  lanes and the fact that public visitors do not need an account. That current
+  candidate remains subject to Owner editorial acceptance and later authorized
+  CMS editing; it does not add legal or accessibility claims.
 - Working tagline currently supplied: `A social calendar with a brain.`
 - Confirmed Resources or reading-packet content: **Missing**. The Resources
   page must remain unpublished until real content is entered and explicitly
@@ -101,9 +110,11 @@ society-registration, tax, or charity claim.
 - Approved-real-artwork browser smoke: **Awaiting owner smoke test**.
   Synthetic local non-person artwork may verify mechanics but cannot satisfy
   this factual owner-approval step.
-- Owner-approved logo or Open Graph replacement artwork: **Missing**. The
-  existing Field Notes brand icon and social card remain the safe published
-  fallback.
+- Owner-directed logo replacement: **Implemented in the current unpublished
+  candidate; final visual acceptance is awaiting Owner smoke.** The candidate
+  uses a deterministic Penrose-inspired mathematical mark across the icon set
+  and social card. Live version 16 retains its existing published artwork until
+  a later explicitly authorized deployment.
 - Final per-page, per-club, and per-event Open Graph selections: **Missing**
   unless an approved asset is deliberately selected in the corresponding
   private editor.
@@ -119,8 +130,10 @@ No AI-generated attendee faces or unapproved photographs may be substituted.
 - Approved public organizer biographies: **Missing**
 - Profile-level public-attribution consent: **Missing**
 - Per-event permission to display each organizer: **Missing**
-- Approved venue names, addresses, and venue-specific accessibility facts:
-  **Missing per event**
+- General Owner-approved venue and venue-specific accessibility facts:
+  **Missing per event.** The current curated candidate may show only the venue
+  name and address visible to an ordinary attendee on each exact verified
+  Meetup page; it makes no accessibility claim.
 
 The public projection defaults organizer attribution to private and requires
 both consent gates before displaying a name.
@@ -151,6 +164,11 @@ both consent gates before displaying a name.
   (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_0f5c6d1f80688191b7f8a26d52ec9293`).
   It is not deployed; the live site remains version 16 until the Owner
   explicitly authorizes publishing version 17.
+- Identity/About/Meetup enrichment refinement: **Implemented in current
+  working source; final exact-source verification incomplete; not saved or
+  deployed.** No version number, source SHA, content hash, or readback is
+  recorded before it exists. Live version 16 and historical unpublished
+  version 17 are unchanged.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,

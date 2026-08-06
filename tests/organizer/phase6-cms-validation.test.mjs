@@ -86,7 +86,7 @@ test("page revisions accept the allowlisted block model and canonicalize determi
         id: "intro",
         type: "intro",
         config: {
-          heading: "A community organized around curiosity",
+          heading: "Curiosity is better in company.",
           text: "Thoughtful gatherings in Vancouver.",
           paragraphs: ["No expertise is required."],
         },

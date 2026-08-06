@@ -1,8 +1,10 @@
 # Owner guide — Phase 8 hardening
 
 Phase 8 changed the safety and verification envelope around the completed
-Phase 1–7 product. Phase 9 has now deployed that exact saved candidate as
-owner-only Sites version 14.
+Phase 1–7 product. Phase 9 first deployed that exact saved candidate as
+owner-only Sites version 14. The Owner later authorized the calendar-first
+releases and public visitor access; exact version 16 is now live while the
+organizer workspace remains protected.
 
 ## What the Owner should expect
 
@@ -37,20 +39,25 @@ addresses, or R2 keys into support messages or screenshots.
 
 The concise Owner smoke-test card and its status are maintained in
 `BUILD_STATUS.md`. Local synthetic checks do not constitute Owner approval.
-The production engineering pass verified representative view-only Owner
-routes, exact owner-only access, private response headers, responsive/reflow
-behavior, and safe empty downloads. It also created one clearly labelled
-private production-smoke Draft, verified that it never appeared publicly, and
-then archived and moved it to deleted items through the normal Owner workflow.
-Its immutable audit trace remains; no public event was created.
+The production engineering pass verified representative Owner routes, the
+public/organizer access boundary, private response headers, responsive/reflow
+behavior, and safe downloads. It also created one clearly labelled private
+production-smoke Draft, verified that it never appeared publicly, and then
+archived and moved it to deleted items through the normal Owner workflow. Its
+immutable audit trace remains; no synthetic event was published.
 
 Approved-real-artwork review and the Owner's own five-minute smoke remain
-**Awaiting owner smoke test**. There is no approved real published event, so
-individual event/Meetup-link smoke is **Not run — no approved real published
-event**. Hosted second-identity verification and the external calendar-client
-check also remain unavailable.
+**Awaiting owner smoke test**. Hosted D1 now contains real source-backed Meetup
+events, and an individual event/poster/Meetup-link smoke passed for live version
+16. Hosted second-identity verification and the external calendar-client check
+remain unavailable.
 
-Live version 14 is available only through the existing custom owner-only Sites
-access policy at
-`https://vancouver-curiosity-club.reza5777.chatgpt.site`. Do not widen access
-or create synthetic production data merely to complete a pending check.
+Live version 16 is available to public visitors at
+`https://vancouver-curiosity-club.reza5777.chatgpt.site` under the explicitly
+authorized public access policy. Organizer access still requires Sign in with
+ChatGPT and current server-side authorization. Do not alter access or create
+synthetic production data merely to complete a pending check.
+
+The newer mathematical-icon, fuller-About, and curated Meetup enrichment work
+is an unsaved and undeployed source candidate. Review it only after its final
+exact-source verification and Sites readback are recorded in `BUILD_STATUS.md`.

@@ -27,6 +27,10 @@ import {
 } from "./cms-projection-contract";
 import { currentPublishedOrganizerProfilePhotoUsageTargetSql } from "../media/public-usage-contract";
 import { curatedMeetupPosterForEventUrl } from "../../meetup-event-posters";
+import {
+  curatedMeetupEventForEventUrl,
+  type CuratedMeetupEventEnrichment,
+} from "../../meetup-event-enrichment";
 
 export type PublicEventDto = Readonly<{
   category: Readonly<{
@@ -5031,6 +5035,7 @@ export function toPublicEventCardDto(
     return invalidProjection();
   }
   const approvedArtwork = publicArtwork(row);
+  const curatedMeetupEvent = curatedMeetupEventForEventUrl(rsvpUrl);
   const curatedMeetupPoster =
     approvedArtwork === null
       ? curatedMeetupPosterForEventUrl(rsvpUrl)
@@ -5048,19 +5053,19 @@ export function toPublicEventCardDto(
                 width: curatedMeetupPoster.width,
               }),
               medium: Object.freeze({
-                height: curatedMeetupPoster.height,
-                width: curatedMeetupPoster.width,
+                height: curatedMeetupPoster.mediumHeight,
+                width: curatedMeetupPoster.mediumWidth,
               }),
               small: Object.freeze({
-                height: curatedMeetupPoster.height,
-                width: curatedMeetupPoster.width,
+                height: curatedMeetupPoster.smallHeight,
+                width: curatedMeetupPoster.smallWidth,
               }),
             }),
             focalPoint: Object.freeze({ x: 5_000, y: 5_000 }),
             srcSet: Object.freeze({
               large: curatedMeetupPoster.localPath,
-              medium: curatedMeetupPoster.localPath,
-              small: curatedMeetupPoster.localPath,
+              medium: curatedMeetupPoster.mediumPath,
+              small: curatedMeetupPoster.smallPath,
             }),
             url: curatedMeetupPoster.localPath,
           })
@@ -5070,10 +5075,11 @@ export function toPublicEventCardDto(
       path: "event.title",
       maxLength: 200,
     }),
-    summary: parseOptionalBoundedString(row.summary, {
-      path: "event.summary",
-      maxLength: 500,
-    }),
+    summary:
+      parseOptionalBoundedString(row.summary, {
+        path: "event.summary",
+        maxLength: 500,
+      }) ?? curatedMeetupEvent?.summary ?? null,
     status,
     isCancelled: status === "cancelled",
     rsvpMode,
@@ -5095,7 +5101,7 @@ export function toPublicEventCardDto(
     program: publicProgram(row),
     lane: publicLane(row),
     category,
-    venue,
+    venue: venue ?? curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
   });
 }
 
@@ -5155,6 +5161,7 @@ function toPublicEventExportDto(
   ) {
     return invalidProjection();
   }
+  const curatedMeetupEvent = curatedMeetupEventForEventUrl(rsvpUrl);
   return Object.freeze({
     attendanceMode: publicAttendanceMode(row.attendance_mode),
     availabilityState:
@@ -5175,10 +5182,11 @@ function toPublicEventExportDto(
       }),
     }),
     costText: optionalPublicText(row.cost_text, "event.costText", 500),
-    description: parseOptionalBoundedString(row.description, {
-      path: "event.description",
-      maxLength: 20_000,
-    }),
+    description:
+      parseOptionalBoundedString(row.description, {
+        path: "event.description",
+        maxLength: 20_000,
+      }) ?? curatedMeetupEvent?.description ?? null,
     isCancelled: status === "cancelled",
     lane: publicLane(row),
     program: publicProgram(row),
@@ -5191,15 +5199,18 @@ function toPublicEventExportDto(
           : invalidProjection(),
     slug: parseIdentifier(row.slug, "event.slug"),
     status,
-    summary: parseOptionalBoundedString(row.summary, {
-      path: "event.summary",
-      maxLength: 500,
-    }),
+    summary:
+      parseOptionalBoundedString(row.summary, {
+        path: "event.summary",
+        maxLength: 500,
+      }) ?? curatedMeetupEvent?.summary ?? null,
     title: parseBoundedString(row.title, {
       path: "event.title",
       maxLength: 200,
     }),
-    venue: publicVenue(row),
+    venue:
+      publicVenue(row) ??
+      curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
   });
 }
 
@@ -5231,12 +5242,14 @@ export function toPublicEventDetailDto(
   row: Record<string, unknown>,
 ): PublicEventDetailDto {
   const card = toPublicEventCardDto(row);
+  const curatedMeetupEvent = curatedMeetupEventForEventUrl(card.rsvpUrl);
   return Object.freeze({
     ...card,
-    description: parseOptionalBoundedString(row.description, {
-      path: "event.description",
-      maxLength: 20_000,
-    }),
+    description:
+      parseOptionalBoundedString(row.description, {
+        path: "event.description",
+        maxLength: 20_000,
+      }) ?? curatedMeetupEvent?.description ?? null,
     seoTitle: parseOptionalBoundedString(row.seo_title, {
       path: "event.seoTitle",
       maxLength: 60,
@@ -5302,6 +5315,19 @@ export function toPublicEventDetailDto(
       "event.verifiedAccessibilityNotes",
       4_000,
     ),
+  });
+}
+
+function curatedMeetupVenueDto(
+  venue: CuratedMeetupEventEnrichment["venue"],
+): PublicEventCardDto["venue"] {
+  if (venue === null) return null;
+  const addressParts = [venue.address, venue.city, venue.state].filter(
+    (value): value is string => value !== null,
+  );
+  return Object.freeze({
+    address: addressParts.length > 0 ? addressParts.join(", ") : null,
+    name: venue.name,
   });
 }
 

@@ -509,8 +509,11 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(html, /Month at a glance/u);
   assert.match(html, /public-calendar__grid/u);
-  assert.match(html, /Curious people, thoughtful gatherings\./u);
-  assert.match(html, /Visitors do not need an account\./u);
+  assert.match(html, /Curiosity is better in company\./u);
+  assert.match(
+    html,
+    /You do not need to be an expert or make an account\./u,
+  );
   assert.match(html, /Download upcoming events \(\.ics\)/u);
   assert.match(html, /id="public-calendar-title"/u);
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
@@ -828,7 +831,10 @@ test("Calendar is an indexable month-at-a-glance public destination", async () =
   );
   assert.match(html, /Month at a glance/u);
   assert.match(html, /public-calendar__grid/u);
-  assert.match(html, /Visitors do not need an account\./u);
+  assert.match(
+    html,
+    /You do not need to be an expert or make an account\./u,
+  );
   assert.match(html, /Download upcoming events \(\.ics\)/u);
   assert.match(html, /<h1 id="public-calendar-title">/u);
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);

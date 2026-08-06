@@ -59,6 +59,7 @@ test("the shared detail renderer supports a preview-safe discovery mode", async 
     }),
   );
   assert.match(previewMarkup, /Times shown in America\/Toronto\./u);
+  assert.doesNotMatch(previewMarkup, />Format<\/dt>/u);
   assert.match(previewMarkup, /The event uses its own IANA timezone\./u);
   assert.match(previewMarkup, /RSVP information coming soon\./u);
   assert.doesNotMatch(previewMarkup, /RSVP on Meetup/u);

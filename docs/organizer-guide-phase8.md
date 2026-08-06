@@ -34,15 +34,22 @@ verified representative production Organizer workspaces in view-only mode,
 the private cache/indexing boundary, and safe validation behavior without
 committing a synthetic event or other product record.
 
-Live Sites version 14 is now active at
-`https://vancouver-curiosity-club.reza5777.chatgpt.site` behind the unchanged
-owner-only policy. Organizer access still requires Sign in with ChatGPT plus a
-current active membership. The current Sites access policy contains only the
-Owner, so hosted second-identity Organizer behavior is **Not run** rather than
-inferred from the local test seam.
+Live Sites version 16 is now active at
+`https://vancouver-curiosity-club.reza5777.chatgpt.site` under the explicitly
+authorized public visitor policy. Organizer access still requires Sign in with
+ChatGPT plus a current active membership; public access grants no organizer
+authorization. The Sites project contains one Owner and zero groups, so hosted
+second-identity Organizer behavior is **Not run** rather than inferred from the
+local test seam.
 
 Owner smoke, approved-real-artwork review, and external calendar-client
-behavior remain pending. There is no approved real published event in hosted
-D1. The one production-smoke event was a clearly labelled private Draft; after
-its public-absence check it was archived and moved to deleted items, leaving
-only the expected private record and immutable audit trace.
+behavior remain pending. Hosted D1 now contains real source-backed Meetup
+events, and live version 16 passed an individual event/poster/Meetup-link smoke.
+The one synthetic production-smoke event was a clearly labelled private Draft;
+after its public-absence check it was archived and moved to deleted items,
+leaving only the expected private record and immutable audit trace.
+
+The newer mathematical-icon, fuller-About, and curated Meetup enrichment work
+is an unsaved and undeployed source candidate. Its reconciliation helper is an
+owner-invoked maintenance workflow, not a daily scheduler or Meetup write-back
+path.

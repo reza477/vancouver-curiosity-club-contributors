@@ -11,6 +11,7 @@
     "start": "node scripts/run-vinext.mjs start",
     "test": "node scripts/run-tests.mjs",
     "test:rendered": "node --import tsx --test tests/rendered-worker.integration.mjs",
+    "meetup:enrichment:refresh": "node scripts/refresh-curated-meetup-enrichment.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",

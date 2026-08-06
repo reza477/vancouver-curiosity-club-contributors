@@ -34,7 +34,7 @@ test("homepage is the bounded month calendar before every secondary section", as
   assert.doesNotMatch(calendar, /<h1>Calendar<\/h1>/u);
   assert.doesNotMatch(calendar, /className="public-calendar-intro"/u);
   assert.match(month, /<h1 id="public-calendar-title">/u);
-  assert.match(calendar, /Curious people, thoughtful gatherings\./u);
+  assert.match(calendar, /Curiosity is better in company\./u);
   assert.ok(
     calendar.indexOf("<PublicMonthCalendar") <
       calendar.indexOf('className="calendar-view-switcher"'),
@@ -70,6 +70,42 @@ test("event titles use a clean color change instead of a hover underline", async
     styles,
     /\.event-card h3 a:hover\s*\{[^}]*text-decoration:\s*underline;/su,
   );
+  assert.match(
+    styles,
+    /\.public-calendar-event__copy h4 a:hover,[\s\S]*?text-decoration:\s*none;/u,
+  );
+});
+
+test("About explains the club inside the existing editorial main", async () => {
+  const [about, editorialPage, catalog, styles] = await Promise.all([
+    readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_components/EditorialPage.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("lib/server/public/catalog-definitions.ts", projectRoot),
+      "utf8",
+    ),
+    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+  ]);
+
+  assert.match(about, /<EditorialPage[\s\S]*?<section className="about-club"/u);
+  assert.doesNotMatch(about, /<main/u);
+  assert.match(editorialPage, /<main className="editorial-page">[\s\S]*?\{children\}/u);
+  for (const phrase of [
+    "Curiosity is better in company.",
+    "You do not need to arrive as an expert.",
+    "Think",
+    "Reset &amp; Make",
+    "Explore",
+    "Eat &amp; Play",
+    "Public visitors do not need an account.",
+  ]) {
+    assert.ok(about.includes(phrase), phrase);
+  }
+  assert.match(catalog, /heading:\s*"Curiosity is better in company\."/u);
+  assert.match(styles, /\.about-club__lane-grid\s*\{/u);
 });
 
 test("Events uses the same calendar-first experience instead of the legacy search form", async () => {
