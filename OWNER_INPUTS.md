@@ -185,6 +185,13 @@ both consent gates before displaying a name.
   Community panels, redirects the legacy Community route to Contribute, and
   renders the last completed calendar immediately during a concurrent Meetup
   refresh. It is not deployed; live version 16 remains unchanged.
+- Stable calendar selection repair: **Implemented, fully verified, and saved
+  as unpublished Sites version 20**
+  (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_f2cb620c3dc081918f9f152c7bbfe5e1`).
+  Exact pushed source `45ece3319cdbc2d4f130cc1a42a770892ce1d155`
+  keeps the selected date and its right-hand event panel stable while the
+  pointer crosses other date cells. It is not deployed; live version 16 remains
+  unchanged until the Owner explicitly authorizes deployment.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,

@@ -73,12 +73,13 @@ When a Meetup refresh is already running, public calendar requests now render
 the last completed snapshot immediately instead of entering a busy redirect
 loop.
 
-The current working candidate adds one focused calendar interaction repair on
+Unpublished Sites version 20 adds one focused calendar interaction repair on
 top of version 19: moving the pointer across other dates no longer replaces the
 day panel. Click or tap a date to select it, or use the keyboard; that date and
 its event links stay available until another date is deliberately selected.
-This repair has not yet been saved or deployed, so production remains version
-16.
+Version 20 was saved from exact pushed source
+`45ece3319cdbc2d4f130cc1a42a770892ce1d155`; it was not deployed, so production
+remains version 16.
 
 ## Calendar-first public website
 

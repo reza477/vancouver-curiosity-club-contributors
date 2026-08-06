@@ -330,8 +330,8 @@ Final exact-source evidence:
 
 ## Owner-directed stable calendar selection fix
 
-Status: **Implemented and source-verified; not yet saved or deployed.** Live
-production remains exact Sites version 16.
+Status: **Implemented, fully verified, and saved as unpublished Sites version
+20; not deployed.** Live production remains exact Sites version 16.
 
 - Date hover is now visual only. Moving the pointer across other calendar
   cells on the way to the right-hand event panel cannot replace its contents.
@@ -345,14 +345,25 @@ production remains exact Sites version 16.
   organizer authorization, D1/R2, migrations, access, domains, runtime values,
   or hosted data.
 
-Source verification at this checkpoint:
+Exact verification and saved-candidate evidence:
 
 - focused calendar/foundation contracts: 19/19 passed;
 - complete repository suite: 882/882 passed, 0 failed, 0 skipped;
 - strict TypeScript, zero-warning lint, and `git diff --check`: passed;
-- a fresh exact-commit production build, rendered-Worker check, and real
-  pointer-crossing browser verification are still required before any Sites
-  version save;
+- fresh exact-commit production build: passed;
+- rendered Worker: 26/26 passed;
+- real pointer regression: after selecting August 23, the pointer crossed six
+  other date cells and entered the right panel without replacing the selected
+  date; its event link opened correctly, keyboard selection still changed the
+  panel intentionally, and the browser console reported 0 warnings/errors;
+- exact pushed source:
+  `45ece3319cdbc2d4f130cc1a42a770892ce1d155`;
+- unpublished Sites version 20:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_f2cb620c3dc081918f9f152c7bbfe5e1`;
+- version 20 content hash:
+  `sha256:04b8ee1349c45d3b3920e5314dd162fd573d8b36aefafb61ac58d19be85cf7ee`;
+- version 20 readback: 312 files / 35,031,040 stored bytes / screenshot and
+  preview unavailable;
 - production deployment: **Not run**. Live version 16 remains unchanged.
 
 ## Previous-phase preservation
