@@ -17,20 +17,22 @@ Last updated: 2026-08-06 (America/Vancouver)
   archive, pushed-source, and unpublished Sites-version gates are green.
 - Phase 9 is **Completed and verified** for its authorized private-deployment
   and production-verification scope.
-- Exact saved version 16 is now the active, terminally succeeded deployment at
+- Exact saved version 20 is now the active, terminally succeeded deployment at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
 - Access is now public by explicit Owner authorization, at access-policy
   revision 2. The Owner remains the sole project owner and there are zero
   groups. There is no custom domain or preview deployment. The `DB` and
   `MEDIA` logical bindings and runtime revision 1 remain unchanged.
-- Phase 9 did not create another version, preview, domain, access policy,
-  binding, runtime value, host, or deployment surface.
+- Phase 9 itself did not create another version, preview, domain, access
+  policy, binding, runtime value, host, or deployment surface. A later
+  Owner-directed deployment promoted exact saved version 20 without creating
+  a preview or changing access, domains, bindings, runtime values, D1, or R2.
 
 ## Owner-directed calendar-first update (post-Phase 9)
 
-Status at this source checkpoint: **Completed and verified.** Exact Sites
-version 16 is live. This is an Owner-directed refinement of the completed
-product, not a new numbered phase.
+Historical version 16 checkpoint: **Completed and verified.** This was an
+Owner-directed refinement of the completed product, not a new numbered phase;
+the later stable-selection version 20 is now live.
 
 - Home now gives a short introduction and immediately shows the next four
   published events. Existing owner-edited Home CMS sections remain functional
@@ -41,10 +43,8 @@ product, not a new numbered phase.
   event detail link, and confirmed external signup link.
 - Each public event offers a Google Calendar action and an RFC-compliant
   `.ics` download for Apple Calendar and other calendar clients.
-- The live version 16 header is intentionally reduced to Calendar, About, and
-  Community. The newer unpublished candidate described below replaces
-  Community with Contribute. Organizer Login remains in the footer and at
-  `/organizer`.
+- The live version 20 header is intentionally reduced to Calendar, About, and
+  Contribute. Organizer Login remains in the footer and at `/organizer`.
 - The application does not create public visitor accounts. Anonymous visitors
   can now browse the public routes without signing in. Organizer routes remain
   protected by Sign in with ChatGPT plus current invitation, membership, role,
@@ -330,8 +330,8 @@ Final exact-source evidence:
 
 ## Owner-directed stable calendar selection fix
 
-Status: **Implemented, fully verified, and saved as unpublished Sites version
-20; not deployed.** Live production remains exact Sites version 16.
+Status: **Completed, verified, and deployed.** Exact Sites version 20 is live
+at `https://vancouver-curiosity-club.reza5777.chatgpt.site`.
 
 - Date hover is now visual only. Moving the pointer across other calendar
   cells on the way to the right-hand event panel cannot replace its contents.
@@ -364,7 +364,15 @@ Exact verification and saved-candidate evidence:
   `sha256:04b8ee1349c45d3b3920e5314dd162fd573d8b36aefafb61ac58d19be85cf7ee`;
 - version 20 readback: 312 files / 35,031,040 stored bytes / screenshot and
   preview unavailable;
-- production deployment: **Not run**. Live version 16 remains unchanged.
+- production deployment:
+  `appgdep_6a7507fb96648191aae650faba2eb84a`, terminal `succeeded` on
+  2026-08-06, from exact saved version 20;
+- live production regression: after selecting August 23, the pointer crossed
+  August 24 through 29 and entered the right panel; the selected date and event
+  details remained August 23, and the browser console reported 0 issues;
+- access remains public at revision 2 with one allowed project user, zero
+  groups, zero external visitors, no preview URL, and unchanged `DB` / `MEDIA`
+  bindings.
 
 ## Previous-phase preservation
 

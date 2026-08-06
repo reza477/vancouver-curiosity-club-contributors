@@ -168,14 +168,15 @@ both consent gates before displaying a name.
 - Calendar-as-home refinement: **Implemented, verified, and saved as
   unpublished Sites version 17**
   (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_0f5c6d1f80688191b7f8a26d52ec9293`).
-  It is not deployed; the live site remains version 16 until the Owner
-  explicitly authorizes publishing version 17.
+  It was not directly deployed; its changes are included in deployed version
+  20.
 - Identity/About/Meetup enrichment refinement: **Implemented, verified, and
   saved as unpublished Sites version 18**
   (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_1ecfb8d602248191a1cc7673dc4e1459`).
   It was saved from exact source
-  `d0560bd1b887dbf63dbf3958ab5e04cd72ff6050` and is not deployed. Live
-  version 16 and historical unpublished version 17 are unchanged.
+  `d0560bd1b887dbf63dbf3958ab5e04cd72ff6050` and was not directly deployed.
+  Live version 20 now includes its changes; historical version 17 remains
+  saved.
 - Navigation/Home/Contribute/performance refinement: **Implemented, verified,
   and saved as unpublished Sites version 19**
   (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_5f4c21512a54819187963e5af19613b3`).
@@ -184,14 +185,17 @@ both consent gates before displaying a name.
   primary destinations, removes the unwanted Home invitation/attending/
   Community panels, redirects the legacy Community route to Contribute, and
   renders the last completed calendar immediately during a concurrent Meetup
-  refresh. It is not deployed; live version 16 remains unchanged.
-- Stable calendar selection repair: **Implemented, fully verified, and saved
-  as unpublished Sites version 20**
+  refresh. It was not directly deployed; its changes are included in deployed
+  version 20.
+- Stable calendar selection repair: **Completed, verified, and deployed as
+  Sites version 20**
   (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_f2cb620c3dc081918f9f152c7bbfe5e1`).
   Exact pushed source `45ece3319cdbc2d4f130cc1a42a770892ce1d155`
   keeps the selected date and its right-hand event panel stable while the
-  pointer crosses other date cells. It is not deployed; live version 16 remains
-  unchanged until the Owner explicitly authorizes deployment.
+  pointer crosses other date cells. Deployment
+  `appgdep_6a7507fb96648191aae650faba2eb84a` reached terminal `succeeded`; the
+  existing public access policy and protected organizer boundary were
+  unchanged.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,

@@ -9,14 +9,14 @@ charity claim is approved for public use.
 
 ## Production
 
-The calendar-first owner refinement is publicly available as Sites version 16
+The calendar-first owner refinement is publicly available as Sites version 20
 at:
 
 - https://vancouver-curiosity-club.reza5777.chatgpt.site
 
 Deployment
-`appgdep_6a6c4cf1f870819189cc2cb3d7803064` completed successfully from source
-`27f6d319544e430aeae1c4367528b30c54fbd6a4`. Sites access revision 2 allows
+`appgdep_6a7507fb96648191aae650faba2eb84a` completed successfully from source
+`45ece3319cdbc2d4f130cc1a42a770892ce1d155`. Sites access revision 2 allows
 anyone with the URL to browse public routes without an account. Organizer
 routes still require Sign in with ChatGPT and server-side invitation,
 membership, role, organization, and suspension checks. There is no preview
@@ -32,22 +32,21 @@ Home, calendar alias, August month grid, day hover/tap behavior, 11 local Meetup
 posters, and 320/390/768/1280 responsive layouts. Exact evidence and remaining
 Owner actions are recorded in `BUILD_STATUS.md`.
 
-Unpublished Sites version 17 contains one additional Owner-directed refinement:
+Saved Sites version 17 contains an earlier Owner-directed refinement:
 `/` opens directly on the month grid. The visible month and year are the page
 heading, there is no separate “Calendar” masthead, and the brief club
-introduction follows the calendar. Version 17 is saved but not deployed;
-production remains version 16 until the Owner explicitly authorizes publishing
-the new version.
+introduction follows the calendar. Version 17 was not directly deployed; its
+changes are included in the later deployed version 20.
 
-Unpublished Sites version 18 contains the newer Owner-directed candidate with
+Saved Sites version 18 contains the next Owner-directed candidate with
 a mathematical brand mark, fuller club explanation, and exact-ID public Meetup
 event enrichment for descriptions, attendee-visible locations, and responsive
 local poster variants. It was saved from exact pushed source
 `d0560bd1b887dbf63dbf3958ab5e04cd72ff6050` after the full source, build,
-rendered-Worker, artifact, and responsive-browser gates passed. It is not
-deployed; live production remains version 16.
+rendered-Worker, artifact, and responsive-browser gates passed. It was not
+directly deployed; its changes are included in the later deployed version 20.
 
-Unpublished Sites version 19 contains the 2026-08-06 owner-invoked
+Saved Sites version 19 contains the 2026-08-06 owner-invoked
 reconciliation and the navigation/Home/Contribute refinement. The authenticated Meetup
 inventory contained 42 current listings across the three confirmed groups. Of
 those, 38 retained exact numeric canonical event URLs and are represented in
@@ -59,8 +58,9 @@ and 41 verified local poster sets. Five lower-resolution Meetup originals are
 kept at their native 599-to-1129px width and are never enlarged. The hosted
 calendar remains the prior valid snapshot because schedule conflicts prevented
 activation. Version 19 was saved from exact pushed source
-`ebb4e8a72898ceecf6f714efb0926c38ff748274`; it was not deployed and made no
-live-data or access change.
+`ebb4e8a72898ceecf6f714efb0926c38ff748274`; it was not directly deployed and
+made no live-data or access change. Its changes are included in deployed
+version 20.
 
 That same unpublished candidate simplifies the visitor shell to three prominent
 destinations: **Calendar**, **About**, and **Contribute**. It removes the old
@@ -73,13 +73,13 @@ When a Meetup refresh is already running, public calendar requests now render
 the last completed snapshot immediately instead of entering a busy redirect
 loop.
 
-Unpublished Sites version 20 adds one focused calendar interaction repair on
+Sites version 20 adds one focused calendar interaction repair on
 top of version 19: moving the pointer across other dates no longer replaces the
 day panel. Click or tap a date to select it, or use the keyboard; that date and
 its event links stay available until another date is deliberately selected.
 Version 20 was saved from exact pushed source
-`45ece3319cdbc2d4f130cc1a42a770892ce1d155`; it was not deployed, so production
-remains version 16.
+`45ece3319cdbc2d4f130cc1a42a770892ce1d155` and deployed successfully as
+`appgdep_6a7507fb96648191aae650faba2eb84a`.
 
 ## Calendar-first public website
 
