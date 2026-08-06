@@ -274,6 +274,8 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.match(markup, /aria-controls="public-calendar-day-panel"/u);
   assert.match(markup, /aria-current="date"/u);
   assert.match(markup, /<table class="public-calendar__grid">/u);
+  assert.match(markup, /<h1 id="public-calendar-title">July 2026<\/h1>/u);
+  assert.equal((markup.match(/<h1/gu) ?? []).length, 1);
   assert.equal((markup.match(/<th scope="col">/gu) ?? []).length, 7);
   assert.match(markup, /tabindex="0"/u);
   assert.match(markup, /Hover, tap, or focus a date/u);
@@ -349,7 +351,8 @@ test("the public calendar route renders the month experience instead of redirect
   );
 
   assert.match(page, /PublicMonthCalendar/u);
-  assert.match(page, /website does not create visitor accounts\./u);
+  assert.doesNotMatch(page, /<h1>Calendar<\/h1>/u);
+  assert.match(page, /Curious people, thoughtful gatherings\./u);
   assert.match(page, /siteOrigin=\{origin\?\.origin \?\? null\}/u);
   assert.doesNotMatch(page, /permanentRedirect/u);
   assert.doesNotMatch(page, /redirect\(\s*["']\/events["']\s*\)/u);

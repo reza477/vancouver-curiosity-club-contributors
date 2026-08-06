@@ -132,9 +132,9 @@ export function PublicMonthCalendar({
       <header className="public-calendar__toolbar">
         <div>
           <p className="section-kicker">Month at a glance</p>
-          <h2 id="public-calendar-title">
+          <h1 id="public-calendar-title">
             {formatPublicCalendarMonth(month)}
-          </h2>
+          </h1>
         </div>
         <nav aria-label="Calendar months">
           {previousMonth ? (

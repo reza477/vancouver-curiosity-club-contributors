@@ -32,13 +32,18 @@ Home, calendar alias, August month grid, day hover/tap behavior, 11 local Meetup
 posters, and 320/390/768/1280 responsive layouts. Exact evidence and remaining
 Owner actions are recorded in `BUILD_STATUS.md`.
 
+The current source contains one additional Owner-directed refinement that is
+not live until a later Sites publish: `/` now opens directly on the month grid.
+The visible month and year are the page heading, there is no separate
+“Calendar” masthead, and the brief club introduction follows the calendar.
+
 ## Calendar-first public website
 
 The public website keeps the visitor path deliberately short:
 
-- Home gives a brief introduction and immediately shows the next events.
-- Calendar is the primary destination, with a month-at-a-glance grid and a
-  detailed day panel on hover, focus, or tap.
+- Home opens directly on the month-at-a-glance grid, with the club introduction
+  below it instead of above it.
+- The month view has a detailed day panel on hover, focus, or tap.
 - Every public event can open Google Calendar or download a standards-compliant
   `.ics` file for Apple Calendar and other calendar clients.
 - The current production calendar contains 11 source-backed Meetup events from
@@ -68,9 +73,9 @@ The public routes include:
 - `/privacy`
 - a custom public 404, public-only sitemap, and restrictive robots rules
 
-`/calendar` is the canonical month view. The older `/events` address renders
-that same calendar-first experience so bookmarks never reopen the retired
-search form.
+The current source renders the same calendar-first month view at `/`,
+`/calendar`, and the older `/events` address, so visitors see the events
+immediately and old bookmarks never reopen the retired search form.
 
 All public catalog copy, lanes, clubs, community links, and event facts are
 D1-backed. The authorized idempotent catalog seed creates four lanes, three
@@ -92,7 +97,7 @@ route-level metadata.
 
 ## Unified event publication
 
-One server-only, parameterized read service supplies Home, Events, event
+One server-only, parameterized read service supplies the root/calendar, Events, event
 detail, club detail, related events, filter options, and sitemap slugs.
 
 - Manually managed events must be public, published, undeleted, attached to a

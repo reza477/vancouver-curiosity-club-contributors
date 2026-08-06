@@ -40,7 +40,12 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     readFile(new URL("package.json", projectRoot), "utf8"),
   ]);
 
-  assert.match(page, /loadPublicHomeData/);
+  assert.match(
+    page,
+    /import CalendarPage from "@\/app\/calendar\/page"/u,
+  );
+  assert.match(page, /await CalendarPage\(\{ searchParams \}\)/u);
+  assert.match(page, /<StructuredData/u);
   assert.match(homeData, /loadPublicCatalog/);
   assert.match(homeData, /getPublicPageContent/);
   assert.match(homeData, /queryPublicEvents/);

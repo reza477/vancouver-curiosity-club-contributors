@@ -248,7 +248,10 @@ test("public routes keep canonical renderers or the calendar alias and private p
   const clubRoute = source("app", "clubs", "[slug]", "page.tsx");
   const preview = source("app", "_organizer", "PublicPreviewShell.tsx");
 
-  assert.match(homeRoute, /<HomePageRenderer/u);
+  assert.match(
+    homeRoute,
+    /await CalendarPage\(\{ searchParams \}\)/u,
+  );
   assert.match(
     eventsRoute,
     /export \{ default, dynamic, generateMetadata \} from "\.\.\/calendar\/page"/u,

@@ -7,7 +7,7 @@ data.
 
 - `INITIAL_OWNER_EMAIL`: **Configured in Sites runtime settings as a secret**
   from the existing owner identity in Sites access metadata. Runtime revision
-  1 is active on the current public version-15 deployment; the value is
+  1 is active on the current public version-16 deployment; the value is
   never copied into this file, source, logs, or build artifacts.
 - Second invited test identity: **Not supplied**. Public visitor access does
   not grant organizer membership. Phase 3 invitation acceptance and Phase 4
@@ -165,6 +165,9 @@ both consent gates before displaying a name.
 - Owner calendar-first product feedback and authenticated sign-in:
   **Completed on 2026-07-30.** This is not the complete five-minute Owner smoke
   card, which remains awaiting Owner review.
+- Owner direction to make the month calendar the public Home and remove the
+  separate Calendar masthead: **Implemented and locally verified in current
+  source on 2026-08-06; deployment pending explicit public-publish approval.**
 - Real published-event detail and individual Meetup-event URL:
   **Completed for source-backed Meetup events on 2026-07-30.**
 - Hosted second-identity role/suspension/reassignment: **Not run**. The access

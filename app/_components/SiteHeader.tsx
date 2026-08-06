@@ -175,6 +175,8 @@ function isCurrentNavigationPath(
 ): boolean {
   return (
     href.startsWith("/") &&
-    (pathname === href || pathname.startsWith(`${href}/`))
+    ((href === "/calendar" && pathname === "/") ||
+      pathname === href ||
+      pathname.startsWith(`${href}/`))
   );
 }

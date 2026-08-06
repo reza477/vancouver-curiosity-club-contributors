@@ -9,17 +9,12 @@ import {
 
 const projectRoot = new URL("../", import.meta.url);
 
-test("homepage puts the bounded public calendar path before secondary content", async () => {
-  const [page, homeData, renderer, catalog, styles] = await Promise.all([
+test("homepage is the bounded month calendar before every secondary section", async () => {
+  const [page, calendar, month, header, catalog, styles] = await Promise.all([
     readFile(new URL("app/page.tsx", projectRoot), "utf8"),
-    readFile(
-      new URL("lib/server/public/home.ts", projectRoot),
-      "utf8",
-    ),
-    readFile(
-      new URL("app/_components/HomePageRenderer.tsx", projectRoot),
-      "utf8",
-    ),
+    readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/_components/PublicMonthCalendar.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/_components/SiteHeader.tsx", projectRoot), "utf8"),
     readFile(
       new URL("lib/server/public/catalog-definitions.ts", projectRoot),
       "utf8",
@@ -27,40 +22,36 @@ test("homepage puts the bounded public calendar path before secondary content", 
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
-  assert.match(page, /loadPublicHomeData/);
   assert.match(
     page,
-    /loadPublicHomeData\(database,\s*\{\s*nowUtcMs,\s*organizationId:\s*organization\.id/,
+    /import CalendarPage from "@\/app\/calendar\/page"/u,
   );
-  assert.match(homeData, /const catalog = await loadPublicCatalog\(database\)/);
-  assert.match(
-    homeData,
-    /Promise\.all\(\[\s*getPublicPageContent\(database,\s*"home"\),\s*queryPublicEvents/,
+  assert.match(page, /await CalendarPage\(\{ searchParams \}\)/u);
+  assert.match(page, /path:\s*"\/"/u);
+  assert.match(page, /slug:\s*"home"/u);
+  assert.match(page, /<StructuredData/u);
+  assert.match(calendar, /<PublicMonthCalendar/u);
+  assert.doesNotMatch(calendar, /<h1>Calendar<\/h1>/u);
+  assert.doesNotMatch(calendar, /className="public-calendar-intro"/u);
+  assert.match(month, /<h1 id="public-calendar-title">/u);
+  assert.match(calendar, /Curious people, thoughtful gatherings\./u);
+  assert.ok(
+    calendar.indexOf("<PublicMonthCalendar") <
+      calendar.indexOf('className="calendar-view-switcher"'),
   );
-  assert.match(homeData, /pageSize:\s*6/);
-  assert.match(renderer, /href="\/calendar"/);
-  assert.match(renderer, /View the calendar/);
-  assert.match(renderer, /events\.slice\(0,\s*4\)/);
-  assert.match(renderer, /website does not create visitor accounts\./u);
-  assert.match(
-    renderer,
-    /official\s+signup\s+link\s+shown\s+for\s+each\s+event/u,
+  assert.ok(
+    calendar.indexOf('className="calendar-view-switcher"') <
+      calendar.indexOf('className="calendar-home-introduction"'),
   );
-  assert.doesNotMatch(renderer, /className="lane-index"/u);
-  assert.doesNotMatch(renderer, /className="home-clubs"/u);
-  assert.match(renderer, /className="home-cms-sections"/u);
-  assert.match(renderer, /loadEditorialRenderContext/u);
-  assert.match(renderer, /previewMediaAssets/u);
-  assert.match(renderer, /No upcoming event is published here yet\./);
-  assert.match(renderer, /As soon as an event is ready for everyone to see/u);
-  assert.match(styles, /\.home-hero\s*\{[\s\S]*?min-height:\s*min\(30rem/u);
+  assert.match(header, /href === "\/calendar" && pathname === "\/"/u);
+  assert.match(styles, /\.calendar-home-introduction\s*\{/u);
   assert.match(
     styles,
-    /@media \(max-width:\s*52rem\)[\s\S]*?\.home-hero > \.field-artwork\s*\{[\s\S]*?display:\s*none/u,
+    /@media \(max-width:\s*52rem\)[\s\S]*?\.calendar-home-introduction,[\s\S]*?grid-template-columns:\s*1fr/u,
   );
   assert.match(catalog, /A social calendar with a brain\./);
   assert.doesNotMatch(
-    `${page}\n${renderer}`,
+    `${page}\n${calendar}`,
     /sampleEvents|fictional examples/i,
   );
 });

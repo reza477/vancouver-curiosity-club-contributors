@@ -142,22 +142,6 @@ export default async function CalendarPage({
 
   return (
     <main className="public-page public-calendar-page">
-      <header className="public-calendar-intro">
-        <p className="section-kicker">Vancouver events</p>
-        <h1>Calendar</h1>
-        <p>
-          See the month at a glance. Hover, focus, or tap a day for event
-          times, places, artwork, signup links, and one-tap calendar options.
-          The website does not create visitor accounts.
-        </p>
-      </header>
-
-      <nav className="calendar-view-switcher" aria-label="Event views">
-        <span aria-current="page">Month calendar</span>
-        <Link href="/events/calendar.ics">Upcoming iCalendar</Link>
-        <Link href="/events/events.csv">Upcoming spreadsheet</Link>
-      </nav>
-
       {resolvedMonth.invalid ? (
         <div className="calendar-notice" role="alert">
           That month is outside the available calendar window. The
@@ -188,6 +172,34 @@ export default async function CalendarPage({
         siteOrigin={origin?.origin ?? null}
         todayDate={todayDate}
       />
+
+      <nav className="calendar-view-switcher" aria-label="Calendar downloads">
+        <Link href="/events/calendar.ics">Download upcoming events (.ics)</Link>
+        <Link href="/events/events.csv">Download upcoming events (.csv)</Link>
+      </nav>
+
+      <section
+        className="calendar-home-introduction"
+        aria-labelledby="calendar-home-title"
+      >
+        <div>
+          <p className="section-kicker">New here?</p>
+          <h2 id="calendar-home-title">
+            Curious people, thoughtful gatherings.
+          </h2>
+        </div>
+        <div>
+          <p>
+            Vancouver Curiosity Club brings people together for talks, walks,
+            workshops, and other events for people who like learning out loud.
+          </p>
+          <p>
+            Visitors do not need an account. Open any event to use its official
+            signup and calendar links.
+          </p>
+          <Link href="/about">Learn about the club</Link>
+        </div>
+      </section>
 
       <CalendarSourceStatus sync={sync} />
     </main>

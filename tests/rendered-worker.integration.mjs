@@ -507,12 +507,19 @@ test("the built public root is indexable and carries the production security con
     html,
     /name="description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
   );
-  assert.match(html, /A social calendar with a brain\./u);
-  assert.match(html, /View the calendar/u);
-  assert.match(html, /website does not create visitor accounts\./u);
-  assert.match(html, /The next events/u);
+  assert.match(html, /Month at a glance/u);
+  assert.match(html, /public-calendar__grid/u);
+  assert.match(html, /Curious people, thoughtful gatherings\./u);
+  assert.match(html, /Visitors do not need an account\./u);
+  assert.match(html, /Download upcoming events \(\.ics\)/u);
+  assert.match(html, /id="public-calendar-title"/u);
+  assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
+  assert.ok(
+    html.indexOf("public-calendar__grid") <
+      html.indexOf("Download upcoming events (.ics)"),
+  );
+  assert.doesNotMatch(html, /<h1>Calendar<\/h1>/u);
   assert.doesNotMatch(html, /The event lanes/u);
-  assert.match(html, /\bclass="[^"]*\bhome-invitation\b[^"]*"/u);
   assert.ok(
     robotsMetaContents(html).every(
       (content) => !robotsTokens(content).includes("noindex"),
@@ -697,7 +704,7 @@ test("Events renders the same canonical calendar-first destination", async () =>
     html,
     /rel="canonical" href="https:\/\/preview\.example\/calendar"/iu,
   );
-  assert.match(html, /See the month at a glance/u);
+  assert.match(html, /Month at a glance/u);
   assert.doesNotMatch(html, /Find your next field note|Apply filters/u);
   assertSharedChrome(html);
   assertNoPrivateSentinels(html);
@@ -821,10 +828,11 @@ test("Calendar is an indexable month-at-a-glance public destination", async () =
   );
   assert.match(html, /Month at a glance/u);
   assert.match(html, /public-calendar__grid/u);
-  assert.match(html, /website does not create visitor accounts\./u);
-  assert.match(html, /one-tap calendar options/u);
-  assert.match(html, /Upcoming iCalendar/u);
-  assert.doesNotMatch(html, /Add to calendar/u);
+  assert.match(html, /Visitors do not need an account\./u);
+  assert.match(html, /Download upcoming events \(\.ics\)/u);
+  assert.match(html, /<h1 id="public-calendar-title">/u);
+  assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
+  assert.doesNotMatch(html, /<h1>Calendar<\/h1>/u);
   assert.doesNotMatch(html, /List and filters/u);
   assertNoPrivateSentinels(html);
 

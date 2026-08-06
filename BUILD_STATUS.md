@@ -1,6 +1,6 @@
 # Vancouver Curiosity Club — Build Status
 
-Last updated: 2026-07-31 (America/Vancouver)
+Last updated: 2026-08-06 (America/Vancouver)
 
 ## Active phase and release state
 
@@ -105,7 +105,7 @@ Verification at this checkpoint:
 
 The deployment originally preserved custom access revision 1. After the Owner
 explicitly continued with public launch, Sites access revision 2 changed only
-the visitor access mode to `public`. Version 15, its source/content hash,
+the visitor access mode to `public`. Version 16, its source/content hash,
 runtime revision 1, the one project Owner, zero groups, no custom domain, no
 preview URL, and the existing `DB` / `MEDIA` bindings remain unchanged.
 Anonymous checks returned `200` for Home, Calendar, Events, robots, and sitemap;
@@ -113,6 +113,38 @@ one real event detail returned its exact Meetup destination plus Google and
 Apple/ICS calendar actions; `/organizer` still redirected to Sign in with
 ChatGPT, the organizer API returned `401`, and a guessed private-calendar token
 returned `404` with private/no-store/noindex protections.
+
+## Owner-directed calendar-as-home refinement (unpublished source checkpoint)
+
+Status: **Implemented and locally verified; not deployed.** The live public
+site remains exact Sites version 16 until a later explicitly authorized public
+deployment.
+
+- `/` now renders the month-at-a-glance calendar as the first substantive
+  content instead of the former introduction and four-event preview.
+- The visible month and year are the page's single `h1`; the redundant large
+  `Calendar` masthead is removed.
+- Month navigation, event titles, hover/focus/tap day detail, posters, Meetup
+  signup, and per-event calendar actions remain unchanged.
+- Calendar downloads and a short truthful club introduction follow the month
+  view instead of blocking it.
+- The header's Calendar destination is marked current on `/`. Public browsing
+  remains anonymous; Organizer Login and every organizer/API authorization
+  boundary remain unchanged.
+- Root brand metadata and Organization structured data remain present.
+
+Verification at this source checkpoint:
+
+- complete repository suite: 862/862 passed, 0 failed, 0 skipped;
+- focused calendar, foundation, and CMS contracts: 32/32 passed;
+- strict TypeScript: passed;
+- zero-warning lint: passed;
+- fresh production build: passed;
+- rendered Worker: 25/25 passed;
+- `git diff --check`: passed;
+- Sites version save: **Not run**;
+- production deployment: **Not run**;
+- live version 16: unchanged.
 
 ## Previous-phase preservation
 
@@ -804,8 +836,8 @@ Approved-real-artwork smoke remains **Awaiting owner smoke test**.
 ## Source, build, Sites, and live-state provenance
 
 The Phase 7 and Phase 8 lines below preserve their historical save-checkpoint
-state. Phase 9 deployed version 14; the later owner-directed calendar-first
-release is the current version-15 production state recorded afterward.
+state. Phase 9 deployed version 14; the later owner-directed month-calendar
+release is the current version-16 production state recorded afterward.
 
 - Phase 7 saved source commit: `f39fcb3fc6ab97a21fa8cc00d3b180f5ccf84842`
 - Phase 7 status-only ledger commit:
@@ -841,7 +873,7 @@ Current Sites identity:
 - project ID: `appgprj_6a62eaf79c4881919bb8e47998af851a`;
 - logical D1 binding: `DB`;
 - logical R2 binding: `MEDIA`;
-- live public version: 15;
+- live public version: 16;
 - access: public revision 2; one project Owner and zero groups;
 - custom domains: none;
 - preview URL: none;
