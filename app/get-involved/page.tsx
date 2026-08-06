@@ -2,8 +2,6 @@ import { notFound } from "next/navigation";
 import {
   buildEditorialMetadata,
   EditorialUnavailable,
-  hasCommunityLinksBlock,
-  loadCommunityDestinations,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { GetInvolvedRouteBody } from "@/app/_components/EditorialRouteBodies";
@@ -30,11 +28,8 @@ export default async function GetInvolvedPage() {
     return <EditorialUnavailable title="Get Involved" />;
   }
 
-  const destinations = hasCommunityLinksBlock(loaded.page)
-    ? null
-    : await loadCommunityDestinations(route);
   return (
-    <GetInvolvedRouteBody destinations={destinations} page={loaded.page}>
+    <GetInvolvedRouteBody page={loaded.page}>
       <PublicSubmissionForm formKey="volunteer" id="volunteer" />
       <PublicSubmissionForm formKey="partnership" id="partner" />
     </GetInvolvedRouteBody>

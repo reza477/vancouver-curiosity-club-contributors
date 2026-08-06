@@ -150,11 +150,12 @@ export function PublicSubmissionForm({
   return (
     <section
       className="public-submission"
+      data-form-key={formKey}
       id={id}
       aria-labelledby={`${idPrefix}-title`}
     >
       <div className="public-submission__heading">
-        <p className="section-kicker">Private organizer inbox</p>
+        <p className="section-kicker">Send this to the organizers</p>
         <h2 id={`${idPrefix}-title`}>{title}</h2>
         <p>{PUBLIC_FORM_PURPOSE_COPY}</p>
         <p>
@@ -396,8 +397,8 @@ export function PublicSubmissionForm({
             {loadingInstance
               ? "Preparing form..."
               : busy
-                ? "Storing..."
-                : "Store in private inbox"}
+                ? "Sending..."
+                : submitButtonLabel(formKey)}
           </button>
           <p
             className="public-submission__notice"
@@ -410,6 +411,19 @@ export function PublicSubmissionForm({
       )}
     </section>
   );
+}
+
+function submitButtonLabel(formKey: PublicFormKey): string {
+  switch (formKey) {
+    case "contact":
+      return "Send message";
+    case "volunteer":
+      return "Send volunteer interest";
+    case "host_event":
+      return "Send event idea";
+    case "partnership":
+      return "Send partnership idea";
+  }
 }
 
 function TextField({

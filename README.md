@@ -47,6 +47,30 @@ local poster variants. It was saved from exact pushed source
 rendered-Worker, artifact, and responsive-browser gates passed. It is not
 deployed; live production remains version 16.
 
+The 2026-08-06 owner-invoked reconciliation is a newer local-only candidate;
+it has not been saved as a Sites version or deployed. The authenticated Meetup
+inventory contained 42 current listings across the three confirmed groups. Of
+those, 38 retained exact numeric canonical event URLs and are represented in
+the curated workflow; four recurring listings redirected to alphanumeric
+canonical URLs and remain blocked rather than guessed. Three older records are
+also retained because the bounded source refresh did not complete cleanly
+enough to prove removal. The resulting manifest therefore contains 41 records
+and 41 verified local poster sets. Five lower-resolution Meetup originals are
+kept at their native 599-to-1129px width and are never enlarged. The hosted
+calendar remains the prior valid snapshot because schedule conflicts prevented
+activation; no deployment or access change was made.
+
+That same current candidate simplifies the visitor shell to three prominent
+destinations: **Calendar**, **About**, and **Contribute**. It removes the old
+Home invitation, attending-feel, and Community panels, sends the legacy
+`/community` address to `/get-involved`, and gives Contribute three direct
+paths for volunteering, event ideas, and venue/partnership offers. A public
+form commit stores the message in the private organizer inbox and creates
+eligible Owner/Administrator in-app notifications; it does not send email.
+When a Meetup refresh is already running, public calendar requests now render
+the last completed snapshot immediately instead of entering a busy redirect
+loop.
+
 ## Calendar-first public website
 
 The public website keeps the visitor path deliberately short:
@@ -63,14 +87,18 @@ The public website keeps the visitor path deliberately short:
   matched to exact Meetup event IDs; public pages do not hotlink them. A newly
   synced event uses approved site media or a controlled category illustration
   until its poster is deliberately added.
-- The current source candidate also contains 13 exact group-slug/event-ID
-  enrichment records across the three confirmed groups. These records become
+- The current local source candidate contains 41 exact group-slug/event-ID
+  enrichment records across the three confirmed groups, all with a verified
+  local Meetup poster copy. Five smaller originals stay at their native width
+  instead of being upscaled. These records become
   visible only when the ordinary completed-generation and public-publication
   checks already make that exact event eligible; they do not activate the
-  conflict-blocked main feed or imply that all 13 events are live.
+  conflict-blocked main feed or imply that all 41 events are live.
 - The application does not create visitor accounts. Organizer authentication
   remains a separate private workspace. Public pages are now available without
   sign-in; public access does not grant organizer membership or authorization.
+- The primary navigation is intentionally limited to Calendar, About, and
+  Contribute. The calendar remains the first and dominant public experience.
 
 The public routes include:
 
@@ -78,7 +106,6 @@ The public routes include:
 - `/calendar`
 - `/events` and `/events/[slug]`
 - `/clubs` and `/clubs/[slug]`
-- `/community`
 - `/about`
 - `/get-involved`
 - `/host-an-event`
@@ -87,6 +114,10 @@ The public routes include:
 - `/accessibility`
 - `/privacy`
 - a custom public 404, public-only sitemap, and restrictive robots rules
+
+The former `/community` address is retained only as a permanent compatibility
+redirect to `/get-involved`; it is not a separate navigation destination or
+sitemap page.
 
 The current source renders the same calendar-first month view at `/`,
 `/calendar`, and the older `/events` address, so visitors see the events
@@ -188,8 +219,10 @@ owner-reviewed cross-post alias model is added.
 
 Feed addresses remain private operator-entered D1 configuration. They are not
 committed, rendered, logged, placed in metadata, or derived from public group
-links. Sites does not guarantee a scheduler, so the application labels its
-manual and bounded refresh-on-view behavior honestly.
+links. Sites does not guarantee a scheduler. Opening a public calendar route
+automatically checks connected Meetup sources when their bounded refresh is
+due, and the Owner can also request a refresh explicitly. This is request-time
+maintenance, not a guaranteed daily background job.
 
 Meetup's official iCalendar export contains event titles, times, statuses, and
 event URLs, but it does not contain a poster-image field. The Owner explicitly
@@ -201,14 +234,15 @@ category artwork until a poster is deliberately added. The application does
 not scrape Meetup pages during a public request or claim a guaranteed daily
 background job.
 
-The current source candidate adds a separate owner-invoked maintenance tool for
-13 exact allowlisted public Meetup event pages. It verifies the canonical group
-slug plus numeric event ID, sanitizes attendee-visible description and venue
-facts, rejects private credentials and email addresses, verifies the exact
-high-resolution poster source, and writes local 480px, 960px, and up-to-1600px
-variants without upscaling. Existing owner-authored public summary,
-description, venue, and approved artwork always take precedence. Public
-requests never fetch or hotlink Meetup assets.
+The current local source candidate extends the separate owner-invoked
+maintenance tool to 41 exact allowlisted public Meetup event pages. It verifies
+the canonical group slug plus numeric event ID, sanitizes attendee-visible
+description and venue facts, rejects private credentials and email addresses,
+and validates the exact poster response. All 41 source images produce local
+responsive variants without upscaling; five smaller originals are capped at
+their native width on the event-detail page. Existing
+owner-authored public summary, description, venue, and approved artwork always
+take precedence. Public requests never fetch or hotlink Meetup assets.
 
 The repeatable operator instructions are in the
 [Meetup calendar reconciliation prompt](docs/meetup-calendar-reconciliation-prompt.md).
@@ -496,11 +530,12 @@ stays absent until explicitly published. Permanent page and club redirects
 resolve only to a current, same-organization published target, so unpublishing
 never creates a redirect to a 404.
 
-Published navigation preserves the validated labels and order while retaining
-every required header, footer, policy, and Organizer Login destination.
-Organizer Login cannot be renamed, removed, or repointed. Duplicate
-placement-and-target pairs are rejected, and optional-item limits reserve room
-for all required links.
+Published navigation data remains validated for safe footer and CMS use. The
+current public header deliberately fixes the three Owner-selected destinations
+to Calendar, About, and Contribute so CMS navigation edits cannot make that
+primary path complicated again. Organizer Login remains in the footer and
+cannot be renamed, removed, or repointed. Duplicate placement-and-target pairs
+are rejected, and optional-item limits reserve room for required links.
 
 The existing `MEDIA` R2 binding now stores immutable image bytes. D1 remains
 authoritative for metadata, opaque object keys, responsive WebP variants,
@@ -552,10 +587,11 @@ The only Phase 6 migration is
 `0015_phase6_cms_media.sql`. It is additive, retry-safe, partial-prefix safe,
 and Sites tokenizer-compatible. Runtime guards remain fail-closed and healthy
 verification is consolidated so complete Worker routes stay within D1's
-50-statement invocation limit. Request-driven scheduled publication and Meetup
-refresh use bounded redirect-before-render maintenance invocations rather than
-sharing the database budget with a full public render. There is no cron or
-realtime claim.
+50-statement invocation limit. Request-driven scheduled publication and an
+attempted Meetup refresh use bounded maintenance invocations rather than sharing
+the database budget with a full public render. If another Meetup refresh is
+already running, the request renders the last completed snapshot without a
+redirect. There is no cron or realtime claim.
 
 See:
 
@@ -599,8 +635,9 @@ only their own read-only private calendar subscription.
 Contact, Volunteer, Host an Event, and Venue or Community Partnership forms
 store bounded plain-text submissions in the private organizer inbox. The
 workflow supports assignment, canonical statuses, append-only notes, retention
-review, and Owner-only irreversible personal-content redaction. It sends no
-email or marketing enrollment.
+review, and Owner-only irreversible personal-content redaction. Eligible
+Owner/Administrator recipients receive an in-app notification only. The
+workflow sends no email and creates no marketing enrollment.
 
 Phase 7 uses one additive migration,
 `0016_phase7_import_export_forms.sql`, while runtime triggers continue through

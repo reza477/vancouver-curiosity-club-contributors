@@ -35,6 +35,39 @@ test("the Worker maintenance contract separates publication and Meetup refresh i
     );
   });
 
+  await t.test("a busy Meetup lease renders the last completed snapshot", async () => {
+    const trace = [];
+    const result = await maintenance(
+      trace,
+      publicationResult(),
+      meetupResult("busy"),
+    );
+    assert.deepEqual(result, { kind: "continue" });
+    assert.deepEqual(trace, ["publication", "meetup"]);
+  });
+
+  await t.test("completed Meetup attempts still redirect before rendering", async () => {
+    for (const outcome of [
+      "completed",
+      "partial",
+      "failed",
+      "not_modified",
+    ]) {
+      const trace = [];
+      const result = await maintenance(
+        trace,
+        publicationResult(),
+        meetupResult(outcome),
+      );
+      assert.deepEqual(
+        result,
+        { kind: "redirect", source: "meetup" },
+        outcome,
+      );
+      assert.deepEqual(trace, ["publication", "meetup"], outcome);
+    }
+  });
+
   await t.test("a due Meetup slice redirects before route rendering", async () => {
     const trace = [];
     const result = await maintenance(

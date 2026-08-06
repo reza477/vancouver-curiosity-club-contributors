@@ -1,5 +1,4 @@
 import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
-import { loadCommunityDestinations } from "@/app/_components/EditorialPage";
 import { StructuredData } from "@/app/_components/StructuredData";
 import CalendarPage from "@/app/calendar/page";
 import { SHIPPED_BRAND_NAME } from "@/lib/brand";
@@ -24,15 +23,14 @@ export function generateMetadata() {
 export default async function HomePage({
   searchParams,
 }: Readonly<{ searchParams: PageSearchParams }>) {
-  const calendar = await CalendarPage({ searchParams });
-  const [origin, destinations] = await Promise.all([
+  const [calendar, origin] = await Promise.all([
+    CalendarPage({ searchParams }),
     getTrustedRequestOrigin(),
-    loadCommunityDestinations("/"),
   ]);
   return (
     <>
       {calendar}
-      {origin && destinations.kind === "available" ? (
+      {origin ? (
         <StructuredData
           value={{
             "@context": "https://schema.org",
@@ -40,13 +38,6 @@ export default async function HomePage({
             name: SHIPPED_BRAND_NAME,
             url: publicUrl("/", origin),
             areaServed: { "@type": "City", name: "Vancouver" },
-            sameAs: destinations.links
-              .filter(
-                (link) =>
-                  link.linkType === "meetup_group" ||
-                  link.linkType === "social_profile",
-              )
-              .map((link) => link.url),
           }}
         />
       ) : null}

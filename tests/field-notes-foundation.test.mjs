@@ -44,8 +44,9 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     page,
     /import CalendarPage from "@\/app\/calendar\/page"/u,
   );
-  assert.match(page, /await CalendarPage\(\{ searchParams \}\)/u);
+  assert.match(page, /CalendarPage\(\{ searchParams \}\)/u);
   assert.match(page, /<StructuredData/u);
+  assert.doesNotMatch(page, /loadCommunityDestinations|sameAs/u);
   assert.match(homeData, /loadPublicCatalog/);
   assert.match(homeData, /getPublicPageContent/);
   assert.match(homeData, /queryPublicEvents/);
@@ -57,8 +58,20 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(layout, /<SiteHeader[\s\S]*brandName=\{shell\?\.brandName\}/);
   assert.match(layout, /<SiteFooter/);
   assert.match(header, /aria-label="Primary navigation"/);
+  assert.match(header, /\{ href: "\/calendar", label: "Calendar" \}/u);
+  assert.match(header, /\{ href: "\/about", label: "About" \}/u);
+  assert.match(header, /\{ href: "\/get-involved", label: "Contribute" \}/u);
+  assert.doesNotMatch(header, /\{ href: "\/community", label: "Community" \}/u);
+  assert.doesNotMatch(header, /<details|site-navigation/u);
   assert.doesNotMatch(header, /Organizer Login/);
   assert.match(footer, /Organizer Login/);
+  assert.doesNotMatch(footer, /\{ href: "\/community", label: "Community" \}/u);
+  assert.match(footer, /item\.href === "\/community"/u);
+  assert.doesNotMatch(
+    catalog,
+    /section\("(?:attending|invitation|community)"/u,
+  );
+  assert.match(homeRenderer, /REMOVED_HOME_SECTION_KEYS/u);
   assert.match(layout, /generateMetadata/);
   assert.match(layout, /const isUnknownPath = !isKnownApplicationPath/);
   assert.match(layout, /robots:\s*isUnknownPath/);
@@ -101,7 +114,6 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     ".agenda-card-meta .cancelled-badge",
     ".meetup-controls button:hover:not(:disabled)",
     ".status-chip--tentative",
-    ".home-invitation",
   ]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     assert.match(
@@ -112,6 +124,10 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
       ),
     );
   }
+  assert.match(
+    css,
+    /\.primary-nav a\[aria-current="page"\]\s*\{[^}]*background:\s*var\(--ink\);[^}]*color:\s*var\(--paper\);/su,
+  );
   for (const selector of [".cancellation-banner", ".public-error-state"]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     assert.match(

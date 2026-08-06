@@ -3,19 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef, type KeyboardEvent } from "react";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 const requiredNavigation = [
   { href: "/calendar", label: "Calendar" },
   { href: "/about", label: "About" },
-  { href: "/community", label: "Community" },
+  { href: "/get-involved", label: "Contribute" },
 ] as const;
 
 export function SiteHeader({
   brandName = "Vancouver Curiosity Club",
   logoAssetId = null,
-  navigation = [],
   privateMedia = false,
 }: Readonly<{
   brandName?: string;
@@ -23,31 +21,9 @@ export function SiteHeader({
   navigation?: readonly PublicNavigationItemDto[];
   privateMedia?: boolean;
 }>) {
-  const primaryNavigation = normalizedPrimaryNavigation(navigation);
-  const compactNavigation =
-    primaryNavigation.length > requiredNavigation.length ||
-    primaryNavigation.reduce(
-      (length, item) => length + item.label.length,
-      0,
-    ) > 72;
-  const mobileMenu = useRef<HTMLDetailsElement>(null);
-  const closeMobileMenu = () => {
-    if (mobileMenu.current) mobileMenu.current.open = false;
-  };
-  const closeMobileMenuWithEscape = (
-    event: KeyboardEvent<HTMLDetailsElement>,
-  ) => {
-    if (event.key !== "Escape" || !mobileMenu.current?.open) return;
-    event.preventDefault();
-    mobileMenu.current.open = false;
-    mobileMenu.current.querySelector("summary")?.focus();
-  };
+  const primaryNavigation = normalizedPrimaryNavigation();
   return (
-    <header
-      className={`site-header${
-        compactNavigation ? " site-header--compact-navigation" : ""
-      }`}
-    >
+    <header className="site-header">
       <Link
         className="wordmark"
         href="/"
@@ -76,41 +52,19 @@ export function SiteHeader({
       </Link>
 
       <nav
-        className="primary-nav primary-nav--desktop"
+        className="primary-nav"
         aria-label="Primary navigation"
       >
         <NavigationLinks navigation={primaryNavigation} />
       </nav>
-
-      <details
-        className="site-navigation"
-        onKeyDown={closeMobileMenuWithEscape}
-        ref={mobileMenu}
-      >
-        <summary>
-          <span>Menu</span>
-          <span className="nav-menu-icon" aria-hidden="true" />
-        </summary>
-        <nav
-          className="primary-nav primary-nav--mobile"
-          aria-label="Primary navigation menu"
-        >
-          <NavigationLinks
-            navigation={primaryNavigation}
-            onNavigate={closeMobileMenu}
-          />
-        </nav>
-      </details>
     </header>
   );
 }
 
 function NavigationLinks({
   navigation,
-  onNavigate,
 }: Readonly<{
   navigation: readonly PublicNavigationItemDto[];
-  onNavigate?: () => void;
 }>) {
   const pathname = usePathname();
   return (
@@ -123,15 +77,10 @@ function NavigationLinks({
                 ? "page"
                 : undefined
             }
-            className={[
-              item.href === "/calendar" ? "calendar-link" : "",
-              item.href === "/organizer" ? "portal-link" : "",
-            ]
-              .filter(Boolean)
-              .join(" ") || undefined}
+            className="primary-nav__link"
+            data-primary-destination={item.label.toLowerCase()}
             href={item.href}
             key={item.href}
-            onClick={onNavigate}
             prefetch={false}
           >
             {item.label}
@@ -140,7 +89,6 @@ function NavigationLinks({
           <a
             href={item.href}
             key={item.href}
-            onClick={onNavigate}
             rel="noreferrer noopener"
             target="_blank"
           >
@@ -153,20 +101,8 @@ function NavigationLinks({
   );
 }
 
-function normalizedPrimaryNavigation(
-  configured: readonly PublicNavigationItemDto[],
-): readonly PublicNavigationItemDto[] {
-  const configuredByHref = new Map(
-    configured.map((item) => [item.href, item]),
-  );
-  const required = requiredNavigation.map((item) => {
-    const configuredItem = configuredByHref.get(item.href);
-    if (item.href === "/calendar") {
-      return item;
-    }
-    return configuredItem ?? item;
-  });
-  return Object.freeze(required);
+function normalizedPrimaryNavigation(): readonly PublicNavigationItemDto[] {
+  return Object.freeze(requiredNavigation);
 }
 
 function isCurrentNavigationPath(
@@ -175,7 +111,12 @@ function isCurrentNavigationPath(
 ): boolean {
   return (
     href.startsWith("/") &&
-    ((href === "/calendar" && pathname === "/") ||
+    ((href === "/calendar" &&
+        (pathname === "/" ||
+          pathname === "/events" ||
+          pathname.startsWith("/events/"))) ||
+      (href === "/get-involved" &&
+        (pathname === "/contact" || pathname === "/host-an-event")) ||
       pathname === href ||
       pathname.startsWith(`${href}/`))
   );

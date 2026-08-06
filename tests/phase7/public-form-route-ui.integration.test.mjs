@@ -693,9 +693,11 @@ test(
       assert.ok(ids.includes(reference), `unresolved form id ${reference}`);
     }
     assert.equal(
-      countMatches(sharedFormsHtml, /Private organizer inbox/gu),
+      countMatches(sharedFormsHtml, /Send this to the organizers/gu),
       2,
     );
+    assert.match(sharedFormsHtml, /data-form-key="volunteer"/u);
+    assert.match(sharedFormsHtml, /data-form-key="partnership"/u);
     assert.equal(
       countMatches(
         sharedFormsHtml,
@@ -711,6 +713,10 @@ test(
     assert.equal(
       PUBLIC_FORM_SUCCESS_COPY,
       "Thanks — your submission was stored in the private organizer inbox.",
+    );
+    assert.doesNotMatch(
+      sharedFormsHtml,
+      /email (?:was|has been) sent|we (?:sent|emailed)|check your email/iu,
     );
 
     const privacyHtml = renderToStaticMarkup(
@@ -815,8 +821,10 @@ test(
         ),
       ],
     ];
+    let getInvolvedHtml = "";
     for (const [label, element] of routeRenders) {
       const html = await render(element);
+      if (label === "Get Involved") getInvolvedHtml = html;
       assert.equal(
         countMatches(html, /<main\b/gu),
         1,
@@ -828,6 +836,16 @@ test(
         `${label} must use the canonical editorial main`,
       );
     }
+    assert.match(getInvolvedHtml, /href="#volunteer"/u);
+    assert.match(getInvolvedHtml, />Volunteer</u);
+    assert.match(getInvolvedHtml, /href="\/host-an-event"/u);
+    assert.match(getInvolvedHtml, />Host an event</u);
+    assert.match(getInvolvedHtml, /href="#partner"/u);
+    assert.match(getInvolvedHtml, />Offer a venue or partnership</u);
+    assert.doesNotMatch(
+      getInvolvedHtml,
+      /community-destinations|confirmed group|Choose a community destination/iu,
+    );
 
     const formSource = source("app/_components/PublicSubmissionForm.tsx");
     assert.match(
@@ -864,6 +882,17 @@ test(
     );
     assert.match(formSource, /href=\{`#\$\{errorTargetId/u);
     assert.match(formSource, /<Link href="\/privacy">Privacy notice<\/Link>/u);
+    assert.match(formSource, /data-form-key=\{formKey\}/u);
+    assert.match(formSource, /Send this to the organizers/u);
+    for (const label of [
+      "Send message",
+      "Send volunteer interest",
+      "Send event idea",
+      "Send partnership idea",
+    ]) {
+      assert.match(formSource, new RegExp(escapeRegex(label), "u"));
+    }
+    assert.doesNotMatch(formSource, /Store in private inbox/u);
     assert.match(formSource, /"Preparing form\.\.\."/u);
     assert.doesNotMatch(formSource, /Preparing secure form/u);
     assert.doesNotMatch(
@@ -887,6 +916,10 @@ test(
       `${relevantSource}\n${sharedFormsHtml}\n${privacyHtml}`,
       /Stored securely/iu,
     );
+    assert.doesNotMatch(
+      `${relevantSource}\n${sharedFormsHtml}\n${privacyHtml}`,
+      /email (?:was|has been) sent|we (?:sent|emailed)|check your email/iu,
+    );
 
     for (const [path, wrapper] of [
       ["app/contact/page.tsx", "ContactRouteBody"],
@@ -897,7 +930,21 @@ test(
       const pageSource = source(path);
       assert.match(pageSource, new RegExp(`<${wrapper}\\b`, "u"));
       assert.doesNotMatch(pageSource, /<main\b/u);
+      if (path !== "app/privacy/page.tsx") {
+        assert.doesNotMatch(
+          pageSource,
+          /CommunityDestinations|loadCommunityDestinations|hasCommunityLinksBlock/u,
+        );
+      }
     }
+
+    const routeBodiesSource = source(
+      "app/_components/EditorialRouteBodies.tsx",
+    );
+    assert.doesNotMatch(
+      routeBodiesSource,
+      /<CommunityDestinations|<CommunityDestinationsUnavailable|<Destinations/u,
+    );
   },
 );
 

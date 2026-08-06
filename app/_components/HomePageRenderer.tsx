@@ -34,7 +34,8 @@ export async function HomePageRenderer({
   const sections = page.sections.filter(
     (section) =>
       section !== hero &&
-      normalizedType(section) !== "featured-events",
+      normalizedType(section) !== "featured-events" &&
+      !REMOVED_HOME_SECTION_KEYS.has(section.key),
   );
   const renderContext = await loadEditorialRenderContext({
     page,
@@ -100,41 +101,10 @@ export async function HomePageRenderer({
         )}
       </section>
 
-      {catalog.communityLinks.length > 0 ? (
-        <section
-          aria-labelledby="home-community-title"
-          className="home-community home-community-links"
-        >
-          <div>
-            <p className="section-kicker">Official destinations</p>
-            <h2 id="home-community-title">Follow the club elsewhere</h2>
-            <p>
-              Event signup stays on the official platform listed for that
-              event. These are the club&apos;s confirmed public pages.
-            </p>
-          </div>
-          <ul>
-            {catalog.communityLinks.slice(0, 6).map((link) => (
-              <li key={link.url}>
-                <a
-                  href={link.url}
-                  rel="noreferrer noopener"
-                  target="_blank"
-                >
-                  {link.label}
-                  <span className="sr-only"> (opens in a new tab)</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
       {sections.length > 0 ? (
         <div className="home-cms-sections">
           {sections.map((section) => (
             <HomeSection
-              catalog={catalog}
               key={section.key}
               renderContext={renderContext}
               section={section}
@@ -169,70 +139,22 @@ export async function HomePageRenderer({
 }
 
 function HomeSection({
-  catalog,
   renderContext,
   section,
 }: Readonly<{
-  catalog: PublicCatalogDto;
   renderContext: Awaited<ReturnType<typeof loadEditorialRenderContext>>;
   section: PublicPageSectionDto;
 }>) {
-  if (section.key === "attending") {
-    return (
-      <section className="attending-note" aria-labelledby="attending-title">
-        <div>
-          <p className="section-kicker">What attending feels like</p>
-          <h2 id="attending-title">
-            {section.content.heading ?? "Come with a question."}
-          </h2>
-        </div>
-        <div>
-          {section.content.text ? <p>{section.content.text}</p> : null}
-          {section.content.paragraphs?.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
-        </div>
-      </section>
-    );
-  }
-  if (section.key === "invitation") {
-    return (
-      <section className="home-invitation" aria-labelledby="invitation-title">
-        <div>
-          <p className="section-kicker">Make the calendar with us</p>
-          <h2 id="invitation-title">
-            {section.content.heading ?? "Bring something to the club."}
-          </h2>
-          {section.content.text ? <p>{section.content.text}</p> : null}
-        </div>
-        <div className="home-invitation__actions">
-          <Link href="/get-involved">Volunteer, host, or partner</Link>
-          <Link href="/community">Find the community</Link>
-          <Link href="/organizer">Organizer Login</Link>
-        </div>
-      </section>
-    );
-  }
-  if (section.key === "community") {
-    return (
-      <section className="home-community" aria-labelledby="community-title">
-        <div>
-          <p className="section-kicker">Community</p>
-          <h2 id="community-title">
-            {section.content.heading ?? "Confirmed group destinations"}
-          </h2>
-          {section.content.text ? <p>{section.content.text}</p> : null}
-        </div>
-        {catalog.communityLinks.length === 0 ? (
-          <p>No confirmed public community destination is listed yet.</p>
-        ) : null}
-      </section>
-    );
-  }
   return (
     <EditorialSection renderContext={renderContext} section={section} />
   );
 }
+
+const REMOVED_HOME_SECTION_KEYS = new Set([
+  "attending",
+  "invitation",
+  "community",
+]);
 
 function normalizedType(section: PublicPageSectionDto) {
   return section.type.replaceAll("_", "-");

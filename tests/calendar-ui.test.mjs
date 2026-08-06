@@ -10,26 +10,38 @@ import {
 const projectRoot = new URL("../", import.meta.url);
 
 test("homepage is the bounded month calendar before every secondary section", async () => {
-  const [page, calendar, month, header, catalog, styles] = await Promise.all([
-    readFile(new URL("app/page.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/_components/PublicMonthCalendar.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/_components/SiteHeader.tsx", projectRoot), "utf8"),
-    readFile(
-      new URL("lib/server/public/catalog-definitions.ts", projectRoot),
-      "utf8",
-    ),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
-  ]);
+  const [page, calendar, month, header, catalog, homeRenderer, styles] =
+    await Promise.all([
+      readFile(new URL("app/page.tsx", projectRoot), "utf8"),
+      readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
+      readFile(
+        new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(
+        new URL("app/_components/SiteHeader.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(
+        new URL("lib/server/public/catalog-definitions.ts", projectRoot),
+        "utf8",
+      ),
+      readFile(
+        new URL("app/_components/HomePageRenderer.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    ]);
 
   assert.match(
     page,
     /import CalendarPage from "@\/app\/calendar\/page"/u,
   );
-  assert.match(page, /await CalendarPage\(\{ searchParams \}\)/u);
+  assert.match(page, /CalendarPage\(\{ searchParams \}\)/u);
   assert.match(page, /path:\s*"\/"/u);
   assert.match(page, /slug:\s*"home"/u);
   assert.match(page, /<StructuredData/u);
+  assert.doesNotMatch(page, /loadCommunityDestinations|sameAs/u);
   assert.match(calendar, /<PublicMonthCalendar/u);
   assert.doesNotMatch(calendar, /<h1>Calendar<\/h1>/u);
   assert.doesNotMatch(calendar, /className="public-calendar-intro"/u);
@@ -43,13 +55,28 @@ test("homepage is the bounded month calendar before every secondary section", as
     calendar.indexOf('className="calendar-view-switcher"') <
       calendar.indexOf('className="calendar-home-introduction"'),
   );
-  assert.match(header, /href === "\/calendar" && pathname === "\/"/u);
+  assert.match(
+    header,
+    /href === "\/calendar"[\s\S]*?pathname === "\/"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)/u,
+  );
   assert.match(styles, /\.calendar-home-introduction\s*\{/u);
   assert.match(
     styles,
     /@media \(max-width:\s*52rem\)[\s\S]*?\.calendar-home-introduction,[\s\S]*?grid-template-columns:\s*1fr/u,
   );
   assert.match(catalog, /A social calendar with a brain\./);
+  assert.doesNotMatch(
+    catalog,
+    /section\("(?:attending|invitation|community)"/u,
+  );
+  assert.match(
+    homeRenderer,
+    /REMOVED_HOME_SECTION_KEYS = new Set\(\[\s*"attending",\s*"invitation",\s*"community",\s*\]\)/u,
+  );
+  assert.doesNotMatch(
+    homeRenderer,
+    /What attending feels like|Make the calendar with us|Follow the club elsewhere|Find the community/u,
+  );
   assert.doesNotMatch(
     `${page}\n${calendar}`,
     /sampleEvents|fictional examples/i,
@@ -442,7 +469,7 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
   );
 });
 
-test("narrow navigation prioritizes the three simple public destinations and keeps organizer login in the footer", async () => {
+test("the three public destinations stay visible and Community is absent from shared navigation", async () => {
   const [header, footer, css] = await Promise.all([
     readFile(
       new URL("app/_components/SiteHeader.tsx", projectRoot),
@@ -455,16 +482,19 @@ test("narrow navigation prioritizes the three simple public destinations and kee
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
-  for (const destination of [
-    "/calendar",
-    "/community",
-    "/about",
+  for (const [href, label] of [
+    ["/calendar", "Calendar"],
+    ["/about", "About"],
+    ["/get-involved", "Contribute"],
   ]) {
     assert.match(
       header,
-      new RegExp(`href:\\s*"${destination}"|href="${destination}"`),
+      new RegExp(`\\{ href: "${href}", label: "${label}" \\}`, "u"),
     );
   }
+  assert.doesNotMatch(header, /\{ href: "\/community", label: "Community" \}/u);
+  assert.doesNotMatch(footer, /\{ href: "\/community", label: "Community" \}/u);
+  assert.match(footer, /item\.href === "\/community"/u);
   assert.doesNotMatch(header, /\{ href: "\/events", label: "Events" \}/u);
   assert.doesNotMatch(
     header,
@@ -472,22 +502,22 @@ test("narrow navigation prioritizes the three simple public destinations and kee
   );
   assert.match(footer, /<Link href="\/organizer" prefetch=\{false\}>/u);
   assert.match(footer, /Organizer Login/u);
-  assert.match(header, /className="site-navigation"/);
-  assert.match(header, /<summary>/);
-  assert.match(header, /onKeyDown=\{closeMobileMenuWithEscape\}/);
-  assert.match(header, /mobileMenu\.current\.open = false/);
-  assert.match(header, /querySelector\("summary"\)\?\.focus\(\)/);
-  assert.match(header, /onClick=\{onNavigate\}/);
-  assert.match(header, /return Object\.freeze\(required\)/u);
-  assert.match(css, /@media \(max-width: 70rem\)/u);
-  assert.match(css, /\.site-navigation > \.primary-nav\s*\{/);
+  assert.match(header, /className="primary-nav"/u);
+  assert.match(header, /className="primary-nav__link"/u);
+  assert.doesNotMatch(header, /<details|<summary|site-navigation/u);
+  assert.match(header, /return Object\.freeze\(requiredNavigation\)/u);
   assert.match(
     css,
-    /\.site-navigation > \.primary-nav \.portal-link\s*\{[\s\S]*?grid-column:\s*1 \/ -1/,
+    /\.primary-nav\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/su,
   );
-  assert.doesNotMatch(
+  assert.match(
     css,
-    /\.portal-link\s*\{[^}]*display:\s*none/u,
+    /\.primary-nav a\s*\{[^}]*min-height:\s*3rem;/su,
+  );
+  assert.match(css, /@media \(max-width: 70rem\)/u);
+  assert.match(
+    css,
+    /@media \(max-width: 70rem\)[\s\S]*?\.primary-nav\s*\{[^}]*width:\s*100%;/u,
   );
 });
 

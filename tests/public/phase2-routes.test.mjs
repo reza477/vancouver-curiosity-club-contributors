@@ -33,15 +33,26 @@ test("Phase 2 exposes the complete public route contract", async () => {
     requiredPublicRoutes.map((path) => access(new URL(path, projectRoot))),
   );
 
-  const [header, footer, layout] = await Promise.all([
-    readFile(new URL("app/_components/SiteHeader.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/_components/SiteFooter.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/layout.tsx", projectRoot), "utf8"),
-  ]);
+  const [header, footer, layout, community, home, homeRenderer, catalog] =
+    await Promise.all([
+      readFile(new URL("app/_components/SiteHeader.tsx", projectRoot), "utf8"),
+      readFile(new URL("app/_components/SiteFooter.tsx", projectRoot), "utf8"),
+      readFile(new URL("app/layout.tsx", projectRoot), "utf8"),
+      readFile(new URL("app/community/page.tsx", projectRoot), "utf8"),
+      readFile(new URL("app/page.tsx", projectRoot), "utf8"),
+      readFile(
+        new URL("app/_components/HomePageRenderer.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(
+        new URL("lib/server/public/catalog-definitions.ts", projectRoot),
+        "utf8",
+      ),
+    ]);
   for (const [href, label] of [
     ["/calendar", "Calendar"],
-    ["/community", "Community"],
     ["/about", "About"],
+    ["/get-involved", "Contribute"],
   ]) {
     assert.match(header, new RegExp(`href[:=]\\s*["']${href}["']|href:\\s*["']${href}["']`));
     assert.match(header, new RegExp(label));
@@ -49,7 +60,6 @@ test("Phase 2 exposes the complete public route contract", async () => {
   for (const href of [
     "/calendar",
     "/clubs",
-    "/community",
     "/about",
     "/get-involved",
     "/contact",
@@ -63,6 +73,21 @@ test("Phase 2 exposes the complete public route contract", async () => {
       new RegExp(`href[:=]\\s*["']${href}["']|href:\\s*["']${href}["']`),
     );
   }
+  assert.doesNotMatch(header, /\{ href: "\/community", label: "Community" \}/u);
+  assert.doesNotMatch(footer, /\{ href: "\/community", label: "Community" \}/u);
+  assert.match(footer, /item\.href === "\/community"/u);
+  assert.match(community, /permanentRedirect\("\/get-involved"\)/u);
+  assert.doesNotMatch(community, /loadEditorialPage|loadCommunityDestinations/u);
+  assert.doesNotMatch(home, /loadCommunityDestinations|sameAs/u);
+  assert.doesNotMatch(
+    catalog,
+    /section\("(?:attending|invitation|community)"/u,
+  );
+  assert.match(homeRenderer, /REMOVED_HOME_SECTION_KEYS/u);
+  assert.doesNotMatch(
+    homeRenderer,
+    /What attending feels like|Make the calendar with us|Find the community/u,
+  );
   assert.match(layout, /<SiteHeader[\s\S]*brandName=\{shell\?\.brandName\}/u);
   assert.match(layout, /<SiteFooter/u);
   assert.match(layout, /Skip to main content/u);

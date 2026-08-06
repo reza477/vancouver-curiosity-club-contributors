@@ -121,10 +121,6 @@ export async function PublicPreviewShell({
       </div>
       <SiteFooter
         brandName={shell.site.brandName}
-        externalLinks={shell.communityLinks.map((link) => ({
-          href: link.url,
-          label: link.label,
-        }))}
         legalFooter={shell.site.legalFooter}
         location={shell.site.locationLabel}
         mission={shell.site.footerMission}
@@ -198,16 +194,9 @@ async function PreviewEntityBody({
         />
       );
     }
-    const destinations = hasCommunityLinksBlock(page)
-      ? null
-      : Object.freeze({
-          kind: "available" as const,
-          links: catalog.communityLinks,
-        });
     if (snapshot.slug === "get-involved") {
       return (
         <GetInvolvedRouteBody
-          destinations={destinations}
           page={page}
           previewCommunityLinks={catalog.communityLinks}
           previewMediaAssets={preview.mediaAssets}
@@ -218,7 +207,6 @@ async function PreviewEntityBody({
     if (snapshot.slug === "contact") {
       return (
         <ContactRouteBody
-          destinations={destinations}
           page={page}
           previewCommunityLinks={catalog.communityLinks}
           previewMediaAssets={preview.mediaAssets}
@@ -229,7 +217,6 @@ async function PreviewEntityBody({
     if (snapshot.slug === "host-an-event") {
       return (
         <HostAnEventRouteBody
-          destinations={destinations}
           page={page}
           previewCommunityLinks={catalog.communityLinks}
           previewMediaAssets={preview.mediaAssets}

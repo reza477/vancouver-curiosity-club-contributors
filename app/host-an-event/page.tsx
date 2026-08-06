@@ -2,8 +2,6 @@ import { notFound } from "next/navigation";
 import {
   buildEditorialMetadata,
   EditorialUnavailable,
-  hasCommunityLinksBlock,
-  loadCommunityDestinations,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { HostAnEventRouteBody } from "@/app/_components/EditorialRouteBodies";
@@ -32,9 +30,6 @@ export default async function HostAnEventPage() {
     return <EditorialUnavailable title="Host an Event" />;
   }
 
-  const destinations = hasCommunityLinksBlock(loaded.page)
-    ? null
-    : await loadCommunityDestinations(route);
   let choices: Awaited<
     ReturnType<typeof listPublicFormClubProgramChoices>
   > = [];
@@ -46,7 +41,7 @@ export default async function HostAnEventPage() {
     choices = [];
   }
   return (
-    <HostAnEventRouteBody destinations={destinations} page={loaded.page}>
+    <HostAnEventRouteBody page={loaded.page}>
       <PublicSubmissionForm choices={choices} formKey="host_event" />
     </HostAnEventRouteBody>
   );

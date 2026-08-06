@@ -21,7 +21,6 @@ const PUBLIC_PAGE_PATHS = new Map([
   ["home", "/"],
   ["events", "/calendar"],
   ["clubs", "/clubs"],
-  ["community", "/community"],
   ["about", "/about"],
   ["get-involved", "/get-involved"],
   ["host-an-event", "/host-an-event"],

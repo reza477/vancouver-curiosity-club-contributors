@@ -31,7 +31,7 @@ export type CuratedMeetupEventEnrichment = Readonly<{
       medium: CuratedMeetupPosterVariant;
       small: CuratedMeetupPosterVariant;
     }>;
-  }>;
+  }> | null;
   summary: string;
   venue: Readonly<{
     address: string | null;
@@ -105,12 +105,7 @@ export function validateCuratedMeetupEventCandidate(
       candidate.groupSlug as AllowedMeetupGroupSlug,
     ) ||
     candidate.eventUrl !==
-      `https://www.meetup.com/${candidate.groupSlug}/events/${candidate.eventId}/` ||
-    !/^https:\/\/secure\.meetupstatic\.com\/photos\/event\/[0-9a-f/]+\/highres_[0-9]+\.jpe?g$/iu.test(
-      candidate.poster.sourceUrl,
-    ) ||
-    candidate.poster.sourceWidth < 1_200 ||
-    candidate.poster.sourceHeight < 600
+      `https://www.meetup.com/${candidate.groupSlug}/events/${candidate.eventId}/`
   ) {
     throw new Error(`Invalid curated Meetup event ${candidate.eventId}.`);
   }
@@ -126,50 +121,73 @@ export function validateCuratedMeetupEventCandidate(
     20_000,
     10,
   );
-  const altText = normalizePublicSafeSingleLine(
-    candidate.poster.altText,
-    "poster alt text",
-    300,
-  );
-  const credit = normalizePublicSafeSingleLine(
-    candidate.poster.credit,
-    "poster credit",
-    300,
-  );
-  for (const [size, variant] of Object.entries(
-    candidate.poster.variants,
-  )) {
-    if (
-      !["small", "medium", "large"].includes(size) ||
-      variant.width < 1 ||
-      variant.height < 1 ||
-      variant.width > candidate.poster.sourceWidth ||
-      variant.height > candidate.poster.sourceHeight ||
-      !new RegExp(
-        `^/event-posters/meetup-${candidate.eventId}(?:-[0-9]+)?\\.jpeg$`,
-        "u",
-      ).test(variant.localPath)
-    ) {
-      throw new Error(`Invalid curated Meetup poster ${candidate.eventId}.`);
-    }
-  }
+  const poster = candidate.poster === null
+    ? null
+    : validateCuratedMeetupPoster(candidate.eventId, candidate.poster);
   const venue = normalizePublicVenue(candidate.venue);
   return Object.freeze({
     ...candidate,
     description,
     groupSlug: candidate.groupSlug as AllowedMeetupGroupSlug,
-    poster: Object.freeze({
-      ...candidate.poster,
-      altText,
-      credit,
-      variants: Object.freeze({
-        large: Object.freeze(candidate.poster.variants.large),
-        medium: Object.freeze(candidate.poster.variants.medium),
-        small: Object.freeze(candidate.poster.variants.small),
-      }),
-    }),
+    poster,
     summary,
     venue,
+  });
+}
+
+function validateCuratedMeetupPoster(
+  eventId: string,
+  candidate: Exclude<
+    (typeof generatedManifest.events)[number]["poster"],
+    null
+  >,
+): NonNullable<CuratedMeetupEventEnrichment["poster"]> {
+  const sourceAspectRatio = candidate.sourceWidth / candidate.sourceHeight;
+  if (
+    !/^https:\/\/secure\.meetupstatic\.com\/photos\/event\/[0-9a-f/]+\/highres_[0-9]+\.jpe?g$/iu.test(
+      candidate.sourceUrl,
+    ) ||
+    candidate.sourceWidth < 480 ||
+    candidate.sourceHeight < 270 ||
+    sourceAspectRatio < 1.7 ||
+    sourceAspectRatio > 1.82
+  ) {
+    throw new Error(`Invalid curated Meetup poster ${eventId}.`);
+  }
+  const altText = normalizePublicSafeSingleLine(
+    candidate.altText,
+    "poster alt text",
+    300,
+  );
+  const credit = normalizePublicSafeSingleLine(
+    candidate.credit,
+    "poster credit",
+    300,
+  );
+  for (const [size, variant] of Object.entries(candidate.variants)) {
+    if (
+      !["small", "medium", "large"].includes(size) ||
+      variant.width < 1 ||
+      variant.height < 1 ||
+      variant.width > candidate.sourceWidth ||
+      variant.height > candidate.sourceHeight ||
+      !new RegExp(
+        `^/event-posters/meetup-${eventId}(?:-[0-9]+)?\\.jpeg$`,
+        "u",
+      ).test(variant.localPath)
+    ) {
+      throw new Error(`Invalid curated Meetup poster ${eventId}.`);
+    }
+  }
+  return Object.freeze({
+    ...candidate,
+    altText,
+    credit,
+    variants: Object.freeze({
+      large: Object.freeze(candidate.variants.large),
+      medium: Object.freeze(candidate.variants.medium),
+      small: Object.freeze(candidate.variants.small),
+    }),
   });
 }
 

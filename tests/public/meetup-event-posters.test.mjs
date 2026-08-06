@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 import sharp from "sharp";
 import {
@@ -16,11 +16,66 @@ import {
   toPublicEventDetailDto,
 } from "../../lib/server/public/events.ts";
 
+const EXPECTED_ENRICHMENT_EVENT_IDS = Object.freeze([
+  "315294572",
+  "315294577",
+  "315294587",
+  "315508432",
+  "315508537",
+  "315510842",
+  "315511475",
+  "315511480",
+  "315511485",
+  "315560589",
+  "315561268",
+  "315592402",
+  "315675534",
+  "315675704",
+  "315723559",
+  "315772444",
+  "315772533",
+  "315772658",
+  "315772775",
+  "315772811",
+  "315772829",
+  "315772917",
+  "315777434",
+  "315793227",
+  "315823022",
+  "315823081",
+  "315823229",
+  "315823623",
+  "315837612",
+  "315837649",
+  "315851485",
+  "315851495",
+  "315886330",
+  "315892763",
+  "315936856",
+  "315961874",
+  "315962265",
+  "315963468",
+  "315969091",
+  "315976207",
+  "315993304",
+]);
+
+const EXPECTED_CATEGORY_FALLBACK_EVENT_IDS = Object.freeze([]);
+
 test("the current published Meetup events use bundled poster copies", async () => {
   const posters = Object.values(CURATED_MEETUP_EVENT_POSTERS);
-  assert.equal(posters.length, 13);
+  const expectedPosterEventIds = EXPECTED_ENRICHMENT_EVENT_IDS.filter(
+    (eventId) => !EXPECTED_CATEGORY_FALLBACK_EVENT_IDS.includes(eventId),
+  );
+  assert.deepEqual(
+    posters.map((poster) => poster.eventId).sort(),
+    expectedPosterEventIds,
+  );
 
   for (const poster of posters) {
+    const enrichment = CURATED_MEETUP_EVENT_ENRICHMENTS[poster.eventId];
+    assert.ok(enrichment, poster.eventId);
+    assert.ok(enrichment.poster, poster.eventId);
     for (const [localPath, expectedWidth, expectedHeight] of [
       [poster.smallPath, poster.smallWidth, poster.smallHeight],
       [poster.mediumPath, poster.mediumWidth, poster.mediumHeight],
@@ -45,22 +100,40 @@ test("the current published Meetup events use bundled poster copies", async () =
       assert.equal(metadata.width, expectedWidth, localPath);
       assert.equal(metadata.height, expectedHeight, localPath);
     }
-    assert.ok(poster.width >= 1_536, poster.eventId);
-    assert.equal(poster.smallWidth, 480, poster.eventId);
-    assert.equal(poster.mediumWidth, 960, poster.eventId);
+    assert.equal(poster.width, Math.min(1_600, enrichment.poster.sourceWidth));
+    assert.equal(
+      poster.smallWidth,
+      Math.min(480, enrichment.poster.sourceWidth),
+      poster.eventId,
+    );
+    assert.equal(
+      poster.mediumWidth,
+      Math.min(960, enrichment.poster.sourceWidth),
+      poster.eventId,
+    );
     assert.match(
       poster.sourceUrl,
       /^https:\/\/secure\.meetupstatic\.com\/photos\/event\/.+\/highres_/u,
       poster.eventId,
     );
-    const enrichment = CURATED_MEETUP_EVENT_ENRICHMENTS[poster.eventId];
-    assert.ok(enrichment, poster.eventId);
     assert.equal(
       curatedMeetupPosterForEventUrl(enrichment.eventUrl),
       poster,
       poster.eventId,
     );
   }
+
+  const managedPosterFiles = (await readdir(
+    new URL("../../public/event-posters/", import.meta.url),
+  )).filter((filename) =>
+    /^meetup-[0-9]+(?:-(?:480|960))?\.jpeg$/u.test(filename),
+  ).sort();
+  const expectedManagedPosterFiles = posters.flatMap((poster) => [
+    poster.localPath.split("/").at(-1),
+    poster.mediumPath.split("/").at(-1),
+    poster.smallPath.split("/").at(-1),
+  ]).sort();
+  assert.deepEqual(managedPosterFiles, expectedManagedPosterFiles);
 
   assert.equal(
     curatedMeetupPosterForEventUrl(
@@ -80,6 +153,21 @@ test("the current published Meetup events use bundled poster copies", async () =
     ),
     null,
   );
+});
+
+test("event details do not enlarge a copied poster beyond its verified source width", async () => {
+  const renderer = await readFile(
+    new URL(
+      "../../app/_components/PublicEventDetailRenderer.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(
+    renderer,
+    /maxWidth:\s*`\$\{event\.artwork\.dimensions\.large\.width\}px`/u,
+  );
+  assert.match(renderer, /marginInline:\s*"auto"/u);
 });
 
 test("the Cicero listing resolves to its real local poster", () => {
@@ -210,7 +298,10 @@ test("verified Meetup content fills only missing public fields", () => {
 
 test("the generated enrichment manifest is bounded and public safe", () => {
   const events = Object.values(CURATED_MEETUP_EVENT_ENRICHMENTS);
-  assert.equal(events.length, 13);
+  assert.deepEqual(
+    events.map((event) => event.eventId).sort(),
+    EXPECTED_ENRICHMENT_EVENT_IDS,
+  );
   for (const event of events) {
     assert.equal(curatedMeetupEventForEventUrl(event.eventUrl), event);
     assert.ok(event.summary.length >= 10 && event.summary.length <= 500);
@@ -220,8 +311,8 @@ test("the generated enrichment manifest is bounded and public safe", () => {
     for (const value of [
       event.summary,
       event.description,
-      event.poster.altText,
-      event.poster.credit,
+      event.poster?.altText,
+      event.poster?.credit,
       event.venue?.name,
       event.venue?.address,
       event.venue?.city,
@@ -234,6 +325,87 @@ test("the generated enrichment manifest is bounded and public safe", () => {
     }
     assert.ok(event.venue?.name);
     assert.ok(event.venue?.address);
+  }
+  assert.deepEqual(
+    events
+      .filter((event) => event.poster === null)
+      .map((event) => event.eventId)
+      .sort(),
+    EXPECTED_CATEGORY_FALLBACK_EVENT_IDS,
+  );
+});
+
+test("every exact enrichment survives the public card and detail projections", () => {
+  for (const event of Object.values(CURATED_MEETUP_EVENT_ENRICHMENTS)) {
+    const row = {
+      all_day_end_date_exclusive: null,
+      all_day_start_date: null,
+      artwork_usage_count: 0,
+      attendance_mode: "in_person",
+      category_color_token: null,
+      category_name: null,
+      category_slug: null,
+      club_name: event.groupSlug,
+      club_slug: event.groupSlug,
+      ends_at_utc: Date.parse("2026-08-07T20:00:00.000Z"),
+      event_status:
+        event.eventId === "315823623" ? "cancelled" : "confirmed",
+      lane_name: "Think",
+      lane_slug: "think",
+      organizer_names_json: "[]",
+      program_name: null,
+      program_slug: null,
+      public_slug_count: 1,
+      rsvp_mode: "meetup",
+      rsvp_url: event.eventUrl,
+      slug: `meetup-${event.eventId}`,
+      starts_at_utc: Date.parse("2026-08-07T18:00:00.000Z"),
+      summary: null,
+      description: null,
+      time_kind: "timed",
+      timezone: "America/Vancouver",
+      title: `Verified Meetup event ${event.eventId}`,
+      venue_public_address: null,
+      venue_public_name: null,
+    };
+    const card = toPublicEventCardDto(row);
+    const detail = toPublicEventDetailDto(row);
+    assert.equal(card.rsvpUrl, event.eventUrl, event.eventId);
+    assert.equal(card.summary, event.summary, event.eventId);
+    assert.equal(detail.description, event.description, event.eventId);
+    assert.equal(
+      card.isCancelled,
+      event.eventId === "315823623",
+      event.eventId,
+    );
+    assert.deepEqual(
+      card.venue,
+      event.venue === null
+        ? null
+        : {
+            address: [
+              event.venue.address,
+              event.venue.city,
+              event.venue.state,
+            ].filter(Boolean).join(", ") || null,
+            name: event.venue.name,
+          },
+      event.eventId,
+    );
+    if (event.poster === null) {
+      assert.equal(card.artwork, null, event.eventId);
+    } else {
+      assert.equal(
+        card.artwork?.url,
+        event.poster.variants.large.localPath,
+        event.eventId,
+      );
+    }
+    assert.doesNotMatch(
+      JSON.stringify({ card, detail }),
+      /sourceUrl|secure\.meetupstatic\.com/iu,
+      event.eventId,
+    );
   }
 });
 

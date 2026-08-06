@@ -250,7 +250,7 @@ test("public routes keep canonical renderers or the calendar alias and private p
 
   assert.match(
     homeRoute,
-    /await CalendarPage\(\{ searchParams \}\)/u,
+    /const \[calendar, origin\] = await Promise\.all\(\[[\s\S]*CalendarPage\(\{ searchParams \}\)/u,
   );
   assert.match(
     eventsRoute,
@@ -292,7 +292,7 @@ test("public routes keep canonical renderers or the calendar alias and private p
     /return Object\.freeze\(\{ \.\.\.catalog, communityLinks, navigation, site \}\)/u,
   );
   assert.match(preview, /links=\{catalog\.communityLinks\}/u);
-  assert.match(
+  assert.doesNotMatch(
     preview,
     /externalLinks=\{shell\.communityLinks\.map/u,
   );
@@ -337,8 +337,10 @@ test("published shell and editorial metadata use live media readiness and truthf
   );
   assert.match(
     routeBodies,
-    /link\.linkType === "meetup_group"[\s\S]*Choose a community destination/u,
+    /What would you like to make happen\?[\s\S]*Offer a venue or partnership/u,
   );
+  assert.doesNotMatch(routeBodies, /CommunityDestinations/u);
+  assert.doesNotMatch(home, /loadCommunityDestinations|sameAs:/u);
   assert.match(
     homeRenderer,
     /link\.linkType === "meetup_group" \|\|[\s\S]*link\.linkType === "social_profile"/u,

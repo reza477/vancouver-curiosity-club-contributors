@@ -43,21 +43,26 @@ data.
   events** from the completed Vancouver Literature and Film and Vancouver
   Fantasy & Sci-Fi Group snapshots. Their public event destinations are the
   exact individual Meetup URLs supplied by those feeds.
-- Current curated enrichment candidate: **13 exact public Meetup event pages
-  verified across the three confirmed groups.** This owner-directed,
-  source-controlled inventory supplies sanitized attendee-visible description,
-  location, and poster facts only when the existing public projection already
-  makes that exact event eligible. It does not activate the conflict-blocked
-  main Vancouver Curiosity Club feed and is not a claim that all 13 records are
-  currently public.
+- Current curated enrichment candidate: **41 exact public Meetup event pages
+  verified across the three confirmed groups.** This includes 38 current
+  numeric-canonical listings plus three older records retained because the
+  latest bounded refresh did not complete cleanly enough to prove removal.
+  All 41 records have verified local responsive poster copies. Five smaller
+  Meetup originals are preserved at native width and are never upscaled. This
+  owner-directed, source-controlled inventory supplies sanitized
+  attendee-visible description, location, and poster facts only when the
+  existing public projection already makes that exact event eligible. It does
+  not activate the conflict-blocked main Vancouver Curiosity Club feed and is
+  not a claim that all 41 records are currently public.
 - Vancouver Curiosity Club feed activation: **Blocked safely by cross-post
   conflicts.** Several of its gatherings are also present in another group
   feed with a different Meetup source identity. The authoritative scheduling
   guard rejected the duplicate reservations and kept the last completed
   snapshots visible. No automatic title/time merge was performed.
 - Exact Eventbrite, Flock, and Instagram destinations: **Missing**. They must
-  not be guessed. Confirmed global URLs can be added to Community; distinct
-  event-level destinations require a later additive event-signup model.
+  not be guessed. The simplified public shell does not expose a Community hub;
+  distinct event-level destinations require a later additive event-signup
+  model after the exact URLs are supplied.
 
 ## British Columbia legal identity
 
@@ -96,7 +101,8 @@ society-registration, tax, or charity claim.
 
 - Confirmed public contact email address: **Missing**. Phase 7 does not invent
   one: the public Contact form stores a reply email and message in the private
-  organizer inbox and explicitly sends no confirmation email.
+  organizer inbox and creates eligible Owner/Administrator in-app
+  notifications. It sends no email to the visitor or the organizers.
 - Public Sites origin: **Available for deployed version 16** at
   `https://vancouver-curiosity-club.reza5777.chatgpt.site`. The Owner
   explicitly authorized public visitor access on 2026-07-30. Access revision 2
@@ -170,6 +176,13 @@ both consent gates before displaying a name.
   It was saved from exact source
   `d0560bd1b887dbf63dbf3958ab5e04cd72ff6050` and is not deployed. Live
   version 16 and historical unpublished version 17 are unchanged.
+- Navigation/Home/Contribute/performance refinement: **Implemented locally;
+  exact-source verification and unpublished Sites save are pending.** The
+  current source uses Calendar, About, and Contribute as the three visible
+  primary destinations, removes the unwanted Home invitation/attending/
+  Community panels, redirects the legacy Community route to Contribute, and
+  renders the last completed calendar immediately during a concurrent Meetup
+  refresh. It is not deployed; live version 16 remains unchanged.
 - Five-minute Phase 9 Owner smoke test: **Awaiting owner smoke test**.
   Production engineering checks do not constitute Owner approval.
 - Owner-authenticated production views for dashboard, events, calendar,

@@ -22,15 +22,18 @@
   second-identity role/suspension/reassignment check cannot be performed
   against hosted state without a separately authorized access change.
 - The live version contains local copies of the 11 posters belonging to its
-  current source-backed Meetup events. The newer unsaved source candidate holds
-  13 exact group-slug/event-ID enrichment records with local responsive poster
-  variants, sanitized attendee-visible description, and public venue fallback.
-  Those records remain gated by the ordinary publication projection and are
-  not a claim that all 13 events are currently public.
+  current source-backed Meetup events. The newer local-only source candidate
+  holds 41 exact group-slug/event-ID enrichment records with sanitized
+  attendee-visible description, public venue fallback, and verified local
+  Meetup poster copies. Five smaller originals remain at their native width
+  and are never enlarged. Those records remain gated by the ordinary
+  publication projection and are not a claim that all 41 events are currently
+  public.
 - Hosted D1 contains real source-backed published Meetup events. Individual
   event, poster, and exact Meetup-link smoke passed for live version 16; the
-  newer identity/About/enrichment candidate still requires its own final
-  exact-source and browser verification before any Sites save.
+  current navigation/Home/contribution/performance plus reconciliation
+  candidate still requires its final exact-source and browser verification
+  before any Sites save.
 - Venue-specific accessibility facts are missing. The application can expose
   confirmed event accessibility information, but the Accessibility Statement
   must not promise facts that the Owner has not supplied.
@@ -48,7 +51,9 @@
   operations remain set-based, paginated, or resumable rather than pretending
   to finish synchronously.
 - Request-driven invariant, publication, Meetup, and catalog maintenance can
-  return a bounded retry or redirect. There is no cron or realtime claim.
+  return a bounded retry or redirect after an actual maintenance attempt. A
+  concurrent/busy Meetup refresh renders the last completed snapshot
+  immediately. There is no cron or realtime claim.
 - The production CSP retains inline styles because the current vinext
   framework/style path requires them. Production scripts use nonce-based
   execution and do not receive a blanket inline-script allowance.
@@ -96,5 +101,7 @@ imports, two-way calendar sync, native apps, comments, direct messages, chat,
 forums, on-site social networking, complicated analytics, another host, an
 external OAuth provider, and a custom domain.
 
-The outbound Community hub remains editable and may link only to confirmed,
-published destinations. It is not an on-site forum or messaging system.
+Community-link records remain guarded CMS data, but the simplified public
+shell no longer renders a Community hub or tab. The legacy `/community` route
+redirects to the contribution page; it is not an on-site forum or messaging
+system.

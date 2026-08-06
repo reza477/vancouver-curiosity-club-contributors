@@ -192,10 +192,7 @@ export default async function RootLayout({
         }
         shell = {
           brandName: catalog.site.brandName,
-          externalLinks: catalog.communityLinks.map((link) => ({
-            href: link.url,
-            label: link.label,
-          })),
+          externalLinks: [],
           footerNavigation: catalog.navigation.footer,
           headerNavigation: catalog.navigation.header,
           legalFooter: catalog.site.legalFooter,

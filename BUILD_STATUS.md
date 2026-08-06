@@ -41,8 +41,10 @@ product, not a new numbered phase.
   event detail link, and confirmed external signup link.
 - Each public event offers a Google Calendar action and an RFC-compliant
   `.ics` download for Apple Calendar and other calendar clients.
-- The public header is intentionally reduced to Calendar, About, and Community.
-  Organizer Login remains in the footer and at `/organizer`.
+- The live version 16 header is intentionally reduced to Calendar, About, and
+  Community. The newer unpublished candidate described below replaces
+  Community with Contribute. Organizer Login remains in the footer and at
+  `/organizer`.
 - The application does not create public visitor accounts. Anonymous visitors
   can now browse the public routes without signing in. Organizer routes remain
   protected by Sign in with ChatGPT plus current invitation, membership, role,
@@ -68,8 +70,8 @@ product, not a new numbered phase.
   opens the rich day panel.
 - Per-event signup is currently the exact confirmed Meetup event URL. Exact
   Eventbrite, Flock, and Instagram destinations have not been supplied and are
-  not invented; confirmed global destinations can be added through Community,
-  while event-specific multi-platform signup would need a later additive data
+  not invented. The newer simplified candidate removes the public Community
+  hub; event-specific multi-platform signup would need a later additive data
   model.
 
 Verification at this checkpoint:
@@ -170,8 +172,8 @@ version 17 remains an unchanged historical candidate.
   **Format** fact. Calendar day detail includes the attendee-visible public
   address when it is verified, and event-title hover/focus no longer adds the
   distracting underline.
-- The current source contains 13 exact `(canonical group slug, numeric event
-  ID)` enrichment records across the three confirmed Meetup groups. The
+- The saved version 18 source contained 13 exact `(canonical group slug,
+  numeric event ID)` enrichment records across the three confirmed Meetup groups. The
   enrichment supplies sanitized public description/summary, ordinary
   attendee-visible venue facts, and three local responsive poster variants per
   event at 480px, 960px, and up to 1600px without upscaling.
@@ -179,7 +181,7 @@ version 17 remains an unchanged historical candidate.
   artwork always win. Curated values are fallback-only and remain subject to
   the existing completed-generation, publication, receipt, legal, privacy, and
   public-projection checks. The conflict-blocked main feed is not activated by
-  this source-controlled enrichment, so the 13-record inventory is not a claim
+  this source-controlled enrichment, so that 13-record inventory is not a claim
   that all 13 events are currently public.
 - Request-time Meetup synchronization remains the official one-way iCalendar
   workflow for title, schedule, status/cancellation, and exact RSVP URL. It is
@@ -214,6 +216,98 @@ Final evidence for this candidate:
 - live version 16, public access revision 2, one allowed project user, zero
   groups, runtime revision 1, `DB` / `MEDIA` bindings, zero custom domains,
   and null preview URL: unchanged.
+
+## Owner-directed Meetup reconciliation candidate (local only)
+
+Status: **Reconciled and verified locally; not saved or deployed.** Live
+production remains exact Sites version 16.
+
+- On 2026-08-06 the authenticated Meetup inventory showed 42 current listings
+  across the three confirmed groups: 2 Fantasy & Sci-Fi, 10 Literature & Film,
+  and 30 Vancouver Curiosity Club listings.
+- Thirty-eight listings retained an exact numeric canonical Meetup event URL.
+  Four recurring listings redirected to alphanumeric canonical paths, so they
+  remain blocked instead of being matched by title or guessed identity.
+- The curated manifest now contains 41 exact records: the 38 current numeric
+  listings plus three older Literature records retained because the bounded
+  source refresh did not reach a clean completed result that could prove their
+  removal.
+- All 41 exact events have verified local responsive poster copies. Five
+  exposed Meetup originals are only 599px to 1129px wide, so their event-detail
+  display is capped at native width and none is upscaled.
+- Existing 13 enrichment records were unchanged. The 28 new records add only
+  source-reviewed public description, attendee-visible venue fallback, and
+  verified local poster data. Owner-authored summary, description,
+  venue, and approved CMS artwork still take precedence.
+- The organizer refresh reached completed, partial, and failed source outcomes,
+  but schedule conflicts prevented activation. The previous completed public
+  snapshot remains live. No direct D1 write, Meetup writeback, Sites save,
+  deployment, access-policy change, or conflict bypass occurred.
+
+Verification for this local candidate:
+
+- the hardened owner-invoked generator completed against all 41 exact public
+  pages and left zero staging directories or publication sidecars;
+- focused Meetup, poster, calendar, detail, structured-data, export, and unified
+  projection gates: 173/173 passed;
+- complete repository suite: 882/882 passed, zero failed and zero skipped;
+- strict TypeScript, zero-warning lint, production build, and
+  `git diff --check`: passed;
+- rendered Worker: 27/27 passed;
+- post-build artifact/privacy leakage gate: 6/6 passed;
+- hosted browser verification confirmed the version 16 failure banner, prior
+  completed calendar, pointer-hover, keyboard-focus/arrow, and click/tap day
+  detail, the exact individual Meetup RSVP URL, and a loaded local poster with
+  nonzero natural dimensions;
+- hosted version 16 still shows its older location/description/Format output.
+  That is an expected deployment boundary, not a claimed reconciliation
+  success: the 41-record local candidate was deliberately not saved or
+  deployed;
+- an exact committed-source artifact is not claimed because the working tree
+  contains separate uncommitted Owner edits and this task did not authorize a
+  commit, push, Sites version, or deployment.
+
+## Owner-directed navigation, contribution, and response-time candidate
+
+Status: **Implemented locally; final exact-source verification and unpublished
+Sites save are pending. Not deployed.** Live production remains exact Sites
+version 16.
+
+- The visible public header is now a prominent three-way control for Calendar,
+  About, and Contribute. It remains visible on phones and uses filled,
+  high-contrast current/hover/focus states instead of a faint underline.
+- The old Home sections labelled “What attending feels like,” “Make the
+  calendar with us,” and Community are omitted from rendering. Fresh catalog
+  setup no longer seeds them; existing owner-edited D1 rows are preserved
+  rather than destructively deleted.
+- The separate Community hub and footer destination are removed. The legacy
+  `/community` address permanently redirects to `/get-involved` and is absent
+  from the sitemap.
+- Contribute presents direct paths for volunteering, hosting an event, and
+  offering a venue or partnership. Its forms store committed messages in the
+  private organizer inbox and create eligible Owner/Administrator in-app
+  notifications. No email is sent because no confirmed public contact address
+  or email provider exists.
+- Opening the public calendar automatically checks a connected Meetup source
+  when its request-time refresh is due. Sites still has no guaranteed daily
+  scheduler. A concurrent/busy refresh now renders the last completed snapshot
+  immediately instead of entering another redirect, and Home no longer runs a
+  redundant Community-link query.
+- The exact-ID 41-record enrichment inventory, publication/privacy guards,
+  organizer authentication, D1/R2 bindings, migrations, live data, access,
+  domains, runtime values, and live deployment are unchanged by this UI and
+  request-flow work.
+
+Preliminary evidence before exact-source freeze:
+
+- complete repository suite: 882/882 passed, 0 failed, 0 skipped;
+- focused navigation, forms, calendar, request-maintenance, and route source
+  contracts: 79/79 passed;
+- strict TypeScript, zero-warning lint, and `git diff --check`: passed;
+- preliminary production build: passed;
+- rendered Worker after expectation reconciliation: 26/26 passed;
+- exact-source rebuild, final five-width browser pass, source commit, Sites
+  save, and immutable version readback: pending.
 
 ## Previous-phase preservation
 
@@ -697,8 +791,8 @@ Current source includes:
 - bounded plain-text validation, same-origin protection, signed time-bounded
   form instances, honeypot/minimum-time redacted spam receipts, anonymous
   HMAC-derived rate scopes, durable D1 limits, and request idempotency;
-- atomic base submission, canonical workflow, minimum-safe notifications, and
-  audit receipt;
+- atomic base submission, canonical workflow, minimum-safe in-app
+  notifications, and audit receipt; no email is sent;
 - private Owner/Administrator inbox plus assignment-scoped Organizer access;
 - New, In Review, Responded, and Archived workflow;
 - append-only private notes;

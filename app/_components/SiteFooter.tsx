@@ -94,7 +94,6 @@ function normalizedFooterNavigation(
   const fallbackExplore = [
     { href: "/calendar", label: "Calendar" },
     { href: "/clubs", label: "Clubs" },
-    { href: "/community", label: "Community" },
     { href: "/about", label: "About" },
     { href: "/get-involved", label: "Get Involved" },
     { href: "/contact", label: "Contact" },
@@ -115,7 +114,13 @@ function normalizedFooterNavigation(
   const explore: PublicNavigationItemDto[] = [];
   const policies: PublicNavigationItemDto[] = [];
   for (const item of source) {
-    if (item.href === "/organizer" || seen.has(item.href)) continue;
+    if (
+      item.href === "/organizer" ||
+      item.href === "/community" ||
+      seen.has(item.href)
+    ) {
+      continue;
+    }
     seen.add(item.href);
     (policyTargets.has(item.href) ? policies : explore).push(item);
   }

@@ -30,24 +30,27 @@ export type CuratedMeetupEventPoster = Readonly<{
  */
 export const CURATED_MEETUP_EVENT_POSTERS = Object.freeze(
   Object.fromEntries(
-    Object.values(CURATED_MEETUP_EVENT_ENRICHMENTS).map((event) => [
-      event.eventId,
-      Object.freeze({
-        altText: event.poster.altText,
-        credit: event.poster.credit,
-        eventId: event.eventId,
-        height: event.poster.variants.large.height,
-        localPath: event.poster.variants.large.localPath,
-        mediumHeight: event.poster.variants.medium.height,
-        mediumPath: event.poster.variants.medium.localPath,
-        mediumWidth: event.poster.variants.medium.width,
-        smallHeight: event.poster.variants.small.height,
-        smallPath: event.poster.variants.small.localPath,
-        smallWidth: event.poster.variants.small.width,
-        sourceUrl: event.poster.sourceUrl,
-        width: event.poster.variants.large.width,
-      }),
-    ]),
+    Object.values(CURATED_MEETUP_EVENT_ENRICHMENTS).flatMap((event) => {
+      if (event.poster === null) return [];
+      return [[
+        event.eventId,
+        Object.freeze({
+          altText: event.poster.altText,
+          credit: event.poster.credit,
+          eventId: event.eventId,
+          height: event.poster.variants.large.height,
+          localPath: event.poster.variants.large.localPath,
+          mediumHeight: event.poster.variants.medium.height,
+          mediumPath: event.poster.variants.medium.localPath,
+          mediumWidth: event.poster.variants.medium.width,
+          smallHeight: event.poster.variants.small.height,
+          smallPath: event.poster.variants.small.localPath,
+          smallWidth: event.poster.variants.small.width,
+          sourceUrl: event.poster.sourceUrl,
+          width: event.poster.variants.large.width,
+        }),
+      ] as const];
+    }),
   ),
 ) as Readonly<Record<string, CuratedMeetupEventPoster>>;
 

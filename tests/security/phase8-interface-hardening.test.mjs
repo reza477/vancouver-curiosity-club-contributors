@@ -96,15 +96,44 @@ test("outside-month text has a non-color cue and AA contrast", () => {
   assert.ok(contrastRatio("#58615c", "#e8e3d7") >= 4.5);
 });
 
-test("home invitation kicker uses the validated warm-surface foreground", () => {
+test("public route links stay visible, prominent, and keyboard-sized at every width", () => {
+  const header = source("app", "_components", "SiteHeader.tsx");
   const css = source("app", "globals.css");
-  assert.match(css, /--coral:\s*#e85b48;/u);
-  assert.match(css, /--warm-surface-ink:\s*#071b31;/u);
+  for (const [href, label] of [
+    ["/calendar", "Calendar"],
+    ["/about", "About"],
+    ["/get-involved", "Contribute"],
+  ]) {
+    assert.match(
+      header,
+      new RegExp(`\\{ href: "${href}", label: "${label}" \\}`, "u"),
+    );
+  }
+  assert.doesNotMatch(header, /<details|<summary|site-navigation/u);
+  assert.match(
+    header,
+    /href === "\/calendar"[\s\S]*?pathname === "\/"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)/u,
+  );
   assert.match(
     css,
-    /\.home-invitation \.section-kicker\s*\{[^}]*color:\s*var\(--warm-surface-ink\);[^}]*\}/su,
+    /\.primary-nav\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)[^}]*border:\s*1px solid var\(--ink\);/su,
   );
-  assert.ok(contrastRatio("#071b31", "#e85b48") >= 4.5);
+  assert.match(
+    css,
+    /\.primary-nav a\s*\{[^}]*min-height:\s*3rem;/su,
+  );
+  assert.match(
+    css,
+    /\.primary-nav a\[aria-current="page"\]\s*\{[^}]*background:\s*var\(--ink\);[^}]*color:\s*var\(--paper\);/su,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 70rem\)[\s\S]*?\.primary-nav\s*\{[^}]*width:\s*100%;/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 30rem\)[\s\S]*?\.primary-nav a\s*\{[^}]*min-height:\s*2\.75rem;[^}]*white-space:\s*nowrap;/u,
+  );
 });
 
 test("public event detail restores readable ink after the legacy card rule", () => {
@@ -174,7 +203,7 @@ test("global public navigation disables speculative RSC prefetches", () => {
     header,
     /<Link[\s\S]*?href=\{item\.href\}[\s\S]*?prefetch=\{false\}/u,
   );
-  assert.match(header, /return Object\.freeze\(required\)/u);
+  assert.match(header, /return Object\.freeze\(requiredNavigation\)/u);
   assert.doesNotMatch(
     header,
     /\{ href: "\/organizer", label: "Organizer Login" \}/u,

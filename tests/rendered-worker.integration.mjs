@@ -117,7 +117,6 @@ const PUBLIC_PATHS = [
   "/calendar",
   "/clubs",
   "/clubs/vancouver-curiosity-club",
-  "/community",
   "/about",
   "/get-involved",
   "/host-an-event",
@@ -578,7 +577,7 @@ test("the built public root is indexable and carries the production security con
   assert.match(renderedCss, /--focus-ring-outer:#fff(?:fff)?/u);
   assert.match(
     renderedCss,
-    /\.home-invitation\{[^}]*color:var\(--warm-surface-ink\)/u,
+    /\.primary-nav\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/u,
   );
   assert.match(
     renderedCss,
@@ -635,11 +634,7 @@ test("the built public root is indexable and carries the production security con
       url: "https://preview.example/",
     },
   );
-  assert.deepEqual(structuredData[0].sameAs, [
-    "https://www.meetup.com/vancouver-meetup-group/",
-    "https://www.meetup.com/vancouver-literature-and-film/",
-    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/",
-  ]);
+  assert.equal("sameAs" in structuredData[0], false);
   assertNoPrivateSentinels(JSON.stringify(structuredData));
 
   const modulePath = /<link\b[^>]*rel="modulepreload"[^>]*href="([^"]+)"/iu.exec(
@@ -697,6 +692,18 @@ test("all required public pages render shared chrome without private sentinels",
     assertNoPrivateSentinels(html);
     assert.doesNotMatch(html, /events\/ical|source_url|normalized_email/iu);
   }
+});
+
+test("the retired Community destination redirects to Contribute", async () => {
+  const response = await fetchPath("/community");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /What would you like to make happen\?/u);
+  assert.match(
+    html,
+    /rel="canonical" href="https:\/\/preview\.example\/get-involved"/u,
+  );
+  assertNoPrivateSentinels(html);
 });
 
 test("Events renders the same canonical calendar-first destination", async () => {
@@ -782,6 +789,11 @@ test("a cancelled event detail renders only published facts and accurate structu
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-robots-tag"), null);
   const html = await response.text();
+
+  assert.match(
+    html,
+    /<a(?=[^>]*href="\/calendar")(?=[^>]*aria-current="page")[^>]*>Calendar<\/a>/u,
+  );
 
   assert.match(
     html,
@@ -884,7 +896,6 @@ test("robots and sitemap contain only public canonical routes", async () => {
     "/calendar",
     "/events",
     "/clubs",
-    "/community",
     "/about",
     "/get-involved",
     "/host-an-event",
@@ -2365,9 +2376,10 @@ function assertSharedChrome(html) {
   assert.match(html, /href="\/calendar"/u);
   assert.doesNotMatch(html, /href="\/events"/u);
   assert.match(html, /href="\/clubs"/u);
-  assert.match(html, /href="\/community"/u);
+  assert.doesNotMatch(html, /href="\/community"/u);
   assert.match(html, /href="\/about"/u);
   assert.match(html, /href="\/get-involved"/u);
+  assert.match(html, />Contribute<\/a>/u);
   assert.match(html, /Organizer Login/u);
   assert.match(html, /aria-label="Footer navigation"/u);
   assert.match(html, /Code of Conduct/u);

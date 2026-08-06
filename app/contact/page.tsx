@@ -2,8 +2,6 @@ import { notFound } from "next/navigation";
 import {
   buildEditorialMetadata,
   EditorialUnavailable,
-  hasCommunityLinksBlock,
-  loadCommunityDestinations,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { ContactRouteBody } from "@/app/_components/EditorialRouteBodies";
@@ -30,11 +28,8 @@ export default async function ContactPage() {
     return <EditorialUnavailable title="Contact" />;
   }
 
-  const destinations = hasCommunityLinksBlock(loaded.page)
-    ? null
-    : await loadCommunityDestinations(route);
   return (
-    <ContactRouteBody destinations={destinations} page={loaded.page}>
+    <ContactRouteBody page={loaded.page}>
       <PublicSubmissionForm formKey="contact" />
     </ContactRouteBody>
   );

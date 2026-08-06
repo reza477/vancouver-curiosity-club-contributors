@@ -178,7 +178,6 @@ function attemptedMeetupRefresh(
   outcome: MeetupRefreshResult["outcome"],
 ): boolean {
   return (
-    outcome === "busy" ||
     outcome === "completed" ||
     outcome === "failed" ||
     outcome === "not_modified" ||

@@ -235,7 +235,7 @@ function CalendarSourceStatus({
 }>) {
   const copy: Record<PublicMeetupSyncStatus, string> = {
     current:
-      "Meetup changes are checked when this calendar is opened and a refresh is due.",
+      "Meetup changes are checked automatically when this calendar is opened. The last complete calendar stays visible while a refresh is running.",
     disabled:
       "Meetup refresh is currently disabled. Published website events remain visible.",
     error:

@@ -60,7 +60,13 @@ export function PublicEventDetailRenderer({
         </header>
 
         {event.artwork ? (
-          <figure className="event-detail__artwork">
+          <figure
+            className="event-detail__artwork"
+            style={{
+              marginInline: "auto",
+              maxWidth: `${event.artwork.dimensions.large.width}px`,
+            }}
+          >
             {/* The gated media route revalidates rights and published usage on every
                 request. Next/Image's optimizer cache would bypass that revocation
                 boundary, so this responsive image must load the controlled URLs

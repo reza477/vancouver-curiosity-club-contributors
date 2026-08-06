@@ -2,10 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ClubDirectory } from "./ClubDirectory";
 import {
-  CommunityDestinations,
-  CommunityDestinationsUnavailable,
   EditorialPage,
-  type CommunityLinksLoadState,
 } from "./EditorialPage";
 import type {
   PublicClubDto,
@@ -49,27 +46,42 @@ export function ClubsRouteBody({
 
 export function GetInvolvedRouteBody({
   children,
-  destinations,
   page,
   ...preview
 }: EditorialRoutePreviewProps &
   Readonly<{
-    destinations: CommunityLinksLoadState | null;
     page: PublicPageDto;
   }>) {
   return (
     <EditorialPage page={page} tone="community" {...preview}>
-      <section className="editorial-actions" aria-labelledby="ways-heading">
-        <div>
-          <p className="section-kicker">Ways in</p>
-          <h2 id="ways-heading">Start with what is available now.</h2>
+      <section className="contribution-hub" aria-labelledby="ways-heading">
+        <div className="contribution-hub__intro">
+          <p className="section-kicker">Choose a way to contribute</p>
+          <h2 id="ways-heading">What would you like to make happen?</h2>
+          <p>
+            Have an event idea, want to help at a gathering, or know a great
+            venue? Send the organizers the useful details in one of the forms
+            below.
+          </p>
         </div>
-        <div className="editorial-actions__links">
-          <Link href="/calendar">Explore upcoming events</Link>
-          <Link href="/host-an-event">Read about hosting</Link>
+        <div className="contribution-paths">
+          <a href="#volunteer">
+            <span aria-hidden="true">01</span>
+            <strong>Volunteer</strong>
+            <small>Help welcome people or support an event.</small>
+          </a>
+          <Link href="/host-an-event">
+            <span aria-hidden="true">02</span>
+            <strong>Host an event</strong>
+            <small>Share a topic, activity, or gathering idea.</small>
+          </Link>
+          <a href="#partner">
+            <span aria-hidden="true">03</span>
+            <strong>Offer a venue or partnership</strong>
+            <small>Start a practical conversation with the organizers.</small>
+          </a>
         </div>
       </section>
-      <Destinations state={destinations} />
       {children}
     </EditorialPage>
   );
@@ -77,24 +89,14 @@ export function GetInvolvedRouteBody({
 
 export function ContactRouteBody({
   children,
-  destinations,
   page,
   ...preview
 }: EditorialRoutePreviewProps &
   Readonly<{
-    destinations: CommunityLinksLoadState | null;
     page: PublicPageDto;
   }>) {
   return (
     <EditorialPage page={page} tone="community" {...preview}>
-      {destinations?.kind === "available" ? (
-        <CommunityDestinations
-          heading={contactDestinationHeading(destinations.links)}
-          links={destinations.links}
-        />
-      ) : destinations ? (
-        <CommunityDestinationsUnavailable />
-      ) : null}
       {children}
     </EditorialPage>
   );
@@ -102,44 +104,15 @@ export function ContactRouteBody({
 
 export function HostAnEventRouteBody({
   children,
-  destinations,
   page,
   ...preview
 }: EditorialRoutePreviewProps &
   Readonly<{
-    destinations: CommunityLinksLoadState | null;
     page: PublicPageDto;
   }>) {
   return (
     <EditorialPage page={page} tone="reset-make" {...preview}>
-      {destinations?.kind === "available" ? (
-        <CommunityDestinations
-          heading="Connect through a confirmed group"
-          links={destinations.links}
-        />
-      ) : destinations ? (
-        <CommunityDestinationsUnavailable />
-      ) : null}
       {children}
     </EditorialPage>
   );
-}
-
-export function contactDestinationHeading(
-  links: readonly PublicCommunityLinkDto[],
-): string {
-  return links.length > 0 &&
-    links.every((link) => link.linkType === "meetup_group")
-    ? "Choose the relevant Meetup group"
-    : "Choose a community destination";
-}
-
-function Destinations({
-  state,
-}: Readonly<{ state: CommunityLinksLoadState | null }>) {
-  return state?.kind === "available" ? (
-    <CommunityDestinations links={state.links} />
-  ) : state ? (
-    <CommunityDestinationsUnavailable />
-  ) : null;
 }

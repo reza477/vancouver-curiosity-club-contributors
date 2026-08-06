@@ -84,7 +84,9 @@ or introduce a generalized runtime scraper.
   against the same hash.
 - Refresh on explicit Owner/Administrator request or opportunistically on a
   public view. A complete source waits at least 15 minutes; a partial snapshot
-  may resume on the next request. Do not claim scheduled or background sync.
+  may resume on the next request. If another request already owns the refresh,
+  render the last completed snapshot immediately rather than redirecting the
+  visitor into a busy loop. Do not claim scheduled or background sync.
 - Record import batches, sanitized row facts, immutable event revisions,
   source links, and content-free audit entries. Audit terminal sync records
   distinguish manual from refresh-on-view triggers.
@@ -107,9 +109,9 @@ or introduce a generalized runtime scraper.
   private/no-store responses.
 - Public and client DTOs never contain a feed URL, token, source ID,
   organization ID, raw upstream error, or internal error code.
-- Production data remains empty until `INITIAL_OWNER_EMAIL` is configured in
-  Sites runtime settings and the owner supplies exact official feed URLs
-  through the authenticated organizer workspace.
+- Initial production data remained empty until `INITIAL_OWNER_EMAIL` was
+  configured in Sites runtime settings and the owner supplied exact official
+  feed URLs through the authenticated organizer workspace.
 
 ## Consequences and deliberate limits
 
@@ -150,10 +152,14 @@ separate from the official iCalendar synchronization above:
   from the three confirmed group slugs and requires the expected numeric Meetup
   event ID on every page. It is not invoked by a public request and does not
   write to Meetup or hosted D1.
-- The current candidate contains 13 explicit group-slug/event-ID records. That
-  source inventory does not activate a blocked source or make an event public;
-  the existing completed-generation, publication, receipt, legal, privacy, and
-  public-projection checks remain authoritative.
+- The initial saved version 18 candidate contained 13 explicit
+  group-slug/event-ID records. The 2026-08-06 local reconciliation candidate
+  contains 41: 38 current numeric-canonical listings plus three older records
+  retained because the latest bounded source refresh did not complete cleanly
+  enough to prove removal. That source inventory does not activate a blocked
+  source or make an event public; the existing completed-generation,
+  publication, receipt, legal, privacy, and public-projection checks remain
+  authoritative.
 - The generator normalizes public descriptions to safe text, removes URLs,
   rejects email addresses and meeting credentials, and retains only venue facts
   visible to an ordinary attendee. Existing owner-authored public summary,
@@ -161,7 +167,11 @@ separate from the official iCalendar synchronization above:
 - Each exact poster source must use the allowlisted secure Meetup image host and
   pass MIME, byte-size, natural-dimension, and aspect-ratio validation. The
   generator produces local 480px, 960px, and up-to-1600px variants without
-  upscaling; public HTML never hotlinks Meetup.
+  upscaling; public HTML never hotlinks Meetup. A usable smaller original stays
+  at its native width, including in event detail. A missing source or image
+  below the 480px card target retains controlled category artwork rather than
+  failing the rest of a fully validated generation or manufacturing a larger
+  asset.
 - This is a bounded, owner-reviewed, source-controlled reconciliation, not a
   guaranteed daily scheduler, generalized scraper, alternate importer, OAuth
   integration, or write-back path.

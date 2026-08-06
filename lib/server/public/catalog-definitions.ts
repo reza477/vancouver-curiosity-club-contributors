@@ -134,21 +134,6 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: "Follow a question somewhere interesting.",
         text: "Thoughtful Vancouver events for people who like learning in company.",
       }),
-      section("attending", "prose", 20, {
-        heading: "Come curious",
-        paragraphs: [
-          "Expect a clear reason to gather, room for conversation, and no requirement to arrive as an expert.",
-          "Each listing carries the facts we know. When a detail is undecided, we say so.",
-        ],
-      }),
-      section("invitation", "callout", 30, {
-        heading: "Help make the calendar",
-        text: "Have an idea, want to host, volunteer, or explore a community partnership? Start with the ways to get involved.",
-      }),
-      section("community", "prose", 40, {
-        heading: "Continue on the confirmed group pages",
-        text: "The exact Meetup discussion URL is not confirmed, so this site lists only the three verified public group destinations.",
-      }),
     ]),
     page("events", "Events", [
       section("intro", "intro", 10, {
