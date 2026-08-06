@@ -176,9 +176,11 @@ both consent gates before displaying a name.
   It was saved from exact source
   `d0560bd1b887dbf63dbf3958ab5e04cd72ff6050` and is not deployed. Live
   version 16 and historical unpublished version 17 are unchanged.
-- Navigation/Home/Contribute/performance refinement: **Implemented locally;
-  exact-source verification and unpublished Sites save are pending.** The
-  current source uses Calendar, About, and Contribute as the three visible
+- Navigation/Home/Contribute/performance refinement: **Implemented, verified,
+  and saved as unpublished Sites version 19**
+  (`appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_5f4c21512a54819187963e5af19613b3`).
+  Exact pushed source `ebb4e8a72898ceecf6f714efb0926c38ff748274`
+  uses Calendar, About, and Contribute as the three visible
   primary destinations, removes the unwanted Home invitation/attending/
   Community panels, redirects the legacy Community route to Contribute, and
   renders the last completed calendar immediately during a concurrent Meetup

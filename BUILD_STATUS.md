@@ -217,10 +217,10 @@ Final evidence for this candidate:
   groups, runtime revision 1, `DB` / `MEDIA` bindings, zero custom domains,
   and null preview URL: unchanged.
 
-## Owner-directed Meetup reconciliation candidate (local only)
+## Owner-directed Meetup reconciliation candidate (included in version 19)
 
-Status: **Reconciled and verified locally; not saved or deployed.** Live
-production remains exact Sites version 16.
+Status: **Reconciled, verified, and saved inside unpublished Sites version 19;
+not deployed.** Live production remains exact Sites version 16.
 
 - On 2026-08-06 the authenticated Meetup inventory showed 42 current listings
   across the three confirmed groups: 2 Fantasy & Sci-Fi, 10 Literature & Film,
@@ -241,10 +241,11 @@ production remains exact Sites version 16.
   venue, and approved CMS artwork still take precedence.
 - The organizer refresh reached completed, partial, and failed source outcomes,
   but schedule conflicts prevented activation. The previous completed public
-  snapshot remains live. No direct D1 write, Meetup writeback, Sites save,
-  deployment, access-policy change, or conflict bypass occurred.
+  snapshot remains live. The reconciliation itself made no direct D1 write,
+  Meetup writeback, deployment, access-policy change, or conflict bypass. Its
+  exact source was later packaged only as unpublished version 19.
 
-Verification for this local candidate:
+Verification for this reconciliation:
 
 - the hardened owner-invoked generator completed against all 41 exact public
   pages and left zero staging directories or publication sidecars;
@@ -261,17 +262,14 @@ Verification for this local candidate:
   nonzero natural dimensions;
 - hosted version 16 still shows its older location/description/Format output.
   That is an expected deployment boundary, not a claimed reconciliation
-  success: the 41-record local candidate was deliberately not saved or
-  deployed;
-- an exact committed-source artifact is not claimed because the working tree
-  contains separate uncommitted Owner edits and this task did not authorize a
-  commit, push, Sites version, or deployment.
+  success: the 41-record candidate is saved only in unpublished version 19;
+- exact committed source and immutable version 19 readback are recorded in the
+  following candidate section.
 
 ## Owner-directed navigation, contribution, and response-time candidate
 
-Status: **Implemented locally; final exact-source verification and unpublished
-Sites save are pending. Not deployed.** Live production remains exact Sites
-version 16.
+Status: **Implemented, verified, and saved as unpublished Sites version 19;
+not deployed.** Live production remains exact Sites version 16.
 
 - The visible public header is now a prominent three-way control for Calendar,
   About, and Contribute. It remains visible on phones and uses filled,
@@ -298,16 +296,37 @@ version 16.
   domains, runtime values, and live deployment are unchanged by this UI and
   request-flow work.
 
-Preliminary evidence before exact-source freeze:
+Final exact-source evidence:
 
 - complete repository suite: 882/882 passed, 0 failed, 0 skipped;
 - focused navigation, forms, calendar, request-maintenance, and route source
   contracts: 79/79 passed;
-- strict TypeScript, zero-warning lint, and `git diff --check`: passed;
-- preliminary production build: passed;
-- rendered Worker after expectation reconciliation: 26/26 passed;
-- exact-source rebuild, final five-width browser pass, source commit, Sites
-  save, and immutable version readback: pending.
+- clean dependency tree, strict TypeScript, zero-warning lint, production
+  build, and `git diff --check`: passed;
+- production dependency audit: 0 findings; complete development-tool audit:
+  14 findings (7 moderate, 7 high, 0 critical), unchanged from the documented
+  compatible-tooling limitation;
+- rendered Worker: 26/26 passed; post-build artifact/privacy contract: 6/6
+  passed;
+- browser widths 320, 390, 768, 1280, and 1440 passed with no overflow,
+  16px mobile body text, 44px mobile/48px larger navigation targets, unwrapped
+  labels, selected-day poster/time/location/address/description/Meetup RSVP,
+  Community redirect, hydrated Contribute forms, and zero console errors or
+  warnings. Pointer automation did not prove hover itself; equivalent click
+  and keyboard-focus detail were proven;
+- exact saved and pushed source:
+  `ebb4e8a72898ceecf6f714efb0926c38ff748274`;
+- local Sites archive: 293 files / 24,310,079 compressed bytes / SHA-256
+  `bc4f5c9c606ea9bc81c2fc2ceea953ce190de604ec8ad912d6d3f6b809011009`;
+- unpublished Sites version 19:
+  `appgprj_6a62eaf79c4881919bb8e47998af851a~appgver_5f4c21512a54819187963e5af19613b3`;
+- version 19 content hash:
+  `sha256:a664a5b30416ab5f02238189205724749bb8946990953803bd182cdaf7b55e02`;
+- version 19 readback: 293 files / 32,450,560 stored bytes / screenshot and
+  preview unavailable;
+- production deployment: **Not run**. Live version 16, public access, one
+  allowed project user, zero groups, no custom domains, no preview, runtime
+  revision 1, `DB` / `MEDIA`, and hosted data remain unchanged.
 
 ## Previous-phase preservation
 

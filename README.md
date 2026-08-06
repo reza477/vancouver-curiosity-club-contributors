@@ -47,8 +47,8 @@ local poster variants. It was saved from exact pushed source
 rendered-Worker, artifact, and responsive-browser gates passed. It is not
 deployed; live production remains version 16.
 
-The 2026-08-06 owner-invoked reconciliation is a newer local-only candidate;
-it has not been saved as a Sites version or deployed. The authenticated Meetup
+Unpublished Sites version 19 contains the 2026-08-06 owner-invoked
+reconciliation and the navigation/Home/Contribute refinement. The authenticated Meetup
 inventory contained 42 current listings across the three confirmed groups. Of
 those, 38 retained exact numeric canonical event URLs and are represented in
 the curated workflow; four recurring listings redirected to alphanumeric
@@ -58,9 +58,11 @@ enough to prove removal. The resulting manifest therefore contains 41 records
 and 41 verified local poster sets. Five lower-resolution Meetup originals are
 kept at their native 599-to-1129px width and are never enlarged. The hosted
 calendar remains the prior valid snapshot because schedule conflicts prevented
-activation; no deployment or access change was made.
+activation. Version 19 was saved from exact pushed source
+`ebb4e8a72898ceecf6f714efb0926c38ff748274`; it was not deployed and made no
+live-data or access change.
 
-That same current candidate simplifies the visitor shell to three prominent
+That same unpublished candidate simplifies the visitor shell to three prominent
 destinations: **Calendar**, **About**, and **Contribute**. It removes the old
 Home invitation, attending-feel, and Community panels, sends the legacy
 `/community` address to `/get-involved`, and gives Contribute three direct
@@ -87,7 +89,7 @@ The public website keeps the visitor path deliberately short:
   matched to exact Meetup event IDs; public pages do not hotlink them. A newly
   synced event uses approved site media or a controlled category illustration
   until its poster is deliberately added.
-- The current local source candidate contains 41 exact group-slug/event-ID
+- Unpublished version 19 contains 41 exact group-slug/event-ID
   enrichment records across the three confirmed groups, all with a verified
   local Meetup poster copy. Five smaller originals stay at their native width
   instead of being upscaled. These records become
@@ -234,7 +236,7 @@ category artwork until a poster is deliberately added. The application does
 not scrape Meetup pages during a public request or claim a guaranteed daily
 background job.
 
-The current local source candidate extends the separate owner-invoked
+Unpublished version 19 extends the separate owner-invoked
 maintenance tool to 41 exact allowlisted public Meetup event pages. It verifies
 the canonical group slug plus numeric event ID, sanitizes attendee-visible
 description and venue facts, rejects private credentials and email addresses,
