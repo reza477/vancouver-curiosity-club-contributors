@@ -5291,21 +5291,18 @@ export function toPublicEventCardDto(
     return invalidProjection();
   }
   const approvedArtwork = publicArtwork(row);
-  const synchronizedMeetupPoster =
-    approvedArtwork === null
-      ? synchronizedMeetupPosterDto(row, rsvpUrl)
-      : null;
   const curatedMeetupEvent = curatedMeetupEventForEventUrl(rsvpUrl);
   const curatedMeetupPoster =
-    approvedArtwork === null && synchronizedMeetupPoster === null
-      ? curatedMeetupPosterForEventUrl(rsvpUrl)
+    approvedArtwork === null ? curatedMeetupPosterForEventUrl(rsvpUrl) : null;
+  const synchronizedMeetupPoster =
+    approvedArtwork === null && curatedMeetupPoster === null
+      ? synchronizedMeetupPosterDto(row, rsvpUrl)
       : null;
   const resolvedVenue =
     venue ?? curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null);
   return Object.freeze({
     artwork:
       approvedArtwork ??
-      synchronizedMeetupPoster ??
       (curatedMeetupPoster
         ? Object.freeze({
             altText: curatedMeetupPoster.altText,
@@ -5332,7 +5329,7 @@ export function toPublicEventCardDto(
             }),
             url: curatedMeetupPoster.localPath,
           })
-        : null),
+        : synchronizedMeetupPoster),
     slug: parseIdentifier(row.slug, "event.slug"),
     title: parseBoundedString(row.title, {
       path: "event.title",

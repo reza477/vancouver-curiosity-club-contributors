@@ -256,6 +256,54 @@ test("a public Meetup event card uses its curated poster before category fallbac
   );
 });
 
+test("a curated Meetup event prefers its bundled poster over a synchronized poster route", () => {
+  const card = toPublicEventCardDto({
+    all_day_end_date_exclusive: null,
+    all_day_start_date: null,
+    artwork_usage_count: 0,
+    attendance_mode: "in_person",
+    category_color_token: null,
+    category_name: null,
+    category_slug: null,
+    club_name: "Vancouver Literature and Film",
+    club_slug: "vancouver-literature-and-film",
+    ends_at_utc: Date.parse("2026-08-08T06:15:00.000Z"),
+    event_status: "confirmed",
+    lane_name: "Think",
+    lane_slug: "think",
+    meetup_poster_alt_text: "Synchronized Meetup poster alt text",
+    meetup_poster_credit: "Synchronized Meetup poster credit",
+    meetup_poster_source_url:
+      "https://secure.meetupstatic.com/photos/event/e/3/d/9/highres_535018329.jpeg",
+    program_name: null,
+    program_slug: null,
+    public_slug_count: 1,
+    rsvp_mode: "meetup",
+    rsvp_url:
+      "https://www.meetup.com/vancouver-literature-and-film/events/315508432/",
+    slug: "princess-mononoke",
+    starts_at_utc: Date.parse("2026-08-08T03:45:00.000Z"),
+    summary: null,
+    time_kind: "timed",
+    timezone: "America/Vancouver",
+    title: "Princess Mononoke",
+    venue_public_address: null,
+    venue_public_name: null,
+  });
+
+  assert.deepEqual(card.artwork?.srcSet, {
+    large: "/event-posters/meetup-315508432.jpeg",
+    medium: "/event-posters/meetup-315508432-960.jpeg",
+    small: "/event-posters/meetup-315508432-480.jpeg",
+  });
+  assert.equal(card.artwork?.url, "/event-posters/meetup-315508432.jpeg");
+  assert.match(card.artwork?.altText ?? "", /Princess Mononoke/u);
+  assert.doesNotMatch(
+    JSON.stringify(card.artwork),
+    /meetup-posters|Synchronized Meetup poster/iu,
+  );
+});
+
 test("verified Meetup content fills only missing public fields", () => {
   const base = {
     all_day_end_date_exclusive: null,
