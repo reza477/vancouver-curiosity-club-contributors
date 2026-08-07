@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { FieldArtwork, type FieldArtworkTone } from "./FieldArtwork";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 
@@ -20,9 +19,11 @@ export function EventCard({
         ? event.venue?.name
           ? `${event.venue.name} + online`
           : "Hybrid · location details not published"
-        : event.attendanceMode === "in-person"
-          ? event.venue?.name ?? "Location details not published"
-          : "Location undecided";
+        : event.venue?.name
+          ? event.venue.name
+          : event.attendanceMode === "in-person"
+            ? "Location details not published"
+            : "Location undecided";
 
   return (
     <article
@@ -30,60 +31,56 @@ export function EventCard({
       data-event-lane={event.lane?.slug}
       data-event-status={event.status}
     >
-      <div className="event-card__date" aria-hidden="true">
-        <span>{schedule.month}</span>
-        <strong>{schedule.day}</strong>
-      </div>
+      {event.artwork ? (
+        <figure className="event-card__artwork">
+          {/* The gated media route revalidates rights and published usage on every
+              request. Next/Image's optimizer cache would bypass that revocation
+              boundary, so this responsive image must load the controlled URLs
+              directly. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            alt={event.artwork.altText ?? ""}
+            decoding="async"
+            fetchPriority={priority ? "high" : "auto"}
+            height={event.artwork.dimensions.large.height}
+            loading={priority ? "eager" : "lazy"}
+            sizes="(max-width: 640px) 42vw, (max-width: 1100px) 32vw, 360px"
+            src={event.artwork.url}
+            srcSet={responsiveImageSrcSet([
+              {
+                url: event.artwork.srcSet.small,
+                width: event.artwork.dimensions.small.width,
+              },
+              {
+                url: event.artwork.srcSet.medium,
+                width: event.artwork.dimensions.medium.width,
+              },
+              {
+                url: event.artwork.srcSet.large,
+                width: event.artwork.dimensions.large.width,
+              },
+            ])}
+            style={{
+              objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+            }}
+            width={event.artwork.dimensions.large.width}
+          />
+          <figcaption>Artwork: {event.artwork.credit}</figcaption>
+        </figure>
+      ) : (
+        <EventArtworkFallback
+          className="event-card__artwork"
+          lane={event.lane}
+        />
+      )}
+
       <div className="event-card__body">
-        {!compact ? (
-          event.artwork ? (
-            <figure className="event-card__artwork">
-              {/* The gated media route revalidates rights and published usage on every
-                  request. Next/Image's optimizer cache would bypass that revocation
-                  boundary, so this responsive image must load the controlled URLs
-                  directly. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt={event.artwork.altText ?? ""}
-                decoding="async"
-                fetchPriority={priority ? "high" : "auto"}
-                height={event.artwork.dimensions.large.height}
-                loading={priority ? "eager" : "lazy"}
-                sizes="(max-width: 640px) 100vw, (max-width: 1100px) 72vw, 900px"
-                src={event.artwork.url}
-                srcSet={responsiveImageSrcSet([
-                  {
-                    url: event.artwork.srcSet.small,
-                    width: event.artwork.dimensions.small.width,
-                  },
-                  {
-                    url: event.artwork.srcSet.medium,
-                    width: event.artwork.dimensions.medium.width,
-                  },
-                  {
-                    url: event.artwork.srcSet.large,
-                    width: event.artwork.dimensions.large.width,
-                  },
-                ])}
-                style={{
-                  objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-                }}
-                width={event.artwork.dimensions.large.width}
-              />
-              <figcaption>Artwork: {event.artwork.credit}</figcaption>
-            </figure>
-          ) : (
-            <div
-              aria-label="Field Notes category artwork"
-              className="event-card__artwork event-card__artwork--fallback"
-              role="img"
-            >
-              <FieldArtwork tone={eventArtworkTone(event.lane?.slug)} />
-            </div>
-          )
-        ) : null}
-        <div className="event-card__meta">
-          <span>{event.club.name}</span>
+        <div className="event-card__date" aria-hidden="true">
+          <span>{schedule.month}</span>
+          <strong>{schedule.day}</strong>
+        </div>
+        <div aria-label="Event associations" className="event-card__meta">
+          <Link href={`/clubs/${event.club.slug}`}>{event.club.name}</Link>
           {event.program ? (
             <Link
               href={`/clubs/${event.club.slug}/programs/${event.program.slug}`}
@@ -92,6 +89,7 @@ export function EventCard({
             </Link>
           ) : null}
           {event.lane ? <span>{event.lane.name}</span> : null}
+          {event.category ? <span>{event.category.name}</span> : null}
           {event.status === "tentative" ? (
             <span className="status-chip status-chip--tentative">
               Tentative
@@ -104,12 +102,17 @@ export function EventCard({
         {event.summary && !compact ? <p>{event.summary}</p> : null}
         <dl className="event-card__facts">
           <div>
-            <dt className="visually-hidden">When</dt>
+            <dt>When</dt>
             <dd>{schedule.label}</dd>
           </div>
           <div>
-            <dt className="visually-hidden">Where</dt>
-            <dd>{location}</dd>
+            <dt>Where</dt>
+            <dd>
+              <span>{location}</span>
+              {event.attendanceMode !== "online" && event.venue?.address ? (
+                <span>{event.venue.address}</span>
+              ) : null}
+            </dd>
           </div>
         </dl>
       </div>
@@ -124,7 +127,36 @@ export function EventCard({
   );
 }
 
-function eventArtworkTone(slug: string | undefined): FieldArtworkTone {
+export function EventArtworkFallback({
+  className,
+  lane,
+}: Readonly<{
+  className: string;
+  lane: PublicEventCardDto["lane"];
+}>) {
+  const laneTone = eventArtworkTone(lane?.slug);
+
+  return (
+    <div
+      className={`${className} ${className}--fallback event-artwork-fallback field-artwork--${laneTone}`}
+      data-event-lane={lane?.slug ?? "community"}
+    >
+      <p className="event-artwork-fallback__eyebrow">
+        Vancouver Curiosity Club
+      </p>
+      <strong>{lane?.name ?? "Community gathering"}</strong>
+      <span>
+        {lane
+          ? `Gathering in the ${lane.name} lane`
+          : "Event poster coming soon"}
+      </span>
+    </div>
+  );
+}
+
+function eventArtworkTone(
+  slug: string | undefined,
+): "eat-play" | "explore" | "reset-make" | "think" {
   if (slug === "reset-and-make") return "reset-make";
   if (slug === "explore") return "explore";
   if (slug === "eat-and-play") return "eat-play";

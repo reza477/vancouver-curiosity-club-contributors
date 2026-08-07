@@ -29,6 +29,9 @@ import {
   PUBLIC_FORM_CLIENT_COOKIE,
 } from "../../lib/server/phase7/public-form-protection.ts";
 import {
+  listPublicFormClubProgramChoices,
+} from "../../lib/server/phase7/public-forms.ts";
+import {
   PUBLIC_CATALOG_PAGES,
 } from "../../lib/server/public/catalog-definitions.ts";
 import {
@@ -120,6 +123,56 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
     Object.values(pageCopy).join("\n"),
     /No public intake form|tools are not open yet|No public contact form|no enabled public submission form/iu,
   );
+});
+
+test("Host an Event choices suppress only same-name same-slug Program aliases", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const actor = await ensurePublicCatalogAndAuthorize(
+    data.database,
+    FORM_OWNER_IDENTITY,
+    data.now + 1,
+  );
+  await ensureCmsAdoption(data.database, actor, data.now + 2);
+
+  assert.equal(
+    await data.database
+      .prepare(
+        `SELECT count(*)
+         FROM programs AS program
+         JOIN clubs AS club
+           ON club.id = program.club_id
+          AND club.organization_id = program.organization_id
+         JOIN program_public_profile_details AS detail
+           ON detail.program_id = program.id
+          AND detail.organization_id = program.organization_id
+          AND detail.club_id = program.club_id
+         WHERE program.deleted_at IS NULL
+           AND club.deleted_at IS NULL
+           AND detail.deleted_at IS NULL
+           AND detail.publication_status = 'published'
+           AND program.slug = club.slug
+           AND lower(trim(program.name)) = lower(trim(club.name))`,
+      )
+      .first("count(*)"),
+    3,
+    "the fixture must contain the compatibility aliases this projection hides",
+  );
+
+  assert.deepEqual(await listPublicFormClubProgramChoices(data.database), [
+    {
+      label: "Vancouver Curiosity Club",
+      value: "club:vancouver-curiosity-club",
+    },
+    {
+      label: "Vancouver Fantasy & Sci-Fi Group",
+      value: "club:vancouver-fantasy-scifi-group",
+    },
+    {
+      label: "Vancouver Literature and Film",
+      value: "club:vancouver-literature-and-film",
+    },
+  ]);
 });
 
 test(
@@ -893,8 +946,27 @@ test(
       assert.match(formSource, new RegExp(escapeRegex(label), "u"));
     }
     assert.doesNotMatch(formSource, /Store in private inbox/u);
-    assert.match(formSource, /"Preparing form\.\.\."/u);
+    assert.doesNotMatch(formSource, /"Preparing form\.\.\."/u);
     assert.doesNotMatch(formSource, /Preparing secure form/u);
+    assert.match(
+      formSource,
+      /instanceState === "loading"[\s\S]*aria-busy="true"[\s\S]*className="public-submission__loading"[\s\S]*className="sr-only"[\s\S]*role="status"/u,
+    );
+    assert.match(
+      formSource,
+      /aria-hidden="true"[\s\S]*className="public-submission__skeleton"/u,
+    );
+    assert.match(formSource, /Try loading the form again/u);
+    assert.match(formSource, /FORM_INSTANCE_TIMEOUT_MS = 10_000/u);
+    assert.equal(
+      countMatches(
+        sharedFormsHtml,
+        /class="public-submission__loading"/gu,
+      ),
+      2,
+    );
+    assert.equal(countMatches(sharedFormsHtml, /aria-busy="true"/gu), 2);
+    assert.doesNotMatch(sharedFormsHtml, /<form\b|\bdisabled=""/u);
     assert.doesNotMatch(
       formSource,
       /role=\{notice[\s\S]*aria-live="polite"/u,

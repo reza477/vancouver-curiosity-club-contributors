@@ -108,7 +108,7 @@ export default async function EventDetailPage({
               <p className="section-kicker">Keep following the thread</p>
               <h2 id="related-title">Related published events</h2>
             </div>
-            <Link href="/calendar">All events</Link>
+            <Link href="/events">All events</Link>
           </div>
           <div className="event-list event-list--related">
             {related.map((item) => (

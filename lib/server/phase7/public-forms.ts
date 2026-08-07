@@ -43,6 +43,7 @@ export async function listPublicFormClubProgramChoices(
     choices.push({ label: club.name, value: `club:${club.slug}` });
     const programs = await listPublicProgramsForClub(database, club.slug);
     for (const program of programs.slice(0, 24)) {
+      if (isCompatibilityProgramAlias(club, program)) continue;
       choices.push({
         label: `${program.name} — ${club.name}`,
         value: `program:${club.slug}/${program.slug}`,
@@ -50,6 +51,24 @@ export async function listPublicFormClubProgramChoices(
     }
   }
   return Object.freeze(choices);
+}
+
+function isCompatibilityProgramAlias(
+  club: Readonly<{ name: string; slug: string }>,
+  program: Readonly<{ name: string; slug: string }>,
+): boolean {
+  return (
+    program.slug === club.slug &&
+    normalizedChoiceName(program.name) === normalizedChoiceName(club.name)
+  );
+}
+
+function normalizedChoiceName(value: string): string {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/gu, " ")
+    .toLocaleLowerCase("en-CA");
 }
 
 export async function submitPublicForm(

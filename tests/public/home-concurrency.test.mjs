@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   loadPublicHomeData,
 } from "../../lib/server/public/home.ts";
 
 const NOW_UTC_MS = Date.parse("2026-07-27T12:00:00.000Z");
+const projectRoot = new URL("../../", import.meta.url);
 const SITE_IDENTITY = JSON.stringify({
   brandName: "Vancouver Curiosity Club",
   locationLabel: "Vancouver, British Columbia",
@@ -13,6 +15,10 @@ const SITE_IDENTITY = JSON.stringify({
 });
 
 test("Home bounds peak D1 read concurrency at the catalog fan-out of five", async () => {
+  const homeSource = await readFile(
+    new URL("lib/server/public/home.ts", projectRoot),
+    "utf8",
+  );
   let active = 0;
   let peak = 0;
   let statementCount = 0;
@@ -80,6 +86,10 @@ test("Home bounds peak D1 read concurrency at the catalog fan-out of five", asyn
 
   assert.equal(result?.page.slug, "home");
   assert.deepEqual(result?.events, []);
+  assert.match(
+    homeSource,
+    /view:\s*"upcoming"[\s\S]*?page:\s*1[\s\S]*?pageSize:\s*3/u,
+  );
   assert.equal(statementCount, 8);
   assert.equal(
     peak,

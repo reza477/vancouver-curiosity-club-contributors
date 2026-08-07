@@ -293,6 +293,9 @@ test("public event statements compile and execute through real Miniflare D1", as
   assert.ok(
     new TextEncoder().encode(finalExportRevalidationSql).byteLength < 90_000,
   );
-  assert.ok(maximumStatementBytes < 90_000);
+  assert.ok(
+    maximumStatementBytes < 90_000,
+    `maximum public statement was ${maximumStatementBytes} bytes`,
+  );
   assert.ok(maximumBindings < 100);
 });

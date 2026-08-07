@@ -271,6 +271,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0014_phase5_publication.sql",
     "0015_phase6_cms_media.sql",
     "0016_phase7_import_export_forms.sql",
+    "0017_bright_captain_america.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -342,7 +343,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    86,
+    87,
   );
   assert.equal(
     await database
@@ -506,22 +507,48 @@ test("the built public root is indexable and carries the production security con
     html,
     /name="description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
   );
-  assert.match(html, /Month at a glance/u);
-  assert.match(html, /public-calendar__grid/u);
-  assert.match(html, /Curiosity is better in company\./u);
   assert.match(
     html,
-    /You do not need to be an expert or make an account\./u,
+    /Books, films, ideas, walks &amp; creative nights in Vancouver/u,
   );
-  assert.match(html, /Download upcoming events \(\.ics\)/u);
-  assert.match(html, /id="public-calendar-title"/u);
+  assert.match(html, /Come curious\. Leave knowing people\./u);
+  assert.match(
+    html,
+    /Vancouver Curiosity Club is for people who miss conversations that go somewhere\./u,
+  );
+  assert.match(html, />See upcoming gatherings<\/a>/u);
+  assert.match(html, />New here\? Start here<\/a>/u);
+  assert.match(html, /class="home-hero"/u);
+  assert.match(html, /class="home-events"/u);
+  assert.match(html, /class="home-newcomer attending-note"/u);
+  assert.match(html, /class="home-community-feel attending-note"/u);
+  assert.match(html, /class="lane-index"/u);
+  assert.match(html, /class="home-clubs"/u);
+  assert.match(html, /class="home-proof home-community"/u);
+  assert.match(html, /class="home-closing home-invitation"/u);
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
-  assert.ok(
-    html.indexOf("public-calendar__grid") <
-      html.indexOf("Download upcoming events (.ics)"),
+  const orderedHomeSections = [
+    'class="home-hero"',
+    'class="home-events"',
+    'class="home-newcomer attending-note"',
+    'class="home-community-feel attending-note"',
+    'class="lane-index"',
+    'class="home-clubs"',
+    'class="home-proof home-community"',
+    'class="home-closing home-invitation"',
+  ];
+  for (let index = 1; index < orderedHomeSections.length; index += 1) {
+    assert.ok(
+      html.indexOf(orderedHomeSections[index - 1]) <
+        html.indexOf(orderedHomeSections[index]),
+      `${orderedHomeSections[index]} must follow ${orderedHomeSections[index - 1]}`,
+    );
+  }
+  assert.doesNotMatch(html, /Month at a glance|public-calendar__grid/u);
+  assert.doesNotMatch(
+    html,
+    /Meetup sync|sync failed|last completed|data-source-status/iu,
   );
-  assert.doesNotMatch(html, /<h1>Calendar<\/h1>/u);
-  assert.doesNotMatch(html, /The event lanes/u);
   assert.ok(
     robotsMetaContents(html).every(
       (content) => !robotsTokens(content).includes("noindex"),
@@ -577,7 +604,7 @@ test("the built public root is indexable and carries the production security con
   assert.match(renderedCss, /--focus-ring-outer:#fff(?:fff)?/u);
   assert.match(
     renderedCss,
-    /\.primary-nav\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/u,
+    /\.primary-nav\{[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/u,
   );
   assert.match(
     renderedCss,
@@ -634,7 +661,11 @@ test("the built public root is indexable and carries the production security con
       url: "https://preview.example/",
     },
   );
-  assert.equal("sameAs" in structuredData[0], false);
+  assert.deepEqual(structuredData[0].sameAs, [
+    "https://www.meetup.com/vancouver-meetup-group/",
+    "https://www.meetup.com/vancouver-literature-and-film/",
+    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/",
+  ]);
   assertNoPrivateSentinels(JSON.stringify(structuredData));
 
   const modulePath = /<link\b[^>]*rel="modulepreload"[^>]*href="([^"]+)"/iu.exec(
@@ -706,16 +737,24 @@ test("the retired Community destination redirects to Contribute", async () => {
   assertNoPrivateSentinels(html);
 });
 
-test("Events renders the same canonical calendar-first destination", async () => {
+test("Events renders the canonical upcoming list and keeps Month optional", async () => {
   const response = await fetchPath("/events");
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(
     html,
-    /rel="canonical" href="https:\/\/preview\.example\/calendar"/iu,
+    /rel="canonical" href="https:\/\/preview\.example\/events"/iu,
   );
-  assert.match(html, /Month at a glance/u);
-  assert.doesNotMatch(html, /Find your next field note|Apply filters/u);
+  assert.match(html, /<title>Events · Vancouver Curiosity Club<\/title>/iu);
+  assert.match(html, /Vancouver gatherings/u);
+  assert.match(html, /Find your next field note/u);
+  assert.match(html, /Apply filters/u);
+  assert.match(
+    html,
+    /<a(?=[^>]*href="\/events")(?=[^>]*aria-current="page")[^>]*>List<\/a>/u,
+  );
+  assert.match(html, /href="\/calendar">Month<\/a>/u);
+  assert.doesNotMatch(html, /Month at a glance|public-calendar__grid/u);
   assertSharedChrome(html);
   assertNoPrivateSentinels(html);
 
@@ -792,7 +831,7 @@ test("a cancelled event detail renders only published facts and accurate structu
 
   assert.match(
     html,
-    /<a(?=[^>]*href="\/calendar")(?=[^>]*aria-current="page")[^>]*>Calendar<\/a>/u,
+    /<a(?=[^>]*href="\/events")(?=[^>]*aria-current="page")[^>]*>Events<\/a>/u,
   );
 
   assert.match(
@@ -843,11 +882,14 @@ test("Calendar is an indexable month-at-a-glance public destination", async () =
   );
   assert.match(html, /Month at a glance/u);
   assert.match(html, /public-calendar__grid/u);
+  assert.match(html, /aria-label="Event views"/u);
+  assert.match(html, /href="\/events">List<\/a>/u);
   assert.match(
     html,
-    /You do not need to be an expert or make an account\./u,
+    /<a(?=[^>]*href="\/calendar")(?=[^>]*aria-current="page")[^>]*>Month<\/a>/u,
   );
-  assert.match(html, /Download upcoming events \(\.ics\)/u);
+  assert.match(html, /Download upcoming events/u);
+  assert.match(html, /iCalendar \(\.ics\)/u);
   assert.match(html, /<h1 id="public-calendar-title">/u);
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
   assert.doesNotMatch(html, /<h1>Calendar<\/h1>/u);
@@ -2373,13 +2415,14 @@ test("local development keeps only the HMR-required relaxed script policy", asyn
 function assertSharedChrome(html) {
   assert.match(html, /Vancouver Curiosity Club/u);
   assert.match(html, /aria-label="Primary navigation"/u);
+  assert.match(html, /href="\/events"/u);
   assert.match(html, /href="\/calendar"/u);
-  assert.doesNotMatch(html, /href="\/events"/u);
   assert.match(html, /href="\/clubs"/u);
   assert.doesNotMatch(html, /href="\/community"/u);
   assert.match(html, /href="\/about"/u);
+  assert.match(html, /href="\/host-an-event"/u);
   assert.match(html, /href="\/get-involved"/u);
-  assert.match(html, />Contribute<\/a>/u);
+  assert.match(html, />Get Involved<\/a>/u);
   assert.match(html, /Organizer Login/u);
   assert.match(html, /aria-label="Footer navigation"/u);
   assert.match(html, /Code of Conduct/u);

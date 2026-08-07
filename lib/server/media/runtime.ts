@@ -6,6 +6,21 @@ import type {
   MediaImageMimeType,
 } from "./image-validation";
 
+export type RuntimeImagesBinding = Readonly<{
+  input(stream: ReadableStream): {
+    transform(options: Readonly<{
+      fit?: "cover";
+      height?: number;
+      width: number;
+    }>): {
+      output(options: Readonly<{
+        format: string;
+        quality: number;
+      }>): Promise<{ response(): Response }>;
+    };
+  };
+}>;
+
 export function getRuntimeMediaBucket(): R2BucketLike {
   const value =
     (typeof env === "object" || typeof env === "function") && env !== null
@@ -22,21 +37,7 @@ export function getRuntimeMediaBucket(): R2BucketLike {
 }
 
 export function getRuntimeMediaDecodeProbe(): MediaImageDecodeProbe {
-  const images =
-    (typeof env === "object" || typeof env === "function") && env !== null
-      ? Reflect.get(env, "IMAGES")
-      : undefined;
-  if (
-    typeof images !== "object" ||
-    images === null ||
-    typeof Reflect.get(images, "input") !== "function"
-  ) {
-    throw new SafeApplicationError(
-      "service_unavailable",
-      503,
-      "Image validation is not configured.",
-    );
-  }
+  const images = getRuntimeImagesBinding();
   return async ({ bytes, mimeType }) => {
     const body = new Uint8Array(bytes.byteLength);
     body.set(bytes);
@@ -55,6 +56,25 @@ export function getRuntimeMediaDecodeProbe(): MediaImageDecodeProbe {
   };
 }
 
+export function getRuntimeImagesBinding(): RuntimeImagesBinding {
+  const images =
+    (typeof env === "object" || typeof env === "function") && env !== null
+      ? Reflect.get(env, "IMAGES")
+      : undefined;
+  if (
+    typeof images !== "object" ||
+    images === null ||
+    typeof Reflect.get(images, "input") !== "function"
+  ) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "Image validation is not configured.",
+    );
+  }
+  return images as RuntimeImagesBinding;
+}
+
 function isR2BucketLike(value: unknown): value is R2BucketLike {
   return (
     typeof value === "object" &&
@@ -66,22 +86,12 @@ function isR2BucketLike(value: unknown): value is R2BucketLike {
 }
 
 async function decodeWithImagesBinding(
-  images: object,
+  images: RuntimeImagesBinding,
   bytes: ArrayBuffer,
   mimeType: MediaImageMimeType,
 ): Promise<Response> {
-  const input = Reflect.get(images, "input") as (
-    stream: ReadableStream,
-  ) => {
-    transform(options: Readonly<{ width: number }>): {
-      output(options: Readonly<{
-        format: string;
-        quality: number;
-      }>): Promise<{ response(): Response }>;
-    };
-  };
   const stream = new Blob([bytes], { type: mimeType }).stream();
-  const result = await input.call(images, stream)
+  const result = await images.input(stream)
     .transform({ width: 1 })
     .output({ format: "webp", quality: 75 });
   return result.response();

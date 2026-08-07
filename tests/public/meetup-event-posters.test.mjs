@@ -16,6 +16,14 @@ import {
   toPublicEventDetailDto,
 } from "../../lib/server/public/events.ts";
 
+function descriptionInlines(blocks) {
+  return blocks.flatMap((block) =>
+    block.type === "ordered-list" || block.type === "unordered-list"
+      ? block.items.flat()
+      : block.content,
+  );
+}
+
 const EXPECTED_ENRICHMENT_EVENT_IDS = Object.freeze([
   "315294572",
   "315294577",
@@ -58,6 +66,7 @@ const EXPECTED_ENRICHMENT_EVENT_IDS = Object.freeze([
   "315969091",
   "315976207",
   "315993304",
+  "316010049",
 ]);
 
 const EXPECTED_CATEGORY_FALLBACK_EVENT_IDS = Object.freeze([]);
@@ -226,6 +235,8 @@ test("a public Meetup event card uses its curated poster before category fallbac
     "/event-posters/meetup-315772533.jpeg",
   );
   assert.match(card.artwork?.altText ?? "", /Cicero.+On Friendship/u);
+  assert.equal(card.attendanceMode, "in-person");
+  assert.equal(card.venue?.name, "Vancouver Central Library");
   assert.deepEqual(card.artwork?.dimensions.small, {
     height: 270,
     width: 480,
@@ -280,6 +291,7 @@ test("verified Meetup content fills only missing public fields", () => {
   const detail = toPublicEventDetailDto(base);
   assert.match(detail.description ?? "", /Do we love our friends/u);
   assert.doesNotMatch(detail.description ?? "", /https?:\/\/|@/u);
+  assert.ok(detail.descriptionBlocks?.length);
 
   const ownerAuthored = toPublicEventDetailDto({
     ...base,
@@ -289,6 +301,7 @@ test("verified Meetup content fills only missing public fields", () => {
     venue_public_name: "Owner-authored public venue",
   });
   assert.equal(ownerAuthored.description, "Owner-authored public description.");
+  assert.equal(ownerAuthored.descriptionBlocks, null);
   assert.equal(ownerAuthored.summary, "Owner-authored public summary.");
   assert.deepEqual(ownerAuthored.venue, {
     address: "Owner-authored public address",
@@ -308,6 +321,7 @@ test("the generated enrichment manifest is bounded and public safe", () => {
     assert.ok(
       event.description.length >= 10 && event.description.length <= 20_000,
     );
+    assert.ok(event.descriptionBlocks.length >= 1);
     for (const value of [
       event.summary,
       event.description,
@@ -325,6 +339,22 @@ test("the generated enrichment manifest is bounded and public safe", () => {
     }
     assert.ok(event.venue?.name);
     assert.ok(event.venue?.address);
+    for (const inline of descriptionInlines(event.descriptionBlocks)) {
+      assert.doesNotMatch(
+        inline.text,
+        /https?:\/\/|\bwww\.|@|passcode|password|access\s+code/iu,
+      );
+      if (inline.type === "link") {
+        const parsed = new URL(inline.href);
+        assert.equal(parsed.protocol, "https:");
+        assert.equal(parsed.username, "");
+        assert.equal(parsed.password, "");
+        assert.doesNotMatch(
+          parsed.hostname,
+          /(?:zoom\.us|meet\.google|teams\.microsoft\.com|webex\.com|discord\.gg)$/iu,
+        );
+      }
+    }
   }
   assert.deepEqual(
     events
@@ -373,6 +403,11 @@ test("every exact enrichment survives the public card and detail projections", (
     assert.equal(card.rsvpUrl, event.eventUrl, event.eventId);
     assert.equal(card.summary, event.summary, event.eventId);
     assert.equal(detail.description, event.description, event.eventId);
+    assert.deepEqual(
+      detail.descriptionBlocks,
+      event.descriptionBlocks,
+      event.eventId,
+    );
     assert.equal(
       card.isCancelled,
       event.eventId === "315823623",
@@ -435,6 +470,25 @@ test("unsafe curated summary and venue text is rejected at the runtime boundary"
         summary: "Join at https://private.invalid/meeting for this event.",
       }),
     /Invalid curated Meetup event summary/u,
+  );
+});
+
+test("curated description links fail closed at the runtime boundary", () => {
+  const baseline = CURATED_MEETUP_EVENT_ENRICHMENTS["315508432"];
+  assert.ok(baseline);
+  const descriptionBlocks = structuredClone(baseline.descriptionBlocks);
+  const link = descriptionInlines(descriptionBlocks).find(
+    (inline) => inline.type === "link",
+  );
+  assert.ok(link && link.type === "link");
+  link.href = "https://zoom.us/j/123456?pwd=private";
+  assert.throws(
+    () =>
+      validateCuratedMeetupEventCandidate({
+        ...baseline,
+        descriptionBlocks,
+      }),
+    /Invalid curated Meetup event description link/u,
   );
 });
 

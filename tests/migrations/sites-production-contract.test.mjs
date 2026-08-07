@@ -20,12 +20,13 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0014_phase5_publication.sql",
   "0015_phase6_cms_media.sql",
   "0016_phase7_import_export_forms.sql",
+  "0017_bright_captain_america.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
   checks: 243,
   explicitIndexes: 199,
-  foreignKeys: 298,
-  tables: 86,
+  foreignKeys: 299,
+  tables: 87,
   triggers: 0,
   uniqueIndexes: 79,
 });
@@ -46,9 +47,10 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0014_snapshot.json",
       "0015_snapshot.json",
       "0016_snapshot.json",
+      "0017_snapshot.json",
       "_journal.json",
     ],
-    "the normalized chain must end exactly at the single Phase 7 migration 0016",
+    "the normalized chain must include the complete Meetup public-content sidecar migration",
   );
 
   const journal = JSON.parse(
@@ -66,6 +68,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 14, tag: "0014_phase5_publication" },
       { idx: 15, tag: "0015_phase6_cms_media" },
       { idx: 16, tag: "0016_phase7_import_export_forms" },
+      { idx: 17, tag: "0017_bright_captain_america" },
     ],
   );
   assert.deepEqual(
@@ -79,6 +82,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0014",
       "0015",
       "0016",
+      "0017",
     ].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
@@ -92,7 +96,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131, 184, 199],
+    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199],
     "migration snapshots must match the cumulative packaged index state",
   );
 
@@ -152,6 +156,15 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
     phase7Batches[0].length + 1,
     24,
     "the Phase 7 migration and final ledger remain in one bounded request",
+  );
+
+  const meetupPublicContentFragments = productionFragments(
+    migrationSql("0017_bright_captain_america.sql"),
+  );
+  assert.equal(meetupPublicContentFragments.length, 1);
+  assert.match(
+    meetupPublicContentFragments[0],
+    /CREATE TABLE IF NOT EXISTS `meetup_event_snapshot_public_contents`/u,
   );
 
   const database = new DatabaseSync(":memory:");

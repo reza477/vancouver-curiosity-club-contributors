@@ -18,6 +18,9 @@ export type PublicFormChoice = Readonly<{
 }>;
 
 type FormState = Readonly<Record<string, string | readonly string[]>>;
+type FormInstanceState = "error" | "loading" | "ready";
+
+const FORM_INSTANCE_TIMEOUT_MS = 10_000;
 
 export function PublicSubmissionForm({
   choices = [],
@@ -29,7 +32,9 @@ export function PublicSubmissionForm({
   id?: string;
 }>) {
   const [instanceToken, setInstanceToken] = useState("");
-  const [loadingInstance, setLoadingInstance] = useState(true);
+  const [instanceState, setInstanceState] =
+    useState<FormInstanceState>("loading");
+  const [instanceRequest, setInstanceRequest] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [success, setSuccess] = useState(false);
@@ -45,6 +50,11 @@ export function PublicSubmissionForm({
 
   useEffect(() => {
     const controller = new AbortController();
+    let active = true;
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      FORM_INSTANCE_TIMEOUT_MS,
+    );
     async function loadInstance() {
       try {
         const response = await fetch(
@@ -63,19 +73,29 @@ export function PublicSubmissionForm({
         ) {
           throw new TypeError("Form instance unavailable");
         }
+        if (!active) return;
         setInstanceToken(body.instanceToken);
+        setInstanceState("ready");
         setNotice("");
       } catch (error) {
-        if ((error as { name?: unknown }).name !== "AbortError") {
-          setNotice("The form is temporarily unavailable. Refresh to try again.");
-        }
+        if (!active) return;
+        setInstanceState("error");
+        setNotice(
+          (error as { name?: unknown }).name === "AbortError"
+            ? "The form is taking too long to load. Try again."
+            : "The form is temporarily unavailable. Try again.",
+        );
       } finally {
-        setLoadingInstance(false);
+        window.clearTimeout(timeout);
       }
     }
     void loadInstance();
-    return () => controller.abort();
-  }, [formKey]);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [formKey, instanceRequest]);
 
   useEffect(() => {
     if (!success) return;
@@ -146,6 +166,13 @@ export function PublicSubmissionForm({
     setValues((current) => ({ ...current, [field]: value }));
   }
 
+  function retryInstance() {
+    setInstanceToken("");
+    setInstanceState("loading");
+    setNotice("");
+    setInstanceRequest((current) => current + 1);
+  }
+
   const title = publicFormLabel(formKey);
   return (
     <section
@@ -164,7 +191,31 @@ export function PublicSubmissionForm({
         </p>
       </div>
 
-      {success ? (
+      {instanceState === "loading" ? (
+        <div
+          aria-busy="true"
+          className="public-submission__loading"
+        >
+          <span className="sr-only" role="status">
+            Loading this form…
+          </span>
+          <div aria-hidden="true" className="public-submission__skeleton">
+            <span />
+            <span />
+            <span className="public-submission__skeleton-wide" />
+            <span />
+            <span />
+            <span className="public-submission__skeleton-action" />
+          </div>
+        </div>
+      ) : instanceState === "error" ? (
+        <div className="public-submission__load-error" role="alert">
+          <p>{notice}</p>
+          <button onClick={retryInstance} type="button">
+            Try loading the form again
+          </button>
+        </div>
+      ) : success ? (
         <div
           className="public-submission__success"
           id={`${idPrefix}-success`}
@@ -176,6 +227,7 @@ export function PublicSubmissionForm({
         </div>
       ) : (
         <form
+          aria-busy={busy}
           className="public-submission__form"
           onSubmit={submit}
           ref={formRef}
@@ -391,14 +443,10 @@ export function PublicSubmissionForm({
           </div>
 
           <button
-            disabled={busy || loadingInstance || !instanceToken}
+            disabled={busy || !instanceToken}
             type="submit"
           >
-            {loadingInstance
-              ? "Preparing form..."
-              : busy
-                ? "Sending..."
-                : submitButtonLabel(formKey)}
+            {busy ? "Sending..." : submitButtonLabel(formKey)}
           </button>
           <p
             className="public-submission__notice"

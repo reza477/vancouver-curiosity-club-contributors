@@ -2100,34 +2100,7 @@ BEGIN
         AND reserved.planning_status IN (
           'hold', 'tentative', 'tentative_hold', 'confirmed'
         )
-        AND (
-          (
-            reserved.source_kind = 'meetup'
-            AND reserved.sync_source_id = NEW.id
-            AND reserved.generation_id = NEW.active_generation_id
-          )
-          OR reserved.source_kind = 'legacy'
-          OR (
-            reserved.source_kind = 'meetup'
-            AND EXISTS (
-              SELECT 1
-              FROM sync_sources AS other_source
-              JOIN meetup_sync_generations AS other_generation
-                ON other_generation.id =
-                   other_source.active_generation_id
-               AND other_generation.sync_source_id = other_source.id
-               AND other_generation.state = 'published'
-              WHERE other_source.id = reserved.sync_source_id
-                AND other_source.organization_id =
-                    reserved.organization_id
-                AND other_source.active_generation_id =
-                    reserved.generation_id
-                AND other_source.id <> NEW.id
-                AND other_source.enabled = 1
-                AND other_source.deleted_at IS NULL
-            )
-          )
-        )
+        AND reserved.source_kind = 'legacy'
         AND NOT EXISTS (
           SELECT 1
           FROM organizer_external_reservation_intervals AS prior

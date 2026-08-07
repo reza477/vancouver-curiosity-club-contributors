@@ -12,6 +12,40 @@ type RefreshCounts = Readonly<{
   updated: number;
 }>;
 
+type RefreshOutcome =
+  | "busy"
+  | "completed"
+  | "disabled"
+  | "failed"
+  | "not_connected"
+  | "not_due"
+  | "not_modified"
+  | "partial";
+
+type RefreshResponse = Readonly<{
+  counts: RefreshCounts;
+  outcome: RefreshOutcome;
+  state: MeetupUiState;
+}>;
+
+type RefreshClubTarget = Readonly<{
+  id: string;
+  name: string;
+}>;
+
+type RefreshRun = Readonly<{
+  counts: RefreshCounts;
+  error: unknown | null;
+  lastAggregateState: MeetupUiState | null;
+  outcomes: readonly RefreshOutcome[];
+  requestCount: number;
+  stoppedAtLimit: boolean;
+}>;
+
+const ALL_REFRESH_CLUBS = "__all__";
+const DEPENDENT_MEETUP_PROGRAM_NAME = "Vancouver Curiosity Club";
+export const MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS = 64;
+
 export function MeetupControls({
   canConfigure,
   clubOptions,
@@ -23,6 +57,7 @@ export function MeetupControls({
 }>) {
   const [state, setState] = useState(initialState);
   const [clubId, setClubId] = useState("");
+  const [refreshClubId, setRefreshClubId] = useState(ALL_REFRESH_CLUBS);
   const [feedUrl, setFeedUrl] = useState("");
   const [busyAction, setBusyAction] = useState<"connect" | "refresh" | null>(
     null,
@@ -67,28 +102,50 @@ export function MeetupControls({
   async function refresh() {
     if (busyAction) return;
 
+    const selectedClubs =
+      refreshClubId === ALL_REFRESH_CLUBS
+        ? clubOptions
+        : clubOptions.filter((club) => club.id === refreshClubId);
+    if (selectedClubs.length === 0) {
+      setNotice("No Meetup program is available to refresh.");
+      return;
+    }
+
     setBusyAction("refresh");
     setNotice(null);
     try {
-      const response = await fetch("/api/organizer/meetup/refresh", {
-        method: "POST",
-        credentials: "same-origin",
-      });
-      const body = await readJson(response);
-      if (!response.ok || !isRefreshResponse(body)) {
-        throw new SafeUiRequestError(safeApiMessage(body));
-      }
-      setState(body.state);
-      setNotice(refreshOutcomeCopy(body.outcome, body.counts));
-    } catch (error) {
+      const run = await runMeetupRefreshSelection(
+        selectedClubs,
+        requestMeetupRefresh,
+      );
+      if (run.lastAggregateState) setState(run.lastAggregateState);
       setNotice(
-        error instanceof SafeUiRequestError
-          ? error.message
-          : "The refresh request could not be completed.",
+        refreshRunCopy(
+          run,
+          new Set(selectedClubs.map((club) => club.id)).size,
+        ),
       );
     } finally {
       setBusyAction(null);
     }
+  }
+
+  async function requestMeetupRefresh(
+    targetClubId: string,
+  ): Promise<RefreshResponse> {
+    const response = await fetch("/api/organizer/meetup/refresh", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ clubId: targetClubId }),
+    });
+    const body = await readJson(response);
+    if (!response.ok || !isRefreshResponse(body)) {
+      throw new SafeUiRequestError(safeApiMessage(body));
+    }
+    return body;
   }
 
   const copy = connectionCopy(state);
@@ -134,19 +191,41 @@ export function MeetupControls({
               <p className="organizer-shell__eyebrow">Manual control</p>
               <h2 id="manual-refresh-heading">Refresh official feeds now</h2>
               <p>
-                Owner and Administrator access can request a manual refresh. A
-                request processes one feed and may report partial, busy,
-                unchanged, failed, or completed; the button does not imply
-                success.
+                Choose one program or refresh every available program. Each
+                request remains limited to two source rows; a partial result
+                automatically continues the same program until it completes
+                or reaches the safety limit.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={refresh}
-              disabled={cannotRefresh}
-            >
-              {busyAction === "refresh" ? "Refreshing…" : "Refresh now"}
-            </button>
+            <div className="meetup-refresh-actions">
+              <label htmlFor="meetup-refresh-program">
+                Programs to refresh
+              </label>
+              <select
+                id="meetup-refresh-program"
+                value={refreshClubId}
+                onChange={(event) => setRefreshClubId(event.target.value)}
+                aria-describedby="meetup-refresh-help"
+                disabled={busyAction !== null}
+              >
+                <option value={ALL_REFRESH_CLUBS}>All Meetup programs</option>
+                {clubOptions.map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.name}
+                  </option>
+                ))}
+              </select>
+              <p id="meetup-refresh-help">
+                Counts are combined across every bounded request in this run.
+              </p>
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={cannotRefresh}
+              >
+                {busyAction === "refresh" ? "Refreshing…" : "Refresh now"}
+              </button>
+            </div>
           </section>
 
           <section
@@ -294,7 +373,7 @@ export function connectionCopy(state: MeetupUiState) {
       label: "Import in progress",
       heading: "A feed snapshot is being processed in bounded chunks.",
       detail:
-        "Refresh again to continue. The public calendar does not claim a complete first import until the final chunk succeeds.",
+        "Choose that program or All Meetup programs and refresh once; the control continues bounded chunks automatically. The public calendar does not claim a complete first import until the final chunk succeeds.",
       tone: "waiting",
     };
   }
@@ -334,40 +413,123 @@ export function connectionCopy(state: MeetupUiState) {
   };
 }
 
-function refreshOutcomeCopy(
-  outcome:
-    | "busy"
-    | "completed"
-    | "disabled"
-    | "failed"
-    | "not_connected"
-    | "not_due"
-    | "not_modified"
-    | "partial",
+export async function runMeetupRefreshSelection(
+  clubs: readonly RefreshClubTarget[],
+  requestRefresh: (clubId: string) => Promise<RefreshResponse>,
+): Promise<RefreshRun> {
+  const uniqueClubs = new Map<string, RefreshClubTarget>();
+  for (const club of clubs) {
+    if (!uniqueClubs.has(club.id)) uniqueClubs.set(club.id, club);
+  }
+  const clubTargets = [...uniqueClubs.values()];
+  const orderedClubTargets = [
+    ...clubTargets.filter(
+      (club) => club.name !== DEPENDENT_MEETUP_PROGRAM_NAME,
+    ),
+    ...clubTargets.filter(
+      (club) => club.name === DEPENDENT_MEETUP_PROGRAM_NAME,
+    ),
+  ];
+  const counts = mutableEmptyRefreshCounts();
+  const outcomes: RefreshOutcome[] = [];
+  let error: unknown | null = null;
+  let lastAggregateState: MeetupUiState | null = null;
+  let requestCount = 0;
+  let stoppedAtLimit = false;
+
+  refreshPrograms: for (const targetClub of orderedClubTargets) {
+    let outcome: RefreshOutcome;
+    do {
+      if (requestCount >= MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS) {
+        stoppedAtLimit = true;
+        break refreshPrograms;
+      }
+      let response: RefreshResponse;
+      try {
+        response = await requestRefresh(targetClub.id);
+      } catch (caught) {
+        error = caught;
+        break refreshPrograms;
+      }
+      requestCount += 1;
+      outcome = response.outcome;
+      outcomes.push(outcome);
+      addRefreshCounts(counts, response.counts);
+      if (
+        outcome === "completed" ||
+        outcome === "failed" ||
+        outcome === "not_modified" ||
+        outcome === "partial"
+      ) {
+        // These result paths re-read organization-wide state. Early
+        // not-connected/disabled/busy results are scoped to one source and
+        // must not replace the aggregate panel above.
+        lastAggregateState = response.state;
+      }
+    } while (outcome === "partial");
+  }
+
+  return Object.freeze({
+    counts: Object.freeze({ ...counts }),
+    error,
+    lastAggregateState,
+    outcomes: Object.freeze(outcomes),
+    requestCount,
+    stoppedAtLimit,
+  });
+}
+
+function refreshRunCopy(run: RefreshRun, selectedProgramCount: number): string {
+  const totals = refreshCountsCopy(run.counts);
+  if (run.error) {
+    const message =
+      run.error instanceof SafeUiRequestError
+        ? run.error.message
+        : "The refresh request could not be completed.";
+    return run.requestCount === 0
+      ? message
+      : `${message} ${run.requestCount} earlier bounded requests succeeded. ${totals}`;
+  }
+  if (run.stoppedAtLimit) {
+    return `Refresh paused at the ${MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS}-request safety limit. Choose the same selection and refresh again to continue. ${totals}`;
+  }
+  const exceptional = new Set(
+    run.outcomes.filter(
+      (outcome) =>
+        outcome !== "completed" &&
+        outcome !== "not_modified" &&
+        outcome !== "partial",
+    ),
+  );
+  if (exceptional.size > 0) {
+    return `Refresh run finished with ${[...exceptional].join(", ")} result${exceptional.size === 1 ? "" : "s"} across ${selectedProgramCount} selected program${selectedProgramCount === 1 ? "" : "s"}. ${totals}`;
+  }
+  return `Refresh completed across ${selectedProgramCount} selected program${selectedProgramCount === 1 ? "" : "s"} in ${run.requestCount} bounded request${run.requestCount === 1 ? "" : "s"}. ${totals}`;
+}
+
+function mutableEmptyRefreshCounts(): {
+  cancelled: number;
+  created: number;
+  rejected: number;
+  removed: number;
+  updated: number;
+} {
+  return { cancelled: 0, created: 0, rejected: 0, removed: 0, updated: 0 };
+}
+
+function addRefreshCounts(
+  target: ReturnType<typeof mutableEmptyRefreshCounts>,
   counts: RefreshCounts,
-) {
-  if (outcome === "completed") {
-    return `Refresh completed: ${counts.created} created, ${counts.updated} updated, ${counts.cancelled} cancelled, ${counts.removed} removed, and ${counts.rejected} rejected.`;
-  }
-  if (outcome === "not_modified") {
-    return "The source reported no modified calendar data.";
-  }
-  if (outcome === "partial") {
-    return `Processed a bounded feed chunk: ${counts.created} created, ${counts.updated} updated, ${counts.cancelled} cancelled, and ${counts.rejected} rejected. Refresh again to continue the same snapshot.`;
-  }
-  if (outcome === "busy") {
-    return "Another refresh is already in progress. No second import was started.";
-  }
-  if (outcome === "not_due") {
-    return "A view-triggered refresh is not due yet. No import was started.";
-  }
-  if (outcome === "not_connected") {
-    return "No source is connected, so no refresh was started.";
-  }
-  if (outcome === "disabled") {
-    return "The source is disabled, so no refresh was started.";
-  }
-  return "The refresh did not complete. Source-backed rows committed by successful row transactions may remain available.";
+): void {
+  target.cancelled += counts.cancelled;
+  target.created += counts.created;
+  target.rejected += counts.rejected;
+  target.removed += counts.removed;
+  target.updated += counts.updated;
+}
+
+function refreshCountsCopy(counts: RefreshCounts): string {
+  return `Totals: ${counts.created} created, ${counts.updated} updated, ${counts.cancelled} cancelled, ${counts.removed} removed, and ${counts.rejected} rejected.`;
 }
 
 function formatPrivateTime(value: string | null) {
@@ -413,15 +575,7 @@ function isConnectResponse(
 
 function isRefreshResponse(value: unknown): value is Readonly<{
   counts: RefreshCounts;
-  outcome:
-    | "busy"
-    | "completed"
-    | "disabled"
-    | "failed"
-    | "not_connected"
-    | "not_due"
-    | "not_modified"
-    | "partial";
+  outcome: RefreshOutcome;
   state: MeetupUiState;
 }> {
   if (!isRecord(value)) return false;

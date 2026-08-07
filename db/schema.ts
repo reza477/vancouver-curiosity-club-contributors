@@ -5751,6 +5751,33 @@ export const meetupEventSnapshots = sqliteTable(
   ],
 );
 
+/**
+ * Public-safe attendee content captured beside an immutable Meetup snapshot.
+ * A separate one-to-one table keeps the additive Sites migration retry-safe:
+ * production can CREATE TABLE IF NOT EXISTS, while SQLite cannot retry a
+ * partially applied ALTER TABLE ADD COLUMN sequence.
+ */
+export const meetupEventSnapshotPublicContents = sqliteTable(
+  "meetup_event_snapshot_public_contents",
+  {
+    snapshotId: text("snapshot_id")
+      .primaryKey()
+      .references(() => meetupEventSnapshots.id, { onDelete: "cascade" }),
+    publicSummary: text("public_summary").notNull(),
+    publicDescription: text("public_description").notNull(),
+    publicDescriptionBlocksJson: text(
+      "public_description_blocks_json",
+    ).notNull(),
+    publicVenueName: text("public_venue_name"),
+    publicVenueAddress: text("public_venue_address"),
+    posterSourceUrl: text("poster_source_url"),
+    posterAltText: text("poster_alt_text"),
+    posterCredit: text("poster_credit"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+);
+
 export const icsSubscriptionTokens = sqliteTable(
   "ics_subscription_tokens",
   {

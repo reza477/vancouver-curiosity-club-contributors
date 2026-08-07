@@ -15,28 +15,36 @@ guaranteed Sites scheduler.
 Meetup's current help documentation supports exporting a group calendar as an
 iCalendar subscription. Meetup's current API documentation says new OAuth
 consumers require an active Meetup Pro subscription and approval, which are not
-available here. Generalized runtime scraping, passwords, guessed URLs, and
-write-back are excluded. The later owner-directed curated public-page
-enrichment amendment below does not change the request-time iCalendar adapter
-or introduce a generalized runtime scraper.
+available here. Unbounded runtime scraping, passwords, guessed URLs, and
+write-back are excluded. The 2026-08-06 complete-source amendment below
+narrowly supersedes the truncated iCalendar read adapter with a fail-closed
+parser for each exact configured group's canonical public events page.
 
 ## Decision
 
-- Use the exact official HTTPS group iCalendar export URL as the read adapter.
-- Keep the integration one-way. Import title, schedule, explicit status,
-  sequence/last-modified provenance, and canonical official event URL only.
-- Do not persist or publish raw feed description or location fields because
-  they can contain private meeting details. Venue publication and organizer
-  attribution remain controlled by the existing allowlisted projection.
+- Keep the exact official HTTPS group iCalendar export URL as private
+  configuration and group-identity proof. Production refreshes derive its
+  validated group slug and fetch only that group's canonical public
+  `/events/` page; the iCalendar adapter remains for deterministic legacy
+  compatibility tests.
+- Keep the integration one-way. Import current title, schedule, explicit
+  status, canonical official event URL, bounded public description structure,
+  attendee-visible venue, and validated poster provenance from one source
+  snapshot. Never write to Meetup.
+- Do not persist raw page or feed bodies. Store only the normalized public-safe
+  allowlist in the snapshot's one-to-one public-content sidecar. Additive
+  migration `0017_bright_captain_america.sql` creates that table with
+  `CREATE TABLE IF NOT EXISTS`, preserving the production partial-retry
+  contract. Owner-authored CMS copy, venue data, and approved artwork retain
+  atomic precedence.
 - Store one active `meetup_ics` source per club while allowing multiple clubs
   and distinct feeds in the same organization. Enforce both organization/club
   uniqueness and organization/source-URL uniqueness.
-- Cross-posted gatherings receive distinct group-specific source identities.
-  If two configured feeds would reserve the same time, the Phase 4 overlap
-  guard fails closed rather than silently merging by title/time or showing
-  duplicate reservations. Until an explicit owner-reviewed cross-post alias
-  model exists, operators must connect only the non-overlapping feed coverage
-  they intend to show.
+- Cross-posted gatherings retain distinct group-specific source identities.
+  Only the owner-reviewed exact-URL aliases recorded below may share one
+  canonical event; title, UID, or schedule similarity never infers an alias.
+  Distinct Meetup listings may occur simultaneously, while manual and legacy
+  reservation conflicts continue to fail closed.
 - Resolve the three owner-approved program clubs idempotently using their exact
   public names and stable organization-scoped records. The protected connection
   form submits an explicit club ID. Server authorization proves that club
@@ -62,11 +70,12 @@ or introduce a generalized runtime scraper.
 - Reject stale sequence/last-modified replays, including attempted resurrection
   after a newer cancellation.
 - Fetch with no-store semantics, a 12-second timeout, bounded UTF-8 streaming,
-  exact content type, a maximum of three manually validated same-group
-  redirects, and strict official-URL validation.
-- Parse bounded iCalendar input, including `VTIMEZONE`, TZID-aware timed events,
-  UID plus normalized recurrence identity, explicit calendar/event
-  cancellation, and safe rejection of unexpanded recurrence.
+  exact HTML content type, redirect rejection, and strict canonical
+  group/event/image URL validation.
+- Parse only the page's exact Apollo future-events connection. Validate group,
+  event, venue, and image entity references; reject duplicate edges, malformed
+  or oversized state, raw HTML, email addresses, meeting credentials, and
+  unsafe external destinations.
 - Process one source and at most two calendar rows per request. Persist a
   snapshot hash, pending generation ID, and cursor for resumable partial
   imports. Stage public-safe facts in an isolated pending generation; its rows
@@ -74,14 +83,14 @@ or introduce a generalized runtime scraper.
   through the supported runtime path. This keeps both the successful and
   conflict-rejection paths at or below D1's documented 50-query Free Worker
   invocation ceiling.
-- Derive the resumable snapshot hash from the normalized work items that can
-  affect identity, ordering, provenance, reconciliation, or publication—not
-  raw iCalendar bytes. Meetup can vary ignored calendar decoration,
-  descriptions, or locations between requests; those private/unused changes
-  must not strand a pending cursor.
-- Use conditional ETag/Last-Modified fetches after complete snapshots. Refetch
-  the body while a partial snapshot is pending so the cursor can resume only
-  against the same hash.
+- Derive the resumable snapshot hash from every normalized work item that can
+  affect identity, ordering, reconciliation, publication, public description,
+  venue output, or poster provenance—not raw page bytes. A changed importer or
+  alias policy is part of the hash so an older pending generation cannot resume
+  under new rules.
+- Refetch the no-store page while a partial snapshot is pending so the cursor
+  resumes only when the complete normalized hash still matches. Conditional
+  ETag/Last-Modified behavior remains confined to the legacy iCalendar adapter.
 - Refresh on explicit Owner/Administrator request or opportunistically on a
   public view. A complete source waits at least 15 minutes; a partial snapshot
   may resume on the next request. If another request already owns the refresh,
@@ -96,6 +105,42 @@ or introduce a generalized runtime scraper.
   and stores the exact removed count. The prior active generation remains
   public throughout a partial or error state, and published snapshots are not
   mutated by the supported runtime path.
+
+### Exact cross-post alias model
+
+The following Vancouver Curiosity Club URLs are explicit aliases of the
+corresponding Vancouver Literature and Film listings:
+
+- `315511475` -> `315508432`
+- `315511480` -> `315508537`
+- `315675704` -> `315675534`
+- `315772829` -> `315772811`
+- `315823081` -> `315823022`
+- `315976207` -> `315294587`
+- `315511485` -> `315510842`
+- `315851495` -> `315851485`
+
+Both sides are stored in source as exact canonical HTTPS Meetup event URLs and
+must have numeric event IDs. Chains, cycles, same-group pairs, and duplicate
+alias or target URLs are rejected during module initialization.
+
+An alias can import only when exactly one different enabled source has its
+target URL in an active, published, cursor-complete, rejection-free generation.
+The alias schedule kind, timezone, and exact start/all-day date range must
+match that published target snapshot. End time must also match except for the
+Titanic pair `315511480` -> `315508537`, whose owner-reviewed source listings
+differ by 30 minutes and have a pair-specific upper bound. Absence, ambiguity,
+stale source revision, or other schedule drift fails the refresh without
+advancing its active generation.
+
+The alias receives its own source link, generation snapshot, reservation
+normalization, and external interval, all referencing the target's existing
+canonical `event_id`. It counts toward generation completion but never updates
+the canonical event row or creates an event revision. Existing activation
+invariants treat same-event intervals as one gathering while continuing to
+reject unrelated overlaps. Public projections omit the alias URLs so the
+specialized canonical listing is the single public card. This uses the existing
+many-links-to-one-event schema and therefore requires no D1 migration.
 
 ## Authorization and disclosure
 
@@ -128,53 +173,49 @@ or introduce a generalized runtime scraper.
 - A feed larger than the parser limits fails safely rather than being truncated
   and misrepresented.
 - With no guaranteed scheduler, freshness depends on owner refreshes and public
-  views. The UI labels that cadence explicitly.
-- Meetup's official iCalendar export supplies no approved poster-image field.
-  The Owner explicitly approved importing local copies of the 11 posters on
-  the current public Meetup listings. A curated manifest binds each bundled
-  file to its exact numeric Meetup event ID and retains the original
-  `meetupstatic.com` URL only as provenance; public pages never hotlink it.
-  Newly synced events use separately approved website media or controlled
-  category artwork until their poster is deliberately added. The request-time
-  sync does not scrape Meetup pages.
-- No Meetup OAuth/API credential, Meetup Pro plan, password, scraper, external
-  queue, alternate database, or alternate host is introduced.
+  views. Organizer tools show the operational cadence and diagnostics; public
+  pages expose only the last safe published event projection.
+- Poster provenance is never exposed in a public DTO. A first-party route
+  revalidates the exact active published snapshot, fetches only the allowlisted
+  secure Meetup image host, validates bytes/dimensions/aspect ratio, transforms
+  exact 16:9 responsive representations whose bytes match the public width and
+  height contract, and caches those WebP variants in R2.
+- No Meetup OAuth/API credential, Meetup Pro plan, password, authenticated
+  browser session, external queue, alternate database, or alternate host is
+  introduced.
 
-## 2026-08-06 curated public-event enrichment amendment
+## 2026-08-06 complete-source and public-content amendment
 
-The Owner later directed the site to use the attendee-visible public Meetup
-description, venue, and sharp poster for current events. This amendment is
-separate from the official iCalendar synchronization above:
+The Owner directed the synchronization itself to use current attendee-visible
+Meetup facts and to stop depending on a separate manual enrichment run.
 
-- Feed description and location fields remain untrusted, unused, and excluded
-  from the normalized synchronization hash.
-- An owner-invoked source-maintenance tool reads only exact public event pages
-  from the three confirmed group slugs and requires the expected numeric Meetup
-  event ID on every page. It is not invoked by a public request and does not
-  write to Meetup or hosted D1.
-- The initial saved version 18 candidate contained 13 explicit
-  group-slug/event-ID records. The 2026-08-06 local reconciliation candidate
-  contains 41: 38 current numeric-canonical listings plus three older records
-  retained because the latest bounded source refresh did not complete cleanly
-  enough to prove removal. That source inventory does not activate a blocked
-  source or make an event public; the existing completed-generation,
-  publication, receipt, legal, privacy, and public-projection checks remain
-  authoritative.
-- The generator normalizes public descriptions to safe text, removes URLs,
-  rejects email addresses and meeting credentials, and retains only venue facts
-  visible to an ordinary attendee. Existing owner-authored public summary,
-  description, venue, and approved artwork always take precedence.
-- Each exact poster source must use the allowlisted secure Meetup image host and
-  pass MIME, byte-size, natural-dimension, and aspect-ratio validation. The
-  generator produces local 480px, 960px, and up-to-1600px variants without
-  upscaling; public HTML never hotlinks Meetup. A usable smaller original stays
-  at its native width, including in event detail. A missing source or image
-  below the 480px card target retains controlled category artwork rather than
-  failing the rest of a fully validated generation or manufacturing a larger
-  asset.
-- This is a bounded, owner-reviewed, source-controlled reconciliation, not a
-  guaranteed daily scheduler, generalized scraper, alternate importer, OAuth
-  integration, or write-back path.
+- A read-only verification of the three exact canonical group pages returned
+  30 + 10 + 2 current listings. It included Wednesday Night Reset
+  (`316010049`), the current Poetry Night title, and numeric event identities
+  for four recurring listings that redirect when opened individually.
+- Eight owner-reviewed URL pairs are cross-post aliases, producing 34 canonical
+  current listings before ordinary date/status filtering.
+- Public descriptions normalize to a bounded semantic model of headings,
+  paragraphs, ordered/unordered lists, emphasis, and allowlisted HTTPS links.
+  Ticket links such as VIFF remain clickable. Plain text must exactly match the
+  semantic structure before the snapshot is eligible.
+- Public venue name/address and poster provenance live on the same immutable
+  snapshot as title/schedule. A partial or failed refresh therefore cannot mix
+  generations or leak new content.
+- The organizer All-program action refreshes canonical Literature and Fantasy
+  sources before the alias-dependent main group and automatically continues
+  two-row chunks with a bounded request cap.
+- The older curated manifest and local poster files remain a fallback for
+  already-published snapshots. They are no longer the primary update path for
+  a newly completed source generation.
+- This is a bounded exact-group parser, not a general crawler or write-back
+  integration. Failure preserves the previous active generation and exposes
+  diagnostics only to authorized organizers.
+- The current canonical HTML pages embed the owner-requested 42 listings
+  (30 main, 10 Literature, 2 Fantasy). The main page also advertises later
+  paginated occurrences that are not embedded. This adapter does not call
+  Meetup's private GraphQL pagination surface and therefore makes no claim to
+  ingest those later occurrences until they enter the canonical page snapshot.
 
 ## Primary references
 

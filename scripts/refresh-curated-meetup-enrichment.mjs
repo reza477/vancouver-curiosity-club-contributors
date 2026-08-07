@@ -64,6 +64,7 @@ const EVENTS = Object.freeze([
   ["vancouver-meetup-group", "315969091"],
   ["vancouver-meetup-group", "315976207"],
   ["vancouver-meetup-group", "315993304"],
+  ["vancouver-meetup-group", "316010049"],
 ]);
 
 const MAX_DESCRIPTION_LENGTH = 20_000;
@@ -75,6 +76,39 @@ const FORBIDDEN_PUBLIC_TEXT_PATTERN =
 const UNSAFE_CONTROL_PATTERN =
   /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const EMAIL_PATTERN = /\b[^\s@]+@[^\s@]+\.[^\s@]+\b/iu;
+const RAW_HTML_PATTERN = /<\/?[a-z][^>]*>/iu;
+const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\([^)]*\)/u;
+const MAX_DESCRIPTION_BLOCKS = 400;
+const MAX_DESCRIPTION_INLINE_NODES = 4_000;
+const MAX_DESCRIPTION_LIST_ITEMS = 300;
+const MAX_DESCRIPTION_LINK_LENGTH = 2_048;
+const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
+  new Set([
+    "docs.google.com",
+    "drive.google.com",
+    "m.youtube.com",
+    "maps.app.goo.gl",
+    "reifelsanctuary.calendarspots.com",
+    "vancouver.ca",
+    "viff.org",
+    "www.focusfeatures.com",
+    "www.gutenberg.org",
+    "www.navneuro.com",
+    "www.pewresearch.org",
+    "www.reifelbirdsanctuary.com",
+    "www.ted.com",
+    "www.vatican.va",
+    "www.youtube.com",
+    "youtu.be",
+  ]),
+);
+const PUBLIC_DESCRIPTION_LINK_QUERY_KEYS = Object.freeze({
+  "m.youtube.com": Object.freeze(new Set(["index", "list", "start", "t", "v"])),
+  "www.youtube.com": Object.freeze(
+    new Set(["index", "list", "start", "t", "v"]),
+  ),
+  "youtu.be": Object.freeze(new Set(["list", "start", "t"])),
+});
 const MANAGED_POSTER_FILENAME_PATTERN =
   /^meetup-[0-9]+(?:-(?:480|960))?\.jpeg$/u;
 const REQUEST_HEADERS = Object.freeze({
@@ -235,7 +269,9 @@ export async function refreshCuratedMeetupEnrichment({
         }
       }
 
-      const description = normalizePublicDescription(event.description);
+      const publicDescription = normalizePublicDescription(event.description);
+      const { blocks: descriptionBlocks, plainText: description } =
+        publicDescription;
       const venue = normalizePublicVenue(event.venue);
       const summary = normalizePublicSafeSingleLine(
         deriveSummary(description),
@@ -246,6 +282,7 @@ export async function refreshCuratedMeetupEnrichment({
       manifestEvents.push(
         Object.freeze({
           description,
+          descriptionBlocks,
           eventId,
           eventUrl,
           groupSlug,
@@ -261,7 +298,7 @@ export async function refreshCuratedMeetupEnrichment({
     );
     await writeFile(
       stagingManifestPath,
-      `${JSON.stringify({ schemaVersion: 1, events: manifestEvents }, null, 2)}\n`,
+      `${JSON.stringify({ schemaVersion: 2, events: manifestEvents }, null, 2)}\n`,
       "utf8",
     );
     await publishStagedGeneration({
@@ -578,31 +615,240 @@ function readPosterSource(input, eventId) {
   return url.href;
 }
 
-function normalizePublicDescription(input) {
-  const raw = readText(input, "event description", MAX_DESCRIPTION_LENGTH)
+export function normalizePublicDescription(input) {
+  const source = readText(input, "event description", MAX_DESCRIPTION_LENGTH)
     .normalize("NFKC")
     .replaceAll("\r\n", "\n")
     .replaceAll("\r", "\n")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, "")
-    .replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/gu, "$1")
-    .replace(/https?:\/\/\S+/gu, "")
-    .replace(/\*\*([^*]+)\*\*/gu, "$1")
-    .replace(/^#{1,6}\s+/gmu, "")
-    .replace(/^\s*\\?[*-]\s+/gmu, "• ")
     .replace(/[ \t]+\n/gu, "\n")
     .replace(/\n[ \t]+/gu, "\n")
     .replace(/\n{3,}/gu, "\n\n")
     .trim();
   if (
-    raw.length < 10 ||
-    raw.length > MAX_DESCRIPTION_LENGTH ||
-    UNSAFE_CONTROL_PATTERN.test(raw) ||
-    EMAIL_PATTERN.test(raw) ||
-    FORBIDDEN_PUBLIC_TEXT_PATTERN.test(raw)
+    source.length < 10 ||
+    source.length > MAX_DESCRIPTION_LENGTH ||
+    UNSAFE_CONTROL_PATTERN.test(source) ||
+    EMAIL_PATTERN.test(source) ||
+    RAW_HTML_PATTERN.test(source) ||
+    MARKDOWN_IMAGE_PATTERN.test(source) ||
+    /\b(?:passcode|password|access\s+code)\b|\b(?:token|key|pwd)=/iu.test(
+      source,
+    )
   ) {
     throw new Error("Meetup description failed the public-safe allowlist.");
   }
-  return raw;
+
+  const blocks = parsePublicDescriptionBlocks(source);
+  const plainText = descriptionBlocksToPlainText(blocks);
+  if (
+    blocks.length < 1 ||
+    blocks.length > MAX_DESCRIPTION_BLOCKS ||
+    plainText.length < 10 ||
+    plainText.length > MAX_DESCRIPTION_LENGTH ||
+    UNSAFE_CONTROL_PATTERN.test(plainText) ||
+    EMAIL_PATTERN.test(plainText) ||
+    FORBIDDEN_PUBLIC_TEXT_PATTERN.test(plainText)
+  ) {
+    throw new Error("Meetup description failed the public-safe allowlist.");
+  }
+  return Object.freeze({ blocks: Object.freeze(blocks), plainText });
+}
+
+function parsePublicDescriptionBlocks(source) {
+  const blocks = [];
+  let inlineNodeCount = 0;
+  let paragraphLines = [];
+  let list = null;
+
+  const parseInlines = (value) => {
+    const inlines = parsePublicDescriptionInlines(value);
+    inlineNodeCount += inlines.length;
+    if (inlineNodeCount > MAX_DESCRIPTION_INLINE_NODES) {
+      throw new Error("Meetup description exceeded the public structure limit.");
+    }
+    return Object.freeze(inlines);
+  };
+  const pushBlock = (block) => {
+    blocks.push(Object.freeze(block));
+    if (blocks.length > MAX_DESCRIPTION_BLOCKS) {
+      throw new Error("Meetup description exceeded the public structure limit.");
+    }
+  };
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) return;
+    const text = paragraphLines.join(" ").replace(/\s+/gu, " ").trim();
+    paragraphLines = [];
+    if (text) pushBlock({ content: parseInlines(text), type: "paragraph" });
+  };
+  const flushList = () => {
+    if (list === null) return;
+    pushBlock({ items: Object.freeze(list.items), type: list.type });
+    list = null;
+  };
+
+  for (const rawLine of source.split("\n")) {
+    const line = rawLine.trim();
+    if (line === "") {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const strongHeading = /^\*\*([^*].*?)\*\*$/u.exec(line);
+    const markdownHeading = /^(#{1,6})\s+(.+)$/u.exec(line);
+    if (strongHeading || markdownHeading) {
+      flushParagraph();
+      flushList();
+      const headingText = strongHeading?.[1] ?? markdownHeading?.[2] ?? "";
+      const sourceLevel = markdownHeading?.[1]?.length ?? 2;
+      pushBlock({
+        content: parseInlines(headingText),
+        level: sourceLevel <= 2 ? 3 : 4,
+        type: "heading",
+      });
+      continue;
+    }
+
+    const unorderedItem = /^\\?(?:[*+-]|•)\s+(.+)$/u.exec(line);
+    const orderedItem = /^\d+[.)]\s+(.+)$/u.exec(line);
+    if (unorderedItem || orderedItem) {
+      flushParagraph();
+      const type = unorderedItem ? "unordered-list" : "ordered-list";
+      if (list !== null && list.type !== type) flushList();
+      list ??= { items: [], type };
+      list.items.push(parseInlines(unorderedItem?.[1] ?? orderedItem?.[1] ?? ""));
+      if (list.items.length > MAX_DESCRIPTION_LIST_ITEMS) {
+        throw new Error("Meetup description exceeded the public list limit.");
+      }
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(line);
+  }
+  flushParagraph();
+  flushList();
+  return blocks;
+}
+
+function parsePublicDescriptionInlines(value) {
+  const inlines = [];
+  const pattern = /\[([^\]\n]{1,500})\]\((https?:\/\/[^)\s]{1,2048})\)|\*\*([^*\n]+)\*\*|(?<![\[(])https?:\/\/[^\s<>()]+/gu;
+  let cursor = 0;
+  for (const match of value.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    pushPublicTextInline(inlines, value.slice(cursor, index));
+    if (match[1] !== undefined && match[2] !== undefined) {
+      pushPublicLinkInline(inlines, match[1], match[2]);
+    } else if (match[3] !== undefined) {
+      const text = normalizeDescriptionInlineText(match[3]);
+      if (text) inlines.push(Object.freeze({ text, type: "strong" }));
+    } else {
+      pushPublicLinkInline(inlines, match[0], match[0]);
+    }
+    cursor = index + match[0].length;
+  }
+  pushPublicTextInline(inlines, value.slice(cursor));
+  if (inlines.length === 0) {
+    throw new Error("Meetup description contained an empty public block.");
+  }
+  return inlines;
+}
+
+function pushPublicTextInline(inlines, input) {
+  const text = normalizeDescriptionInlineText(input);
+  if (!text) return;
+  const previous = inlines.at(-1);
+  if (previous?.type === "text") {
+    inlines[inlines.length - 1] = Object.freeze({
+      text: `${previous.text}${text}`,
+      type: "text",
+    });
+  } else {
+    inlines.push(Object.freeze({ text, type: "text" }));
+  }
+}
+
+function pushPublicLinkInline(inlines, rawLabel, rawHref) {
+  const href = normalizePublicDescriptionLink(rawHref);
+  const label = normalizeDescriptionInlineText(rawLabel);
+  if (href === null) {
+    const safeLabel = FORBIDDEN_PUBLIC_TEXT_PATTERN.test(label)
+      ? "External resource"
+      : label;
+    pushPublicTextInline(inlines, safeLabel);
+    return;
+  }
+  const host = new URL(href).hostname;
+  const displayHost = host.replace(/^(?:m\.|www\.)/u, "");
+  const text = FORBIDDEN_PUBLIC_TEXT_PATTERN.test(label)
+    ? `Open ${displayHost}`
+    : label;
+  inlines.push(Object.freeze({ href, text, type: "link" }));
+}
+
+function normalizeDescriptionInlineText(input) {
+  return input
+    .normalize("NFKC")
+    .replace(/\\([*_[\]`|])/gu, "$1")
+    .replace(/\s+/gu, " ");
+}
+
+function normalizePublicDescriptionLink(input) {
+  if (typeof input !== "string" || input.length > MAX_DESCRIPTION_LINK_LENGTH) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = new URL(input);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    !ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS.has(host)
+  ) {
+    return null;
+  }
+  parsed.hostname = host;
+  parsed.hash = "";
+  for (const key of [...parsed.searchParams.keys()]) {
+    if (/^(?:utm_.+|fbclid|gclid|mc_cid|mc_eid|g_st|ouid|rtpof|sd|usp)$/iu.test(key)) {
+      parsed.searchParams.delete(key);
+    }
+  }
+  const allowedQueryKeys = PUBLIC_DESCRIPTION_LINK_QUERY_KEYS[host];
+  for (const key of parsed.searchParams.keys()) {
+    if (!allowedQueryKeys?.has(key)) return null;
+  }
+  const normalized = parsed.toString();
+  return normalized.length <= MAX_DESCRIPTION_LINK_LENGTH ? normalized : null;
+}
+
+function descriptionBlocksToPlainText(blocks) {
+  return blocks
+    .map((block) => {
+      if (block.type === "unordered-list" || block.type === "ordered-list") {
+        return block.items
+          .map((item, index) => {
+            const marker = block.type === "ordered-list" ? `${index + 1}.` : "•";
+            return `${marker} ${descriptionInlinesToText(item)}`;
+          })
+          .join("\n");
+      }
+      return descriptionInlinesToText(block.content);
+    })
+    .join("\n\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+function descriptionInlinesToText(inlines) {
+  return inlines.map((inline) => inline.text).join("").trim();
 }
 
 function normalizePublicVenue(input) {

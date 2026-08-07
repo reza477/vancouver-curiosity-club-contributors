@@ -26,11 +26,20 @@ export {
 } from "./ics";
 export type {
   ParsedMeetupCalendar,
+  ParsedMeetupDescriptionBlock,
+  ParsedMeetupDescriptionInline,
   ParsedMeetupEvent,
   ParsedMeetupEventStatus,
+  ParsedMeetupPublicContent,
   ParsedMeetupRejectedEvent,
   ParsedMeetupSchedule,
 } from "./ics";
+export {
+  fetchMeetupGroupEvents,
+  MAX_MEETUP_GROUP_EVENTS,
+  MAX_MEETUP_GROUP_EVENTS_HTML_BYTES,
+  parseMeetupGroupEventsPage,
+} from "./group-events";
 export {
   fetchMeetupCalendar,
 } from "./fetch";

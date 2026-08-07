@@ -66,7 +66,7 @@ test("Phase 7 is one additive retry-safe tokenizer migration", () => {
   const journal = json("meta/_journal.json");
   assert.deepEqual(
     journal.entries
-      .filter(({ idx }) => idx >= 15)
+      .filter(({ idx }) => idx >= 15 && idx <= 16)
       .map(({ idx, tag }) => ({ idx, tag })),
     [
       { idx: 15, tag: "0015_phase6_cms_media" },

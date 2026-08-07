@@ -28,11 +28,16 @@ import {
   createOneEventIcsDownload,
 } from "../../lib/server/phase7/public-exports.ts";
 import { InputValidationError } from "../../lib/validation/index.ts";
+import { MEETUP_EVENT_ALIAS_URLS } from "../../lib/server/meetup/event-aliases.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
 const ORGANIZATION_ID = "org_phase_2_public";
 const NOW_UTC_MS = Date.parse("2026-07-25T12:00:00.000Z");
 const TODAY_DATE = "2026-07-25";
+const ACTIVE_MEETUP_POSTER_SOURCE =
+  "https://secure.meetupstatic.com/photos/event/a/b/c/highres_535545462.jpeg";
+const PENDING_MEETUP_POSTER_SOURCE =
+  "https://secure.meetupstatic.com/photos/event/d/e/f/highres_999999999.jpeg";
 const PRIVATE_SENTINELS = Object.freeze([
   "PRIVATE_EVENT_NOTE_SENTINEL",
   "PRIVATE_MEETING_SENTINEL",
@@ -51,6 +56,8 @@ const PRIVATE_SENTINELS = Object.freeze([
   "private-organizer@synthetic.invalid",
   "PENDING_TITLE_SENTINEL",
   "PENDING_ADDITION_SENTINEL",
+  ACTIVE_MEETUP_POSTER_SOURCE,
+  PENDING_MEETUP_POSTER_SOURCE,
 ]);
 const PUBLIC_HOST = Object.freeze({
   biography: "A confirmed public biography for event attribution.",
@@ -531,6 +538,9 @@ async function createFixture(t) {
     startsAt: "2026-08-12T02:00:00.000Z",
     endsAt: "2026-08-12T04:00:00.000Z",
     ordinal: 0,
+    posterAltText: "Active snapshot event poster.",
+    posterCredit: "Vancouver Curiosity Club via Meetup",
+    posterSourceUrl: ACTIVE_MEETUP_POSTER_SOURCE,
     updatedAt: 100,
     eventNumber: "9001",
   });
@@ -559,6 +569,9 @@ async function createFixture(t) {
     startsAt: "2026-12-01T02:00:00.000Z",
     endsAt: "2026-12-01T04:00:00.000Z",
     ordinal: 0,
+    posterAltText: "PENDING POSTER ALT SENTINEL",
+    posterCredit: "PENDING POSTER CREDIT SENTINEL",
+    posterSourceUrl: PENDING_MEETUP_POSTER_SOURCE,
     updatedAt: 900,
     eventNumber: "9001",
   });
@@ -658,6 +671,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "club",
     "costText",
     "description",
+    "descriptionBlocks",
     "externalMapUrl",
     "isCancelled",
     "lane",
@@ -703,6 +717,303 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
       forbiddenKey,
     );
   }
+});
+
+test("active Meetup snapshots project only first-party synchronized poster URLs", async (t) => {
+  const database = await createFixture(t);
+  const page = await queryPublicEvents(database, upcomingInput());
+  const active = page.events.find(
+    (event) => event.slug === "meetup-active-event",
+  );
+  assert.ok(active);
+  const expectedArtwork = {
+    altText: "Active snapshot event poster.",
+    credit: "Vancouver Curiosity Club via Meetup",
+    dimensions: {
+      large: { height: 900, width: 1_600 },
+      medium: { height: 540, width: 960 },
+      small: { height: 270, width: 480 },
+    },
+    focalPoint: { x: 5_000, y: 5_000 },
+    srcSet: {
+      large: "/meetup-posters/synthetic-public-group/9001/large",
+      medium: "/meetup-posters/synthetic-public-group/9001/medium",
+      small: "/meetup-posters/synthetic-public-group/9001/small",
+    },
+    url: "/meetup-posters/synthetic-public-group/9001/large",
+  };
+  assert.deepEqual(active.artwork, expectedArtwork);
+
+  const detail = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "meetup-active-event",
+  });
+  assert.ok(detail);
+  assert.deepEqual(detail.artwork, expectedArtwork);
+  const serialized = JSON.stringify({ active, detail });
+  assert.equal(serialized.includes("secure.meetupstatic.com"), false);
+  assert.equal(serialized.includes("PENDING POSTER"), false);
+});
+
+test("owner venue selection atomically overrides or suppresses synchronized Meetup venue data", async (t) => {
+  const database = await createFixture(t);
+  database.exec(`
+    UPDATE meetup_event_snapshot_public_contents
+    SET public_venue_name = 'Meetup Source Venue',
+        public_venue_address = '900 Source Address'
+    WHERE snapshot_id = 'snapshot_active';
+    UPDATE venues
+    SET public_location_name = 'Owner Public Venue',
+        public_address = NULL
+    WHERE id = 'venue_public';
+    UPDATE events
+    SET venue_id = 'venue_public'
+    WHERE id = 'event_meetup_active';
+  `);
+
+  let event = (await queryPublicEvents(database, upcomingInput())).events.find(
+    ({ slug }) => slug === "meetup-active-event",
+  );
+  assert.deepEqual(event?.venue, {
+    address: null,
+    name: "Owner Public Venue",
+  });
+  assert.equal(JSON.stringify(event).includes("900 Source Address"), false);
+
+  database.exec(`
+    UPDATE events
+    SET venue_id = 'venue_private'
+    WHERE id = 'event_meetup_active'
+  `);
+  event = (await queryPublicEvents(database, upcomingInput())).events.find(
+    ({ slug }) => slug === "meetup-active-event",
+  );
+  assert.equal(event?.venue, null);
+  assert.equal(JSON.stringify(event).includes("Meetup Source Venue"), false);
+
+  database.exec(`
+    UPDATE events
+    SET venue_id = NULL
+    WHERE id = 'event_meetup_active'
+  `);
+  event = (await queryPublicEvents(database, upcomingInput())).events.find(
+    ({ slug }) => slug === "meetup-active-event",
+  );
+  assert.deepEqual(event?.venue, {
+    address: "900 Source Address",
+    name: "Meetup Source Venue",
+  });
+});
+
+test("all exact cross-post aliases stay out of public projections while the canonical event and Reset remain visible", async (t) => {
+  const database = await createFixture(t);
+  const aliasUrls = [
+    "https://www.meetup.com/vancouver-meetup-group/events/315511475/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315511480/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315675704/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315772829/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315823081/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315976207/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315511485/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315851495/",
+  ];
+  assert.deepEqual(MEETUP_EVENT_ALIAS_URLS, aliasUrls);
+  const canonicalUrl =
+    "https://www.meetup.com/vancouver-literature-and-film/events/315508432/";
+  const resetUrl =
+    "https://www.meetup.com/vancouver-meetup-group/events/316010049/";
+
+  await insertTimedEvent(
+    database,
+    timedEvent({
+      clubId: "club_literature",
+      endsAt: "2026-08-11T03:30:00.000Z",
+      id: "event_exact_alias_canonical",
+      slug: "exact-alias-canonical",
+      startsAt: "2026-08-11T01:00:00.000Z",
+      title: "Canonical specialized gathering",
+    }),
+  );
+  await insertTimedEvent(
+    database,
+    timedEvent({
+      endsAt: "2026-08-13T03:00:00.000Z",
+      id: "event_wednesday_reset",
+      slug: "wednesday-night-reset",
+      startsAt: "2026-08-13T01:00:00.000Z",
+      title: "Wednesday Night Reset",
+    }),
+  );
+  database.exec(`
+    INSERT INTO sync_sources (
+      id, organization_id, club_id, source_type, source_url, enabled,
+      refresh_interval_minutes, last_attempt_at, last_success_at,
+      last_error_at, last_error_code, active_generation_id,
+      pending_generation_id, pending_snapshot_hash, pending_cursor,
+      created_by_profile_id, updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'source_exact_alias_canonical', '${ORGANIZATION_ID}',
+      'club_literature', 'meetup_ics',
+      'https://www.meetup.com/vancouver-literature-and-film/events/ical/',
+      1, 15, 200, 200, NULL, NULL, 'generation_exact_alias_canonical',
+      NULL, NULL, NULL, 'profile_owner', 'profile_owner', 2, 200
+    );
+    INSERT INTO meetup_sync_generations (
+      id, organization_id, sync_source_id, previous_generation_id,
+      snapshot_hash, expected_item_count, processed_item_count,
+      rejected_item_count, state, removed_count, created_at, updated_at,
+      published_at, failed_at
+    ) VALUES (
+      'generation_exact_alias_canonical', '${ORGANIZATION_ID}',
+      'source_exact_alias_canonical', NULL,
+      'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+      1, 1, 0, 'published', 0, 200, 200, 200, NULL
+    );
+    UPDATE meetup_sync_generations
+    SET expected_item_count = 11,
+        processed_item_count = 11
+    WHERE id = 'generation_active';
+  `);
+
+  await insertSnapshot(database, {
+    endsAt: "2026-08-11T03:30:00.000Z",
+    eventId: "event_exact_alias_canonical",
+    eventNumber: "315508432",
+    eventUrl: canonicalUrl,
+    eventSlug: "exact-alias-canonical",
+    externalId: "canonical-specialized-315508432",
+    generationId: "generation_exact_alias_canonical",
+    id: "snapshot_exact_alias_canonical",
+    ordinal: 0,
+    sourceId: "source_exact_alias_canonical",
+    startsAt: "2026-08-11T01:00:00.000Z",
+    status: "confirmed",
+    title: "Canonical specialized gathering",
+    updatedAt: 200,
+  });
+  await database
+    .prepare(
+      `INSERT INTO external_source_links (
+         id, organization_id, entity_type, entity_id, source_type,
+         sync_source_id, external_id, external_url, source_fingerprint,
+         last_imported_at, created_at, updated_at
+       ) VALUES (?, ?, 'event', ?, 'meetup_ics', ?, ?, ?, ?, 200, 200, 200)`,
+    )
+    .bind(
+      "link_exact_alias_canonical",
+      ORGANIZATION_ID,
+      "event_exact_alias_canonical",
+      "source_exact_alias_canonical",
+      "canonical-specialized-315508432",
+      canonicalUrl,
+      "fingerprint-exact-alias-canonical",
+    )
+    .run();
+
+  for (const [index, aliasUrl] of aliasUrls.entries()) {
+    const externalId = `exact-alias-${index + 1}`;
+    await insertSnapshot(database, {
+      endsAt: "2026-08-11T03:30:00.000Z",
+      eventId: "event_exact_alias_canonical",
+      eventNumber: `alias-${index + 1}`,
+      eventUrl: aliasUrl,
+      eventSlug: "exact-alias-canonical",
+      externalId,
+      generationId: "generation_active",
+      id: `snapshot_exact_alias_${index + 1}`,
+      ordinal: index + 2,
+      startsAt: "2026-08-11T01:00:00.000Z",
+      status: "confirmed",
+      title: `Hidden exact alias ${index + 1}`,
+      updatedAt: 200,
+    });
+    await database
+      .prepare(
+        `INSERT INTO external_source_links (
+           id, organization_id, entity_type, entity_id, source_type,
+           sync_source_id, external_id, external_url, source_fingerprint,
+           last_imported_at, created_at, updated_at
+         ) VALUES (?, ?, 'event', ?, 'meetup_ics', ?, ?, ?, ?, 200, 200, 200)`,
+      )
+      .bind(
+        `link_exact_alias_${index + 1}`,
+        ORGANIZATION_ID,
+        "event_exact_alias_canonical",
+        "source_synthetic",
+        externalId,
+        aliasUrl,
+        `fingerprint-exact-alias-${index + 1}`,
+      )
+      .run();
+  }
+  await insertSnapshot(database, {
+    endsAt: "2026-08-13T03:00:00.000Z",
+    eventId: "event_wednesday_reset",
+    eventNumber: "316010049",
+    eventUrl: resetUrl,
+    eventSlug: "wednesday-night-reset",
+    externalId: "wednesday-reset-316010049",
+    generationId: "generation_active",
+    id: "snapshot_wednesday_reset",
+    ordinal: 10,
+    startsAt: "2026-08-13T01:00:00.000Z",
+    status: "confirmed",
+    title: "Wednesday Night Reset",
+    updatedAt: 200,
+  });
+  await database
+    .prepare(
+      `INSERT INTO external_source_links (
+         id, organization_id, entity_type, entity_id, source_type,
+         sync_source_id, external_id, external_url, source_fingerprint,
+         last_imported_at, created_at, updated_at
+       ) VALUES (?, ?, 'event', ?, 'meetup_ics', ?, ?, ?, ?, 200, 200, 200)`,
+    )
+    .bind(
+      "link_wednesday_reset",
+      ORGANIZATION_ID,
+      "event_wednesday_reset",
+      "source_synthetic",
+      "wednesday-reset-316010049",
+      resetUrl,
+      "fingerprint-wednesday-reset",
+    )
+    .run();
+
+  const page = await queryPublicEvents(database, upcomingInput());
+  const compatibility = await listUpcomingPublicEvents(database, {
+    fromUtcMs: NOW_UTC_MS,
+    limit: 100,
+    organizationId: ORGANIZATION_ID,
+    todayDate: TODAY_DATE,
+  });
+  const meetupCompatibility = await listUpcomingPublicMeetupEvents(database, {
+    fromUtcMs: NOW_UTC_MS,
+    limit: 100,
+    organizationId: ORGANIZATION_ID,
+    todayDate: TODAY_DATE,
+  });
+  const exports = await queryPublicEventsForExport(database, {
+    ...upcomingInput(),
+    maxEvents: 500,
+  });
+  const sitemap = await listPublicEventSitemapSlugs(database, {
+    organizationId: ORGANIZATION_ID,
+  });
+  const publicUrls = [
+    ...page.events.map((event) => event.rsvpUrl),
+    ...compatibility.map((event) => event.rsvpUrl),
+    ...meetupCompatibility.map((event) => event.rsvpUrl),
+    ...exports.map((record) => record.event.rsvpUrl),
+  ];
+  for (const aliasUrl of aliasUrls) {
+    assert.equal(publicUrls.includes(aliasUrl), false, aliasUrl);
+  }
+  for (const visibleUrl of [canonicalUrl, resetUrl]) {
+    assert.equal(publicUrls.includes(visibleUrl), true, visibleUrl);
+  }
+  assert.ok(sitemap.includes("exact-alias-canonical"));
+  assert.ok(sitemap.includes("wednesday-night-reset"));
 });
 
 test("public export projection is bounded, exact-materialization verified, and allowlisted", async (t) => {
@@ -4211,11 +4522,16 @@ async function insertSnapshot(
     endsAt,
     eventId,
     eventNumber,
+    eventUrl = null,
     eventSlug,
     externalId,
     generationId,
     id,
     ordinal,
+    posterAltText = null,
+    posterCredit = null,
+    posterSourceUrl = null,
+    sourceId = "source_synthetic",
     startsAt,
     status,
     title,
@@ -4230,22 +4546,24 @@ async function insertSnapshot(
          starts_at_utc, ends_at_utc, timezone, all_day_start_date,
          all_day_end_date_exclusive, source_fingerprint, source_sequence,
          source_last_modified_at, created_at, updated_at
-       ) VALUES (
-         ?, ?, 'source_synthetic', ?, ?, ?, ?, ?, ?,
-         ?, ?, 'timed', ?, ?, 'America/Vancouver', NULL, NULL,
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, 'timed', ?, ?, 'America/Vancouver', NULL, NULL,
          ?, 1, ?, ?, ?
        )`,
     )
     .bind(
       id,
       ORGANIZATION_ID,
+      sourceId,
       generationId,
       externalId,
       eventId,
       ordinal,
       eventSlug,
       title,
-      `https://www.meetup.com/synthetic-public-group/events/${eventNumber}/`,
+      eventUrl ??
+        `https://www.meetup.com/synthetic-public-group/events/${eventNumber}/`,
       status,
       Date.parse(startsAt),
       Date.parse(endsAt),
@@ -4255,6 +4573,39 @@ async function insertSnapshot(
       updatedAt,
     )
     .run();
+
+  if (
+    posterSourceUrl !== null ||
+    posterAltText !== null ||
+    posterCredit !== null
+  ) {
+    const descriptionBlocksJson = JSON.stringify([
+      {
+        content: [{ text: title, type: "text" }],
+        type: "paragraph",
+      },
+    ]);
+    await database
+      .prepare(
+        `INSERT INTO meetup_event_snapshot_public_contents (
+           snapshot_id, public_summary, public_description,
+           public_description_blocks_json, poster_source_url,
+           poster_alt_text, poster_credit, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        id,
+        title,
+        title,
+        descriptionBlocksJson,
+        posterSourceUrl,
+        posterAltText,
+        posterCredit,
+        updatedAt,
+        updatedAt,
+      )
+      .run();
+  }
 }
 
 function countAllQueries(database, onAll) {

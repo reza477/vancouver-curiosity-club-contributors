@@ -81,24 +81,43 @@ Version 20 was saved from exact pushed source
 `45ece3319cdbc2d4f130cc1a42a770892ce1d155` and deployed successfully as
 `appgdep_6a7507fb96648191aae650faba2eb84a`.
 
-## Calendar-first public website
+The latest owner-invoked local reconciliation on 2026-08-06 did not create a
+Sites version or change the live deployment. It found 42 current Meetup
+listings: 38 exact numeric-canonical listings and four recurring listings whose
+canonical paths are alphanumeric and therefore remain blocked. The local
+curated manifest now contains 42 exact records after adding numeric event
+`316010049`: the 38 current numeric listings plus four older or no-longer-listed
+records retained because two refresh attempts failed and the completed attempt
+reported zero changes without proving a safe removal. All 42 records have local
+responsive poster sets. The live version 20 projection remains the last valid
+completed snapshot.
 
-The public website keeps the visitor path deliberately short:
+## Living cultural-community website candidate
 
-- Home opens directly on the month-at-a-glance grid, with the club introduction
-  below it instead of above it.
+The current local source redesign separates discovery from the calendar utility:
+
+- Home explains the community first, then presents the next three gatherings,
+  newcomer reassurance, community feel, four activity lanes, clubs,
+  founder/community proof, and one closing invitation.
+- `/events` is the default upcoming/list experience, including on phones.
+  `/calendar` retains the complete month grid as an optional view.
 - Click or tap a date to select its detailed day panel. Keyboard focus and
   arrow-key movement also select a date. Pointer hover is visual only, so the
   panel stays open while someone moves to its event links.
 - Every public event can open Google Calendar or download a standards-compliant
   `.ics` file for Apple Calendar and other calendar clients.
-- The current production calendar contains 11 source-backed Meetup events from
-  the two feeds that completed without cross-source scheduling conflicts.
-- The official Meetup iCalendar feeds do not contain a poster-image field.
-  The 11 current Owner-approved Meetup posters are copied into the site and
-  matched to exact Meetup event IDs; public pages do not hotlink them. A newly
-  synced event uses approved site media or a controlled category illustration
-  until its poster is deliberately added.
+- The deployed calendar still contains the prior 13-event snapshot. The local
+  checkpoint-1 repair now reads the bounded public future-events connection
+  for each exact configured Meetup group instead of treating Meetup's
+  truncated iCalendar export as a complete inventory. A read-only 2026-08-06
+  verification returned 30 + 10 + 2 current listings, including numeric event
+  `316010049` (Wednesday Night Reset) and the current Poetry Night title.
+- A completed generation now atomically carries public-safe description
+  blocks, attendee-visible venue facts, and exact poster provenance alongside
+  title and schedule. Pending or failed content cannot leak into public pages.
+  Posters are fetched only through a validated first-party route, resized with
+  the Images binding, and cached in R2; browsers never receive or hotlink the
+  upstream Meetup image URL.
 - Unpublished version 19 contains 41 exact group-slug/event-ID
   enrichment records across the three confirmed groups, all with a verified
   local Meetup poster copy. Five smaller originals stay at their native width
@@ -106,11 +125,19 @@ The public website keeps the visitor path deliberately short:
   visible only when the ordinary completed-generation and public-publication
   checks already make that exact event eligible; they do not activate the
   conflict-blocked main feed or imply that all 41 events are live.
+- The older source-controlled enrichment manifest remains a fallback for
+  already-published snapshots. New successful snapshots no longer depend on
+  that separate manual process for descriptions, venues, or posters. This
+  repair is source-only, has not been saved or deployed, and does not alter the
+  current hosted completed-generation pointer.
 - The application does not create visitor accounts. Organizer authentication
   remains a separate private workspace. Public pages are now available without
   sign-in; public access does not grant organizer membership or authorization.
-- The primary navigation is intentionally limited to Calendar, About, and
-  Contribute. The calendar remains the first and dominant public experience.
+- The primary navigation is Events, Clubs, About, and Host an Event.
+- Event descriptions preserve source headings, paragraphs, lists, and safe
+  external links; event-specific RSVP and ticket destinations remain clickable.
+- Public pages never expose source-sync diagnostics. The organizer workspace
+  remains the boundary for operational failures and refresh status.
 
 The public routes include:
 
@@ -131,9 +158,8 @@ The former `/community` address is retained only as a permanent compatibility
 redirect to `/get-involved`; it is not a separate navigation destination or
 sitemap page.
 
-The current source renders the same calendar-first month view at `/`,
-`/calendar`, and the older `/events` address, so visitors see the events
-immediately and old bookmarks never reopen the retired search form.
+The current source intentionally gives `/`, `/events`, and `/calendar`
+different jobs: orientation, upcoming discovery, and month planning.
 
 All public catalog copy, lanes, clubs, community links, and event facts are
 D1-backed. The authorized idempotent catalog seed creates four lanes, three
@@ -210,10 +236,13 @@ See `docs/architecture/0006-sites-d1-trigger-compatibility.md`.
 
 ## Meetup synchronization
 
-Meetup remains a one-way source for imported title, schedule, explicit
-status/cancellation, and official RSVP destination. The integration uses the
-official group iCalendar export and never uses passwords, GraphQL credentials,
-or write-back. Request-time synchronization does not scrape Meetup pages.
+Meetup remains a one-way source. The private official iCalendar subscription
+URL still establishes the exact configured group, but production refreshes now
+read that group's bounded public events page because the iCalendar export
+exposes only the earliest slice of the main group. The strict parser consumes
+only the one future-events connection embedded in that exact canonical page;
+it uses no password, session, OAuth token, Meetup Pro credential, write-back,
+or guessed event URL.
 
 To connect hosted production data after a separately authorized deployment:
 
@@ -221,13 +250,17 @@ To connect hosted production data after a separately authorized deployment:
 2. Open `/organizer/meetup`.
 3. Select the exact organization-owned club and enter its official Meetup
    calendar subscription URL.
-4. Choose **Refresh now** until the bounded generation completes.
+4. Choose the program or **All Meetup programs**, then choose **Refresh now**.
+   The organizer control automatically continues the same two-row bounded
+   generation until it completes or reaches its explicit safety limit.
 
-When the same gathering is cross-posted into several Meetup groups, each group
-feed supplies a different source identity. The overlap guard therefore fails
-closed instead of silently merging or duplicating the gathering. Connect only
-the non-overlapping feed coverage you intend to show until an explicit
-owner-reviewed cross-post alias model is added.
+When the same gathering is cross-posted into several Meetup groups, only the
+eight owner-reviewed exact URL pairs share a canonical event. Title or schedule
+similarity never invents an alias. Distinct simultaneous Meetup listings may
+coexist; manual and legacy reservation conflicts still fail closed. The one
+known Titanic pair has a documented 30-minute end-time tolerance while every
+other alias requires an exact schedule match. The All-program refresh orders
+Literature and Fantasy before the dependent Vancouver Curiosity Club source.
 
 Feed addresses remain private operator-entered D1 configuration. They are not
 committed, rendered, logged, placed in metadata, or derived from public group
@@ -236,15 +269,22 @@ automatically checks connected Meetup sources when their bounded refresh is
 due, and the Owner can also request a refresh explicitly. This is request-time
 maintenance, not a guaranteed daily background job.
 
-Meetup's official iCalendar export contains event titles, times, statuses, and
-event URLs, but it does not contain a poster-image field. The Owner explicitly
-approved local copies of the 11 posters on the current published Meetup
-listings. A curated manifest matches those local files to exact numeric Meetup
-event IDs and retains the original `meetupstatic.com` URLs only as provenance.
-Newly synced events use separately approved website artwork or the site's
-category artwork until a poster is deliberately added. The application does
-not scrape Meetup pages during a public request or claim a guaranteed daily
-background job.
+The exact public group-page snapshot supplies current title, schedule, status,
+individual RSVP URL, Markdown description, public venue, and poster reference.
+Descriptions are normalized to headings, paragraphs, ordered/unordered lists,
+emphasis, and allowlisted HTTPS links, so ticket calls to action remain
+clickable. These fields are staged on the immutable source generation and
+become eligible together only after cursor-complete publication. Existing
+owner-authored public copy and approved CMS artwork keep precedence.
+
+Poster source URLs must match the secure Meetup image host and pass bounded
+MIME, size, dimension, and aspect checks. The public DTO exposes only
+`/meetup-posters/...` variants; the Worker transforms them to WebP and caches
+them in R2 as exact 480x270, 960x540, and 1600x900 representations so HTML
+width descriptors, intrinsic dimensions, and metadata remain truthful. A
+failed page, image, parser, row, or activation keeps the previous completed
+generation public and reports operational detail only in the organizer
+workspace.
 
 Unpublished version 19 extends the separate owner-invoked
 maintenance tool to 41 exact allowlisted public Meetup event pages. It verifies
@@ -255,6 +295,14 @@ responsive variants without upscaling; five smaller originals are capped at
 their native width on the event-detail page. Existing
 owner-authored public summary, description, venue, and approved artwork always
 take precedence. Public requests never fetch or hotlink Meetup assets.
+
+The 2026-08-06 repair verified the exact public source inventory as 42 current
+listings (30 main, 10 Literature, 2 Fantasy). Eight are exact cross-post aliases,
+leaving 34 canonical current listings before ordinary date/status filters. The
+public page data includes numeric identities for the four recurring listings,
+so they no longer depend on redirected alphanumeric paths. This implementation
+did not write hosted D1/R2, write back to Meetup, save a Sites version, deploy,
+or change access.
 
 The repeatable operator instructions are in the
 [Meetup calendar reconciliation prompt](docs/meetup-calendar-reconciliation-prompt.md).
@@ -311,15 +359,13 @@ npm.cmd audit --json
 git diff --check
 ```
 
-Do not run `db:generate` directly into the real `drizzle` directory after the
-Phase 7 migration exists: the real journal already ends at index 16 and a
-direct generation can create an unintended `0017`. A Phase 7 snapshot-only
-refresh uses a disposable output directory seeded with the real
-`0015_snapshot.json` and a temporary journal ending at index 15. Only the
-generated `0016_snapshot.json` is copied back. The real
-`0016_phase7_import_export_forms.sql` and real journal must remain
-byte-for-byte unchanged across that procedure, followed by
-`drizzle-kit check`.
+Do not use the historical Phase 7 snapshot-refresh procedure against the real
+`drizzle` directory. The frozen Phase 7 artifacts still end at index 16, while
+the current application chain intentionally ends at retry-safe migration
+`0017_bright_captain_america.sql`, which adds the one-to-one immutable Meetup
+public-content sidecar. Regenerate only in a disposable output directory,
+review the exact diff, and never overwrite the frozen `0016` SQL or snapshot.
+Finish with the migration contract tests and `drizzle-kit check`.
 
 `npm.cmd run test:rendered` executes the built Cloudflare Worker in Miniflare
 against a fresh generated migration chain. It verifies public HTML, metadata,

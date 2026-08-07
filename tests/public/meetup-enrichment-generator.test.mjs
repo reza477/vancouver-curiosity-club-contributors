@@ -17,6 +17,7 @@ import {
   assertCanonicalMeetupEventDocument,
   assertCanonicalMeetupEventResponseUrl,
   isManagedMeetupPosterFilename,
+  normalizePublicDescription,
   refreshCuratedMeetupEnrichment,
 } from "../../scripts/refresh-curated-meetup-enrichment.mjs";
 
@@ -188,10 +189,11 @@ test("a fully validated generation publishes staged outputs and then removes onl
     const manifestText = await readFile(manifestPath, "utf8");
     assert.equal(manifestText.endsWith("\n"), true);
     const manifest = JSON.parse(manifestText);
-    assert.equal(manifest.schemaVersion, 1);
+    assert.equal(manifest.schemaVersion, 2);
     assert.equal(manifest.events.length, 1);
     assert.equal(manifest.events[0].eventId, TEST_EVENT_ID);
     assert.equal(manifest.events[0].eventUrl, TEST_EVENT_URL);
+    assert.ok(manifest.events[0].descriptionBlocks.length >= 1);
     assert.deepEqual(manifest.events[0].poster.variants, {
       small: {
         height: 270,
@@ -237,6 +239,87 @@ test("a fully validated generation publishes staged outputs and then removes onl
     );
     await assertNoStagingDirectories(workspaceRoot);
   });
+});
+
+test("Meetup Markdown becomes bounded semantic blocks with allowlisted public links", () => {
+  const result = normalizePublicDescription(`**Short summary**
+A sufficiently detailed public event description.
+
+**Questions**
+* What should we discuss?
+* What might change our minds?
+
+**Ticket note**
+Buy your VIFF ticket here:
+[https://viff.org/whats-on/example/book/abc](https://viff.org/whats-on/example/book/abc)`);
+
+  assert.deepEqual(result.blocks, [
+    {
+      content: [{ text: "Short summary", type: "text" }],
+      level: 3,
+      type: "heading",
+    },
+    {
+      content: [
+        {
+          text: "A sufficiently detailed public event description.",
+          type: "text",
+        },
+      ],
+      type: "paragraph",
+    },
+    {
+      content: [{ text: "Questions", type: "text" }],
+      level: 3,
+      type: "heading",
+    },
+    {
+      items: [
+        [{ text: "What should we discuss?", type: "text" }],
+        [{ text: "What might change our minds?", type: "text" }],
+      ],
+      type: "unordered-list",
+    },
+    {
+      content: [{ text: "Ticket note", type: "text" }],
+      level: 3,
+      type: "heading",
+    },
+    {
+      content: [
+        { text: "Buy your VIFF ticket here: ", type: "text" },
+        {
+          href: "https://viff.org/whats-on/example/book/abc",
+          text: "Open viff.org",
+          type: "link",
+        },
+      ],
+      type: "paragraph",
+    },
+  ]);
+  assert.match(result.plainText, /Buy your VIFF ticket here: Open viff\.org/u);
+  assert.doesNotMatch(result.plainText, /https?:\/\//u);
+
+  const unapproved = normalizePublicDescription(
+    "Short summary\nA safe event description.\n\nResource\n[Open it](https://zoom.us/j/123456)",
+  );
+  assert.equal(
+    JSON.stringify(unapproved.blocks).includes('"type":"link"'),
+    false,
+  );
+  assert.match(unapproved.plainText, /Open it/u);
+
+  for (const unsafe of [
+    "Short summary\nA safe description.\n\n<script>alert(1)</script>",
+    "Short summary\nA safe description.\n\n![remote](https://viff.org/image.jpg)",
+    "Short summary\nContact person@example.invalid for details.",
+    "Short summary\n[Open](javascript:alert(1)) for details.",
+  ]) {
+    assert.throws(
+      () => normalizePublicDescription(unsafe),
+      /description failed the public-safe allowlist/u,
+    );
+  }
 });
 
 test("a validation failure discards staged files and leaves published files untouched", async () => {

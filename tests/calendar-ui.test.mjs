@@ -6,11 +6,119 @@ import {
   readBoundedUtf8Body,
   requireSameOriginMutation,
 } from "../app/api/organizer/meetup/_mutation.ts";
+import {
+  MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS,
+  runMeetupRefreshSelection,
+} from "../app/organizer/meetup/MeetupControls.tsx";
 
 const projectRoot = new URL("../", import.meta.url);
 
-test("homepage is the bounded month calendar before every secondary section", async () => {
-  const [page, calendar, month, header, catalog, homeRenderer, styles] =
+test("Meetup refresh selection runs canonical clubs first, finishes partial clubs, aggregates counts, and stops at a hard limit", async () => {
+  const calls = [];
+  const remainingOutcomes = new Map([
+    ["club_a", ["partial", "partial", "completed"]],
+    ["club_b", ["not_modified"]],
+    ["club_c", ["completed"]],
+  ]);
+  const clubs = Object.freeze([
+    Object.freeze({ id: "club_a", name: "Vancouver Curiosity Club" }),
+    Object.freeze({ id: "club_b", name: "Vancouver Literature and Film" }),
+    Object.freeze({ id: "club_c", name: "Vancouver Fantasy & Sci-Fi Group" }),
+    Object.freeze({ id: "club_a", name: "Vancouver Curiosity Club" }),
+  ]);
+  const state = Object.freeze({
+    enabled: true,
+    lastAttemptAt: "2026-08-06T12:00:00.000Z",
+    lastSuccessAt: "2026-08-06T12:00:00.000Z",
+    nextRefreshAt: "2026-08-06T12:15:00.000Z",
+    scheduleConflict: false,
+    status: "current",
+  });
+  const run = await runMeetupRefreshSelection(
+    clubs,
+    async (clubId) => {
+      calls.push(clubId);
+      const outcome = remainingOutcomes.get(clubId)?.shift();
+      assert.ok(outcome);
+      return {
+        counts: {
+          cancelled: 0,
+          created: outcome === "partial" ? 2 : 0,
+          rejected: 0,
+          removed: 0,
+          updated: outcome === "completed" ? 1 : 0,
+        },
+        outcome,
+        state,
+      };
+    },
+  );
+  assert.deepEqual(
+    calls,
+    ["club_b", "club_c", "club_a", "club_a", "club_a"],
+  );
+  assert.deepEqual(
+    clubs.map((club) => club.id),
+    ["club_a", "club_b", "club_c", "club_a"],
+    "the external catalog order remains unchanged",
+  );
+  assert.deepEqual(run.counts, {
+    cancelled: 0,
+    created: 4,
+    rejected: 0,
+    removed: 0,
+    updated: 2,
+  });
+  assert.equal(run.requestCount, 5);
+  assert.equal(run.stoppedAtLimit, false);
+  assert.equal(run.error, null);
+
+  let limitedCalls = 0;
+  const limited = await runMeetupRefreshSelection(
+    [{ id: "club_a", name: "Vancouver Curiosity Club" }],
+    async () => {
+      limitedCalls += 1;
+      return {
+        counts: {
+          cancelled: 0,
+          created: 1,
+          rejected: 0,
+          removed: 0,
+          updated: 0,
+        },
+        outcome: "partial",
+        state: { ...state, status: "partial" },
+      };
+    },
+  );
+  assert.equal(limitedCalls, MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS);
+  assert.equal(limited.requestCount, MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS);
+  assert.equal(limited.counts.created, MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS);
+  assert.equal(limited.stoppedAtLimit, true);
+});
+
+test("Meetup snapshot identity includes the versioned importer, aliases, and public content", async () => {
+  const [sync, aliases] = await Promise.all([
+    readFile(new URL("lib/server/meetup/sync.ts", projectRoot), "utf8"),
+    readFile(
+      new URL("lib/server/meetup/event-aliases.ts", projectRoot),
+      "utf8",
+    ),
+  ]);
+  assert.match(sync, /MEETUP_IMPORT_POLICY_VERSION\s*=\s*"[^"]+"/u);
+  assert.match(
+    sync,
+    /importPolicy:\s*\{[\s\S]*aliasPolicyVersion:\s*MEETUP_EVENT_ALIAS_POLICY_VERSION[\s\S]*aliases:\s*MEETUP_EVENT_ALIASES[\s\S]*version:\s*MEETUP_IMPORT_POLICY_VERSION/u,
+  );
+  assert.match(sync, /publicContent:\s*item\.event\.publicContent/u);
+  assert.match(
+    aliases,
+    /MEETUP_EVENT_ALIAS_POLICY_VERSION\s*=\s*"[^"]+"/u,
+  );
+});
+
+test("homepage leads with the club purpose and eight distinct sections", async () => {
+  const [page, calendar, month, homeRenderer, homeData] =
     await Promise.all([
       readFile(new URL("app/page.tsx", projectRoot), "utf8"),
       readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
@@ -19,63 +127,64 @@ test("homepage is the bounded month calendar before every secondary section", as
         "utf8",
       ),
       readFile(
-        new URL("app/_components/SiteHeader.tsx", projectRoot),
-        "utf8",
-      ),
-      readFile(
-        new URL("lib/server/public/catalog-definitions.ts", projectRoot),
-        "utf8",
-      ),
-      readFile(
         new URL("app/_components/HomePageRenderer.tsx", projectRoot),
         "utf8",
       ),
-      readFile(new URL("app/globals.css", projectRoot), "utf8"),
+      readFile(new URL("lib/server/public/home.ts", projectRoot), "utf8"),
     ]);
 
-  assert.match(
-    page,
-    /import CalendarPage from "@\/app\/calendar\/page"/u,
-  );
-  assert.match(page, /CalendarPage\(\{ searchParams \}\)/u);
+  assert.match(page, /import \{ HomePageRenderer \}/u);
+  assert.match(page, /loadPublicHomeData/u);
+  assert.match(page, /<HomePageRenderer/u);
   assert.match(page, /path:\s*"\/"/u);
   assert.match(page, /slug:\s*"home"/u);
-  assert.match(page, /<StructuredData/u);
-  assert.doesNotMatch(page, /loadCommunityDestinations|sameAs/u);
+  assert.doesNotMatch(page, /CalendarPage|PublicMonthCalendar/u);
+
+  for (const copy of [
+    "Books, films, ideas, walks & creative nights in Vancouver",
+    "Come curious. Leave knowing people.",
+    "Vancouver Curiosity Club is for people who miss conversations that go somewhere. Pick a gathering that pulls you in, show up as you are, and meet thoughtful people through books, films, big questions, city walks, creative practice, food, and play.",
+    "See upcoming gatherings",
+    "New here? Start here",
+  ]) {
+    assert.ok(homeRenderer.includes(copy), copy);
+  }
+
+  const sectionClasses = [
+    "home-hero",
+    "home-events",
+    "home-newcomer attending-note",
+    "home-community-feel attending-note",
+    "lane-index",
+    "home-clubs",
+    "home-proof home-community",
+    "home-closing home-invitation",
+  ];
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  let priorSectionIndex = -1;
+  for (const className of sectionClasses) {
+    const sectionIndex = homeRenderer.indexOf(`className="${className}"`);
+    assert.ok(sectionIndex > priorSectionIndex, className);
+    priorSectionIndex = sectionIndex;
+  }
+  assert.match(homeRenderer, /events\.slice\(0, 3\)/u);
+  assert.match(homeData, /view:\s*"upcoming"[\s\S]*?pageSize:\s*3/u);
+  assert.doesNotMatch(
+    `${page}\n${homeRenderer}`,
+    /PublicMonthCalendar|public-calendar__grid|calendar-view-switcher/u,
+  );
+
   assert.match(calendar, /<PublicMonthCalendar/u);
   assert.doesNotMatch(calendar, /<h1>Calendar<\/h1>/u);
   assert.doesNotMatch(calendar, /className="public-calendar-intro"/u);
   assert.match(month, /<h1 id="public-calendar-title">/u);
-  assert.match(calendar, /Curiosity is better in company\./u);
   assert.ok(
-    calendar.indexOf("<PublicMonthCalendar") <
-      calendar.indexOf('className="calendar-view-switcher"'),
-  );
-  assert.ok(
-    calendar.indexOf('className="calendar-view-switcher"') <
-      calendar.indexOf('className="calendar-home-introduction"'),
-  );
-  assert.match(
-    header,
-    /href === "\/calendar"[\s\S]*?pathname === "\/"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)/u,
-  );
-  assert.match(styles, /\.calendar-home-introduction\s*\{/u);
-  assert.match(
-    styles,
-    /@media \(max-width:\s*52rem\)[\s\S]*?\.calendar-home-introduction,[\s\S]*?grid-template-columns:\s*1fr/u,
-  );
-  assert.match(catalog, /A social calendar with a brain\./);
-  assert.doesNotMatch(
-    catalog,
-    /section\("(?:attending|invitation|community)"/u,
-  );
-  assert.match(
-    homeRenderer,
-    /REMOVED_HOME_SECTION_KEYS = new Set\(\[\s*"attending",\s*"invitation",\s*"community",\s*\]\)/u,
+    calendar.indexOf('className="calendar-view-switcher event-view-switcher"') <
+      calendar.indexOf("<PublicMonthCalendar"),
   );
   assert.doesNotMatch(
-    homeRenderer,
-    /What attending feels like|Make the calendar with us|Follow the club elsewhere|Find the community/u,
+    calendar,
+    /home-hero|home-newcomer|Come curious\. Leave knowing people\.|calendar-home-introduction/u,
   );
   assert.doesNotMatch(
     `${page}\n${calendar}`,
@@ -103,19 +212,19 @@ test("event titles use a clean color change instead of a hover underline", async
   );
 });
 
-test("Living Field Notes keeps the public identity mathematical, lane-aware, and motion-safe", async () => {
-  const [artwork, calendar, cards, about, contribute, styles] =
+test("the public cultural identity is poster-led, lane-aware, and motion-safe", async () => {
+  const [calendar, cards, masthead, about, contribute, styles] =
     await Promise.all([
-      readFile(
-        new URL("app/_components/FieldArtwork.tsx", projectRoot),
-        "utf8",
-      ),
       readFile(
         new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
         "utf8",
       ),
       readFile(
         new URL("app/_components/EventCard.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(
+        new URL("app/_components/PageMasthead.tsx", projectRoot),
         "utf8",
       ),
       readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
@@ -126,31 +235,28 @@ test("Living Field Notes keeps the public identity mathematical, lane-aware, and
       readFile(new URL("app/globals.css", projectRoot), "utf8"),
     ]);
 
-  for (const shape of ["orbit", "satellite", "spark"]) {
-    assert.match(artwork, new RegExp(`field-artwork__${shape}`, "u"));
-  }
   assert.match(calendar, /data-event-lane=\{item\.lane\?\.slug\}/u);
   assert.match(calendar, /data-event-lane=\{event\.lane\?\.slug\}/u);
   assert.match(calendar, /className="public-calendar__mobile-agenda"/u);
   assert.match(calendar, /todayHasEvents/u);
   assert.match(cards, /data-event-lane=\{event\.lane\?\.slug\}/u);
-  for (const slug of [
-    "think",
-    "reset-and-make",
-    "explore",
-    "eat-and-play",
-  ]) {
-    assert.match(about, new RegExp(`data-event-lane="${slug}"`, "u"));
-  }
+  assert.match(cards, /event-artwork-fallback/u);
+  assert.doesNotMatch(cards, /import .*FieldArtwork/u);
+  assert.doesNotMatch(masthead, /FieldArtwork/u);
+  assert.match(about, /className="about-events"/u);
   for (const path of ["volunteer", "host", "partner"]) {
     assert.match(
       contribute,
       new RegExp(`data-contribution-path="${path}"`, "u"),
     );
   }
-  assert.match(styles, /Living Field Notes:/u);
+  assert.match(styles, /2026 cultural-community redesign:/u);
   assert.match(styles, /@media \(prefers-reduced-motion: no-preference\)/u);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/u);
+  assert.match(
+    styles,
+    /\.field-artwork__orbit,[\s\S]*?\.field-artwork__disc\s*\{\s*animation:\s*none !important;/u,
+  );
   assert.match(styles, /\.public-calendar__mobile-agenda\s*\{\s*display:\s*none;/u);
   assert.match(
     styles,
@@ -158,39 +264,41 @@ test("Living Field Notes keeps the public identity mathematical, lane-aware, and
   );
 });
 
-test("About explains the club inside the existing editorial main", async () => {
-  const [about, editorialPage, catalog, styles] = await Promise.all([
+test("About is concise, reassuring, evidence-backed, and event-led", async () => {
+  const [about, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
-    readFile(
-      new URL("app/_components/EditorialPage.tsx", projectRoot),
-      "utf8",
-    ),
-    readFile(
-      new URL("lib/server/public/catalog-definitions.ts", projectRoot),
-      "utf8",
-    ),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
-  assert.match(about, /<EditorialPage[\s\S]*?<section className="about-club"/u);
-  assert.doesNotMatch(about, /<main/u);
-  assert.match(editorialPage, /<main className="editorial-page">[\s\S]*?\{children\}/u);
+  assert.match(about, /<main className="about-page"/u);
+  assert.match(
+    about,
+    /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-founder-note"[\s\S]*?className="about-facts"[\s\S]*?className="about-events"[\s\S]*?className="about-closing"/u,
+  );
   for (const phrase of [
     "Curiosity is better in company.",
-    "You do not need to arrive as an expert.",
-    "Think",
-    "Reset &amp; Make",
-    "Explore",
-    "Eat &amp; Play",
-    "Public visitors do not need an account.",
+    "What the community feels like",
+    "Who it is for",
+    "Your first event can be simple.",
+    "A note from Reza",
+    "The community in the live catalog.",
+    "See what the club is doing next.",
   ]) {
     assert.ok(about.includes(phrase), phrase);
   }
-  assert.match(catalog, /heading:\s*"Curiosity is better in company\."/u);
-  assert.match(styles, /\.about-club__lane-grid\s*\{/u);
+  assert.match(about, /queryPublicEvents/u);
+  assert.match(about, /pageSize:\s*3/u);
+  assert.match(about, /upcomingEventCount:\s*eventPage\.totalCount/u);
+  assert.match(about, /<EventCard/u);
+  assert.doesNotMatch(
+    about,
+    /FieldArtwork|PageMasthead|Meetup refresh|Last completed|sync failed/ui,
+  );
+  assert.match(styles, /\.about-feel,/u);
+  assert.match(styles, /\.about-founder-note/u);
 });
 
-test("Events uses the same calendar-first experience instead of the legacy search form", async () => {
+test("Events is an independent upcoming list with filters and no public diagnostics", async () => {
   const [page, renderer, calendar, filters, projection, worker, maintenance] =
     await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
@@ -217,34 +325,45 @@ test("Events uses the same calendar-first experience instead of the legacy searc
     ),
   ]);
 
-  for (const status of [
-    "not_connected",
-    "pending",
-    "partial",
-    "current",
-    "stale",
-    "disabled",
-    "error",
-  ]) {
-    assert.match(renderer, new RegExp(`${status}:`));
-  }
-  assert.match(
-    page,
-    /export \{ default, dynamic, generateMetadata \} from "\.\.\/calendar\/page"/u,
-  );
-  assert.doesNotMatch(page, /EventsPageRenderer|EventFilters|queryPublicEvents/u);
+  assert.match(page, /EventsPageRenderer/u);
+  assert.match(page, /eventFilterValues\(raw\)/u);
+  assert.match(page, /queryPublicEvents/u);
+  assert.match(page, /view:\s*raw\.state/u);
+  assert.match(page, /pageSize:\s*12/u);
+  assert.doesNotMatch(page, /from "\.\.\/calendar\/page"/u);
+  assert.doesNotMatch(`${page}\n${renderer}`, /PublicMonthCalendar/u);
   assert.doesNotMatch(page, /refreshMeetupCalendarSourceIfDue/);
   assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/);
   assert.match(maintenance, /attemptedMeetupRefresh/);
   assert.match(worker, /maintenanceRedirect/);
-  assert.match(renderer, /The last completed snapshot remains visible/);
-  assert.match(renderer, /not on a guaranteed schedule/);
+  assert.match(
+    renderer,
+    /state:\s*value\("state"\) === "past" \? "past" : "upcoming"/u,
+  );
+  assert.match(
+    renderer,
+    /<Link aria-current="page" href="\/events">[\s\S]*?List[\s\S]*?<Link href="\/calendar">Month<\/Link>/u,
+  );
+  assert.match(renderer, /<EventFilters/u);
+  assert.match(renderer, /<EventCollection/u);
+  assert.doesNotMatch(
+    `${page}\n${renderer}`,
+    /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,
+  );
   assert.match(calendar, /queryPublicEvents/);
-  assert.match(calendar, /readPublicMeetupSyncState/);
+  assert.doesNotMatch(calendar, /readPublicMeetupSyncState/);
+  assert.doesNotMatch(calendar, /CalendarSourceStatus|data-source-status/);
+  assert.doesNotMatch(
+    calendar,
+    /latest Meetup check|Meetup refresh|last complete calendar|Last completed/u,
+  );
   assert.match(filters, /method="get"/);
   assert.match(filters, /Clear Filters/);
   assert.match(calendar, /PublicMonthCalendar/);
-  assert.doesNotMatch(calendar, />List and filters</u);
+  assert.match(
+    calendar,
+    /<Link href="\/events">List<\/Link>[\s\S]*?aria-current="page" href="\/calendar"/u,
+  );
   assert.match(calendar, /path:\s*"\/calendar"/);
   assert.match(calendar, /queryPublicEvents/);
   assert.doesNotMatch(calendar, /permanentRedirect/);
@@ -335,6 +454,22 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
   );
   assert.match(
     controls,
+    /id="meetup-refresh-program"[\s\S]*All Meetup programs[\s\S]*clubOptions\.map/u,
+  );
+  assert.match(
+    controls,
+    /runMeetupRefreshSelection\([\s\S]*selectedClubs[\s\S]*requestMeetupRefresh/u,
+  );
+  assert.match(
+    controls,
+    /body:\s*JSON\.stringify\(\{\s*clubId:\s*targetClubId\s*\}\)/u,
+  );
+  assert.match(
+    controls,
+    /MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS\s*=\s*64/u,
+  );
+  assert.match(
+    controls,
     /body:\s*JSON\.stringify\(\{\s*clubId,\s*feedUrl\s*\}\)/,
   );
   assert.match(
@@ -400,6 +535,18 @@ test("manual Meetup APIs derive authority server-side and restrict every mutatio
   assert.match(
     connect,
     /configureMeetupCalendarSource\(database, identity,\s*\{\s*clubId,\s*feedUrl,\s*\}\)/,
+  );
+  assert.match(
+    refresh,
+    /assertOnlyKeys\(payload,\s*\["clubId"\]\)/u,
+  );
+  assert.match(
+    refresh,
+    /parseIdentifier\(payload\.clubId,\s*"clubId"\)/u,
+  );
+  assert.match(
+    refresh,
+    /refreshMeetupCalendarSource\(database, identity,\s*\{\s*clubId,\s*\}\)/u,
   );
   assert.doesNotMatch(connect, /sourceUrl|source_url/);
   assert.doesNotMatch(
@@ -524,7 +671,7 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
   );
 });
 
-test("the three public destinations stay visible and Community is absent from shared navigation", async () => {
+test("the exact four primary destinations stay ordered and map related routes active", async () => {
   const [header, footer, css] = await Promise.all([
     readFile(
       new URL("app/_components/SiteHeader.tsx", projectRoot),
@@ -537,20 +684,30 @@ test("the three public destinations stay visible and Community is absent from sh
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
-  for (const [href, label] of [
-    ["/calendar", "Calendar"],
+  const destinations = [
+    ["/events", "Events"],
+    ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/get-involved", "Contribute"],
-  ]) {
-    assert.match(
-      header,
-      new RegExp(`\\{ href: "${href}", label: "${label}" \\}`, "u"),
+    ["/host-an-event", "Host an Event"],
+  ];
+  let priorDestinationIndex = -1;
+  for (const [href, label] of destinations) {
+    const destinationIndex = header.indexOf(
+      `{ href: "${href}", label: "${label}" }`,
     );
+    assert.ok(destinationIndex > priorDestinationIndex, `${label} order`);
+    priorDestinationIndex = destinationIndex;
   }
+  assert.equal(
+    (header.match(/\{ href: "\/[^"]+", label: "[^"]+" \}/gu) ?? [])
+      .length,
+    4,
+  );
   assert.doesNotMatch(header, /\{ href: "\/community", label: "Community" \}/u);
   assert.doesNotMatch(footer, /\{ href: "\/community", label: "Community" \}/u);
   assert.match(footer, /item\.href === "\/community"/u);
-  assert.doesNotMatch(header, /\{ href: "\/events", label: "Events" \}/u);
+  assert.doesNotMatch(header, /\{ href: "\/calendar", label: "Calendar" \}/u);
+  assert.doesNotMatch(header, /\{ href: "\/get-involved", label: "Contribute" \}/u);
   assert.doesNotMatch(
     header,
     /\{ href: "\/organizer", label: "Organizer Login" \}/u,
@@ -562,9 +719,11 @@ test("the three public destinations stay visible and Community is absent from sh
   assert.doesNotMatch(header, /<details|<summary|site-navigation/u);
   assert.match(header, /return Object\.freeze\(requiredNavigation\)/u);
   assert.match(
-    css,
-    /\.primary-nav\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/su,
+    header,
+    /href === "\/events"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)[\s\S]*?pathname === "\/calendar"/u,
   );
+  assert.match(header, /pathname === href/u);
+  assert.match(header, /pathname\.startsWith\(`\$\{href\}\/`\)/u);
   assert.match(
     css,
     /\.primary-nav a\s*\{[^}]*min-height:\s*3rem;/su,

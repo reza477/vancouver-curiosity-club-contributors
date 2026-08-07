@@ -16,6 +16,10 @@ import { reconcileDueOrganizerPublications } from "../../lib/server/organizer/pu
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { normalizeAllDayConflictInterval } from "../../lib/server/organizer/conflict-domain.ts";
 import {
+  MEETUP_EVENT_ALIASES,
+  canonicalMeetupEventUrlForAlias,
+} from "../../lib/server/meetup/event-aliases.ts";
+import {
   getOrganizerConflictPolicy,
   updateOrganizerConflictPolicy,
 } from "../../lib/server/organizer/conflict-policy.ts";
@@ -320,6 +324,85 @@ function calendarResponse(body, { etag = null } = {}) {
   return new Response(body, { status: 200, headers });
 }
 
+function meetupGroupPageHtml(groupSlug, events) {
+  const groupRef = `Group:${groupSlug === GROUP_A ? "38093975" : "38093976"}`;
+  const futureConnectionKey = `events(${JSON.stringify({
+    filter: {
+      afterDateTime: "2026-08-06T12:00:00.000Z",
+      status: ["ACTIVE", "PAST", "CANCELLED"],
+    },
+    first: 30,
+    sort: "ASC",
+  })})`;
+  const state = {
+    ROOT_QUERY: {
+      __typename: "Query",
+      [`groupByUrlname:{"urlname":"${groupSlug}"}`]: { __ref: groupRef },
+    },
+    [groupRef]: {
+      __typename: "Group",
+      id: groupRef.split(":")[1],
+      isPrivate: false,
+      timezone: "America/Vancouver",
+      urlname: groupSlug,
+      [futureConnectionKey]: {
+        __typename: "GroupEventConnection",
+        edges: events.map((event) => ({
+          __typename: "EventEdge",
+          node: { __ref: `Event:${event.id}` },
+        })),
+        pageInfo: { __typename: "PageInfo", hasNextPage: false },
+        totalCount: events.length,
+      },
+    },
+  };
+  for (const [index, event] of events.entries()) {
+    const venueId = String(25_956_900 + index);
+    const photoId = String(535_545_400 + index);
+    state[`Event:${event.id}`] = {
+      __typename: "Event",
+      dateTime: event.startsAt,
+      description:
+        "## Why come?\n\nBring **curiosity**. [Buy your VIFF ticket here](https://viff.org/whats-on/princess-mononoke/).\n\n- Meet thoughtful people\n- Leave with a new question",
+      endTime: event.endsAt,
+      eventUrl: `https://www.meetup.com/${groupSlug}/events/${event.id}/`,
+      featuredEventPhoto: { __ref: `PhotoInfo:${photoId}` },
+      group: { __ref: groupRef },
+      id: event.id,
+      status: "ACTIVE",
+      title: event.title,
+      venue: { __ref: `Venue:${venueId}` },
+    };
+    state[`Venue:${venueId}`] = {
+      __typename: "Venue",
+      address: "350 West Georgia Street",
+      city: "Vancouver",
+      id: venueId,
+      name: "Vancouver Central Library",
+      state: "BC",
+    };
+    state[`PhotoInfo:${photoId}`] = {
+      __typename: "PhotoInfo",
+      highResUrl:
+        `https://secure.meetupstatic.com/photos/event/b/1/9/6/highres_${photoId}.jpeg`,
+      id: photoId,
+    };
+  }
+  return `<!doctype html><html><head><link rel="canonical" href="https://www.meetup.com/${groupSlug}/"></head><body><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(
+    {
+      props: { pageProps: { __APOLLO_STATE__: state } },
+      query: { slug: groupSlug },
+    },
+  )}</script></body></html>`;
+}
+
+function groupPageResponse(body) {
+  return new Response(body, {
+    headers: { "content-type": "text/html; charset=utf-8" },
+    status: 200,
+  });
+}
+
 function sequenceFetcher(responses) {
   let index = 0;
   return async () => {
@@ -468,6 +551,143 @@ function sourceOverlapDraftInput(title) {
   };
 }
 
+test("complete group pages automatically publish missing events, rich content, and current titles", async (t) => {
+  const database = createDatabase({ clubs: ["club_a", "club_b"] });
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_b", FEED_B, 1_000);
+  await configure(database, "club_a", FEED_A, 1_001);
+
+  let poetryTitle = "Poetry Night #4";
+  const groupPageFetcher = async (url) => {
+    const groupSlug = new URL(String(url)).pathname.split("/")[1];
+    if (groupSlug === GROUP_B) {
+      return groupPageResponse(
+        meetupGroupPageHtml(GROUP_B, [
+          {
+            endsAt: "2026-08-09T15:00:00-07:00",
+            id: "315772811",
+            startsAt: "2026-08-09T13:00:00-07:00",
+            title: poetryTitle,
+          },
+        ]),
+      );
+    }
+    assert.equal(groupSlug, GROUP_A);
+    return groupPageResponse(
+      meetupGroupPageHtml(GROUP_A, [
+        {
+          endsAt: "2026-08-09T15:00:00-07:00",
+          id: "315772829",
+          startsAt: "2026-08-09T13:00:00-07:00",
+          title: poetryTitle,
+        },
+        {
+          endsAt: "2026-08-12T20:00:00-07:00",
+          id: "316010049",
+          startsAt: "2026-08-12T18:00:00-07:00",
+          title: "Wednesday Night Reset",
+        },
+      ]),
+    );
+  };
+
+  const legacyLiterature = await refresh(
+    database,
+    "club_b",
+    async () =>
+      calendarResponse(
+        calendar(
+          meetupEvent({
+            end: "20260809T220000Z",
+            eventId: "315772811",
+            groupSlug: GROUP_B,
+            sequence: 7,
+            start: "20260809T200000Z",
+            title: poetryTitle,
+            uid: "event_315772811@meetup.com",
+          }),
+        ),
+      ),
+    2_000,
+  );
+  assert.equal(legacyLiterature.outcome, "completed");
+
+  poetryTitle = "Poetry Night #5 - THEME : Summer City";
+  const literature = await refreshMeetupCalendarSource(
+    database,
+    OWNER_IDENTITY,
+    {
+      clubId: "club_b",
+      clock: () => 3_000,
+      groupPageFetcher,
+      nowUtcMs: 3_000,
+    },
+  );
+  assert.equal(literature.outcome, "completed");
+  assert.equal(literature.counts.rejected, 0);
+  const main = await refreshMeetupCalendarSource(database, OWNER_IDENTITY, {
+    clubId: "club_a",
+    clock: () => 4_000,
+    groupPageFetcher,
+    nowUtcMs: 4_000,
+  });
+  assert.equal(main.outcome, "completed");
+  assert.equal(main.counts.rejected, 0);
+
+  const snapshots = await database
+    .prepare(
+      `SELECT snapshot.event_url, snapshot.title, content.public_description,
+              content.public_description_blocks_json,
+              content.public_venue_name, content.public_venue_address,
+              content.poster_source_url
+       FROM sync_sources AS source
+       JOIN meetup_event_snapshots AS snapshot
+         ON snapshot.sync_source_id = source.id
+        AND snapshot.generation_id = source.active_generation_id
+       JOIN meetup_event_snapshot_public_contents AS content
+         ON content.snapshot_id = snapshot.id
+       WHERE source.organization_id = ?
+         AND snapshot.event_url IN (?, ?)
+       ORDER BY snapshot.event_url`,
+    )
+    .bind(
+      ORGANIZATION_ID,
+      "https://www.meetup.com/vancouver-literature-and-film/events/315772811/",
+      "https://www.meetup.com/vancouver-meetup-group/events/316010049/",
+    )
+    .all();
+  assert.equal(snapshots.results.length, 2);
+  const rowsByUrl = new Map(
+    snapshots.results.map((row) => [row.event_url, { ...row }]),
+  );
+  const poetry = rowsByUrl.get(
+    "https://www.meetup.com/vancouver-literature-and-film/events/315772811/",
+  );
+  const reset = rowsByUrl.get(
+    "https://www.meetup.com/vancouver-meetup-group/events/316010049/",
+  );
+  assert.equal(poetry.title, poetryTitle);
+  assert.equal(reset.title, "Wednesday Night Reset");
+  for (const row of [poetry, reset]) {
+    assert.equal(row.public_venue_name, "Vancouver Central Library");
+    assert.equal(row.public_venue_address, "350 West Georgia Street");
+    assert.match(row.poster_source_url, /^https:\/\/secure\.meetupstatic\.com\//u);
+    assert.match(row.public_description, /Buy your VIFF ticket here/u);
+    const blocks = JSON.parse(row.public_description_blocks_json);
+    assert.equal(blocks[0].type, "heading");
+    assert.equal(blocks[2].type, "unordered-list");
+    assert.deepEqual(
+      blocks[1].content.find((inline) => inline.type === "link"),
+      {
+        href: "https://viff.org/whats-on/princess-mononoke/",
+        text: "Buy your VIFF ticket here",
+        type: "link",
+      },
+    );
+  }
+});
+
 test("isolates the same external UID across two official club feeds", async (t) => {
   const database = createDatabase({ clubs: ["club_a", "club_b"] });
   t.after(() => database.close());
@@ -539,6 +759,587 @@ test("isolates the same external UID across two official club feeds", async (t) 
     source_count: 2,
     event_count: 2,
   });
+});
+
+test("Phase 4 permits two distinct simultaneous Meetup events across published sources", async (t) => {
+  const database = createDatabase({ clubs: ["club_a", "club_b"] });
+  t.after(() => database.close());
+  await ensureDatabaseInvariantsReady(database);
+  await configure(database, "club_a", FEED_A, 1_000);
+  await configure(database, "club_b", FEED_B, 1_001);
+
+  const sharedStart = "20280910T020000Z";
+  const sharedEnd = "20280910T040000Z";
+  const fetcher = feedAwareFetcher(
+    new Map([
+      [
+        FEED_A,
+        calendar(
+          meetupEvent({
+            uid: "simultaneous-main@meetup.com",
+            eventId: "simultaneous-main",
+            groupSlug: GROUP_A,
+            title: "Main group simultaneous gathering",
+            start: sharedStart,
+            end: sharedEnd,
+          }),
+        ),
+      ],
+      [
+        FEED_B,
+        calendar(
+          meetupEvent({
+            uid: "simultaneous-literature@meetup.com",
+            eventId: "simultaneous-literature",
+            groupSlug: GROUP_B,
+            title: "Literature group simultaneous gathering",
+            start: sharedStart,
+            end: sharedEnd,
+          }),
+        ),
+      ],
+    ]),
+  );
+
+  const first = await refresh(database, "club_a", fetcher, 2_000);
+  const second = await refresh(database, "club_b", fetcher, 3_000);
+  assert.equal(first.outcome, "completed");
+  assert.equal(second.outcome, "completed");
+  assert.deepEqual(second.counts, {
+    cancelled: 0,
+    created: 1,
+    rejected: 0,
+    removed: 0,
+    updated: 0,
+  });
+
+  const active = await database
+    .prepare(
+      `SELECT source.club_id, generation.state,
+              count(DISTINCT interval.event_id) AS event_count
+       FROM sync_sources AS source
+       JOIN meetup_sync_generations AS generation
+         ON generation.id = source.active_generation_id
+        AND generation.sync_source_id = source.id
+        AND generation.organization_id = source.organization_id
+       JOIN organizer_external_reservation_intervals AS interval
+         ON interval.sync_source_id = source.id
+        AND interval.generation_id = generation.id
+        AND interval.organization_id = source.organization_id
+       WHERE source.organization_id = ?
+         AND source.club_id IN ('club_a', 'club_b')
+       GROUP BY source.club_id, generation.state
+       ORDER BY source.club_id`,
+    )
+    .bind(ORGANIZATION_ID)
+    .all();
+  assert.deepEqual(active.results.map((row) => ({ ...row })), [
+    { club_id: "club_a", state: "published", event_count: 1 },
+    { club_id: "club_b", state: "published", event_count: 1 },
+  ]);
+});
+
+test("exact cross-post aliases share canonical events and publish a later unique event without canonical mutation", async (t) => {
+  const database = createDatabase({ clubs: ["club_a", "club_b"] });
+  t.after(() => database.close());
+  await configure(database, "club_b", FEED_B, 1_000);
+  await configure(database, "club_a", FEED_A, 1_001);
+
+  const canonicalUrlOne =
+    "https://www.meetup.com/vancouver-literature-and-film/events/315508432/";
+  const canonicalUrlTwo =
+    "https://www.meetup.com/vancouver-literature-and-film/events/315508537/";
+  const aliasUrlOne =
+    "https://www.meetup.com/vancouver-meetup-group/events/315511475/";
+  const aliasUrlTwo =
+    "https://www.meetup.com/vancouver-meetup-group/events/315511480/";
+  assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlOne), canonicalUrlOne);
+  assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlTwo), canonicalUrlTwo);
+  assert.equal(MEETUP_EVENT_ALIASES.length, 8);
+  assert.equal(
+    MEETUP_EVENT_ALIASES.find((entry) => entry.aliasUrl === aliasUrlTwo)
+      ?.maxTimedEndDriftMs,
+    30 * 60 * 1_000,
+  );
+
+  const canonicalBody = calendar(
+    meetupEvent({
+      uid: "literature-mononoke@meetup.com",
+      eventId: "315508432",
+      groupSlug: GROUP_B,
+      title: "Princess Mononoke — Literature canonical",
+      description: "Canonical literature description one.",
+      location: "VIFF Centre",
+      start: "20260811T010000Z",
+      end: "20260811T033000Z",
+    }),
+    meetupEvent({
+      uid: "literature-titanic@meetup.com",
+      eventId: "315508537",
+      groupSlug: GROUP_B,
+      title: "Titanic — Literature canonical",
+      description: "Canonical literature description two.",
+      location: "VIFF Centre",
+      start: "20260812T010000Z",
+      end: "20260812T033000Z",
+    }),
+  );
+  const canonicalRefresh = await refresh(
+    database,
+    "club_b",
+    sequenceFetcher([canonicalBody]),
+    2_000,
+  );
+  assert.equal(canonicalRefresh.outcome, "completed");
+  assert.equal(canonicalRefresh.counts.created, 2);
+
+  const canonicalRowsBefore = await database
+    .prepare(
+      `SELECT link.external_url, event.id, event.club_id, event.title,
+              event.status, event.visibility, event.time_kind,
+              event.starts_at_utc, event.ends_at_utc, event.timezone,
+              event.schedule_version, event.published_at, event.updated_at,
+              (SELECT count(*) FROM event_revisions AS revision
+               WHERE revision.event_id = event.id) AS revision_count
+       FROM external_source_links AS link
+       JOIN events AS event
+         ON event.id = link.entity_id
+        AND event.organization_id = link.organization_id
+       WHERE link.external_url IN (?, ?)
+         AND link.source_type = 'meetup_ics'
+         AND link.deleted_at IS NULL
+       ORDER BY link.external_url`,
+    )
+    .bind(canonicalUrlOne, canonicalUrlTwo)
+    .all();
+  const immutableCanonicalRows = canonicalRowsBefore.results.map((row) => ({
+    ...row,
+  }));
+  assert.equal(immutableCanonicalRows.length, 2);
+
+  const mainBody = calendar(
+    meetupEvent({
+      uid: "main-mononoke-crosspost@meetup.com",
+      eventId: "315511475",
+      groupSlug: GROUP_A,
+      title: "Main-group Mononoke cross-post",
+      description: "Different alias description one.",
+      location: "Different alias location one.",
+      start: "20260811T010000Z",
+      end: "20260811T033000Z",
+    }),
+    meetupEvent({
+      uid: "main-titanic-crosspost@meetup.com",
+      eventId: "315511480",
+      groupSlug: GROUP_A,
+      title: "Main-group Titanic cross-post",
+      description: "Different alias description two.",
+      location: "Different alias location two.",
+      start: "20260812T010000Z",
+      end: "20260812T040000Z",
+    }),
+    meetupEvent({
+      uid: "wednesday-night-reset@meetup.com",
+      eventId: "316010049",
+      groupSlug: GROUP_A,
+      title: "Wednesday Night Reset",
+      start: "20260813T010000Z",
+      end: "20260813T030000Z",
+    }),
+  );
+  const mainFetcher = sequenceFetcher([mainBody]);
+  const aliasBudget = exactCountingDatabase(database);
+  const firstSlice = await refresh(
+    aliasBudget.binding,
+    "club_a",
+    mainFetcher,
+    3_000,
+  );
+  assert.equal(firstSlice.outcome, "partial");
+  assert.deepEqual(firstSlice.counts, {
+    cancelled: 0,
+    created: 0,
+    rejected: 0,
+    removed: 0,
+    updated: 0,
+  });
+  assert.deepEqual(aliasBudget.counts(), {
+    batchLengths: [2, 7, 7, 4],
+    statementCount: 31,
+  });
+  assert.ok(
+    aliasBudget.counts().statementCount < 50,
+    `alias refresh used ${aliasBudget.counts().statementCount} D1 statements`,
+  );
+  const sourceDuringPartial = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id, pending_cursor
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(sourceDuringPartial.active_generation_id, null);
+  assert.equal(typeof sourceDuringPartial.pending_generation_id, "string");
+  assert.equal(sourceDuringPartial.pending_cursor, 2);
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT expected_item_count, processed_item_count,
+                  rejected_item_count,
+                  (SELECT count(*) FROM meetup_event_snapshots AS snapshot
+                   WHERE snapshot.generation_id = generation.id) AS snapshot_count
+           FROM meetup_sync_generations AS generation
+           WHERE id = ?`,
+        )
+        .bind(sourceDuringPartial.pending_generation_id)
+        .first()),
+    },
+    {
+      expected_item_count: 3,
+      processed_item_count: 2,
+      rejected_item_count: 0,
+      snapshot_count: 2,
+    },
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM events
+         WHERE title = 'Wednesday Night Reset'
+           AND deleted_at IS NULL`,
+      )
+      .first("count"),
+    0,
+  );
+
+  const finalSlice = await refresh(
+    database,
+    "club_a",
+    mainFetcher,
+    3_100,
+  );
+  assert.equal(finalSlice.outcome, "completed");
+  assert.deepEqual(finalSlice.counts, {
+    cancelled: 0,
+    created: 1,
+    rejected: 0,
+    removed: 0,
+    updated: 0,
+  });
+  const sourceAfterCompletion = await database
+    .prepare(
+      `SELECT active_generation_id, pending_generation_id, pending_cursor
+       FROM sync_sources
+       WHERE club_id = 'club_a'`,
+    )
+    .first();
+  assert.equal(
+    sourceAfterCompletion.active_generation_id,
+    sourceDuringPartial.pending_generation_id,
+  );
+  assert.equal(sourceAfterCompletion.pending_generation_id, null);
+  assert.equal(sourceAfterCompletion.pending_cursor, null);
+  assert.deepEqual(
+    {
+      ...(await database
+        .prepare(
+          `SELECT state, expected_item_count, processed_item_count,
+                  rejected_item_count,
+                  (SELECT count(*) FROM meetup_event_snapshots AS snapshot
+                   WHERE snapshot.generation_id = generation.id) AS snapshot_count,
+                  (SELECT count(*)
+                   FROM meetup_snapshot_reservation_normalizations AS normalized
+                   WHERE normalized.generation_id = generation.id) AS normalization_count,
+                  (SELECT count(*)
+                   FROM organizer_external_reservation_intervals AS interval
+                   WHERE interval.generation_id = generation.id) AS interval_count
+           FROM meetup_sync_generations AS generation
+           WHERE id = ?`,
+        )
+        .bind(sourceAfterCompletion.active_generation_id)
+        .first()),
+    },
+    {
+      state: "published",
+      expected_item_count: 3,
+      processed_item_count: 3,
+      rejected_item_count: 0,
+      snapshot_count: 3,
+      normalization_count: 3,
+      interval_count: 3,
+    },
+  );
+
+  const sharedRows = await database
+    .prepare(
+      `SELECT alias_link.external_url AS alias_url,
+              alias_link.entity_id AS alias_event_id,
+              canonical_link.external_url AS canonical_url,
+              canonical_link.entity_id AS canonical_event_id
+       FROM external_source_links AS alias_link
+       JOIN external_source_links AS canonical_link
+         ON canonical_link.organization_id = alias_link.organization_id
+        AND canonical_link.entity_id = alias_link.entity_id
+        AND canonical_link.sync_source_id <> alias_link.sync_source_id
+        AND canonical_link.source_type = alias_link.source_type
+        AND canonical_link.deleted_at IS NULL
+       WHERE alias_link.external_url IN (?, ?)
+         AND alias_link.source_type = 'meetup_ics'
+         AND alias_link.deleted_at IS NULL
+       ORDER BY alias_link.external_url`,
+    )
+    .bind(aliasUrlOne, aliasUrlTwo)
+    .all();
+  assert.deepEqual(
+    sharedRows.results.map((row) => ({ ...row })),
+    [
+      {
+        alias_url: aliasUrlOne,
+        alias_event_id: immutableCanonicalRows[0].id,
+        canonical_url: canonicalUrlOne,
+        canonical_event_id: immutableCanonicalRows[0].id,
+      },
+      {
+        alias_url: aliasUrlTwo,
+        alias_event_id: immutableCanonicalRows[1].id,
+        canonical_url: canonicalUrlTwo,
+        canonical_event_id: immutableCanonicalRows[1].id,
+      },
+    ],
+  );
+  const reservationGroups = await database
+    .prepare(
+      `SELECT interval.event_id, count(*) AS interval_count,
+              count(DISTINCT interval.sync_source_id) AS source_count
+       FROM organizer_external_reservation_intervals AS interval
+       JOIN sync_sources AS source
+         ON source.id = interval.sync_source_id
+        AND source.active_generation_id = interval.generation_id
+       WHERE interval.event_id IN (?, ?)
+       GROUP BY interval.event_id
+       ORDER BY interval.event_id`,
+    )
+    .bind(immutableCanonicalRows[0].id, immutableCanonicalRows[1].id)
+    .all();
+  assert.deepEqual(
+    reservationGroups.results.map((row) => ({ ...row })),
+    [
+      {
+        event_id: immutableCanonicalRows[0].id,
+        interval_count: 2,
+        source_count: 2,
+      },
+      {
+        event_id: immutableCanonicalRows[1].id,
+        interval_count: 2,
+        source_count: 2,
+      },
+    ].sort((left, right) => left.event_id.localeCompare(right.event_id)),
+  );
+  const canonicalRowsAfter = await database
+    .prepare(
+      `SELECT link.external_url, event.id, event.club_id, event.title,
+              event.status, event.visibility, event.time_kind,
+              event.starts_at_utc, event.ends_at_utc, event.timezone,
+              event.schedule_version, event.published_at, event.updated_at,
+              (SELECT count(*) FROM event_revisions AS revision
+               WHERE revision.event_id = event.id) AS revision_count
+       FROM external_source_links AS link
+       JOIN events AS event
+         ON event.id = link.entity_id
+        AND event.organization_id = link.organization_id
+       WHERE link.external_url IN (?, ?)
+         AND link.source_type = 'meetup_ics'
+         AND link.deleted_at IS NULL
+       ORDER BY link.external_url`,
+    )
+    .bind(canonicalUrlOne, canonicalUrlTwo)
+    .all();
+  assert.deepEqual(
+    canonicalRowsAfter.results.map((row) => ({ ...row })),
+    immutableCanonicalRows,
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM events
+         WHERE title = 'Wednesday Night Reset'
+           AND deleted_at IS NULL`,
+      )
+      .first("count"),
+    1,
+  );
+  const aliasAudits = await database
+    .prepare(
+      `SELECT metadata_json
+       FROM audit_logs
+       WHERE action = 'meetup.source_alias_linked'
+       ORDER BY created_at, id`,
+    )
+    .all();
+  assert.equal(aliasAudits.results.length, 2);
+  for (const row of aliasAudits.results) {
+    assert.deepEqual(JSON.parse(row.metadata_json), {
+      aliasModel: "exact_url_v2",
+      sourceType: "meetup_ics",
+    });
+    assert.equal(row.metadata_json.includes("meetup.com"), false);
+  }
+});
+
+test("an exact cross-post alias with a schedule mismatch preserves both active generations", async (t) => {
+  const database = createDatabase({ clubs: ["club_a", "club_b"] });
+  t.after(() => database.close());
+  await configure(database, "club_b", FEED_B, 1_000);
+  await configure(database, "club_a", FEED_A, 1_001);
+
+  const canonicalUrl =
+    "https://www.meetup.com/vancouver-literature-and-film/events/315508432/";
+  const aliasUrl =
+    "https://www.meetup.com/vancouver-meetup-group/events/315511475/";
+  const canonicalBody = calendar(
+    meetupEvent({
+      uid: "mismatch-canonical@meetup.com",
+      eventId: "315508432",
+      groupSlug: GROUP_B,
+      title: "Schedule-locked canonical",
+      start: "20260811T010000Z",
+      end: "20260811T033000Z",
+    }),
+  );
+  assert.equal(
+    (
+      await refresh(
+        database,
+        "club_b",
+        sequenceFetcher([canonicalBody]),
+        2_000,
+      )
+    ).outcome,
+    "completed",
+  );
+  const baselineBody = calendar(
+    meetupEvent({
+      uid: "main-prior-active@meetup.com",
+      eventId: "315294577",
+      groupSlug: GROUP_A,
+      title: "Main prior active event",
+      start: "20260820T010000Z",
+      end: "20260820T030000Z",
+    }),
+  );
+  assert.equal(
+    (
+      await refresh(
+        database,
+        "club_a",
+        sequenceFetcher([baselineBody]),
+        2_100,
+      )
+    ).outcome,
+    "completed",
+  );
+  const sourcesBefore = await database
+    .prepare(
+      `SELECT club_id, active_generation_id
+       FROM sync_sources
+       WHERE club_id IN ('club_a', 'club_b')
+       ORDER BY club_id`,
+    )
+    .all();
+  const canonicalBefore = await database
+    .prepare(
+      `SELECT event.*,
+              (SELECT count(*) FROM event_revisions AS revision
+               WHERE revision.event_id = event.id) AS revision_count
+       FROM events AS event
+       JOIN external_source_links AS link
+         ON link.entity_id = event.id
+        AND link.organization_id = event.organization_id
+       WHERE link.external_url = ?
+         AND link.deleted_at IS NULL`,
+    )
+    .bind(canonicalUrl)
+    .first();
+
+  const mismatchBody = calendar(
+    meetupEvent({
+      uid: "mismatch-alias@meetup.com",
+      eventId: "315511475",
+      groupSlug: GROUP_A,
+      title: "Shifted alias must not replace canonical",
+      start: "20260811T020000Z",
+      end: "20260811T043000Z",
+    }),
+  );
+  const failed = await refresh(
+    database,
+    "club_a",
+    sequenceFetcher([mismatchBody]),
+    3_000,
+  );
+  assert.equal(failed.outcome, "failed");
+  assert.equal(failed.state.lastErrorCode, "calendar_invalid");
+  assert.deepEqual(failed.counts, {
+    cancelled: 0,
+    created: 0,
+    rejected: 0,
+    removed: 0,
+    updated: 0,
+  });
+  const sourcesAfter = await database
+    .prepare(
+      `SELECT club_id, active_generation_id
+       FROM sync_sources
+       WHERE club_id IN ('club_a', 'club_b')
+       ORDER BY club_id`,
+    )
+    .all();
+  assert.deepEqual(
+    sourcesAfter.results.map((row) => ({ ...row })),
+    sourcesBefore.results.map((row) => ({ ...row })),
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM external_source_links
+         WHERE external_url = ?
+           AND deleted_at IS NULL`,
+      )
+      .bind(aliasUrl)
+      .first("count"),
+    0,
+  );
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM meetup_event_snapshots
+         WHERE event_url = ?`,
+      )
+      .bind(aliasUrl)
+      .first("count"),
+    0,
+  );
+  const canonicalAfter = await database
+    .prepare(
+      `SELECT event.*,
+              (SELECT count(*) FROM event_revisions AS revision
+               WHERE revision.event_id = event.id) AS revision_count
+       FROM events AS event
+       JOIN external_source_links AS link
+         ON link.entity_id = event.id
+        AND link.organization_id = event.organization_id
+       WHERE link.external_url = ?
+         AND link.deleted_at IS NULL`,
+    )
+    .bind(canonicalUrl)
+    .first();
+  assert.deepEqual({ ...canonicalAfter }, { ...canonicalBefore });
 });
 
 test("the normalized baseline contains the final Meetup generation schema", async (t) => {
@@ -3562,6 +4363,79 @@ test("keeps the last completed generation public when a later chunk fails", asyn
     baseRowsDuringPartial.results.map((row) => ({ ...row })),
     "a failed continuation must not mutate owner-managed base fields",
   );
+});
+
+test("an unscoped refresh finishes a pending generation before rotating to an untouched source", async (t) => {
+  const database = createDatabase({ clubs: ["club_a", "club_b"] });
+  t.after(() => database.close());
+  await configure(database, "club_a", FEED_A, 1_000);
+  await configure(database, "club_b", FEED_B, 1_001);
+
+  const sourceBFeed = calendar(
+    ...[1, 2, 3].map((number) =>
+      meetupEvent({
+        uid: `pending-priority-${number}@meetup.com`,
+        eventId: `pending-priority-${number}`,
+        groupSlug: GROUP_B,
+        title: `Pending priority ${number}`,
+        start: `2028050${number}T030000Z`,
+        end: `2028050${number}T040000Z`,
+      }),
+    ),
+  );
+  const first = await refresh(
+    database,
+    "club_b",
+    sequenceFetcher([sourceBFeed]),
+    2_000,
+  );
+  assert.equal(first.outcome, "partial");
+
+  const fetchedUrls = [];
+  const continued = await refreshMeetupCalendarSource(
+    database,
+    OWNER_IDENTITY,
+    {
+      clock: () => 3_000,
+      fetcher: async (url) => {
+        fetchedUrls.push(String(url));
+        const body = String(url) === FEED_B
+          ? sourceBFeed
+          : calendar(
+              meetupEvent({
+                uid: "untouched-source@meetup.com",
+                eventId: "untouched-source",
+                title: "Untouched source",
+              }),
+            );
+        return calendarResponse(body);
+      },
+      nowUtcMs: 3_000,
+    },
+  );
+  assert.equal(continued.outcome, "completed");
+  assert.deepEqual(fetchedUrls, [FEED_B]);
+
+  const sources = await database
+    .prepare(
+      `SELECT club_id, active_generation_id, pending_generation_id,
+              last_attempt_at
+       FROM sync_sources
+       WHERE club_id IN ('club_a', 'club_b')
+       ORDER BY club_id`,
+    )
+    .all();
+  assert.equal(sources.results.length, 2);
+  assert.deepEqual({ ...sources.results[0] }, {
+    club_id: "club_a",
+    active_generation_id: null,
+    pending_generation_id: null,
+    last_attempt_at: null,
+  });
+  assert.equal(sources.results[1].club_id, "club_b");
+  assert.equal(typeof sources.results[1].active_generation_id, "string");
+  assert.equal(sources.results[1].pending_generation_id, null);
+  assert.equal(sources.results[1].last_attempt_at, 3_000);
 });
 
 test("an unsolicited 304 cannot finalize a pending generation", async (t) => {

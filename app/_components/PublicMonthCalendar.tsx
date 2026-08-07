@@ -8,7 +8,6 @@ import {
   type KeyboardEvent,
 } from "react";
 import { AddToCalendar } from "./AddToCalendar";
-import { FieldArtwork } from "./FieldArtwork";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import {
   eventOccursOnCalendarDate,
@@ -466,11 +465,17 @@ function CalendarEventPreview({
         </figure>
       ) : (
         <div
-          aria-label="Field Notes category artwork"
+          aria-label={`${event.title}, ${event.lane?.name ?? event.club.name} event`}
           className="public-calendar-event__artwork public-calendar-event__artwork--fallback"
+          data-event-lane={event.lane?.slug ?? "community"}
           role="img"
         >
-          <FieldArtwork tone={eventArtworkTone(event.lane?.slug)} />
+          <span className="public-calendar-event__fallback-label">
+            {event.lane?.name ?? event.club.name}
+          </span>
+          <strong className="public-calendar-event__fallback-title">
+            {event.title}
+          </strong>
         </div>
       )}
       <div className="public-calendar-event__copy">
@@ -523,13 +528,6 @@ function publicEventStatusLabel(
   if (status === "completed") return "Completed";
   if (status === "tentative") return "Tentative";
   return "Confirmed";
-}
-
-function eventArtworkTone(slug: string | undefined) {
-  if (slug === "reset-and-make") return "reset-make" as const;
-  if (slug === "explore") return "explore" as const;
-  if (slug === "eat-and-play") return "eat-play" as const;
-  return "think" as const;
 }
 
 function calendarHref(month: string): string {

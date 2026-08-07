@@ -11,12 +11,46 @@ const FORBIDDEN_PUBLIC_TEXT_PATTERN =
 const UNSAFE_CONTROL_PATTERN =
   /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const EMAIL_PATTERN = /\b[^\s@]+@[^\s@]+\.[^\s@]+\b/iu;
+const MAX_DESCRIPTION_BLOCKS = 400;
+const MAX_DESCRIPTION_INLINE_NODES = 4_000;
+const MAX_DESCRIPTION_LIST_ITEMS = 300;
+const MAX_DESCRIPTION_LINK_LENGTH = 2_048;
+const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
+  new Set([
+    "docs.google.com",
+    "drive.google.com",
+    "m.youtube.com",
+    "maps.app.goo.gl",
+    "reifelsanctuary.calendarspots.com",
+    "vancouver.ca",
+    "viff.org",
+    "www.focusfeatures.com",
+    "www.gutenberg.org",
+    "www.navneuro.com",
+    "www.pewresearch.org",
+    "www.reifelbirdsanctuary.com",
+    "www.ted.com",
+    "www.vatican.va",
+    "www.youtube.com",
+    "youtu.be",
+  ]),
+);
+const PUBLIC_DESCRIPTION_LINK_QUERY_KEYS: Readonly<
+  Record<string, ReadonlySet<string>>
+> = Object.freeze({
+  "m.youtube.com": Object.freeze(new Set(["index", "list", "start", "t", "v"])),
+  "www.youtube.com": Object.freeze(
+    new Set(["index", "list", "start", "t", "v"]),
+  ),
+  "youtu.be": Object.freeze(new Set(["list", "start", "t"])),
+});
 
 type AllowedMeetupGroupSlug =
   (typeof ALLOWED_MEETUP_GROUP_SLUGS)[number];
 
 export type CuratedMeetupEventEnrichment = Readonly<{
   description: string;
+  descriptionBlocks: readonly CuratedMeetupDescriptionBlock[];
   eventId: string;
   eventUrl: string;
   groupSlug: AllowedMeetupGroupSlug;
@@ -41,13 +75,32 @@ export type CuratedMeetupEventEnrichment = Readonly<{
   }> | null;
 }>;
 
+export type CuratedMeetupDescriptionInline =
+  | Readonly<{ text: string; type: "strong" | "text" }>
+  | Readonly<{ href: string; text: string; type: "link" }>;
+
+export type CuratedMeetupDescriptionBlock =
+  | Readonly<{
+      content: readonly CuratedMeetupDescriptionInline[];
+      level: 3 | 4;
+      type: "heading";
+    }>
+  | Readonly<{
+      content: readonly CuratedMeetupDescriptionInline[];
+      type: "paragraph";
+    }>
+  | Readonly<{
+      items: readonly (readonly CuratedMeetupDescriptionInline[])[];
+      type: "ordered-list" | "unordered-list";
+    }>;
+
 export type CuratedMeetupPosterVariant = Readonly<{
   height: number;
   localPath: string;
   width: number;
 }>;
 
-if (generatedManifest.schemaVersion !== 1) {
+if (generatedManifest.schemaVersion !== 2) {
   throw new Error("Unsupported curated Meetup enrichment schema.");
 }
 
@@ -96,6 +149,18 @@ export function curatedMeetupEventForEventUrl(
   return candidate;
 }
 
+/**
+ * Reuse the same fail-closed semantic validator for description blocks staged
+ * by the automatic Meetup source importer. The generated manifest remains a
+ * fallback, but it is no longer the only path capable of preserving source
+ * headings, lists, emphasis, and allowlisted links.
+ */
+export function validateMeetupDescriptionBlocks(
+  candidate: unknown,
+): readonly CuratedMeetupDescriptionBlock[] {
+  return normalizePublicDescriptionBlocks(candidate);
+}
+
 export function validateCuratedMeetupEventCandidate(
   candidate: (typeof generatedManifest.events)[number],
 ): CuratedMeetupEventEnrichment {
@@ -121,6 +186,12 @@ export function validateCuratedMeetupEventCandidate(
     20_000,
     10,
   );
+  const descriptionBlocks = normalizePublicDescriptionBlocks(
+    candidate.descriptionBlocks,
+  );
+  if (meetupDescriptionBlocksToPlainText(descriptionBlocks) !== description) {
+    throw new Error("Invalid curated Meetup event description structure.");
+  }
   const poster = candidate.poster === null
     ? null
     : validateCuratedMeetupPoster(candidate.eventId, candidate.poster);
@@ -128,6 +199,7 @@ export function validateCuratedMeetupEventCandidate(
   return Object.freeze({
     ...candidate,
     description,
+    descriptionBlocks,
     groupSlug: candidate.groupSlug as AllowedMeetupGroupSlug,
     poster,
     summary,
@@ -189,6 +261,227 @@ function validateCuratedMeetupPoster(
       small: Object.freeze(candidate.variants.small),
     }),
   });
+}
+
+function normalizePublicDescriptionBlocks(
+  candidate: unknown,
+): readonly CuratedMeetupDescriptionBlock[] {
+  if (
+    !Array.isArray(candidate) ||
+    candidate.length < 1 ||
+    candidate.length > MAX_DESCRIPTION_BLOCKS
+  ) {
+    throw new Error("Invalid curated Meetup event description structure.");
+  }
+  const budget = { inlineNodes: 0, listItems: 0 };
+  return Object.freeze(
+    candidate.map((block) => normalizePublicDescriptionBlock(block, budget)),
+  );
+}
+
+function normalizePublicDescriptionBlock(
+  candidate: unknown,
+  budget: { inlineNodes: number; listItems: number },
+): CuratedMeetupDescriptionBlock {
+  if (
+    typeof candidate !== "object" ||
+    candidate === null ||
+    Array.isArray(candidate)
+  ) {
+    throw new Error("Invalid curated Meetup event description block.");
+  }
+  const block = candidate as Record<string, unknown>;
+  if (block.type === "paragraph") {
+    assertExactDescriptionKeys(block, ["content", "type"]);
+    return Object.freeze({
+      content: normalizePublicDescriptionInlines(block.content, budget),
+      type: "paragraph",
+    });
+  }
+  if (block.type === "heading") {
+    assertExactDescriptionKeys(block, ["content", "level", "type"]);
+    if (block.level !== 3 && block.level !== 4) {
+      throw new Error("Invalid curated Meetup event description heading.");
+    }
+    return Object.freeze({
+      content: normalizePublicDescriptionInlines(block.content, budget),
+      level: block.level,
+      type: "heading",
+    });
+  }
+  if (block.type === "ordered-list" || block.type === "unordered-list") {
+    assertExactDescriptionKeys(block, ["items", "type"]);
+    if (
+      !Array.isArray(block.items) ||
+      block.items.length < 1 ||
+      block.items.length > MAX_DESCRIPTION_LIST_ITEMS
+    ) {
+      throw new Error("Invalid curated Meetup event description list.");
+    }
+    budget.listItems += block.items.length;
+    if (budget.listItems > MAX_DESCRIPTION_LIST_ITEMS) {
+      throw new Error("Invalid curated Meetup event description list.");
+    }
+    return Object.freeze({
+      items: Object.freeze(
+        block.items.map((item) =>
+          normalizePublicDescriptionInlines(item, budget),
+        ),
+      ),
+      type: block.type,
+    });
+  }
+  throw new Error("Invalid curated Meetup event description block.");
+}
+
+function normalizePublicDescriptionInlines(
+  candidate: unknown,
+  budget: { inlineNodes: number },
+): readonly CuratedMeetupDescriptionInline[] {
+  if (!Array.isArray(candidate) || candidate.length < 1) {
+    throw new Error("Invalid curated Meetup event description inline content.");
+  }
+  budget.inlineNodes += candidate.length;
+  if (budget.inlineNodes > MAX_DESCRIPTION_INLINE_NODES) {
+    throw new Error("Invalid curated Meetup event description inline content.");
+  }
+  return Object.freeze(
+    candidate.map((inline) => normalizePublicDescriptionInline(inline)),
+  );
+}
+
+function normalizePublicDescriptionInline(
+  candidate: unknown,
+): CuratedMeetupDescriptionInline {
+  if (
+    typeof candidate !== "object" ||
+    candidate === null ||
+    Array.isArray(candidate)
+  ) {
+    throw new Error("Invalid curated Meetup event description inline content.");
+  }
+  const inline = candidate as Record<string, unknown>;
+  if (inline.type === "text" || inline.type === "strong") {
+    assertExactDescriptionKeys(inline, ["text", "type"]);
+    return Object.freeze({
+      text: normalizePublicDescriptionInlineText(inline.text),
+      type: inline.type,
+    });
+  }
+  if (inline.type === "link") {
+    assertExactDescriptionKeys(inline, ["href", "text", "type"]);
+    return Object.freeze({
+      href: normalizePublicDescriptionLink(inline.href),
+      text: normalizePublicDescriptionInlineText(inline.text),
+      type: "link",
+    });
+  }
+  throw new Error("Invalid curated Meetup event description inline content.");
+}
+
+function normalizePublicDescriptionInlineText(candidate: unknown): string {
+  if (typeof candidate !== "string") {
+    throw new Error("Invalid curated Meetup event description inline text.");
+  }
+  const value = candidate.normalize("NFKC").replace(/\s+/gu, " ");
+  if (
+    value !== candidate ||
+    value.trim().length < 1 ||
+    value.length > 5_000 ||
+    UNSAFE_CONTROL_PATTERN.test(value) ||
+    EMAIL_PATTERN.test(value) ||
+    FORBIDDEN_PUBLIC_TEXT_PATTERN.test(value)
+  ) {
+    throw new Error("Invalid curated Meetup event description inline text.");
+  }
+  return value;
+}
+
+function normalizePublicDescriptionLink(candidate: unknown): string {
+  if (
+    typeof candidate !== "string" ||
+    candidate.length < 1 ||
+    candidate.length > MAX_DESCRIPTION_LINK_LENGTH
+  ) {
+    throw new Error("Invalid curated Meetup event description link.");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("Invalid curated Meetup event description link.");
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.port !== "" ||
+    !ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS.has(host)
+  ) {
+    throw new Error("Invalid curated Meetup event description link.");
+  }
+  parsed.hostname = host;
+  parsed.hash = "";
+  for (const key of [...parsed.searchParams.keys()]) {
+    if (
+      /^(?:utm_.+|fbclid|gclid|mc_cid|mc_eid|g_st|ouid|rtpof|sd|usp)$/iu.test(
+        key,
+      )
+    ) {
+      parsed.searchParams.delete(key);
+    }
+  }
+  const allowedQueryKeys = PUBLIC_DESCRIPTION_LINK_QUERY_KEYS[host];
+  for (const key of parsed.searchParams.keys()) {
+    if (!allowedQueryKeys?.has(key)) {
+      throw new Error("Invalid curated Meetup event description link.");
+    }
+  }
+  const normalized = parsed.toString();
+  if (normalized !== candidate || normalized.length > MAX_DESCRIPTION_LINK_LENGTH) {
+    throw new Error("Invalid curated Meetup event description link.");
+  }
+  return normalized;
+}
+
+function assertExactDescriptionKeys(
+  candidate: Record<string, unknown>,
+  expected: readonly string[],
+): void {
+  const actual = Object.keys(candidate).sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== [...expected].sort()[index])
+  ) {
+    throw new Error("Invalid curated Meetup event description structure.");
+  }
+}
+
+export function meetupDescriptionBlocksToPlainText(
+  blocks: readonly CuratedMeetupDescriptionBlock[],
+): string {
+  return blocks
+    .map((block) => {
+      if ("items" in block) {
+        return block.items
+          .map((item, index) => {
+            const marker = block.type === "ordered-list" ? `${index + 1}.` : "•";
+            return `${marker} ${descriptionInlinesToText(item)}`;
+          })
+          .join("\n");
+      }
+      return descriptionInlinesToText(block.content);
+    })
+    .join("\n\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+function descriptionInlinesToText(
+  inlines: readonly CuratedMeetupDescriptionInline[],
+): string {
+  return inlines.map((inline) => inline.text).join("").trim();
 }
 
 function normalizePublicVenue(

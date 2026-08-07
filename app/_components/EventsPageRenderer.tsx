@@ -2,7 +2,6 @@ import Link from "next/link";
 import { EditorialSection, loadEditorialRenderContext } from "./EditorialPage";
 import { EventCollection } from "./EventCollection";
 import { EventFilters, type EventFilterValues } from "./EventFilters";
-import { PageMasthead } from "./PageMasthead";
 import type {
   PublicClubDto,
   PublicCommunityLinkDto,
@@ -13,7 +12,6 @@ import type {
   PublicEventCategoryOption,
   PublicEventPageDto,
 } from "@/lib/server/public/events";
-import type { PublicMeetupSyncStatus } from "@/lib/server/meetup";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 
 export async function EventsPageRenderer({
@@ -26,7 +24,6 @@ export async function EventsPageRenderer({
   previewCommunityLinks,
   previewMediaAssets,
   privatePreview = false,
-  sync,
   values,
 }: Readonly<{
   categories: readonly PublicEventCategoryOption[];
@@ -38,10 +35,8 @@ export async function EventsPageRenderer({
   previewCommunityLinks?: readonly PublicCommunityLinkDto[];
   previewMediaAssets?: readonly ResponsiveMediaAssetDto[];
   privatePreview?: boolean;
-  sync: Readonly<{
-    lastSuccessAt: string | null;
-    status: PublicMeetupSyncStatus;
-  }>;
+  /** Compatibility input for the organizer-only CMS preview. Never rendered. */
+  sync?: unknown;
   values: EventFilterValues;
 }>) {
   const intro = pageContent
@@ -64,14 +59,29 @@ export async function EventsPageRenderer({
 
   return (
     <main className="public-page events-page">
-      <PageMasthead
-        deck={
-          intro?.content.text ??
-          "The public catalog has not been initialized in this review database."
-        }
-        eyebrow="Field calendar · Vancouver"
-        title={intro?.content.heading ?? pageContent?.title ?? "Events"}
-      />
+      <header
+        aria-labelledby="events-page-title"
+        className="events-page-masthead"
+      >
+        <p className="section-kicker">Vancouver gatherings</p>
+        <h1 id="events-page-title">
+          {intro?.content.heading ?? pageContent?.title ?? "Events"}
+        </h1>
+        <p>
+          {intro?.content.text ??
+            "Browse upcoming books, films, ideas, walks, and creative nights."}
+        </p>
+      </header>
+
+      <nav
+        aria-label="Event views"
+        className="calendar-view-switcher event-view-switcher"
+      >
+        <Link aria-current="page" href="/events">
+          List
+        </Link>
+        <Link href="/calendar">Month</Link>
+      </nav>
 
       {sections.length > 0 && renderContext ? (
         <div className="editorial-sections">
@@ -84,8 +94,6 @@ export async function EventsPageRenderer({
           ))}
         </div>
       ) : null}
-
-      <SourceStatus sync={sync} />
 
       {invalidFilters ? (
         <section className="public-error-state" role="alert">
@@ -136,52 +144,6 @@ export async function EventsPageRenderer({
         </>
       ) : null}
     </main>
-  );
-}
-
-function SourceStatus({
-  sync,
-}: Readonly<{
-  sync: Readonly<{
-    lastSuccessAt: string | null;
-    status: PublicMeetupSyncStatus;
-  }>;
-}>) {
-  const copy: Record<PublicMeetupSyncStatus, string> = {
-    not_connected:
-      "Official Meetup feeds are not connected in this review database.",
-    pending:
-      "The first import is in progress. Incomplete source rows are not public.",
-    partial:
-      "A newer import is incomplete. The last completed snapshot remains visible.",
-    current:
-      "The completed source snapshot is current. Refreshes happen on view or owner request, not on a guaranteed schedule.",
-    stale:
-      "The last completed source snapshot is older than expected. Its published facts remain visible while a refresh is attempted.",
-    disabled:
-      "Source refresh is disabled. The calendar does not claim current synchronization.",
-    error:
-      "The latest source check failed. The last completed snapshot remains visible.",
-  };
-  const lastSuccess = sync.lastSuccessAt
-    ? new Intl.DateTimeFormat("en-CA", {
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        month: "short",
-        timeZone: "America/Vancouver",
-        timeZoneName: "short",
-        year: "numeric",
-      }).format(new Date(sync.lastSuccessAt))
-    : null;
-  return (
-    <aside className="source-status" data-source-status={sync.status}>
-      <span aria-hidden="true" />
-      <p>
-        {copy[sync.status]}
-        {lastSuccess ? ` Last completed ${lastSuccess}.` : ""}
-      </p>
-    </aside>
   );
 }
 

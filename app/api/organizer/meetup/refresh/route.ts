@@ -1,11 +1,16 @@
 import { refreshMeetupCalendarSource } from "@/lib/server/meetup";
 import {
-  SafeApplicationError,
+  assertOnlyKeys,
+  parseIdentifier,
+  parseObject,
+} from "@/lib/validation";
+import {
   privateJsonHeaders,
   safeErrorResponse,
 } from "@/lib/validation/server-observability";
 import { toMeetupUiState } from "@/app/organizer/meetup/model";
 import {
+  parseJsonBody,
   readBoundedUtf8Body,
   requireSameOriginMutation,
 } from "../_mutation";
@@ -20,15 +25,14 @@ export async function POST(request: Request): Promise<Response> {
       "owner",
       "administrator",
     ]);
-    const body = await readBoundedUtf8Body(request, 64);
-    if (body.trim().length > 0) {
-      throw new SafeApplicationError(
-        "validation_failed",
-        400,
-        "The request could not be validated.",
-      );
-    }
-    const result = await refreshMeetupCalendarSource(database, identity);
+    const payload = parseObject(
+      parseJsonBody(await readBoundedUtf8Body(request, 256)),
+    );
+    assertOnlyKeys(payload, ["clubId"]);
+    const clubId = parseIdentifier(payload.clubId, "clubId");
+    const result = await refreshMeetupCalendarSource(database, identity, {
+      clubId,
+    });
 
     return new Response(
       JSON.stringify({

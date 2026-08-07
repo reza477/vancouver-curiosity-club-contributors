@@ -1,14 +1,20 @@
+import Link from "next/link";
 import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
-import { StructuredData } from "@/app/_components/StructuredData";
-import CalendarPage from "@/app/calendar/page";
-import { SHIPPED_BRAND_NAME } from "@/lib/brand";
-import { getTrustedRequestOrigin, publicUrl } from "@/lib/server/public/origin";
+import { HomePageRenderer } from "@/app/_components/HomePageRenderer";
+import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
+import { readServerUtcMs } from "@/lib/server/clock";
+import {
+  resolvePublicOrganization,
+  type PublicCatalogDto,
+  type PublicPageDto,
+} from "@/lib/server/public/catalog";
+import type { PublicEventCardDto } from "@/lib/server/public/events";
+import { loadPublicHomeData } from "@/lib/server/public/home";
+import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
+import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
+import { writeSafeLog } from "@/lib/validation/server-observability";
 
-export { dynamic } from "./calendar/page";
-
-type PageSearchParams = Promise<
-  Record<string, string | string[] | undefined>
->;
+export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return buildEditorialMetadata({
@@ -20,27 +26,55 @@ export function generateMetadata() {
   });
 }
 
-export default async function HomePage({
-  searchParams,
-}: Readonly<{ searchParams: PageSearchParams }>) {
-  const [calendar, origin] = await Promise.all([
-    CalendarPage({ searchParams }),
-    getTrustedRequestOrigin(),
-  ]);
+export default async function HomePage() {
+  const loaded = await loadHome();
+  if (!loaded) {
+    return (
+      <main className="public-page home-page">
+        <section className="public-service-state" aria-labelledby="home-state">
+          <p className="section-kicker">Vancouver Curiosity Club</p>
+          <h1 id="home-state">The public site is not available yet.</h1>
+          <p>
+            Published events and club information will appear here when the
+            public catalog is ready.
+          </p>
+          <Link href="/events">See upcoming gatherings</Link>
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <>
-      {calendar}
-      {origin ? (
-        <StructuredData
-          value={{
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            name: SHIPPED_BRAND_NAME,
-            url: publicUrl("/", origin),
-            areaServed: { "@type": "City", name: "Vancouver" },
-          }}
-        />
-      ) : null}
-    </>
+    <HomePageRenderer
+      catalog={loaded.catalog}
+      events={loaded.events}
+      origin={await getTrustedRequestOrigin()}
+      page={loaded.page}
+    />
   );
+}
+
+async function loadHome(): Promise<{
+  catalog: PublicCatalogDto;
+  events: readonly PublicEventCardDto[];
+  page: PublicPageDto;
+} | null> {
+  try {
+    const { database } = getRuntimeAuthConfiguration();
+    const organization = await resolvePublicOrganization(database);
+    if (!organization) return null;
+    const nowUtcMs = readServerUtcMs();
+    return loadPublicHomeData(database, {
+      nowUtcMs,
+      organizationId: organization.id,
+    });
+  } catch {
+    writeSafeLog("error", "public_home_unavailable", {
+      code: "service_unavailable",
+      operation: "load_public_home",
+      route: "/",
+      status: 503,
+    });
+    publicServiceUnavailable();
+  }
 }

@@ -39,21 +39,23 @@ data.
   through the authenticated organizer workspace for all three official group
   feeds. The private source addresses remain intentionally absent from this
   file, source, logs, and client state.
-- Source-backed event verification: **Completed for 11 current published
+- Source-backed event verification: **Completed for 13 current published
   events** from the completed Vancouver Literature and Film and Vancouver
   Fantasy & Sci-Fi Group snapshots. Their public event destinations are the
   exact individual Meetup URLs supplied by those feeds.
-- Current curated enrichment candidate: **41 exact public Meetup event pages
+- Current curated enrichment candidate: **42 exact public Meetup event pages
   verified across the three confirmed groups.** This includes 38 current
-  numeric-canonical listings plus three older records retained because the
-  latest bounded refresh did not complete cleanly enough to prove removal.
-  All 41 records have verified local responsive poster copies. Five smaller
+  numeric-canonical listings plus four older or no-longer-listed records
+  retained because the latest bounded refresh did not complete cleanly enough
+  to prove removal. Four additional current recurring listings use
+  alphanumeric canonical paths and remain blocked rather than guessed. All 42
+  records have verified local responsive poster copies. Five smaller
   Meetup originals are preserved at native width and are never upscaled. This
   owner-directed, source-controlled inventory supplies sanitized
   attendee-visible description, location, and poster facts only when the
   existing public projection already makes that exact event eligible. It does
   not activate the conflict-blocked main Vancouver Curiosity Club feed and is
-  not a claim that all 41 records are currently public.
+  not a claim that all 42 records are currently public.
 - Vancouver Curiosity Club feed activation: **Blocked safely by cross-post
   conflicts.** Several of its gatherings are also present in another group
   feed with a different Meetup source identity. The authoritative scheduling
@@ -215,9 +217,11 @@ both consent gates before displaying a name.
 - Owner calendar-first product feedback and authenticated sign-in:
   **Completed on 2026-07-30.** This is not the complete five-minute Owner smoke
   card, which remains awaiting Owner review.
-- Owner direction to make the month calendar the public Home and remove the
-  separate Calendar masthead: **Implemented and locally verified in current
-  source on 2026-08-06; deployment pending explicit public-publish approval.**
+- Latest Owner direction to replace the calendar-as-home candidate with a
+  living cultural-community homepage, upcoming-first Events route, optional
+  Month calendar, Clubs navigation, concise About page, and poster-led event
+  detail system: **Implemented and locally verified in current source on
+  2026-08-06; deployment pending explicit public-publish approval.**
 - Real published-event detail and individual Meetup-event URL:
   **Completed for source-backed Meetup events on 2026-07-30.**
 - Hosted second-identity role/suspension/reassignment: **Not run**. The access

@@ -37,12 +37,47 @@ export type ParsedMeetupSchedule =
       timeZone: string;
     }>;
 
+export type ParsedMeetupDescriptionInline =
+  | Readonly<{ text: string; type: "strong" | "text" }>
+  | Readonly<{ href: string; text: string; type: "link" }>;
+
+export type ParsedMeetupDescriptionBlock =
+  | Readonly<{
+      content: readonly ParsedMeetupDescriptionInline[];
+      level: 3 | 4;
+      type: "heading";
+    }>
+  | Readonly<{
+      content: readonly ParsedMeetupDescriptionInline[];
+      type: "paragraph";
+    }>
+  | Readonly<{
+      items: readonly (readonly ParsedMeetupDescriptionInline[])[];
+      type: "ordered-list" | "unordered-list";
+    }>;
+
+export type ParsedMeetupPublicContent = Readonly<{
+  description: string;
+  descriptionBlocks: readonly ParsedMeetupDescriptionBlock[];
+  poster: Readonly<{
+    altText: string;
+    credit: string;
+    sourceUrl: string;
+  }> | null;
+  summary: string;
+  venue: Readonly<{
+    address: string | null;
+    name: string;
+  }> | null;
+}>;
+
 export type ParsedMeetupEvent = Readonly<{
   componentIndex: number;
   description: string | null;
   eventUrl: string;
   lastModifiedUtcMs: number | null;
   location: string | null;
+  publicContent: ParsedMeetupPublicContent | null;
   recurrenceId: string | null;
   schedule: ParsedMeetupSchedule;
   sequence: number;
@@ -342,6 +377,7 @@ function parseEvent(
     title,
     description,
     location,
+    publicContent: null,
     eventUrl,
     status,
     sequence,

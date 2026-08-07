@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { PageMasthead } from "../../app/_components/PageMasthead.tsx";
 import { PublicMonthCalendar } from "../../app/_components/PublicMonthCalendar.tsx";
 import {
   eventOccursOnCalendarDate,
@@ -232,7 +233,7 @@ test("Google Calendar links preserve exact timed and all-day schedules", () => {
   assert.equal(allDay.searchParams.get("ctz"), null);
 });
 
-test("month calendar renders an accessible date grid, calendar actions, approved artwork, and fallback art", () => {
+test("month calendar renders an accessible date grid, calendar actions, approved artwork, and a lane text fallback", () => {
   const markup = renderToStaticMarkup(
     createElement(PublicMonthCalendar, {
       complete: true,
@@ -298,7 +299,19 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.match(markup, /src="\/media\/poster-1\/webp_1600"/u);
   assert.match(markup, /alt="A colourful Meetup event poster\."/u);
   assert.match(markup, /Artwork: Vancouver Curiosity Club/u);
-  assert.match(markup, /aria-label="Field Notes category artwork"/u);
+  assert.match(
+    markup,
+    /aria-label="Reading retreat, Think event"[^>]*class="public-calendar-event__artwork public-calendar-event__artwork--fallback"[^>]*data-event-lane="think"[^>]*role="img"/u,
+  );
+  assert.match(
+    markup,
+    /class="public-calendar-event__fallback-label">Think<\/span>/u,
+  );
+  assert.match(
+    markup,
+    /class="public-calendar-event__fallback-title">Reading retreat<\/strong>/u,
+  );
+  assert.doesNotMatch(markup, /field-artwork/u);
   assert.match(markup, />Confirmed<\//u);
   assert.match(markup, />Tentative<\//u);
   assert.match(markup, />Night walk</u);
@@ -405,6 +418,33 @@ test("calendar interaction contract locks details to click, touch, focus, and ke
   );
   assert.match(source, /publicEventStatusLabel/u);
   assert.match(source, /<AddToCalendar/u);
+  assert.doesNotMatch(source, /FieldArtwork|eventArtworkTone/u);
+  assert.match(source, /public-calendar-event__fallback-label/u);
+  assert.match(source, /data-event-lane=/u);
+});
+
+test("page mastheads retain semantic copy without repeated abstract artwork", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PageMasthead, {
+      deck: "A compact introduction.",
+      eyebrow: "About the club",
+      title: "Come curious",
+      tone: "explore",
+    }),
+  );
+
+  assert.match(
+    markup,
+    /<header class="page-masthead page-masthead--compact" data-masthead-tone="explore">/u,
+  );
+  assert.match(markup, /<p class="eyebrow">About the club<\/p>/u);
+  assert.match(markup, /<h1>Come curious<\/h1>/u);
+  assert.match(
+    markup,
+    /<p class="page-masthead__deck">A compact introduction\.<\/p>/u,
+  );
+  assert.match(markup, /class="page-masthead__accent" aria-hidden="true"/u);
+  assert.doesNotMatch(markup, /field-artwork/u);
 });
 
 test("the public calendar route renders the month experience instead of redirecting", async () => {
@@ -415,8 +455,19 @@ test("the public calendar route renders the month experience instead of redirect
 
   assert.match(page, /PublicMonthCalendar/u);
   assert.doesNotMatch(page, /<h1>Calendar<\/h1>/u);
-  assert.match(page, /Curiosity is better in company\./u);
+  assert.match(
+    page,
+    /<Link href="\/events">List<\/Link>[\s\S]*?aria-current="page" href="\/calendar"/u,
+  );
   assert.match(page, /siteOrigin=\{origin\?\.origin \?\? null\}/u);
   assert.doesNotMatch(page, /permanentRedirect/u);
   assert.doesNotMatch(page, /redirect\(\s*["']\/events["']\s*\)/u);
+  assert.doesNotMatch(
+    page,
+    /home-hero|home-newcomer|Come curious\. Leave knowing people\.|calendar-home-introduction/u,
+  );
+  assert.doesNotMatch(
+    page,
+    /readPublicMeetupSyncState|CalendarSourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot/u,
+  );
 });

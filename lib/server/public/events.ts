@@ -16,6 +16,8 @@ import {
 } from "../../time";
 import { SafeApplicationError } from "../../validation/server-observability";
 import { parseOfficialMeetupEventUrl } from "../meetup/url";
+import { MEETUP_EVENT_ALIAS_URLS } from "../meetup/event-aliases";
+import { SYNCHRONIZED_MEETUP_POSTER_VARIANTS } from "../meetup/posters";
 import type {
   D1DatabaseLike,
   D1ResultLike,
@@ -29,7 +31,10 @@ import { currentPublishedOrganizerProfilePhotoUsageTargetSql } from "../media/pu
 import { curatedMeetupPosterForEventUrl } from "../../meetup-event-posters";
 import {
   curatedMeetupEventForEventUrl,
+  meetupDescriptionBlocksToPlainText,
+  type CuratedMeetupDescriptionBlock,
   type CuratedMeetupEventEnrichment,
+  validateMeetupDescriptionBlocks,
 } from "../../meetup-event-enrichment";
 
 export type PublicEventDto = Readonly<{
@@ -77,6 +82,9 @@ export type PublicEventOrganizerDto = Readonly<{
 
 const MAX_PUBLIC_ORGANIZERS = 24;
 const MAX_PUBLIC_ORGANIZER_NAME_LENGTH = 120;
+const PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL = `snapshot.event_url NOT IN (${MEETUP_EVENT_ALIAS_URLS.map(
+  (eventUrl) => `'${eventUrl.replaceAll("'", "''")}'`,
+).join(", ")})`;
 const MAX_PUBLIC_ORGANIZER_BIOGRAPHY_LENGTH = 800;
 const MAX_PUBLIC_ORGANIZER_MEDIA_ID_LENGTH = 128;
 const MAX_PUBLIC_ORGANIZER_ALT_LENGTH = 300;
@@ -563,6 +571,7 @@ export const PUBLIC_MEETUP_EVENT_SELECT_SQL = `
     AND source.active_generation_id IS NOT NULL
     AND source.last_success_at IS NOT NULL
     AND source.deleted_at IS NULL
+    AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
     AND event.visibility = 'public'
     AND snapshot.status = 'confirmed'
     AND event.published_at IS NOT NULL
@@ -977,6 +986,7 @@ export type PublicEventDetailDto = PublicEventCardDto &
     capacity: number | null;
     costText: string | null;
     description: string | null;
+    descriptionBlocks: readonly CuratedMeetupDescriptionBlock[] | null;
     externalMapUrl: string | null;
     metaDescription: string | null;
     organizers: readonly PublicEventOrganizerDto[];
@@ -1707,6 +1717,7 @@ export const PUBLIC_EVENT_IDENTITY_CTE_SQL = `
       AND source.enabled = 1
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
+      AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
@@ -2195,6 +2206,7 @@ export const PUBLIC_EVENT_SELECTION_PROOF_CTE_SQL = `
       AND source.enabled = 1
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
+      AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
@@ -2622,7 +2634,15 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            event.updated_at AS public_updated_at,
            0 AS source_rank,
            '' AS source_key,
-           'legacy:' || event.id AS source_identity_key
+           'legacy:' || event.id AS source_identity_key,
+           NULL AS source_public_summary,
+           NULL AS source_public_description,
+           NULL AS source_public_description_blocks_json,
+           NULL AS source_public_venue_name,
+           NULL AS source_public_venue_address,
+           NULL AS source_poster_source_url,
+           NULL AS source_poster_alt_text,
+           NULL AS source_poster_credit
     FROM events AS event
     WHERE event.organization_id = ?
       AND event.visibility = 'public'
@@ -2660,7 +2680,16 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            1 AS source_rank,
            source.id AS source_key,
            'meetup:' || source.id || ':' || snapshot.external_id
-             AS source_identity_key
+             AS source_identity_key,
+           snapshot_content.public_summary AS source_public_summary,
+           snapshot_content.public_description AS source_public_description,
+           snapshot_content.public_description_blocks_json
+             AS source_public_description_blocks_json,
+           snapshot_content.public_venue_name AS source_public_venue_name,
+           snapshot_content.public_venue_address AS source_public_venue_address,
+           snapshot_content.poster_source_url AS source_poster_source_url,
+           snapshot_content.poster_alt_text AS source_poster_alt_text,
+           snapshot_content.poster_credit AS source_poster_credit
     FROM sync_sources AS source
     JOIN meetup_sync_generations AS generation
       ON generation.id = source.active_generation_id
@@ -2673,6 +2702,8 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
       ON snapshot.organization_id = source.organization_id
      AND snapshot.sync_source_id = source.id
      AND snapshot.generation_id = generation.id
+    LEFT JOIN meetup_event_snapshot_public_contents AS snapshot_content
+      ON snapshot_content.snapshot_id = snapshot.id
     JOIN events AS event
       ON event.id = snapshot.event_id
      AND event.organization_id = snapshot.organization_id
@@ -2681,6 +2712,7 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
       AND source.enabled = 1
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
+      AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
@@ -2714,13 +2746,41 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
     SELECT * FROM meetup_public_candidates
   ),
   legacy_enriched_public_candidates AS (
-    SELECT candidate.*,
+    SELECT candidate.event_id AS event_id,
+           candidate.organization_id AS organization_id,
+           candidate.public_club_id AS public_club_id,
+           candidate.slug AS slug,
+           candidate.title AS title,
+           candidate.event_status AS event_status,
+           candidate.rsvp_url AS rsvp_url,
+           candidate.rsvp_mode AS rsvp_mode,
+           candidate.time_kind AS time_kind,
+           candidate.starts_at_utc AS starts_at_utc,
+           candidate.ends_at_utc AS ends_at_utc,
+           candidate.timezone AS timezone,
+           candidate.all_day_start_date AS all_day_start_date,
+           candidate.all_day_end_date_exclusive
+             AS all_day_end_date_exclusive,
+           candidate.public_updated_at AS public_updated_at,
+           candidate.source_rank AS source_rank,
+           candidate.source_key AS source_key,
+           candidate.source_identity_key AS source_identity_key,
            club_public.public_projection_token
              AS club_projection_token,
            program_public.public_projection_token
              AS program_projection_token,
-           event.summary AS summary,
-           event.description AS description,
+           COALESCE(event.summary, candidate.source_public_summary)
+             AS summary,
+           COALESCE(event.description, candidate.source_public_description)
+             AS description,
+           CASE
+             WHEN event.description IS NULL
+             THEN candidate.source_public_description_blocks_json
+             ELSE NULL
+           END AS description_blocks_json,
+           candidate.source_poster_source_url AS meetup_poster_source_url,
+           candidate.source_poster_alt_text AS meetup_poster_alt_text,
+           candidate.source_poster_credit AS meetup_poster_credit,
            NULL AS seo_title,
            NULL AS meta_description,
            COALESCE(
@@ -2736,13 +2796,19 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            category.slug AS category_slug,
            category.name AS category_name,
            category.color_token AS category_color_token,
-           CASE WHEN venue.is_public = 1
-                THEN venue.public_location_name
-                ELSE NULL
+           CASE
+             WHEN event.venue_id IS NULL
+             THEN candidate.source_public_venue_name
+             WHEN venue.is_public = 1
+             THEN venue.public_location_name
+             ELSE NULL
            END AS venue_public_name,
-           CASE WHEN venue.is_public = 1
-                 THEN venue.public_address
-                 ELSE NULL
+           CASE
+             WHEN event.venue_id IS NULL
+             THEN candidate.source_public_venue_address
+             WHEN venue.is_public = 1
+             THEN venue.public_address
+             ELSE NULL
            END AS venue_public_address,
            '[]' AS organizer_names_json,
            NULL AS public_access_note,
@@ -2864,6 +2930,10 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
              AS program_projection_token,
            organizer_event.summary AS summary,
            organizer_event.description AS description,
+           NULL AS description_blocks_json,
+           NULL AS meetup_poster_source_url,
+           NULL AS meetup_poster_alt_text,
+           NULL AS meetup_poster_credit,
            public_metadata.seo_title AS seo_title,
            public_metadata.meta_description AS meta_description,
            public_detail.attendance_mode AS attendance_mode,
@@ -3080,7 +3150,10 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            ) AS public_slug_count
     FROM deduplicated_public_events AS deduplicated
   )
-`;
+`.replace(
+  /\n[ \t]+/gu,
+  "\n",
+);
 
 /**
  * Correlated variant used by the CMS receipt guard. The unified projection has
@@ -3105,6 +3178,9 @@ const PUBLIC_EVENT_CARD_COLUMNS_SQL = `
   public_event.slug AS slug,
   public_event.title AS title,
   public_event.summary AS summary,
+  public_event.meetup_poster_source_url AS meetup_poster_source_url,
+  public_event.meetup_poster_alt_text AS meetup_poster_alt_text,
+  public_event.meetup_poster_credit AS meetup_poster_credit,
   public_event.event_status AS event_status,
   public_event.rsvp_url AS rsvp_url,
   public_event.rsvp_mode AS rsvp_mode,
@@ -3584,6 +3660,7 @@ async function enrichPublicEventRows(
 
 const PUBLIC_EVENT_DETAIL_COLUMNS_SQL = `
   public_event.description AS description,
+  public_event.description_blocks_json AS description_blocks_json,
   public_event.seo_title AS seo_title,
   public_event.meta_description AS meta_description,
   public_event.organizer_names_json AS organizer_names_json,
@@ -3625,6 +3702,10 @@ export const AUTHORIZED_ORGANIZER_EVENT_PUBLIC_PREVIEW_SQL = `
            organizer_event.title AS title,
            organizer_event.summary AS summary,
            organizer_event.description AS description,
+           NULL AS description_blocks_json,
+           NULL AS meetup_poster_source_url,
+           NULL AS meetup_poster_alt_text,
+           NULL AS meetup_poster_credit,
            public_metadata.seo_title AS seo_title,
            public_metadata.meta_description AS meta_description,
            organizer_event.planning_status AS event_status,
@@ -5035,14 +5116,21 @@ export function toPublicEventCardDto(
     return invalidProjection();
   }
   const approvedArtwork = publicArtwork(row);
+  const synchronizedMeetupPoster =
+    approvedArtwork === null
+      ? synchronizedMeetupPosterDto(row, rsvpUrl)
+      : null;
   const curatedMeetupEvent = curatedMeetupEventForEventUrl(rsvpUrl);
   const curatedMeetupPoster =
-    approvedArtwork === null
+    approvedArtwork === null && synchronizedMeetupPoster === null
       ? curatedMeetupPosterForEventUrl(rsvpUrl)
       : null;
+  const resolvedVenue =
+    venue ?? curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null);
   return Object.freeze({
     artwork:
       approvedArtwork ??
+      synchronizedMeetupPoster ??
       (curatedMeetupPoster
         ? Object.freeze({
             altText: curatedMeetupPoster.altText,
@@ -5090,7 +5178,10 @@ export function toPublicEventCardDto(
         : row.time_kind === "all_day"
           ? allDaySchedule(row)
           : invalidProjection(),
-    attendanceMode,
+    attendanceMode: publicAttendanceModeWithVenue(
+      attendanceMode,
+      resolvedVenue,
+    ),
     club: Object.freeze({
       slug: parseIdentifier(row.club_slug, "event.club.slug"),
       name: parseBoundedString(row.club_name, {
@@ -5101,8 +5192,84 @@ export function toPublicEventCardDto(
     program: publicProgram(row),
     lane: publicLane(row),
     category,
-    venue: venue ?? curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
+    venue: resolvedVenue,
   });
+}
+
+function synchronizedMeetupPosterDto(
+  row: Record<string, unknown>,
+  eventUrl: string | null,
+): PublicEventCardDto["artwork"] {
+  if (
+    eventUrl === null ||
+    row.meetup_poster_source_url === null ||
+    row.meetup_poster_source_url === undefined
+  ) {
+    return null;
+  }
+  const posterSourceUrl = parseSynchronizedMeetupPosterSource(
+    row.meetup_poster_source_url,
+  );
+  if (posterSourceUrl === null) return null;
+
+  const event = new URL(eventUrl);
+  const segments = event.pathname.split("/").filter(Boolean);
+  if (segments.length !== 3 || segments[1] !== "events") {
+    return invalidProjection();
+  }
+  const groupSlug = parseIdentifier(segments[0], "event.meetupGroupSlug");
+  const eventId = parseIdentifier(segments[2], "event.meetupEventId");
+  const route = `/meetup-posters/${encodeURIComponent(groupSlug)}/${encodeURIComponent(eventId)}`;
+  const altText = parseBoundedString(row.meetup_poster_alt_text, {
+    path: "event.posterAltText",
+    maxLength: 300,
+  });
+  const credit = parseBoundedString(row.meetup_poster_credit, {
+    path: "event.posterCredit",
+    maxLength: 300,
+  });
+
+  // The source URL is intentionally validated here but never returned to the
+  // browser. The public poster route revalidates the active immutable snapshot
+  // before serving an R2-cached, resized copy.
+  void posterSourceUrl;
+  return Object.freeze({
+    altText,
+    credit,
+    dimensions: SYNCHRONIZED_MEETUP_POSTER_VARIANTS,
+    focalPoint: Object.freeze({ x: 5_000, y: 5_000 }),
+    srcSet: Object.freeze({
+      large: `${route}/large`,
+      medium: `${route}/medium`,
+      small: `${route}/small`,
+    }),
+    url: `${route}/large`,
+  });
+}
+
+function parseSynchronizedMeetupPosterSource(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 2_048) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.hostname !== "secure.meetupstatic.com" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.port !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== "" ||
+    !/^\/photos\/event\/[0-9a-f/]+\/highres_[0-9]+\.jpe?g$/iu.test(
+      parsed.pathname,
+    )
+  ) {
+    return null;
+  }
+  return parsed.href;
 }
 
 function publicEventExportRecord(
@@ -5162,8 +5329,14 @@ function toPublicEventExportDto(
     return invalidProjection();
   }
   const curatedMeetupEvent = curatedMeetupEventForEventUrl(rsvpUrl);
+  const venue =
+    publicVenue(row) ??
+    curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null);
   return Object.freeze({
-    attendanceMode: publicAttendanceMode(row.attendance_mode),
+    attendanceMode: publicAttendanceModeWithVenue(
+      publicAttendanceMode(row.attendance_mode),
+      venue,
+    ),
     availabilityState:
       row.availability_state === null ||
       row.availability_state === undefined
@@ -5208,9 +5381,7 @@ function toPublicEventExportDto(
       path: "event.title",
       maxLength: 200,
     }),
-    venue:
-      publicVenue(row) ??
-      curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
+    venue,
   });
 }
 
@@ -5243,13 +5414,20 @@ export function toPublicEventDetailDto(
 ): PublicEventDetailDto {
   const card = toPublicEventCardDto(row);
   const curatedMeetupEvent = curatedMeetupEventForEventUrl(card.rsvpUrl);
+  const ownerDescription = parseOptionalBoundedString(row.description, {
+    path: "event.description",
+    maxLength: 20_000,
+  });
+  const synchronizedDescriptionBlocks =
+    synchronizedMeetupDescriptionBlocks(row, ownerDescription);
   return Object.freeze({
     ...card,
-    description:
-      parseOptionalBoundedString(row.description, {
-        path: "event.description",
-        maxLength: 20_000,
-      }) ?? curatedMeetupEvent?.description ?? null,
+    description: ownerDescription ?? curatedMeetupEvent?.description ?? null,
+    descriptionBlocks:
+      synchronizedDescriptionBlocks ??
+      (ownerDescription === null
+        ? curatedMeetupEvent?.descriptionBlocks ?? null
+        : null),
     seoTitle: parseOptionalBoundedString(row.seo_title, {
       path: "event.seoTitle",
       maxLength: 60,
@@ -5316,6 +5494,34 @@ export function toPublicEventDetailDto(
       4_000,
     ),
   });
+}
+
+function synchronizedMeetupDescriptionBlocks(
+  row: Record<string, unknown>,
+  description: string | null,
+): readonly CuratedMeetupDescriptionBlock[] | null {
+  if (
+    description === null ||
+    row.description_blocks_json === null ||
+    row.description_blocks_json === undefined
+  ) {
+    return null;
+  }
+  const json = parseBoundedString(row.description_blocks_json, {
+    path: "event.descriptionBlocks",
+    maxLength: 120_000,
+  });
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(json);
+  } catch {
+    return invalidProjection();
+  }
+  const blocks = validateMeetupDescriptionBlocks(candidate);
+  if (meetupDescriptionBlocksToPlainText(blocks) !== description) {
+    return invalidProjection();
+  }
+  return blocks;
 }
 
 function curatedMeetupVenueDto(
@@ -5518,6 +5724,15 @@ function publicAttendanceMode(value: unknown): PublicEventAttendanceMode {
     "event.attendanceMode",
   );
   return databaseValue.replaceAll("_", "-") as PublicEventAttendanceMode;
+}
+
+function publicAttendanceModeWithVenue(
+  attendanceMode: PublicEventAttendanceMode,
+  venue: PublicEventCardDto["venue"],
+): PublicEventAttendanceMode {
+  return attendanceMode === "location-undecided" && venue !== null
+    ? "in-person"
+    : attendanceMode;
 }
 
 function publicArtwork(

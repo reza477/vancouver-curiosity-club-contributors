@@ -40,7 +40,7 @@ export async function loadPublicHomeData(
       todayDate: vancouverCalendarDate(input.nowUtcMs),
       view: "upcoming",
       page: 1,
-      pageSize: 6,
+      pageSize: 3,
     }),
   ]);
 

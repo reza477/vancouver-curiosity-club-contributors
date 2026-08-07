@@ -28,6 +28,64 @@ Last updated: 2026-08-06 (America/Vancouver)
   Owner-directed deployment promoted exact saved version 20 without creating
   a preview or changing access, domains, bindings, runtime values, D1, or R2.
 
+## Living cultural-community redesign candidate (local source only)
+
+Status: **All three requested checkpoints are implemented and locally
+verified; not saved or deployed.** The active Sites deployment and hosted data
+remain unchanged.
+
+- Checkpoint 1 now replaces the truncated production iCalendar read with a
+  strict no-store parser for each configured group's canonical public events
+  page. The verified embedded inventory is 42 listings (30 main, 10
+  Literature, 2 Fantasy), including exact event `316010049` (Wednesday Night
+  Reset) and the current Poetry Night title. Eight exact owner-reviewed
+  cross-post pairs resolve to canonical events, while distinct simultaneous
+  Meetup listings can coexist and manual/legacy reservations remain guarded.
+- Current Meetup snapshots atomically stage structured descriptions, safe
+  links, public venue facts, and validated poster provenance in the additive
+  retry-safe `0017` sidecar. Owner-selected public/private venue decisions and
+  approved artwork remain atomic overrides. Public poster routes revalidate the
+  active published generation and serve exact responsive dimensions; cancelled
+  historical pages retain posters only when a prior published occurrence
+  exists. Technical diagnostics remain organizer-only.
+- The organizer refresh API is club-scoped. The All-program control runs
+  Literature and Fantasy before the alias-dependent main feed, automatically
+  drains two-row partial generations, combines truthful counts, and stops at a
+  64-request safety limit. The current 42-row inventory needs 21 requests.
+- Live read-only verification found all 42 embedded records with description,
+  venue, and poster metadata; all eight aliases were present and schedule-safe;
+  all six source ticket phrases had adjacent validated `viff.org` links. The
+  main page also advertises 38 later paginated occurrences that are not embedded
+  in canonical HTML. This implementation does not call Meetup's private GraphQL
+  pagination and does not claim those later occurrences until they enter the
+  public page snapshot.
+- Checkpoint 2 separates the routes: `/` is a human-first eight-section
+  homepage, `/events` defaults to the upcoming list, and `/calendar` retains
+  the optional month grid. Primary navigation is Events, Clubs, About, and
+  Host an Event. Calendar selection starts at the nearest upcoming event when
+  one exists.
+- Checkpoint 3 applies the compact cream/navy editorial system, real
+  source-controlled event posters, lane/club accents, poster-led cards,
+  concise About and event-detail layouts, near-top RSVP, sticky mobile RSVP,
+  180-220ms interactions, and reduced-motion fallbacks. Approved community
+  photography is still unavailable and is not fabricated.
+- Complete source suite: **917/917 passed**. The synchronization/projection
+  matrix passed **140/140**, and the rendered Worker passed **26/26**. Strict
+  TypeScript, zero-warning lint, Drizzle consistency, partial-prefix migration
+  retry checks, D1 public-statement compatibility, `git diff --check`, and a
+  fresh production build passed. Earlier Chrome verification at 390px covered Home, Events,
+  Calendar, About, and Host an Event with no horizontal overflow, no public
+  diagnostics, no undersized visible interactive targets, and no console
+  warnings/errors. The local browser database contains no event rows, so exact
+  upcoming names/posters are covered by production-shaped source/Worker tests
+  rather than invented local fixture data.
+- No Sites version, deployment, preview, hosted D1/R2 mutation, access-policy
+  change, domain change, binding change, or Meetup writeback was performed.
+- Therefore the hosted version remains on its prior July 30 snapshot/error
+  state. The repair becomes live only after a separately authorized Sites
+  release applies migration `0017` and an authorized organizer runs the
+  all-program refresh to completion.
+
 ## Owner-directed calendar-first update (post-Phase 9)
 
 Historical version 16 checkpoint: **Completed and verified.** This was an
@@ -373,6 +431,63 @@ Exact verification and saved-candidate evidence:
 - access remains public at revision 2 with one allowed project user, zero
   groups, zero external visitors, no preview URL, and unchanged `DB` / `MEDIA`
   bindings.
+
+## Owner-invoked Meetup reconciliation repeat (local only)
+
+Status: **Reconciled locally on 2026-08-06; not saved or deployed.** Exact
+Sites version 20, public access revision 2, hosted D1/R2, domains, and runtime
+values remain unchanged.
+
+- Authenticated Meetup inventory contained 42 current listings across only the
+  three confirmed groups: 30 Vancouver Curiosity Club, 10 Vancouver Literature
+  and Film, and 2 Vancouver Fantasy & Sci-Fi Group listings.
+- Thirty-eight current listings retained an exact numeric canonical event URL.
+  Four recurring current listings (`315081514`, `315785787`, `315081515`, and
+  `315913931`) exposed alphanumeric canonical paths and remain blocked rather
+  than being matched by title or numeric route alias.
+- Exact numeric event `316010049` was added to the curated enrichment workflow
+  with its sanitized attendee-visible description, venue, and verified local
+  poster variants. Its 1670x939 source produced 480x270, 960x540, and 1600x900
+  JPEGs without upscaling. Existing event `315823081` received only an updated
+  poster alt string reflecting its current source title.
+- The curated manifest now contains 42 exact records: the 38 current numeric
+  listings plus three older Literature records and main-group record
+  `315892763`. Those four retained records were not removed because the live
+  refresh evidence did not prove a complete, source-specific absence.
+- The authenticated organizer invoked exactly three bounded refresh attempts.
+  Their terminal results were failed, completed with 0 created / 0 updated /
+  0 cancelled / 0 removed / 0 rejected, and failed. The portal does not expose
+  a safe per-result group mapping, and the existing staged-feed conflict banner
+  remains. No retry loop, conflict bypass, direct D1 write, or Meetup writeback
+  was used.
+- Live version 20 still projects the last valid completed generation. Its
+  upcoming CSV and ICS each contain 13 events. Twelve matched the current
+  visible Meetup title, start time, location, and exact RSVP destination;
+  Literature event `315772811` still has an older title in the active snapshot
+  and remains blocked pending a clean source activation. End-time, timezone,
+  and generation-wide cancellation reconciliation remain bound to the official
+  iCalendar importer and are not claimed current for a failed source attempt.
+  The representative public detail
+  retained its local responsive poster, When, Location, About, Meetup RSVP,
+  Google Calendar, and Apple/ICS actions without a redundant Format fact.
+  All 13 live detail routes returned 200 with those contracts, and all 13 live
+  poster responses were JPEGs with nonzero natural dimensions from 1129x635 to
+  1600x900.
+- The owner-invoked generator completed against all 42 exact pages, produced
+  42 local responsive poster sets, and left no staging directory. Focused
+  Meetup, enrichment, poster, calendar, detail, structured-data, export,
+  privacy, and projection gates passed 199/199 with zero failures or skips.
+- Local and preview migrations each converged at 9 migrations, 86 tables, 249
+  expected invariant triggers, zero foreign-key violations, and ready status.
+  Strict TypeScript, zero-warning pre/post-build lint, production build, and
+  `git diff --check` passed. The complete serial repository suite passed
+  884/884 with zero failures or skips; rendered Worker tests passed 26/26 and
+  the post-build artifact/privacy gate passed 6/6. Production dependencies
+  reported 0 audit findings. The complete development-tool tree reported the
+  existing 14 findings (7 moderate, 7 high, 0 critical); dependency changes
+  were outside this bounded reconciliation.
+- No Sites version was saved, no deployment was run, and no access policy,
+  hosted data, runtime value, domain, or binding changed.
 
 ## Previous-phase preservation
 

@@ -6,9 +6,10 @@ import { usePathname } from "next/navigation";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 const requiredNavigation = [
-  { href: "/calendar", label: "Calendar" },
+  { href: "/events", label: "Events" },
+  { href: "/clubs", label: "Clubs" },
   { href: "/about", label: "About" },
-  { href: "/get-involved", label: "Contribute" },
+  { href: "/host-an-event", label: "Host an Event" },
 ] as const;
 
 export function SiteHeader({
@@ -111,12 +112,10 @@ function isCurrentNavigationPath(
 ): boolean {
   return (
     href.startsWith("/") &&
-    ((href === "/calendar" &&
-        (pathname === "/" ||
-          pathname === "/events" ||
-          pathname.startsWith("/events/"))) ||
-      (href === "/get-involved" &&
-        (pathname === "/contact" || pathname === "/host-an-event")) ||
+    ((href === "/events" &&
+        (pathname === "/events" ||
+          pathname.startsWith("/events/") ||
+          pathname === "/calendar")) ||
       pathname === href ||
       pathname.startsWith(`${href}/`))
   );

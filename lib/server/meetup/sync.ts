@@ -20,7 +20,8 @@ import {
 import { MeetupSyncError, MEETUP_SYNC_ERROR_CODES } from "./errors";
 import type { MeetupSyncErrorCode } from "./errors";
 import { fetchMeetupCalendar } from "./fetch";
-import type { ParsedMeetupEvent } from "./ics";
+import { fetchMeetupGroupEvents } from "./group-events";
+import type { ParsedMeetupCalendar, ParsedMeetupEvent } from "./ics";
 import { parseMeetupIcs } from "./ics";
 import type {
   MeetupConnectionState,
@@ -28,6 +29,11 @@ import type {
   MeetupRefreshResult,
 } from "./types";
 import { parseMeetupGroupCalendarFeedUrl } from "./url";
+import {
+  MEETUP_EVENT_ALIASES,
+  MEETUP_EVENT_ALIAS_POLICY_VERSION,
+  meetupEventAliasForUrl,
+} from "./event-aliases";
 import { assertMeetupProgramClubMapping } from "./clubs";
 import {
   externalReservationSemanticFingerprint,
@@ -37,6 +43,7 @@ import {
 } from "../organizer/conflict-domain";
 
 const SOURCE_TYPE = "meetup_ics";
+const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v3";
 /**
  * The mutable `events` row is only the stable content/relationship anchor for
  * a Meetup record. Source-native planning state is owned by the immutable
@@ -118,6 +125,11 @@ type SourceMapping = Readonly<{
   timeZone: string | null;
   title: string | null;
   venueId: string | null;
+}>;
+
+type AliasCanonicalTarget = Readonly<{
+  eventId: string;
+  resourceMapping: SourceMapping;
 }>;
 
 type RefreshMode = "if_due" | "manual";
@@ -427,6 +439,7 @@ export async function refreshMeetupCalendarSource(
     clubId?: unknown;
     clock?: () => number;
     fetcher?: typeof fetch;
+    groupPageFetcher?: typeof fetch;
     nowUtcMs?: number;
   }> = {},
 ): Promise<MeetupRefreshResult> {
@@ -448,6 +461,7 @@ export async function refreshMeetupCalendarSource(
     sources,
     "manual",
     options.fetcher,
+    options.groupPageFetcher,
     parseNow(options.nowUtcMs ?? Date.now()),
     Object.freeze({
       identity,
@@ -466,6 +480,7 @@ export async function refreshMeetupCalendarSourceIfDue(
   database: D1DatabaseLike,
   options: Readonly<{
     fetcher?: typeof fetch;
+    groupPageFetcher?: typeof fetch;
     clock?: () => number;
     nowUtcMs?: number;
     organizationId?: string;
@@ -491,6 +506,7 @@ export async function refreshMeetupCalendarSourceIfDue(
     sources,
     "if_due",
     options.fetcher,
+    options.groupPageFetcher,
     now,
     null,
     options.clock ??
@@ -503,6 +519,7 @@ async function refreshSources(
   sources: readonly SourceRecord[],
   mode: RefreshMode,
   fetcher: typeof fetch | undefined,
+  groupPageFetcher: typeof fetch | undefined,
   now: number,
   manualAuthority: ManualRefreshAuthority | null,
   clock: () => number,
@@ -518,6 +535,9 @@ async function refreshSources(
   }
 
   const ordered = [...enabled].sort((left, right) => {
+    const leftPending = left.pendingGenerationId === null ? 1 : 0;
+    const rightPending = right.pendingGenerationId === null ? 1 : 0;
+    if (leftPending !== rightPending) return leftPending - rightPending;
     const leftAttempt = left.lastAttemptAt ?? -1;
     const rightAttempt = right.lastAttemptAt ?? -1;
     if (leftAttempt !== rightAttempt) return leftAttempt - rightAttempt;
@@ -552,6 +572,7 @@ async function refreshSources(
     actorProfileId:
       manualAuthority?.membership.profileId ?? source.updatedByProfileId,
     fetcher,
+    groupPageFetcher,
     mode,
     now,
     organizationId: source.organizationId,
@@ -566,6 +587,7 @@ async function refreshOrganizationSource(
   input: Readonly<{
     actorProfileId: string;
     fetcher?: typeof fetch;
+    groupPageFetcher?: typeof fetch;
     mode: RefreshMode;
     now: number;
     organizationId: string;
@@ -665,75 +687,70 @@ async function refreshOrganizationSource(
     throw new MeetupSyncError("lease_lost");
   }
 
-  let fetched;
+  let calendar: ParsedMeetupCalendar;
+  let responseEtag: string | null = null;
+  let responseHttpLastModified: string | null = null;
   try {
-    fetched = await fetchMeetupCalendar(source.sourceUrl, {
-      // A partial generation must be fetched again so the cursor can resume
-      // against the same bounded snapshot; a conditional 304 would not carry
-      // the calendar body needed for the remaining slice.
-      etag: source.pendingGenerationId ? null : source.etag,
-      fetcher: input.fetcher,
-      httpLastModified: source.pendingGenerationId
-        ? null
-        : source.httpLastModified,
-    });
-  } catch (error) {
-    return finalizeFailedRefresh(
-      database,
-      source,
-      leaseToken,
-      input.actorProfileId,
-      safeSyncErrorCode(error),
-      input.now,
-      null,
-      triggerMode,
-      input.manualAuthority,
-    );
-  }
-
-  if (fetched.status === "not_modified") {
-    if (source.pendingGenerationId !== null) {
-      return finalizeFailedRefresh(
-        database,
-        source,
-        leaseToken,
-        input.actorProfileId,
-        "calendar_invalid",
-        input.now,
-        null,
-        triggerMode,
-        input.manualAuthority,
-      );
+    if (input.groupPageFetcher !== undefined || input.fetcher === undefined) {
+      const { groupSlug } = parseMeetupGroupCalendarFeedUrl(source.sourceUrl);
+      calendar = await fetchMeetupGroupEvents(groupSlug, {
+        fetcher: input.groupPageFetcher,
+      });
+    } else {
+      // The explicit legacy fetcher hook keeps the mature iCalendar importer
+      // deterministic in its existing unit/integration suite. Production
+      // calls do not pass it and use the complete public group-page snapshot
+      // above, because Meetup's calendar export truncates the main group.
+      const fetched = await fetchMeetupCalendar(source.sourceUrl, {
+        // A partial generation must be fetched again so the cursor can resume
+        // against the same bounded snapshot; a conditional 304 would not carry
+        // the calendar body needed for the remaining slice.
+        etag: source.pendingGenerationId ? null : source.etag,
+        fetcher: input.fetcher,
+        httpLastModified: source.pendingGenerationId
+          ? null
+          : source.httpLastModified,
+      });
+      if (fetched.status === "not_modified") {
+        if (source.pendingGenerationId !== null) {
+          return finalizeFailedRefresh(
+            database,
+            source,
+            leaseToken,
+            input.actorProfileId,
+            "calendar_invalid",
+            input.now,
+            null,
+            triggerMode,
+            input.manualAuthority,
+          );
+        }
+        await finalizeNotModified(
+          database,
+          source,
+          leaseToken,
+          input.actorProfileId,
+          input.now,
+          fetched.etag,
+          fetched.httpLastModified,
+          triggerMode,
+          input.manualAuthority,
+        );
+        const state = await connectionStateForOrganization(
+          database,
+          input.organizationId,
+          input.now,
+        );
+        await sealManualRefreshAuthority(
+          database,
+          input.manualAuthority,
+        );
+        return result("not_modified", state);
+      }
+      calendar = parseMeetupIcs(fetched.calendarText);
+      responseEtag = fetched.etag;
+      responseHttpLastModified = fetched.httpLastModified;
     }
-    await finalizeNotModified(
-      database,
-      source,
-      leaseToken,
-      input.actorProfileId,
-      input.now,
-      fetched.etag,
-      fetched.httpLastModified,
-      triggerMode,
-      input.manualAuthority,
-    );
-    const state = await connectionStateForOrganization(
-      database,
-      input.organizationId,
-      input.now,
-    );
-    await sealManualRefreshAuthority(
-      database,
-      input.manualAuthority,
-    );
-    return result(
-      "not_modified",
-      state,
-    );
-  }
-
-  let calendar;
-  try {
-    calendar = parseMeetupIcs(fetched.calendarText);
   } catch (error) {
     return finalizeFailedRefresh(
       database,
@@ -936,9 +953,9 @@ async function refreshOrganizationSource(
       const removed = await finalizeCompletedRefresh(database, {
         actorProfileId: input.actorProfileId,
         counts,
-        etag: fetched.etag,
+        etag: responseEtag,
         generationId: generation.id,
-        httpLastModified: fetched.httpLastModified,
+        httpLastModified: responseHttpLastModified,
         importBatchId,
         leaseToken,
         now: finishNow,
@@ -997,6 +1014,16 @@ async function importEventRow(
   }>,
 ): Promise<"created" | "skipped" | "updated"> {
   const fingerprint = await eventFingerprint(input.event);
+  const eventAlias = meetupEventAliasForUrl(input.event.eventUrl);
+  if (eventAlias) {
+    await importAliasedEventRow(database, {
+      ...input,
+      canonicalAliasUrl: eventAlias.canonicalUrl,
+      fingerprint,
+      maxTimedEndDriftMs: eventAlias.maxTimedEndDriftMs ?? 0,
+    });
+    return "skipped";
+  }
   const mapping = await readSourceMapping(
     database,
     input.organizationId,
@@ -1066,6 +1093,112 @@ async function importEventRow(
   return "created";
 }
 
+async function importAliasedEventRow(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    actorProfileId: string;
+    canonicalAliasUrl: string;
+    clubId: string;
+    event: ParsedMeetupEvent;
+    fingerprint: string;
+    generationId: string;
+    identityHash: string;
+    importBatchId: string;
+    leaseToken: string;
+    maxTimedEndDriftMs: number;
+    now: number;
+    organizationId: string;
+    sourceId: string;
+    manualAuthority: ManualRefreshAuthority | null;
+  }>,
+): Promise<void> {
+  const canonicalTarget = await readAliasCanonicalTarget(
+    database,
+    input.organizationId,
+    input.sourceId,
+    input.canonicalAliasUrl,
+  );
+  if (
+    !canonicalTarget ||
+    !mappingOwnerReviewedAliasScheduleMatchesEvent(
+      canonicalTarget.resourceMapping,
+      input.event,
+      input.maxTimedEndDriftMs,
+    ) ||
+    canonicalTarget.resourceMapping.scheduleVersion === null
+  ) {
+    throw new MeetupSyncError("calendar_invalid");
+  }
+
+  const mapping = await readSourceMapping(
+    database,
+    input.organizationId,
+    input.sourceId,
+    input.identityHash,
+  );
+  if (
+    (mapping?.eventId && mapping.eventId !== canonicalTarget.eventId) ||
+    (mapping && isStaleSourceRevision(mapping, input.event, input.sourceId))
+  ) {
+    throw new MeetupSyncError("calendar_invalid");
+  }
+
+  const linkId = mapping?.linkId ?? crypto.randomUUID();
+  const externalReservationStatements =
+    await stageExternalReservationStatements(database, {
+      ...input,
+      eventId: canonicalTarget.eventId,
+      resourceMapping: canonicalTarget.resourceMapping,
+      scheduleVersion: canonicalTarget.resourceMapping.scheduleVersion,
+      stagedMapping: null,
+    });
+  await database.batch([
+    importRowStatement(database, {
+      eventId: canonicalTarget.eventId,
+      event: input.event,
+      identityHash: input.identityHash,
+      importBatchId: input.importBatchId,
+      now: input.now,
+      organizationId: input.organizationId,
+      rowNumber: input.event.componentIndex + 1,
+      status: "accepted",
+    }),
+    extendLeaseStatement(database, input),
+    mapping
+      ? updateSourceLinkStatement(database, {
+          ...input,
+          eventId: canonicalTarget.eventId,
+          linkId,
+        })
+      : insertSourceLinkStatement(database, {
+          ...input,
+          eventId: canonicalTarget.eventId,
+          linkId,
+        }),
+    auditAfterChangedStatement(database, {
+      action: "meetup.source_alias_linked",
+      actorProfileId: input.actorProfileId,
+      entityId: linkId,
+      entityType: "external_source_link",
+      metadata: {
+        aliasModel: MEETUP_EVENT_ALIAS_POLICY_VERSION,
+        sourceType: SOURCE_TYPE,
+      },
+      now: input.now,
+      organizationId: input.organizationId,
+      manualAuthority: input.manualAuthority,
+    }),
+    stageEventSnapshotStatement(database, {
+      ...input,
+      eventId: canonicalTarget.eventId,
+    }),
+    ...stageEventPublicContentStatements(database, {
+      ...input,
+    }),
+    ...externalReservationStatements,
+  ]);
+}
+
 async function hasAuthoritativeReservationCollision(
   database: D1DatabaseLike,
   organizationId: string,
@@ -1107,30 +1240,7 @@ async function hasAuthoritativeReservationCollision(
              external.planning_status NOT IN ('hold', 'tentative_hold')
              OR external.hold_expires_at > ?
            )
-           AND (
-             external.source_kind = 'legacy'
-             OR (
-               external.source_kind = 'meetup'
-               AND EXISTS (
-                 SELECT 1
-                 FROM sync_sources AS active_source
-                 JOIN meetup_sync_generations AS active_generation
-                   ON active_generation.id =
-                      active_source.active_generation_id
-                  AND active_generation.sync_source_id = active_source.id
-                  AND active_generation.organization_id =
-                      active_source.organization_id
-                  AND active_generation.state = 'published'
-                 WHERE active_source.id = external.sync_source_id
-                   AND active_source.organization_id =
-                       external.organization_id
-                   AND active_source.active_generation_id =
-                       external.generation_id
-                   AND active_source.enabled = 1
-                   AND active_source.deleted_at IS NULL
-               )
-             )
-           )
+           AND external.source_kind = 'legacy'
        )
        OR EXISTS (
          SELECT 1
@@ -1266,6 +1376,7 @@ async function createMappedEvent(
       manualAuthority: input.manualAuthority,
     }),
     stageEventSnapshotStatement(database, input),
+    ...stageEventPublicContentStatements(database, input),
     ...externalReservationStatements,
   ];
   await database.batch(statements);
@@ -1369,6 +1480,7 @@ async function updateMappedEvent(
       manualAuthority: input.manualAuthority,
     }),
     stageEventSnapshotStatement(database, input),
+    ...stageEventPublicContentStatements(database, input),
     ...externalReservationStatements,
   ]);
 }
@@ -1436,6 +1548,9 @@ async function recordSkippedRow(
     input.staleRevision
       ? stageExistingSnapshotStatement(database, input)
       : stageEventSnapshotStatement(database, input),
+    ...(input.staleRevision
+      ? [stageExistingSnapshotPublicContentStatement(database, input)]
+      : stageEventPublicContentStatements(database, input)),
     ...externalReservationStatements,
   ]);
 }
@@ -2292,8 +2407,8 @@ function stageEventSnapshotStatement(
          all_day_end_date_exclusive, source_fingerprint, source_sequence,
          source_last_modified_at, created_at, updated_at
        )
-       SELECT ?, ?, ?, ?, ?, staged_event.id, ?, staged_event.slug, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        SELECT ?, ?, ?, ?, ?, staged_event.id, ?, staged_event.slug, ?, ?, ?, ?,
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
        FROM sync_sources AS source
        JOIN meetup_sync_generations AS generation
          ON generation.id = source.pending_generation_id
@@ -2384,9 +2499,9 @@ function stageExistingSnapshotStatement(
          source_last_modified_at, created_at, updated_at
        )
        SELECT ?, previous.organization_id, previous.sync_source_id, ?,
-              previous.external_id, previous.event_id, previous.ordinal,
-              previous.event_slug, previous.title, previous.event_url,
-              previous.status, previous.time_kind, previous.starts_at_utc,
+               previous.external_id, previous.event_id, previous.ordinal,
+               previous.event_slug, previous.title, previous.event_url,
+               previous.status, previous.time_kind, previous.starts_at_utc,
               previous.ends_at_utc, previous.timezone,
               previous.all_day_start_date,
               previous.all_day_end_date_exclusive,
@@ -2433,6 +2548,155 @@ function stageExistingSnapshotStatement(
         input.identityHash,
       ),
       input.generationId,
+      input.now,
+      input.now,
+      input.identityHash,
+      input.eventId,
+      input.sourceId,
+      input.organizationId,
+      input.generationId,
+      input.leaseToken,
+      input.now,
+    );
+}
+
+function stageEventPublicContentStatements(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    event: ParsedMeetupEvent;
+    generationId: string;
+    identityHash: string;
+    leaseToken: string;
+    now: number;
+    organizationId: string;
+    sourceId: string;
+  }>,
+): readonly ReturnType<D1DatabaseLike["prepare"]>[] {
+  const content = input.event.publicContent;
+  if (content === null) return Object.freeze([]);
+  const snapshotId = meetupSnapshotRecordId(
+    input.sourceId,
+    input.generationId,
+    input.identityHash,
+  );
+  return Object.freeze([
+    database
+      .prepare(
+         `INSERT INTO meetup_event_snapshot_public_contents (
+           snapshot_id, public_summary, public_description,
+           public_description_blocks_json, public_venue_name,
+           public_venue_address, poster_source_url, poster_alt_text,
+           poster_credit, created_at, updated_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         FROM sync_sources AS source
+         JOIN meetup_sync_generations AS generation
+           ON generation.id = source.pending_generation_id
+          AND generation.sync_source_id = source.id
+          AND generation.organization_id = source.organization_id
+          AND generation.state = 'staging'
+         JOIN meetup_event_snapshots AS snapshot
+           ON snapshot.id = ?
+          AND snapshot.organization_id = source.organization_id
+          AND snapshot.sync_source_id = source.id
+          AND snapshot.generation_id = generation.id
+         WHERE source.id = ?
+           AND source.organization_id = ?
+           AND source.pending_generation_id = ?
+           AND source.lease_token = ?
+           AND source.lease_expires_at > ?
+           AND source.deleted_at IS NULL
+         ON CONFLICT(snapshot_id) DO UPDATE SET
+           public_summary = excluded.public_summary,
+           public_description = excluded.public_description,
+           public_description_blocks_json =
+             excluded.public_description_blocks_json,
+           public_venue_name = excluded.public_venue_name,
+           public_venue_address = excluded.public_venue_address,
+           poster_source_url = excluded.poster_source_url,
+           poster_alt_text = excluded.poster_alt_text,
+           poster_credit = excluded.poster_credit,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(
+        snapshotId,
+        content.summary,
+        content.description,
+        JSON.stringify(content.descriptionBlocks),
+        content.venue?.name ?? null,
+        content.venue?.address ?? null,
+        content.poster?.sourceUrl ?? null,
+        content.poster?.altText ?? null,
+        content.poster?.credit ?? null,
+        input.now,
+        input.now,
+        snapshotId,
+        input.sourceId,
+        input.organizationId,
+        input.generationId,
+        input.leaseToken,
+        input.now,
+      ),
+  ]);
+}
+
+function stageExistingSnapshotPublicContentStatement(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    eventId: string;
+    generationId: string;
+    identityHash: string;
+    leaseToken: string;
+    now: number;
+    organizationId: string;
+    sourceId: string;
+  }>,
+) {
+  return database
+    .prepare(
+      `INSERT INTO meetup_event_snapshot_public_contents (
+         snapshot_id, public_summary, public_description,
+         public_description_blocks_json, public_venue_name,
+         public_venue_address, poster_source_url, poster_alt_text,
+         poster_credit, created_at, updated_at
+       )
+       SELECT ?, content.public_summary, content.public_description,
+              content.public_description_blocks_json,
+              content.public_venue_name, content.public_venue_address,
+              content.poster_source_url, content.poster_alt_text,
+              content.poster_credit, ?, ?
+       FROM sync_sources AS source
+       JOIN meetup_event_snapshots AS previous
+         ON previous.sync_source_id = source.id
+        AND previous.generation_id = source.active_generation_id
+        AND previous.external_id = ?
+        AND previous.event_id = ?
+       JOIN meetup_event_snapshot_public_contents AS content
+         ON content.snapshot_id = previous.id
+       WHERE source.id = ?
+         AND source.organization_id = ?
+         AND source.pending_generation_id = ?
+         AND source.lease_token = ?
+         AND source.lease_expires_at > ?
+         AND source.deleted_at IS NULL
+       ON CONFLICT(snapshot_id) DO UPDATE SET
+         public_summary = excluded.public_summary,
+         public_description = excluded.public_description,
+         public_description_blocks_json =
+           excluded.public_description_blocks_json,
+         public_venue_name = excluded.public_venue_name,
+         public_venue_address = excluded.public_venue_address,
+         poster_source_url = excluded.poster_source_url,
+         poster_alt_text = excluded.poster_alt_text,
+         poster_credit = excluded.poster_credit,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      meetupSnapshotRecordId(
+        input.sourceId,
+        input.generationId,
+        input.identityHash,
+      ),
       input.now,
       input.now,
       input.identityHash,
@@ -3469,6 +3733,122 @@ async function readSourceById(
   return row ? sourceRecord(row) : null;
 }
 
+async function readAliasCanonicalTarget(
+  database: D1DatabaseLike,
+  organizationId: string,
+  aliasSourceId: string,
+  canonicalUrl: string,
+): Promise<AliasCanonicalTarget | null> {
+  const result = await database
+    .prepare(
+      `SELECT link.id AS link_id,
+              event.id AS event_id,
+              link.external_url AS external_url,
+              source.id AS sync_source_id,
+              snapshot.source_fingerprint AS source_fingerprint,
+              snapshot.source_sequence AS source_sequence,
+              snapshot.source_last_modified_at AS source_last_modified_at,
+              snapshot.title AS title,
+              snapshot.status AS status,
+              snapshot.time_kind AS time_kind,
+              snapshot.starts_at_utc AS starts_at_utc,
+              snapshot.ends_at_utc AS ends_at_utc,
+              snapshot.timezone AS timezone,
+              snapshot.all_day_start_date AS all_day_start_date,
+              snapshot.all_day_end_date_exclusive AS
+                all_day_end_date_exclusive,
+              event.schedule_version AS schedule_version,
+              event.venue_id AS venue_id,
+              event.primary_organizer_profile_id AS
+                primary_organizer_profile_id,
+              event.organizer_scope_json AS organizer_scope_json
+       FROM sync_sources AS source
+       JOIN meetup_sync_generations AS generation
+         ON generation.id = source.active_generation_id
+        AND generation.organization_id = source.organization_id
+        AND generation.sync_source_id = source.id
+        AND generation.state = 'published'
+        AND generation.published_at IS NOT NULL
+        AND generation.processed_item_count = generation.expected_item_count
+        AND generation.rejected_item_count = 0
+       JOIN meetup_event_snapshots AS snapshot
+         ON snapshot.organization_id = source.organization_id
+        AND snapshot.sync_source_id = source.id
+        AND snapshot.generation_id = generation.id
+        AND snapshot.event_url = ?
+       JOIN events AS event
+         ON event.id = snapshot.event_id
+        AND event.organization_id = snapshot.organization_id
+        AND event.deleted_at IS NULL
+       JOIN external_source_links AS link
+         ON link.organization_id = snapshot.organization_id
+        AND link.entity_type = 'event'
+        AND link.entity_id = snapshot.event_id
+        AND link.source_type = ?
+        AND link.sync_source_id = snapshot.sync_source_id
+        AND link.external_id = snapshot.external_id
+        AND link.external_url = snapshot.event_url
+        AND link.deleted_at IS NULL
+       WHERE source.organization_id = ?
+         AND source.id <> ?
+         AND source.source_type = ?
+         AND source.enabled = 1
+         AND source.deleted_at IS NULL
+         AND link.external_url = ?
+       ORDER BY source.id ASC, snapshot.id ASC
+       LIMIT 2`,
+    )
+    .bind(
+      canonicalUrl,
+      SOURCE_TYPE,
+      organizationId,
+      aliasSourceId,
+      SOURCE_TYPE,
+      canonicalUrl,
+    )
+    .all<Record<string, unknown>>();
+  assertSuccessfulD1Result(result);
+  const rows = result.results ?? [];
+  if (rows.length !== 1) return null;
+  const row = rows[0];
+  const organizerScope = readSourceOrganizerScope(row);
+  const eventId = requiredRowString(row, "event_id");
+  return Object.freeze({
+    eventId,
+    resourceMapping: Object.freeze({
+      allDayEndDateExclusive: readOptionalString(
+        row,
+        "all_day_end_date_exclusive",
+      ),
+      allDayStartDate: readOptionalString(row, "all_day_start_date"),
+      endsAtUtc: readOptionalInteger(row, "ends_at_utc"),
+      eventId,
+      externalUrl: readOptionalString(row, "external_url"),
+      fingerprint: readOptionalString(row, "source_fingerprint"),
+      linkId: requiredRowString(row, "link_id"),
+      organizerScope,
+      organizerScopeJson: JSON.stringify(organizerScope),
+      primaryOrganizerProfileId: readOptionalString(
+        row,
+        "primary_organizer_profile_id",
+      ),
+      scheduleVersion: readOptionalInteger(row, "schedule_version"),
+      sourceLastModifiedAt: readOptionalInteger(
+        row,
+        "source_last_modified_at",
+      ),
+      sourceSequence: readOptionalInteger(row, "source_sequence"),
+      startsAtUtc: readOptionalInteger(row, "starts_at_utc"),
+      status: readOptionalString(row, "status"),
+      syncSourceId: readOptionalString(row, "sync_source_id"),
+      timeKind: readOptionalString(row, "time_kind"),
+      timeZone: readOptionalString(row, "timezone"),
+      title: readOptionalString(row, "title"),
+      venueId: readOptionalString(row, "venue_id"),
+    }),
+  });
+}
+
 async function readSourceMapping(
   database: D1DatabaseLike,
   organizationId: string,
@@ -3777,8 +4157,17 @@ function mappingScheduleMatchesEvent(
   mapping: SourceMapping,
   event: ParsedMeetupEvent,
 ): boolean {
+  return (
+    mapping.status === event.status &&
+    mappingScheduleIdentityMatchesEvent(mapping, event)
+  );
+}
+
+function mappingScheduleIdentityMatchesEvent(
+  mapping: SourceMapping,
+  event: ParsedMeetupEvent,
+): boolean {
   if (
-    mapping.status !== event.status ||
     mapping.timeKind !== event.schedule.kind ||
     mapping.timeZone !== event.schedule.timeZone
   ) {
@@ -3792,12 +4181,44 @@ function mappingScheduleMatchesEvent(
           event.schedule.endDateExclusive;
 }
 
+function mappingOwnerReviewedAliasScheduleMatchesEvent(
+  mapping: SourceMapping,
+  event: ParsedMeetupEvent,
+  maxTimedEndDriftMs: number,
+): boolean {
+  if (
+    mapping.timeKind !== event.schedule.kind ||
+    mapping.timeZone !== event.schedule.timeZone
+  ) {
+    return false;
+  }
+  if (event.schedule.kind === "all_day") {
+    return (
+      mapping.allDayStartDate === event.schedule.startDate &&
+      mapping.allDayEndDateExclusive === event.schedule.endDateExclusive
+    );
+  }
+  return (
+    mapping.startsAtUtc === event.schedule.startsAtUtcMs &&
+    mapping.endsAtUtc !== null &&
+    Math.abs(mapping.endsAtUtc - event.schedule.endsAtUtcMs) <=
+      maxTimedEndDriftMs
+  );
+}
+
 function isStaleSourceRevision(
   mapping: SourceMapping,
   event: ParsedMeetupEvent,
   sourceId: string,
 ): boolean {
   if (!mapping.eventId || mapping.syncSourceId !== sourceId) return false;
+  // The current public group page is an authoritative no-store snapshot but
+  // does not expose iCalendar SEQUENCE/LAST-MODIFIED metadata. Do not compare
+  // its synthetic parser sequence with an older calendar-import sequence;
+  // generation hashing and exact source facts still make the update atomic.
+  if (event.publicContent !== null && event.lastModifiedUtcMs === null) {
+    return false;
+  }
   if (mapping.sourceSequence !== null) {
     if (event.sequence < mapping.sourceSequence) return true;
     if (event.sequence > mapping.sourceSequence) return false;
@@ -3841,7 +4262,7 @@ function sanitizedSourceFacts(
 }
 
 function buildCalendarWorkItems(
-  calendar: ReturnType<typeof parseMeetupIcs>,
+  calendar: ParsedMeetupCalendar,
 ): readonly CalendarWorkItem[] {
   const items: CalendarWorkItem[] = calendar.rejectedEvents.map(
     (rejected) =>
@@ -3879,17 +4300,22 @@ function buildCalendarWorkItems(
 }
 
 /**
- * Meetup may change transport/calendar metadata between otherwise identical
- * exports. Generation identity therefore covers only validated facts that can
- * affect import, ordering, reconciliation, or publication. Ignored raw
- * descriptions, locations, and calendar decoration cannot strand a cursor.
+ * Meetup may change transport decoration between otherwise identical source
+ * snapshots. Generation identity therefore covers every validated fact that
+ * can affect import, ordering, reconciliation, public copy, venue output, or
+ * poster provenance, while ignoring irrelevant raw page/calendar bytes.
  */
 async function calendarSnapshotHash(
-  method: ReturnType<typeof parseMeetupIcs>["method"],
+  method: ParsedMeetupCalendar["method"],
   workItems: readonly CalendarWorkItem[],
 ): Promise<string> {
   return sha256Hex(
     JSON.stringify({
+      importPolicy: {
+        aliasPolicyVersion: MEETUP_EVENT_ALIAS_POLICY_VERSION,
+        aliases: MEETUP_EVENT_ALIASES,
+        version: MEETUP_IMPORT_POLICY_VERSION,
+      },
       method,
       items: workItems.map((item) =>
         item.kind === "rejected"
@@ -3904,6 +4330,7 @@ async function calendarSnapshotHash(
               eventUrl: item.event.eventUrl,
               kind: item.kind,
               lastModifiedUtcMs: item.event.lastModifiedUtcMs,
+              publicContent: item.event.publicContent,
               schedule: item.event.schedule,
               sequence: item.event.sequence,
               sourceKey: item.event.sourceKey,
@@ -3997,6 +4424,14 @@ function isoOrNull(value: number | null): string | null {
 
 function changes(result: D1ResultLike): number {
   return Number(result.meta?.changes ?? 0);
+}
+
+function assertSuccessfulD1Result(
+  result: D1ResultLike<Record<string, unknown>>,
+): void {
+  if (result.success === false) {
+    throw new MeetupSyncError("internal_error");
+  }
 }
 
 function isConfigureAuditSentinelFailure(error: unknown): boolean {

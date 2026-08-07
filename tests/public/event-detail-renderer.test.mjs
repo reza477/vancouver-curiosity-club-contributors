@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { formatEventSchedule } from "../../app/_components/EventCard.tsx";
+import {
+  EventCard,
+  formatEventSchedule,
+} from "../../app/_components/EventCard.tsx";
 import { PublicEventDetailRenderer } from "../../app/_components/PublicEventDetailRenderer.tsx";
 
 const projectRoot = new URL("../../", import.meta.url);
@@ -17,6 +20,7 @@ const TORONTO_EVENT = Object.freeze({
   club: Object.freeze({ name: "Timezone Club", slug: "timezone-club" }),
   costText: null,
   description: "A public renderer fixture.",
+  descriptionBlocks: null,
   externalMapUrl: null,
   isCancelled: false,
   lane: null,
@@ -40,6 +44,159 @@ const TORONTO_EVENT = Object.freeze({
   verifiedAccessibilityNotes: null,
   weatherNote: null,
   whatToBring: null,
+});
+
+test("curated Meetup descriptions render semantic headings, lists, and links", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PublicEventDetailRenderer, {
+      canonicalUrl: "https://preview.example/events/rich-event",
+      event: Object.freeze({
+        ...TORONTO_EVENT,
+        description: "Ticket note\n\nBuy your VIFF ticket here: Open viff.org",
+        descriptionBlocks: Object.freeze([
+          Object.freeze({
+            content: Object.freeze([
+              Object.freeze({ text: "Ticket note", type: "text" }),
+            ]),
+            level: 3,
+            type: "heading",
+          }),
+          Object.freeze({
+            items: Object.freeze([
+              Object.freeze([
+                Object.freeze({
+                  text: "Meet outside the cinema.",
+                  type: "text",
+                }),
+              ]),
+              Object.freeze([
+                Object.freeze({
+                  text: "Bring one question.",
+                  type: "strong",
+                }),
+              ]),
+            ]),
+            type: "unordered-list",
+          }),
+          Object.freeze({
+            content: Object.freeze([
+              Object.freeze({
+                text: "Buy your VIFF ticket here: ",
+                type: "text",
+              }),
+              Object.freeze({
+                href: "https://viff.org/whats-on/example/book/abc",
+                text: "Open viff.org",
+                type: "link",
+              }),
+            ]),
+            type: "paragraph",
+          }),
+        ]),
+      }),
+    }),
+  );
+
+  assert.match(markup, /<h3><span>Ticket note<\/span><\/h3>/u);
+  assert.match(markup, /<ul><li>.*Meet outside the cinema\..*<\/li>/u);
+  assert.match(markup, /<strong>Bring one question\.<\/strong>/u);
+  assert.match(
+    markup,
+    /href="https:\/\/viff\.org\/whats-on\/example\/book\/abc"/u,
+  );
+  assert.match(markup, /rel="noreferrer noopener"/u);
+  assert.match(markup, /class="event-detail__rich-description"/u);
+  assert.doesNotMatch(markup, /dangerouslySetInnerHTML/u);
+});
+
+test("event cards lead with a poster and expose verified associations and location facts", () => {
+  const markup = renderToStaticMarkup(
+    createElement(EventCard, {
+      compact: true,
+      event: Object.freeze({
+        ...TORONTO_EVENT,
+        artwork: Object.freeze({
+          altText: "A confirmed event poster.",
+          credit: "Vancouver Curiosity Club",
+          dimensions: Object.freeze({
+            large: Object.freeze({ height: 900, width: 600 }),
+            medium: Object.freeze({ height: 720, width: 480 }),
+            small: Object.freeze({ height: 360, width: 240 }),
+          }),
+          focalPoint: Object.freeze({ x: 5000, y: 5000 }),
+          srcSet: Object.freeze({
+            large: "/media/poster/webp_1600",
+            medium: "/media/poster/webp_960",
+            small: "/media/poster/webp_480",
+          }),
+          url: "/media/poster/webp_1600",
+        }),
+        category: Object.freeze({
+          colorToken: "cobalt",
+          name: "City culture",
+          slug: "city-culture",
+        }),
+        lane: Object.freeze({ name: "Explore", slug: "explore" }),
+        venue: Object.freeze({
+          address: "350 W Georgia Street, Vancouver",
+          name: "Vancouver Public Library",
+        }),
+      }),
+    }),
+  );
+
+  const posterIndex = markup.indexOf('class="event-card__artwork"');
+  const bodyIndex = markup.indexOf('class="event-card__body"');
+  assert.ok(posterIndex >= 0);
+  assert.ok(bodyIndex > posterIndex);
+  assert.match(markup, /alt="A confirmed event poster."/u);
+  assert.match(markup, />Timezone Club<\/a>/u);
+  assert.match(markup, />Explore<\/span>/u);
+  assert.match(markup, />City culture<\/span>/u);
+  assert.match(markup, /Vancouver Public Library/u);
+  assert.match(markup, /350 W Georgia Street, Vancouver/u);
+});
+
+test("event leads keep RSVP and lane-specific poster fallback near the title", () => {
+  const rsvpUrl =
+    "https://www.meetup.com/vancouver-curiosity-club/events/123456789/";
+  const markup = renderToStaticMarkup(
+    createElement(PublicEventDetailRenderer, {
+      canonicalUrl: "https://preview.example/events/timezone-event",
+      event: Object.freeze({
+        ...TORONTO_EVENT,
+        category: Object.freeze({
+          colorToken: null,
+          name: "City culture",
+          slug: "city-culture",
+        }),
+        lane: Object.freeze({ name: "Explore", slug: "explore" }),
+        rsvpMode: "external",
+        rsvpUrl,
+      }),
+    }),
+  );
+
+  const leadIndex = markup.indexOf('class="event-detail__lead"');
+  const artworkIndex = markup.indexOf('class="event-detail__artwork');
+  const summaryIndex = markup.indexOf('class="event-detail__summary"');
+  assert.ok(leadIndex >= 0);
+  assert.ok(artworkIndex > leadIndex);
+  assert.ok(summaryIndex > artworkIndex);
+  assert.match(markup, /data-event-lane="explore"/u);
+  assert.match(markup, /<strong>Explore<\/strong>/u);
+  assert.match(markup, /Gathering in the Explore lane/u);
+  assert.match(markup, /Explore · City culture/u);
+  assert.equal(
+    (markup.match(new RegExp(`href="${rsvpUrl}"`, "gu")) ?? []).length,
+    2,
+  );
+  assert.match(markup, /class="event-detail__mobile-rsvp"/u);
+  assert.match(
+    markup,
+    /aria-label="RSVP for Timezone event on Meetup"/u,
+  );
+  assert.doesNotMatch(markup, /FieldArtwork|Field Notes category artwork/u);
 });
 
 test("public schedule formatting uses the event's IANA timezone", () => {
@@ -90,6 +247,7 @@ test("the shared detail renderer supports a preview-safe discovery mode", async 
     "utf8",
   );
   assert.match(eventPage, /<PublicEventDetailRenderer/u);
+  assert.match(eventPage, /<Link href="\/events">All events<\/Link>/u);
   assert.doesNotMatch(eventPage, /<article className="event-detail">/u);
   assert.doesNotMatch(eventPage, /<ShareControls/u);
 });
@@ -108,6 +266,7 @@ test("cancelled event calendar actions expose only the cancellation file", () =>
   assert.match(markup, />Add to calendar<\/summary>/u);
   assert.match(markup, />Download cancellation \(\.ics\)<\/a>/u);
   assert.doesNotMatch(markup, />Google Calendar/u);
+  assert.doesNotMatch(markup, /event-detail__mobile-rsvp/u);
 });
 
 test("public event artwork renders only allowlisted media presentation fields", () => {

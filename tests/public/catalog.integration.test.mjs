@@ -123,6 +123,7 @@ function loadGeneratedMigrations() {
       "0014_phase5_publication.sql",
       "0015_phase6_cms_media.sql",
       "0016_phase7_import_export_forms.sql",
+      "0017_bright_captain_america.sql",
     ],
     "the normalized Sites-compatible migration chain must be authoritative",
   );

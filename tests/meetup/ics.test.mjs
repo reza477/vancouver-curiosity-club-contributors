@@ -58,6 +58,7 @@ test("skips bounded VTIMEZONE components and preserves event TZID fidelity", () 
   );
   assert.equal(parsed.events[0].description, "Text only\nSecond line");
   assert.equal(parsed.events[0].location, "Public Library");
+  assert.equal(parsed.events[0].publicContent, null);
 });
 
 test("uses UID plus normalized RECURRENCE-ID and rejects unexpanded recurrence", () => {

@@ -10,10 +10,6 @@ import {
 } from "@/lib/public-calendar";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
-import {
-  readPublicMeetupSyncState,
-  type PublicMeetupSyncStatus,
-} from "@/lib/server/meetup";
 import { resolvePublicOrganization } from "@/lib/server/public/catalog";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
 import {
@@ -76,10 +72,6 @@ export default async function CalendarPage({
   const origin = await getTrustedRequestOrigin();
   let events: readonly PublicEventCardDto[] = [];
   let hasMore = false;
-  let sync: Readonly<{
-    lastSuccessAt: string | null;
-    status: PublicMeetupSyncStatus;
-  }> = { status: "not_connected", lastSuccessAt: null };
 
   try {
     const { database } = getRuntimeAuthConfiguration();
@@ -103,7 +95,7 @@ export default async function CalendarPage({
         );
       }
       const bounds = publicCalendarMonthBounds(resolvedMonth.month);
-      const [past, upcoming, sourceState] = await Promise.all([
+      const [past, upcoming] = await Promise.all([
         queryPublicEvents(database, {
           organizationId: organization.id,
           nowUtcMs,
@@ -124,11 +116,9 @@ export default async function CalendarPage({
           page: 1,
           pageSize: 48,
         }),
-        readPublicMeetupSyncState(database, organization.id, nowUtcMs),
       ]);
       events = mergeCalendarEvents(past.events, upcoming.events);
       hasMore = past.hasMore || upcoming.hasMore;
-      sync = sourceState;
     }
   } catch {
     writeSafeLog("error", "public_calendar_unavailable", {
@@ -162,6 +152,16 @@ export default async function CalendarPage({
         </div>
       ) : null}
 
+      <nav
+        aria-label="Event views"
+        className="calendar-view-switcher event-view-switcher"
+      >
+        <Link href="/events">List</Link>
+        <Link aria-current="page" href="/calendar">
+          Month
+        </Link>
+      </nav>
+
       <PublicMonthCalendar
         complete={!hasMore}
         events={events}
@@ -173,37 +173,14 @@ export default async function CalendarPage({
         todayDate={todayDate}
       />
 
-      <nav className="calendar-view-switcher" aria-label="Calendar downloads">
-        <Link href="/events/calendar.ics">Download upcoming events (.ics)</Link>
-        <Link href="/events/events.csv">Download upcoming events (.csv)</Link>
-      </nav>
-
-      <section
-        className="calendar-home-introduction"
-        aria-labelledby="calendar-home-title"
+      <nav
+        aria-label="Download upcoming public events"
+        className="calendar-download-actions public-export-actions"
       >
-        <div>
-          <p className="section-kicker">What is this club?</p>
-          <h2 id="calendar-home-title">
-            Curiosity is better in company.
-          </h2>
-        </div>
-        <div>
-          <p>
-            Vancouver Curiosity Club brings people together for books, films,
-            thoughtful conversations, creative practice, walks, food, and
-            other reasons to explore Vancouver with interesting people.
-          </p>
-          <p>
-            You do not need to be an expert or make an account. Open any event
-            to see what it is about, where it is happening, and the official
-            signup and add-to-calendar options.
-          </p>
-          <Link href="/about">Learn about the club</Link>
-        </div>
-      </section>
-
-      <CalendarSourceStatus sync={sync} />
+        <span>Download upcoming events</span>
+        <Link href="/events/calendar.ics">iCalendar (.ics)</Link>
+        <Link href="/events/events.csv">Spreadsheet (.csv)</Link>
+      </nav>
     </main>
   );
 }
@@ -222,54 +199,5 @@ function mergeCalendarEvents(
       if (dateOrder !== 0) return dateOrder;
       return left.title.localeCompare(right.title, "en-CA");
     }),
-  );
-}
-
-function CalendarSourceStatus({
-  sync,
-}: Readonly<{
-  sync: Readonly<{
-    lastSuccessAt: string | null;
-    status: PublicMeetupSyncStatus;
-  }>;
-}>) {
-  const copy: Record<PublicMeetupSyncStatus, string> = {
-    current:
-      "Meetup changes are checked automatically when this calendar is opened. The last complete calendar stays visible while a refresh is running.",
-    disabled:
-      "Meetup refresh is currently disabled. Published website events remain visible.",
-    error:
-      "The latest Meetup check did not finish. The last completed calendar remains visible.",
-    not_connected:
-      "The official Meetup calendar connection has not been completed yet. Published website events still appear here.",
-    partial:
-      "A Meetup refresh is still being completed. The last complete calendar remains visible.",
-    pending:
-      "The first Meetup calendar refresh is being completed. Incomplete events are not shown.",
-    stale:
-      "The Meetup calendar is being checked. The last complete event details remain visible.",
-  };
-  const lastSuccess = sync.lastSuccessAt
-    ? new Intl.DateTimeFormat("en-CA", {
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        month: "short",
-        timeZone: "America/Vancouver",
-        timeZoneName: "short",
-        year: "numeric",
-      }).format(new Date(sync.lastSuccessAt))
-    : null;
-  return (
-    <aside
-      className="source-status calendar-source-status"
-      data-source-status={sync.status}
-    >
-      <span aria-hidden="true" />
-      <p>
-        {copy[sync.status]}
-        {lastSuccess ? ` Last completed ${lastSuccess}.` : ""}
-      </p>
-    </aside>
   );
 }

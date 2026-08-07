@@ -100,9 +100,10 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
   const header = source("app", "_components", "SiteHeader.tsx");
   const css = source("app", "globals.css");
   for (const [href, label] of [
-    ["/calendar", "Calendar"],
+    ["/events", "Events"],
+    ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/get-involved", "Contribute"],
+    ["/host-an-event", "Host an Event"],
   ]) {
     assert.match(
       header,
@@ -112,11 +113,12 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
   assert.doesNotMatch(header, /<details|<summary|site-navigation/u);
   assert.match(
     header,
-    /href === "\/calendar"[\s\S]*?pathname === "\/"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)/u,
+    /href === "\/events"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)[\s\S]*?pathname === "\/calendar"/u,
   );
+  assert.doesNotMatch(header, /pathname === "\/"/u);
   assert.match(
     css,
-    /\.primary-nav\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)[^}]*border:\s*1px solid var\(--ink\);/su,
+    /\.primary-nav\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[^}]*border:\s*1px solid var\(--ink\);/su,
   );
   assert.match(
     css,
@@ -132,7 +134,7 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
   );
   assert.match(
     css,
-    /@media \(max-width: 30rem\)[\s\S]*?\.primary-nav a\s*\{[^}]*min-height:\s*2\.75rem;[^}]*white-space:\s*nowrap;/u,
+    /@media \(max-width: 30rem\)[\s\S]*?\.primary-nav\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)[\s\S]*?\.primary-nav a\s*\{[^}]*min-height:\s*2\.75rem;[^}]*white-space:\s*normal;/u,
   );
 });
 

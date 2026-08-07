@@ -33,7 +33,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
     requiredPublicRoutes.map((path) => access(new URL(path, projectRoot))),
   );
 
-  const [header, footer, layout, community, home, homeRenderer, catalog] =
+  const [header, footer, layout, community, home, homeRenderer] =
     await Promise.all([
       readFile(new URL("app/_components/SiteHeader.tsx", projectRoot), "utf8"),
       readFile(new URL("app/_components/SiteFooter.tsx", projectRoot), "utf8"),
@@ -44,19 +44,32 @@ test("Phase 2 exposes the complete public route contract", async () => {
         new URL("app/_components/HomePageRenderer.tsx", projectRoot),
         "utf8",
       ),
-      readFile(
-        new URL("lib/server/public/catalog-definitions.ts", projectRoot),
-        "utf8",
-      ),
     ]);
-  for (const [href, label] of [
-    ["/calendar", "Calendar"],
+  const primaryDestinations = [
+    ["/events", "Events"],
+    ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/get-involved", "Contribute"],
-  ]) {
-    assert.match(header, new RegExp(`href[:=]\\s*["']${href}["']|href:\\s*["']${href}["']`));
-    assert.match(header, new RegExp(label));
+    ["/host-an-event", "Host an Event"],
+  ];
+  let priorDestinationIndex = -1;
+  for (const [href, label] of primaryDestinations) {
+    const destinationIndex = header.indexOf(
+      `{ href: "${href}", label: "${label}" }`,
+    );
+    assert.ok(destinationIndex > priorDestinationIndex, `${label} order`);
+    priorDestinationIndex = destinationIndex;
   }
+  assert.equal(
+    (header.match(/\{ href: "\/[^"]+", label: "[^"]+" \}/gu) ?? [])
+      .length,
+    4,
+  );
+  assert.match(
+    header,
+    /href === "\/events"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)[\s\S]*?pathname === "\/calendar"/u,
+  );
+  assert.match(header, /pathname === href/u);
+  assert.match(header, /pathname\.startsWith\(`\$\{href\}\/`\)/u);
   for (const href of [
     "/calendar",
     "/clubs",
@@ -78,15 +91,38 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.match(footer, /item\.href === "\/community"/u);
   assert.match(community, /permanentRedirect\("\/get-involved"\)/u);
   assert.doesNotMatch(community, /loadEditorialPage|loadCommunityDestinations/u);
-  assert.doesNotMatch(home, /loadCommunityDestinations|sameAs/u);
-  assert.doesNotMatch(
-    catalog,
-    /section\("(?:attending|invitation|community)"/u,
-  );
-  assert.match(homeRenderer, /REMOVED_HOME_SECTION_KEYS/u);
+  assert.match(home, /loadPublicHomeData/u);
+  assert.match(home, /<HomePageRenderer/u);
+  assert.doesNotMatch(home, /CalendarPage|PublicMonthCalendar/u);
+  for (const copy of [
+    "Books, films, ideas, walks & creative nights in Vancouver",
+    "Come curious. Leave knowing people.",
+    "Vancouver Curiosity Club is for people who miss conversations that go somewhere. Pick a gathering that pulls you in, show up as you are, and meet thoughtful people through books, films, big questions, city walks, creative practice, food, and play.",
+    "See upcoming gatherings",
+    "New here? Start here",
+  ]) {
+    assert.ok(homeRenderer.includes(copy), copy);
+  }
+  const homepageSections = [
+    "home-hero",
+    "home-events",
+    "home-newcomer attending-note",
+    "home-community-feel attending-note",
+    "lane-index",
+    "home-clubs",
+    "home-proof home-community",
+    "home-closing home-invitation",
+  ];
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  let priorSectionIndex = -1;
+  for (const className of homepageSections) {
+    const sectionIndex = homeRenderer.indexOf(`className="${className}"`);
+    assert.ok(sectionIndex > priorSectionIndex, className);
+    priorSectionIndex = sectionIndex;
+  }
   assert.doesNotMatch(
     homeRenderer,
-    /What attending feels like|Make the calendar with us|Find the community/u,
+    /PublicMonthCalendar|public-calendar__grid|calendar-view-switcher/u,
   );
   assert.match(layout, /<SiteHeader[\s\S]*brandName=\{shell\?\.brandName\}/u);
   assert.match(layout, /<SiteFooter/u);
@@ -102,14 +138,23 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });
 
-test("Calendar is the single simple month-at-a-glance experience", async () => {
-  const [calendar, events, filters] = await Promise.all([
+test("Events defaults to a list while Calendar remains the optional month view", async () => {
+  const [calendar, events, renderer, filters, maintenance, worker] = await Promise.all([
     readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
+      "utf8",
+    ),
     readFile(
       new URL("app/_components/EventFilters.tsx", projectRoot),
       "utf8",
     ),
+    readFile(
+      new URL("lib/server/database/request-maintenance.ts", projectRoot),
+      "utf8",
+    ),
+    readFile(new URL("worker/index.ts", projectRoot), "utf8"),
   ]);
 
   assert.match(calendar, /path:\s*"\/calendar"/u);
@@ -117,10 +162,29 @@ test("Calendar is the single simple month-at-a-glance experience", async () => {
   assert.match(calendar, /Object\.keys\(params\)\.length === 0/u);
   assert.doesNotMatch(calendar, /permanentRedirect/u);
   assert.match(
-    events,
-    /export \{ default, dynamic, generateMetadata \} from "\.\.\/calendar\/page"/u,
+    calendar,
+    /<Link href="\/events">List<\/Link>[\s\S]*?aria-current="page" href="\/calendar"/u,
   );
-  assert.doesNotMatch(events, /EventsPageRenderer|EventFilters/u);
+  assert.doesNotMatch(
+    calendar,
+    /home-hero|home-newcomer|Come curious\. Leave knowing people\.|calendar-home-introduction/u,
+  );
+
+  assert.match(events, /EventsPageRenderer/u);
+  assert.match(events, /eventFilterValues\(raw\)/u);
+  assert.match(events, /queryPublicEvents/u);
+  assert.match(events, /view:\s*raw\.state/u);
+  assert.doesNotMatch(events, /from "\.\.\/calendar\/page"|PublicMonthCalendar/u);
+  assert.match(
+    renderer,
+    /state:\s*value\("state"\) === "past" \? "past" : "upcoming"/u,
+  );
+  assert.match(
+    renderer,
+    /<Link aria-current="page" href="\/events">[\s\S]*?List[\s\S]*?<Link href="\/calendar">Month<\/Link>/u,
+  );
+  assert.match(renderer, /<EventFilters/u);
+  assert.match(renderer, /<EventCollection/u);
   assert.match(filters, /method="get"/u);
   assert.match(filters, /key=\{filterFormKey\(values\)\}/u);
   assert.match(filters, /href=\{`\/events\?state=\$\{values\.state\}`\}/u);
@@ -136,6 +200,14 @@ test("Calendar is the single simple month-at-a-glance experience", async () => {
   ]) {
     assert.match(filters, new RegExp(`name="${name}"`));
   }
+  assert.doesNotMatch(
+    `${calendar}\n${events}\n${renderer}`,
+    /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,
+  );
+  assert.doesNotMatch(events, /refreshMeetupCalendarSourceIfDue/u);
+  assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/u);
+  assert.match(maintenance, /attemptedMeetupRefresh/u);
+  assert.match(worker, /maintenanceRedirect/u);
 });
 
 test("public editorial surfaces use D1 readers without dead forms or discussion claims", async () => {

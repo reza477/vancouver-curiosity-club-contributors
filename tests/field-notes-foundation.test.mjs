@@ -40,27 +40,42 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     readFile(new URL("package.json", projectRoot), "utf8"),
   ]);
 
-  assert.match(
-    page,
-    /import CalendarPage from "@\/app\/calendar\/page"/u,
-  );
-  assert.match(page, /CalendarPage\(\{ searchParams \}\)/u);
-  assert.match(page, /<StructuredData/u);
+  assert.match(page, /import \{ HomePageRenderer \}/u);
+  assert.match(page, /<HomePageRenderer/u);
+  assert.doesNotMatch(page, /CalendarPage|PublicMonthCalendar/u);
+  assert.match(homeRenderer, /<StructuredData/u);
   assert.doesNotMatch(page, /loadCommunityDestinations|sameAs/u);
   assert.match(homeData, /loadPublicCatalog/);
   assert.match(homeData, /getPublicPageContent/);
   assert.match(homeData, /queryPublicEvents/);
-  assert.match(homeRenderer, /View the calendar/);
-  assert.match(homeRenderer, /The next events/);
+  assert.match(homeData, /pageSize:\s*3/u);
+  assert.match(homeRenderer, /Books, films, ideas, walks & creative nights in Vancouver/u);
+  assert.match(homeRenderer, /Come curious\. Leave knowing people\./u);
+  assert.match(homeRenderer, /See upcoming gatherings/u);
+  assert.match(homeRenderer, /New here\? Start here/u);
+  assert.match(homeRenderer, /home-hero__poster-collage/u);
+  assert.match(homeRenderer, /events\.slice\(0, 3\)/u);
+  assert.doesNotMatch(homeRenderer, /FieldArtwork/u);
   assert.match(catalog, /A social calendar with a brain\./);
   assert.match(catalog, /Vancouver Curiosity Club/);
   assert.match(layout, /Skip to main content/);
   assert.match(layout, /<SiteHeader[\s\S]*brandName=\{shell\?\.brandName\}/);
   assert.match(layout, /<SiteFooter/);
   assert.match(header, /aria-label="Primary navigation"/);
-  assert.match(header, /\{ href: "\/calendar", label: "Calendar" \}/u);
-  assert.match(header, /\{ href: "\/about", label: "About" \}/u);
-  assert.match(header, /\{ href: "\/get-involved", label: "Contribute" \}/u);
+  const destinations = [
+    ['{ href: "/events", label: "Events" }', "Events"],
+    ['{ href: "/clubs", label: "Clubs" }', "Clubs"],
+    ['{ href: "/about", label: "About" }', "About"],
+    ['{ href: "/host-an-event", label: "Host an Event" }', "Host an Event"],
+  ];
+  let previousDestination = -1;
+  for (const [literal, label] of destinations) {
+    const destination = header.indexOf(literal);
+    assert.ok(destination > previousDestination, `${label} navigation order`);
+    previousDestination = destination;
+  }
+  assert.doesNotMatch(header, /\{ href: "\/calendar", label: "Calendar" \}/u);
+  assert.doesNotMatch(header, /\{ href: "\/get-involved", label: "Contribute" \}/u);
   assert.doesNotMatch(header, /\{ href: "\/community", label: "Community" \}/u);
   assert.doesNotMatch(header, /<details|site-navigation/u);
   assert.doesNotMatch(header, /Organizer Login/);
@@ -71,7 +86,22 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     catalog,
     /section\("(?:attending|invitation|community)"/u,
   );
-  assert.match(homeRenderer, /REMOVED_HOME_SECTION_KEYS/u);
+  const homepageSections = [
+    "home-hero",
+    "home-events",
+    "home-newcomer",
+    "home-community-feel",
+    "lane-index",
+    "home-clubs",
+    "home-proof",
+    "home-closing",
+  ];
+  let previousSection = -1;
+  for (const className of homepageSections) {
+    const section = homeRenderer.indexOf(`className="${className}`);
+    assert.ok(section > previousSection, `${className} section order`);
+    previousSection = section;
+  }
   assert.match(layout, /generateMetadata/);
   assert.match(layout, /const isUnknownPath = !isKnownApplicationPath/);
   assert.match(layout, /robots:\s*isUnknownPath/);
