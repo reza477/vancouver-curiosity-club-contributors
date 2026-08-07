@@ -5,7 +5,10 @@ import {
   formatEventSchedule,
 } from "@/app/_components/EventCard";
 import { ShareControls } from "@/app/_components/ShareControls";
-import type { CuratedMeetupDescriptionInline } from "@/lib/meetup-event-enrichment";
+import {
+  meetupDescriptionBlocksForDisplay,
+  type CuratedMeetupDescriptionInline,
+} from "@/lib/meetup-event-enrichment";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import type { PublicEventDetailDto } from "@/lib/server/public/events";
 
@@ -329,9 +332,10 @@ function PublicRichDescription({
 }: Readonly<{
   blocks: NonNullable<PublicEventDetailDto["descriptionBlocks"]>;
 }>) {
+  const displayBlocks = meetupDescriptionBlocksForDisplay(blocks);
   return (
     <div className="event-detail__rich-description">
-      {blocks.map((block, blockIndex) => {
+      {displayBlocks.map((block, blockIndex) => {
         if (block.type === "heading") {
           const content = (
             <PublicDescriptionInlines inlines={block.content} />

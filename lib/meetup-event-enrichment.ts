@@ -161,6 +161,63 @@ export function validateMeetupDescriptionBlocks(
   return normalizePublicDescriptionBlocks(candidate);
 }
 
+/**
+ * Older synchronized snapshots used a generic "Open example.com" label for a
+ * bare URL and left the source call-to-action beside it as plain text. Keep
+ * those already-published snapshots useful while newly imported descriptions
+ * are normalized at ingestion time.
+ */
+export function meetupDescriptionBlocksForDisplay(
+  blocks: readonly CuratedMeetupDescriptionBlock[],
+): readonly CuratedMeetupDescriptionBlock[] {
+  const normalized = blocks.map((block) => {
+    if ("items" in block) {
+      return Object.freeze({
+        items: Object.freeze(
+          block.items.map((item) =>
+            Object.freeze(normalizeDescriptionCallToActionInlines(item)),
+          ),
+        ),
+        type: block.type,
+      });
+    }
+    const content = Object.freeze(
+      normalizeDescriptionCallToActionInlines(block.content),
+    );
+    return block.type === "heading"
+      ? Object.freeze({ content, level: block.level, type: block.type })
+      : Object.freeze({ content, type: block.type });
+  });
+  const merged: CuratedMeetupDescriptionBlock[] = [];
+  for (let index = 0; index < normalized.length; index += 1) {
+    const block = normalized[index];
+    const next = normalized[index + 1];
+    const callToAction = standaloneDescriptionCallToAction(block);
+    const link = standaloneGenericDescriptionLink(next);
+    if (callToAction !== null && link !== null) {
+      const content = Object.freeze([
+        ...(callToAction.prefix
+          ? [Object.freeze({ text: callToAction.prefix, type: "text" as const })]
+          : []),
+        Object.freeze({
+          ...link,
+          text: callToAction.label,
+          type: "link" as const,
+        }),
+      ]);
+      merged.push(
+        block.type === "heading"
+          ? Object.freeze({ content, level: block.level, type: block.type })
+          : Object.freeze({ content, type: "paragraph" as const }),
+      );
+      index += 1;
+      continue;
+    }
+    merged.push(block);
+  }
+  return Object.freeze(merged);
+}
+
 export function validateCuratedMeetupEventCandidate(
   candidate: (typeof generatedManifest.events)[number],
 ): CuratedMeetupEventEnrichment {
@@ -277,6 +334,96 @@ function normalizePublicDescriptionBlocks(
   return Object.freeze(
     candidate.map((block) => normalizePublicDescriptionBlock(block, budget)),
   );
+}
+
+function normalizeDescriptionCallToActionInlines(
+  inlines: readonly CuratedMeetupDescriptionInline[],
+): CuratedMeetupDescriptionInline[] {
+  const normalized: CuratedMeetupDescriptionInline[] = [];
+  for (const inline of inlines) {
+    const previous = normalized.at(-1);
+    const callToAction =
+      inline.type === "link" && isGenericDescriptionLinkText(inline.text)
+        ? descriptionCallToAction(
+            previous?.type === "text" ? previous.text : "",
+          )
+        : null;
+    if (inline.type === "link" && callToAction !== null) {
+      normalized.pop();
+      if (callToAction.prefix) {
+        normalized.push(
+          Object.freeze({ text: callToAction.prefix, type: "text" }),
+        );
+      }
+      normalized.push(
+        Object.freeze({ ...inline, text: callToAction.label }),
+      );
+      continue;
+    }
+    normalized.push(inline);
+  }
+  return normalized;
+}
+
+function standaloneDescriptionCallToAction(
+  block: CuratedMeetupDescriptionBlock | undefined,
+): DescriptionCallToAction | null {
+  if (block === undefined || "items" in block || block.content.length !== 1) {
+    return null;
+  }
+  const inline = block.content[0];
+  return inline.type === "text"
+    ? descriptionCallToAction(inline.text)
+    : null;
+}
+
+function standaloneGenericDescriptionLink(
+  block: CuratedMeetupDescriptionBlock | undefined,
+): Extract<CuratedMeetupDescriptionInline, { type: "link" }> | null {
+  if (
+    block === undefined ||
+    block.type !== "paragraph" ||
+    block.content.length !== 1
+  ) {
+    return null;
+  }
+  const inline = block.content[0];
+  return inline.type === "link" && isGenericDescriptionLinkText(inline.text)
+    ? inline
+    : null;
+}
+
+type DescriptionCallToAction = Readonly<{ label: string; prefix: string }>;
+
+function descriptionCallToAction(input: string): DescriptionCallToAction | null {
+  const normalized = input.trimEnd();
+  if (!normalized.endsWith(":")) return null;
+  const candidate = normalized.slice(0, -1);
+  const suffix = /(Buy\b[^:]{0,80}\bhere|Google Maps|(?:Official|Public|Reservation|Planning|Ticket|Tickets|YouTube|Video|Event|Film|Source) [^.!?:]{1,60}|(?:\d+-minute )?written summary)$/iu.exec(
+    candidate,
+  );
+  const suffixIndex = suffix?.index ?? null;
+  const wholeLabel = candidate.trim();
+  const start =
+    suffixIndex ??
+    (wholeLabel.length <= 80 &&
+    !/[.!?]/u.test(wholeLabel) &&
+    !/^[,;:]/u.test(wholeLabel)
+      ? candidate.indexOf(wholeLabel)
+      : null);
+  if (start === null) return null;
+  const label = candidate.slice(start).trim();
+  if (label.length < 3 || label.length > 80) return null;
+  const rawPrefix = candidate.slice(0, start);
+  const prefixIsOnlySpacing = rawPrefix.trim().length === 0;
+  return Object.freeze({
+    label: `${prefixIsOnlySpacing ? rawPrefix : ""}${label}`,
+    prefix: prefixIsOnlySpacing ? "" : rawPrefix,
+  });
+}
+
+function isGenericDescriptionLinkText(input: string): boolean {
+  return /^Open [a-z0-9.-]+$/iu.test(input);
 }
 
 function normalizePublicDescriptionBlock(

@@ -581,7 +581,7 @@ function parsePublicDescriptionBlocks(
   }
   flushParagraph();
   flushList();
-  return blocks;
+  return mergeStandaloneDescriptionCallToActionBlocks(blocks);
 }
 
 function parsePublicDescriptionInlines(
@@ -642,10 +642,121 @@ function pushPublicLinkInline(
   }
   const host = new URL(href).hostname;
   const displayHost = host.replace(/^(?:m\.|www\.)/u, "");
-  const text = FORBIDDEN_PUBLIC_TEXT_PATTERN.test(label)
-    ? `Open ${displayHost}`
-    : label;
+  const usesGenericLabel = FORBIDDEN_PUBLIC_TEXT_PATTERN.test(label);
+  const previous = inlines.at(-1);
+  const callToAction = usesGenericLabel
+    ? descriptionCallToAction(
+        previous?.type === "text" ? previous.text : "",
+      )
+    : null;
+  if (callToAction !== null) {
+    inlines.pop();
+    if (callToAction.prefix) {
+      pushPublicTextInline(inlines, callToAction.prefix);
+    }
+  }
+  const text =
+    callToAction?.label ?? (usesGenericLabel ? `Open ${displayHost}` : label);
   inlines.push(Object.freeze({ href, text, type: "link" }));
+}
+
+function mergeStandaloneDescriptionCallToActionBlocks(
+  blocks: ParsedMeetupDescriptionBlock[],
+): ParsedMeetupDescriptionBlock[] {
+  const merged: ParsedMeetupDescriptionBlock[] = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    const next = blocks[index + 1];
+    const callToAction = standaloneDescriptionCallToAction(block);
+    const link = standaloneGenericDescriptionLink(next);
+    if (callToAction !== null && link !== null) {
+      const content = Object.freeze([
+        ...(callToAction.prefix
+          ? [
+              Object.freeze({
+                text: callToAction.prefix,
+                type: "text" as const,
+              }),
+            ]
+          : []),
+        Object.freeze({
+          ...link,
+          text: callToAction.label,
+          type: "link" as const,
+        }),
+      ]);
+      merged.push(
+        block.type === "heading"
+          ? Object.freeze({ content, level: block.level, type: block.type })
+          : Object.freeze({ content, type: "paragraph" as const }),
+      );
+      index += 1;
+      continue;
+    }
+    merged.push(block);
+  }
+  return merged;
+}
+
+function standaloneDescriptionCallToAction(
+  block: ParsedMeetupDescriptionBlock | undefined,
+): DescriptionCallToAction | null {
+  if (block === undefined || "items" in block || block.content.length !== 1) {
+    return null;
+  }
+  const inline = block.content[0];
+  return inline.type === "text"
+    ? descriptionCallToAction(inline.text)
+    : null;
+}
+
+function standaloneGenericDescriptionLink(
+  block: ParsedMeetupDescriptionBlock | undefined,
+): Extract<ParsedMeetupDescriptionInline, { type: "link" }> | null {
+  if (
+    block === undefined ||
+    block.type !== "paragraph" ||
+    block.content.length !== 1
+  ) {
+    return null;
+  }
+  const inline = block.content[0];
+  return inline.type === "link" && isGenericDescriptionLinkText(inline.text)
+    ? inline
+    : null;
+}
+
+type DescriptionCallToAction = Readonly<{ label: string; prefix: string }>;
+
+function descriptionCallToAction(input: string): DescriptionCallToAction | null {
+  const normalized = input.trimEnd();
+  if (!normalized.endsWith(":")) return null;
+  const candidate = normalized.slice(0, -1);
+  const suffix = /(Buy\b[^:]{0,80}\bhere|Google Maps|(?:Official|Public|Reservation|Planning|Ticket|Tickets|YouTube|Video|Event|Film|Source) [^.!?:]{1,60}|(?:\d+-minute )?written summary)$/iu.exec(
+    candidate,
+  );
+  const suffixIndex = suffix?.index ?? null;
+  const wholeLabel = candidate.trim();
+  const start =
+    suffixIndex ??
+    (wholeLabel.length <= 80 &&
+    !/[.!?]/u.test(wholeLabel) &&
+    !/^[,;:]/u.test(wholeLabel)
+      ? candidate.indexOf(wholeLabel)
+      : null);
+  if (start === null) return null;
+  const label = candidate.slice(start).trim();
+  if (label.length < 3 || label.length > 80) return null;
+  const rawPrefix = candidate.slice(0, start);
+  const prefixIsOnlySpacing = rawPrefix.trim().length === 0;
+  return Object.freeze({
+    label: `${prefixIsOnlySpacing ? rawPrefix : ""}${label}`,
+    prefix: prefixIsOnlySpacing ? "" : rawPrefix,
+  });
+}
+
+function isGenericDescriptionLinkText(input: string): boolean {
+  return /^Open [a-z0-9.-]+$/iu.test(input);
 }
 
 function normalizeDescriptionInlineText(input: string): string {

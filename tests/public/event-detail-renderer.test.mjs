@@ -8,6 +8,7 @@ import {
   formatEventSchedule,
 } from "../../app/_components/EventCard.tsx";
 import { PublicEventDetailRenderer } from "../../app/_components/PublicEventDetailRenderer.tsx";
+import { CURATED_MEETUP_EVENT_ENRICHMENTS } from "../../lib/meetup-event-enrichment.ts";
 
 const projectRoot = new URL("../../", import.meta.url);
 
@@ -45,6 +46,31 @@ const TORONTO_EVENT = Object.freeze({
   weatherNote: null,
   whatToBring: null,
 });
+
+function renderImportedMeetupDescription(eventId) {
+  const imported = CURATED_MEETUP_EVENT_ENRICHMENTS[eventId];
+  assert.ok(imported, `Missing curated Meetup event ${eventId}`);
+  return renderToStaticMarkup(
+    createElement(PublicEventDetailRenderer, {
+      canonicalUrl: `https://preview.example/events/meetup-${eventId}`,
+      event: Object.freeze({
+        ...TORONTO_EVENT,
+        description: imported.description,
+        descriptionBlocks: imported.descriptionBlocks,
+        summary: imported.summary,
+        title: `Imported Meetup event ${eventId}`,
+      }),
+      showCalendarDownload: false,
+      showShareControls: false,
+    }),
+  );
+}
+
+function paragraphContaining(markup, text) {
+  return (markup.match(/<p(?: [^>]*)?>[\s\S]*?<\/p>/gu) ?? []).find(
+    (paragraph) => paragraph.includes(text),
+  );
+}
 
 test("curated Meetup descriptions render semantic headings, lists, and links", () => {
   const markup = renderToStaticMarkup(
@@ -107,6 +133,113 @@ test("curated Meetup descriptions render semantic headings, lists, and links", (
   assert.match(markup, /rel="noreferrer noopener"/u);
   assert.match(markup, /class="event-detail__rich-description"/u);
   assert.doesNotMatch(markup, /dangerouslySetInnerHTML/u);
+});
+
+test("affected Meetup imports keep structure and attach every source link to its call to action", async (t) => {
+  const viffTicketEvents = Object.freeze([
+    Object.freeze({
+      eventId: "315508432",
+      name: "Princess Mononoke literature listing",
+      ticketUrl:
+        "https://viff.org/whats-on/princess-mononoke/book/Vaejexo2jS",
+    }),
+    Object.freeze({
+      eventId: "315508537",
+      name: "Titanic literature listing",
+      ticketUrl: "https://viff.org/whats-on/titanic/book/F8fYoDZ6RC",
+    }),
+    Object.freeze({
+      eventId: "315510842",
+      name: "Matrix literature listing",
+      ticketUrl: "https://viff.org/whats-on/the-matrix/book/wKDENUM0oc",
+    }),
+    Object.freeze({
+      eventId: "315511475",
+      name: "Princess Mononoke main-group listing",
+      ticketUrl:
+        "https://viff.org/whats-on/princess-mononoke/book/Vaejexo2jS",
+    }),
+    Object.freeze({
+      eventId: "315511480",
+      name: "Titanic main-group listing",
+      ticketUrl: "https://viff.org/whats-on/titanic/book/F8fYoDZ6RC",
+    }),
+    Object.freeze({
+      eventId: "315511485",
+      name: "Matrix main-group listing",
+      ticketUrl: "https://viff.org/whats-on/the-matrix/book/wKDENUM0oc",
+    }),
+  ]);
+
+  for (const { eventId, name, ticketUrl } of viffTicketEvents) {
+    await t.test(name, () => {
+      const markup = renderImportedMeetupDescription(eventId);
+      assert.match(markup, /<h3>/u);
+      assert.match(markup, /<p>/u);
+      assert.match(markup, /<ul>/u);
+      const ticketParagraph = paragraphContaining(
+        markup,
+        "Buy your VIFF ticket here",
+      );
+      assert.ok(ticketParagraph, `${eventId} lost its ticket call to action`);
+      assert.ok(
+        ticketParagraph.includes(
+          `<a href="${ticketUrl}" rel="noreferrer noopener">Buy your VIFF ticket here</a>`,
+        ),
+        `${eventId} rendered its ticket call to action without its VIFF link`,
+      );
+      assert.doesNotMatch(markup, /Open viff\.org/u);
+      assert.doesNotMatch(
+        markup,
+        /<span>Buy your VIFF ticket here:?\s*<\/span>/u,
+      );
+    });
+  }
+
+  const magnificaMarkup = renderImportedMeetupDescription("315592402");
+  await t.test("Magnifica Humanitas preserves structure and its official source", () => {
+    assert.match(magnificaMarkup, /<h3>/u);
+    assert.match(magnificaMarkup, /<p>/u);
+    assert.match(magnificaMarkup, /<ul>/u);
+    const officialTextParagraph = paragraphContaining(
+      magnificaMarkup,
+      "Official Vatican text",
+    );
+    assert.ok(
+      officialTextParagraph,
+      "Magnifica Humanitas lost its official source CTA",
+    );
+    assert.ok(
+      officialTextParagraph.includes(
+        '<a href="https://www.vatican.va/content/leo-xiv/en/encyclicals/documents/20260515-magnifica-humanitas.html" rel="noreferrer noopener">Official Vatican text</a>',
+      ),
+      "Magnifica Humanitas rendered its official source CTA without the Vatican link",
+    );
+    assert.doesNotMatch(magnificaMarkup, /Open vatican\.va/u);
+    assert.doesNotMatch(
+      magnificaMarkup,
+      /<span>Official Vatican text:?\s*<\/span>/u,
+    );
+  });
+
+  await t.test("Magnifica Humanitas attaches its reading link to the CTA", () => {
+    const readingParagraph = paragraphContaining(
+      magnificaMarkup,
+      "Reading Magnifica Humanitas - my summary of it",
+    );
+    assert.ok(readingParagraph, "Magnifica Humanitas lost its reading CTA");
+    assert.ok(
+      readingParagraph.includes(
+        '<a href="https://drive.google.com/file/d/14_5C0FIh6IEZdnK_HUFgTL0iA4jvtTkV/view" rel="noreferrer noopener">Reading Magnifica Humanitas - my summary of it</a>',
+      ),
+      "Magnifica Humanitas rendered its reading CTA without the Drive link",
+    );
+    assert.doesNotMatch(magnificaMarkup, /Open drive\.google\.com/u);
+    assert.doesNotMatch(
+      magnificaMarkup,
+      /<span>Reading Magnifica Humanitas - my summary of it\s*:?\s*<\/span>/u,
+    );
+  });
 });
 
 test("event cards lead with a poster and expose verified associations and location facts", () => {

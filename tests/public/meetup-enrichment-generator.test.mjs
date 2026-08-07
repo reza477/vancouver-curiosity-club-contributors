@@ -287,18 +287,39 @@ Buy your VIFF ticket here:
     },
     {
       content: [
-        { text: "Buy your VIFF ticket here: ", type: "text" },
         {
           href: "https://viff.org/whats-on/example/book/abc",
-          text: "Open viff.org",
+          text: "Buy your VIFF ticket here",
           type: "link",
         },
       ],
       type: "paragraph",
     },
   ]);
-  assert.match(result.plainText, /Buy your VIFF ticket here: Open viff\.org/u);
+  assert.match(result.plainText, /Buy your VIFF ticket here/u);
+  assert.doesNotMatch(result.plainText, /Open viff\.org/u);
   assert.doesNotMatch(result.plainText, /https?:\/\//u);
+
+  const standaloneCallToAction = normalizePublicDescription(`Short summary
+A safe event description with a separate source link.
+
+Reading Magnifica Humanitas - my summary of it:
+
+[https://drive.google.com/file/d/example/view](https://drive.google.com/file/d/example/view)`);
+  assert.deepEqual(standaloneCallToAction.blocks.at(-1), {
+    content: [
+      {
+        href: "https://drive.google.com/file/d/example/view",
+        text: "Reading Magnifica Humanitas - my summary of it",
+        type: "link",
+      },
+    ],
+    type: "paragraph",
+  });
+  assert.doesNotMatch(
+    standaloneCallToAction.plainText,
+    /Open drive\.google\.com/u,
+  );
 
   const unapproved = normalizePublicDescription(
     "Short summary\nA safe event description.\n\nResource\n[Open it](https://zoom.us/j/123456)",
