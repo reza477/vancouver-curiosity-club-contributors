@@ -5520,6 +5520,12 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   color: var(--ink);
 }
 
+.primary-nav a[data-primary-destination]:not([aria-current="page"]):hover,
+.primary-nav a[data-primary-destination]:not([aria-current="page"]):focus-visible {
+  background: var(--ink);
+  color: var(--paper);
+}
+
 .field-artwork__orbit,
 .field-artwork__disc {
   animation: none !important;
