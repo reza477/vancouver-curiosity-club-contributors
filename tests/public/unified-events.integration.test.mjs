@@ -14,6 +14,7 @@ import {
   listPublicEventCategoryOptions,
   listPublicEventSitemapSlugs,
   listRelatedPublicEvents,
+  queryPublicCalendarMonth,
   queryPublicEvents,
   queryPublicEventsForExport,
   resolveEditorialPublishedEventSelectionProofs,
@@ -2414,6 +2415,98 @@ test("combines validated filters and provides bounded stable pagination", async 
       JSON.stringify(invalid),
     );
   }
+});
+
+test("calendar month matches the bounded list union and fails closed on exposed collisions", async (t) => {
+  const database = await createFixture(t);
+  database.exec(`
+    UPDATE events
+    SET status = 'completed'
+    WHERE id = 'event_manual_related';
+  `);
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_calendar_completed_past",
+    slug: "organizer-calendar-completed-past",
+    title: "Completed July Organizer Event",
+    planningStatus: "completed",
+    startsAtUtcMs: Date.parse("2026-07-20T18:00:00.000Z"),
+    endsAtUtcMs: Date.parse("2026-07-20T20:00:00.000Z"),
+  });
+
+  const augustBounds = {
+    fromDate: "2026-08-01",
+    toDate: "2026-08-31",
+  };
+  const [past, upcoming, august] = await Promise.all([
+    queryPublicEvents(database, {
+      ...upcomingInput(),
+      ...augustBounds,
+      view: "past",
+    }),
+    queryPublicEvents(database, {
+      ...upcomingInput(),
+      ...augustBounds,
+      view: "upcoming",
+    }),
+    queryPublicCalendarMonth(database, {
+      organizationId: ORGANIZATION_ID,
+      nowUtcMs: NOW_UTC_MS,
+      todayDate: TODAY_DATE,
+      ...augustBounds,
+    }),
+  ]);
+  const boundedUnion = [
+    ...new Set([...past.events, ...upcoming.events].map(({ slug }) => slug)),
+  ].sort();
+  assert.deepEqual(
+    august.events.map(({ slug }) => slug).sort(),
+    boundedUnion,
+  );
+  assert.equal(august.hasMore, false);
+  for (const excludedSlug of [
+    "related-manual-conversation",
+    "cancelled-manual-event",
+    "meetup-cancelled-event",
+  ]) {
+    assert.equal(
+      august.events.some(({ slug }) => slug === excludedSlug),
+      false,
+      excludedSlug,
+    );
+  }
+
+  const july = await queryPublicCalendarMonth(database, {
+    organizationId: ORGANIZATION_ID,
+    nowUtcMs: NOW_UTC_MS,
+    todayDate: TODAY_DATE,
+    fromDate: "2026-07-01",
+    toDate: "2026-07-31",
+  });
+  assert.equal(
+    july.events.some(
+      ({ slug, status }) =>
+        slug === "organizer-calendar-completed-past" && status === "completed",
+    ),
+    true,
+  );
+
+  await insertOrganizerPublicEvent(database, {
+    id: "organizer_calendar_slug_collision",
+    slug: "manual-ideas-gathering",
+    title: "Calendar Collision Candidate",
+    startsAtUtcMs: Date.parse("2026-08-02T02:00:00.000Z"),
+    endsAtUtcMs: Date.parse("2026-08-02T04:00:00.000Z"),
+  });
+  await assert.rejects(
+    () =>
+      queryPublicCalendarMonth(database, {
+        organizationId: ORGANIZATION_ID,
+        nowUtcMs: NOW_UTC_MS,
+        todayDate: TODAY_DATE,
+        ...augustBounds,
+      }),
+    (error) => error?.code === "internal_error" && error?.status === 500,
+  );
 });
 
 test("sitemap slugs include only accessible stable public detail routes", async (t) => {

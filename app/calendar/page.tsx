@@ -13,6 +13,7 @@ import { readServerUtcMs } from "@/lib/server/clock";
 import { getRequestPublicOrganization } from "@/lib/server/public/request-cache";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
 import {
+  queryPublicCalendarMonth,
   queryPublicEventSlice,
   type PublicEventCardDto,
 } from "@/lib/server/public/events";
@@ -77,25 +78,25 @@ export default async function CalendarPage({
     const { database } = getRuntimeAuthConfiguration();
     const organization = await getRequestPublicOrganization(database);
     if (organization) {
-      let prefetchedUpcoming:
-        | Awaited<ReturnType<typeof queryPublicEventSlice>>
+      let loadedMonth:
+        | Awaited<ReturnType<typeof queryPublicCalendarMonth>>
         | null = null;
       if (raw.month === undefined) {
         const currentBounds = publicCalendarMonthBounds(
           resolvedMonth.month,
         );
-        const currentMonthUpcoming = await queryPublicEventSlice(database, {
+        loadedMonth = await queryPublicCalendarMonth(database, {
           organizationId: organization.id,
           nowUtcMs,
           todayDate,
-          view: "upcoming",
           fromDate: currentBounds.startDate,
           toDate: currentBounds.endDate,
-          page: 1,
-          pageSize: 48,
         });
-        const firstUpcoming = currentMonthUpcoming.events[0]
-          ? currentMonthUpcoming
+        const currentMonthUpcoming = loadedMonth.events.find((event) =>
+          isUpcomingCalendarEvent(event, nowUtcMs, todayDate),
+        );
+        const firstUpcomingDate = currentMonthUpcoming
+          ? publicEventCalendarStartDate(currentMonthUpcoming)
           : await queryPublicEventSlice(database, {
               organizationId: organization.id,
               nowUtcMs,
@@ -103,44 +104,35 @@ export default async function CalendarPage({
               view: "upcoming",
               page: 1,
               pageSize: 1,
-            });
+            }).then((page) =>
+              page.events[0]
+                ? publicEventCalendarStartDate(page.events[0])
+                : null,
+            );
         resolvedMonth = resolvePublicCalendarLandingMonth(
           raw.month,
           todayDate,
-          firstUpcoming.events[0]
-            ? publicEventCalendarStartDate(firstUpcoming.events[0])
-            : null,
+          firstUpcomingDate,
         );
         if (resolvedMonth.month === todayDate.slice(0, 7)) {
-          prefetchedUpcoming = currentMonthUpcoming;
+          events = mergeCalendarEvents([], loadedMonth.events);
+          hasMore = loadedMonth.hasMore;
+        } else {
+          loadedMonth = null;
         }
       }
-      const bounds = publicCalendarMonthBounds(resolvedMonth.month);
-      const [past, upcoming] = await Promise.all([
-        queryPublicEventSlice(database, {
+      if (loadedMonth === null) {
+        const bounds = publicCalendarMonthBounds(resolvedMonth.month);
+        loadedMonth = await queryPublicCalendarMonth(database, {
           organizationId: organization.id,
           nowUtcMs,
           todayDate,
-          view: "past",
           fromDate: bounds.startDate,
           toDate: bounds.endDate,
-          page: 1,
-          pageSize: 48,
-        }),
-        prefetchedUpcoming ??
-          queryPublicEventSlice(database, {
-            organizationId: organization.id,
-            nowUtcMs,
-            todayDate,
-            view: "upcoming",
-            fromDate: bounds.startDate,
-            toDate: bounds.endDate,
-            page: 1,
-            pageSize: 48,
-          }),
-      ]);
-      events = mergeCalendarEvents(past.events, upcoming.events);
-      hasMore = past.hasMore || upcoming.hasMore;
+        });
+        events = mergeCalendarEvents([], loadedMonth.events);
+        hasMore = loadedMonth.hasMore;
+      }
     }
   } catch {
     writeSafeLog("error", "public_calendar_unavailable", {
@@ -205,6 +197,19 @@ export default async function CalendarPage({
       </nav>
     </main>
   );
+}
+
+function isUpcomingCalendarEvent(
+  event: PublicEventCardDto,
+  nowUtcMs: number,
+  todayDate: string,
+): boolean {
+  if (event.status !== "confirmed" && event.status !== "tentative") {
+    return false;
+  }
+  return event.schedule.kind === "timed"
+    ? Date.parse(event.schedule.endsAtUtc) > nowUtcMs
+    : event.schedule.endDateExclusive > todayDate;
 }
 
 function mergeCalendarEvents(

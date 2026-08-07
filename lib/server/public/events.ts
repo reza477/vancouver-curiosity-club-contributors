@@ -1069,6 +1069,19 @@ export type PublicEventSliceDto = Readonly<{
   view: PublicEventListView;
 }>;
 
+export type QueryPublicCalendarMonthInput = Readonly<{
+  fromDate: unknown;
+  nowUtcMs: unknown;
+  organizationId: unknown;
+  todayDate: unknown;
+  toDate: unknown;
+}>;
+
+export type PublicCalendarMonthDto = Readonly<{
+  events: readonly PublicEventCardDto[];
+  hasMore: boolean;
+}>;
+
 export type GetPublicEventInput = Readonly<{
   organizationId: unknown;
   slug: unknown;
@@ -4216,6 +4229,109 @@ export async function queryPublicEventSlice(
     page: parsed.page,
     pageSize: parsed.pageSize,
     view: parsed.view,
+  });
+}
+
+const PUBLIC_CALENDAR_MONTH_EVENT_LIMIT = 96;
+
+/**
+ * Reads the calendar's complete past/upcoming union with one unified public
+ * projection. Confirmed and tentative events remain visible on either side of
+ * now; completed events are included only after they end, exactly matching the
+ * two list-query union that the month view previously assembled.
+ */
+export async function queryPublicCalendarMonth(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: QueryPublicCalendarMonthInput,
+): Promise<PublicCalendarMonthDto> {
+  const parsed = parsePublicEventQuery({
+    ...input,
+    page: 1,
+    pageSize: 48,
+    view: "upcoming",
+  });
+  if (
+    parsed.fromDate === null ||
+    parsed.fromUtcMs === null ||
+    parsed.toDateExclusive === null ||
+    parsed.toUtcMsExclusive === null
+  ) {
+    throw validationIssue(
+      "fromDate",
+      "invalid_date_range",
+      "Calendar month bounds are required.",
+    );
+  }
+  const result = await database
+    .prepare(
+      `${UNIFIED_PUBLIC_EVENT_CTE_SQL}
+       SELECT ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
+       FROM public_events AS public_event
+       WHERE (
+         public_event.event_status IN ('confirmed', 'tentative')
+         OR (
+           public_event.event_status = 'completed'
+           AND (
+             (
+               public_event.time_kind = 'timed'
+               AND public_event.ends_at_utc <= ?
+             )
+             OR (
+               public_event.time_kind = 'all_day'
+               AND public_event.all_day_end_date_exclusive <= ?
+             )
+           )
+         )
+       )
+       AND (
+         (
+           public_event.time_kind = 'timed'
+           AND public_event.ends_at_utc > ?
+         )
+         OR (
+           public_event.time_kind = 'all_day'
+           AND public_event.all_day_end_date_exclusive > ?
+         )
+       )
+       AND (
+         (
+           public_event.time_kind = 'timed'
+           AND public_event.starts_at_utc < ?
+         )
+         OR (
+           public_event.time_kind = 'all_day'
+           AND public_event.all_day_start_date < ?
+         )
+       )
+       ${publicEventOrderSql("upcoming")}
+       LIMIT ?`,
+    )
+    .bind(
+      parsed.organizationId,
+      parsed.organizationId,
+      parsed.organizationId,
+      parsed.nowUtcMs,
+      parsed.todayDate,
+      parsed.fromUtcMs,
+      parsed.fromDate,
+      parsed.toUtcMsExclusive,
+      parsed.toDateExclusive,
+      PUBLIC_CALENDAR_MONTH_EVENT_LIMIT + 1,
+    )
+    .all<Record<string, unknown>>();
+  assertSuccessfulResult(result);
+  const rows = result.results ?? [];
+  for (const row of rows) assertSinglePublicSlug(row);
+  const enrichedRows = await enrichPublicEventRows(
+    database,
+    parsed.organizationId,
+    rows.slice(0, PUBLIC_CALENDAR_MONTH_EVENT_LIMIT),
+  );
+  return Object.freeze({
+    events: Object.freeze(
+      enrichedRows.map((row) => toPublicEventCardDto(row)),
+    ),
+    hasMore: rows.length > PUBLIC_CALENDAR_MONTH_EVENT_LIMIT,
   });
 }
 
