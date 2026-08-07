@@ -14,6 +14,7 @@ import {
   formatPublicCalendarDate,
   formatPublicCalendarEventTime,
   formatPublicCalendarMonth,
+  isPublicCalendarEventUpcoming,
   publicCalendarMonthCells,
   publicEventCalendarStartDate,
 } from "@/lib/public-calendar";
@@ -35,6 +36,7 @@ export function PublicMonthCalendar({
   maxMonth,
   minMonth,
   month,
+  nowUtcMs,
   siteOrigin = null,
   todayDate,
 }: Readonly<{
@@ -43,6 +45,7 @@ export function PublicMonthCalendar({
   maxMonth: string;
   minMonth: string;
   month: string;
+  nowUtcMs: number;
   siteOrigin?: string | null;
   todayDate: string;
 }>) {
@@ -58,6 +61,13 @@ export function PublicMonthCalendar({
         ]),
       ),
     [cells, events],
+  );
+  const mobileAgendaEvents = useMemo(
+    () =>
+      events.filter((event) =>
+        isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
+      ),
+    [events, nowUtcMs, todayDate],
   );
   const eventDates = [...events]
     .map(publicEventCalendarStartDate)
@@ -288,7 +298,7 @@ export function PublicMonthCalendar({
             Click or tap a date to select it. Its details stay open until you
             select another date. Arrow keys move between days.
           </p>
-          {events.length > 0 ? (
+          {mobileAgendaEvents.length > 0 ? (
             <section
               className="public-calendar__mobile-agenda"
               aria-labelledby="public-calendar-mobile-agenda-title"
@@ -300,7 +310,7 @@ export function PublicMonthCalendar({
                 </h2>
               </div>
               <div className="public-calendar__mobile-agenda-list">
-                {events.slice(0, 12).map((event) => {
+                {mobileAgendaEvents.map((event) => {
                   const eventDate = publicEventCalendarStartDate(event);
                   return (
                     <button
@@ -341,12 +351,6 @@ export function PublicMonthCalendar({
                   );
                 })}
               </div>
-              {events.length > 12 ? (
-                <p className="public-calendar__mobile-agenda-more">
-                  {events.length - 12} more events remain visible in the month
-                  grid.
-                </p>
-              ) : null}
             </section>
           ) : null}
         </div>

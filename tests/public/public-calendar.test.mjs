@@ -263,6 +263,7 @@ test("month calendar renders an accessible date grid, calendar actions, approved
       maxMonth: "2027-07",
       minMonth: "2025-07",
       month: "2026-07",
+      nowUtcMs: Date.parse("2026-07-06T07:00:00.000Z"),
       siteOrigin: "https://club.example",
       todayDate: "2026-07-06",
     }),
@@ -359,6 +360,7 @@ test("an empty today opens the nearest event instead of an empty first impressio
       maxMonth: "2027-07",
       minMonth: "2025-07",
       month: "2026-07",
+      nowUtcMs: Date.parse("2026-07-04T07:00:00.000Z"),
       siteOrigin: "https://club.example",
       todayDate: "2026-07-04",
     }),
@@ -376,6 +378,104 @@ test("an empty today opens the nearest event instead of an empty first impressio
   assert.doesNotMatch(
     markup,
     /<h3 id="public-calendar-day-heading">Thursday, July 2, 2026<\/h3>/u,
+  );
+});
+
+test("the phone agenda renders every upcoming event and excludes past events", async () => {
+  const pastEvents = Object.freeze([
+    timedEvent({
+      schedule: Object.freeze({
+        endsAtUtc: "2026-07-02T21:00:00.000Z",
+        kind: "timed",
+        startsAtUtc: "2026-07-02T19:00:00.000Z",
+        timeZone: "America/Vancouver",
+      }),
+      slug: "past-gathering-01",
+      title: "Past gathering 01",
+    }),
+    timedEvent({
+      schedule: Object.freeze({
+        endsAtUtc: "2026-07-05T21:00:00.000Z",
+        kind: "timed",
+        startsAtUtc: "2026-07-05T19:00:00.000Z",
+        timeZone: "America/Vancouver",
+      }),
+      slug: "past-gathering-02",
+      title: "Past gathering 02",
+    }),
+  ]);
+  const upcomingEvents = Object.freeze(
+    Array.from({ length: 13 }, (_, index) => {
+      const day = String(index + 11).padStart(2, "0");
+      const eventNumber = String(index + 1).padStart(2, "0");
+      return timedEvent({
+        schedule: Object.freeze({
+          endsAtUtc: `2026-07-${day}T21:00:00.000Z`,
+          kind: "timed",
+          startsAtUtc: `2026-07-${day}T19:00:00.000Z`,
+          timeZone: "America/Vancouver",
+        }),
+        slug: `upcoming-gathering-${eventNumber}`,
+        title: `Upcoming gathering ${eventNumber}`,
+      });
+    }),
+  );
+  const markup = renderToStaticMarkup(
+    createElement(PublicMonthCalendar, {
+      complete: true,
+      events: Object.freeze([...pastEvents, ...upcomingEvents]),
+      maxMonth: "2027-07",
+      minMonth: "2025-07",
+      month: "2026-07",
+      nowUtcMs: Date.parse("2026-07-10T19:00:00.000Z"),
+      siteOrigin: "https://club.example",
+      todayDate: "2026-07-10",
+    }),
+  );
+  const agendaMarkup = markup.match(
+    /<section class="public-calendar__mobile-agenda"[\s\S]*?<\/section>/u,
+  )?.[0];
+
+  assert.ok(agendaMarkup, "the phone agenda must render when events are upcoming");
+  assert.equal(
+    (agendaMarkup.match(/<button/gu) ?? []).length,
+    upcomingEvents.length,
+    "the phone agenda must not cap the number of upcoming events",
+  );
+  for (const event of pastEvents) {
+    assert.ok(
+      !agendaMarkup.includes(`<strong>${event.title}</strong>`),
+      `${event.title} must not appear in the phone agenda`,
+    );
+  }
+  for (const event of upcomingEvents) {
+    assert.ok(
+      agendaMarkup.includes(`<strong>${event.title}</strong>`),
+      `${event.title} must remain discoverable in the phone agenda`,
+    );
+  }
+  const nextThreeOffsets = upcomingEvents.slice(0, 3).map((event) =>
+    agendaMarkup.indexOf(`<strong>${event.title}</strong>`),
+  );
+  assert.ok(
+    nextThreeOffsets.every((offset) => offset >= 0) &&
+      nextThreeOffsets.every(
+        (offset, index) => index === 0 || offset > nextThreeOffsets[index - 1],
+      ),
+    "the next three event names must render in chronological order",
+  );
+
+  const styles = await readFile(
+    new URL("app/globals.css", projectRoot),
+    "utf8",
+  );
+  const phoneVisibilityRule = styles.match(
+    /@media \(max-width:\s*([\d.]+)rem\)[\s\S]*?\.public-calendar__mobile-agenda\s*\{[^}]*display:\s*block;/u,
+  );
+  assert.ok(phoneVisibilityRule, "the named-event agenda needs a mobile display rule");
+  assert.ok(
+    Number(phoneVisibilityRule[1]) * 16 >= 390,
+    "the named-event agenda must be visible at a 390px viewport",
   );
 });
 

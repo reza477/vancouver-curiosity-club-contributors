@@ -138,6 +138,19 @@ export function publicEventCalendarStartDate(
       );
 }
 
+export function isPublicCalendarEventUpcoming(
+  event: PublicEventCardDto,
+  nowUtcMs: number,
+  todayDate: string,
+): boolean {
+  if (event.status !== "confirmed" && event.status !== "tentative") {
+    return false;
+  }
+  return event.schedule.kind === "timed"
+    ? Date.parse(event.schedule.endsAtUtc) > nowUtcMs
+    : event.schedule.endDateExclusive > todayDate;
+}
+
 export function formatPublicCalendarMonth(month: string): string {
   const parsed = parseCalendarMonth(month);
   return new Intl.DateTimeFormat("en-CA", {

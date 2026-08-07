@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PublicMonthCalendar } from "@/app/_components/PublicMonthCalendar";
 import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
 import {
+  isPublicCalendarEventUpcoming,
   publicCalendarMonthBounds,
   publicEventCalendarStartDate,
   resolvePublicCalendarLandingMonth,
@@ -93,7 +94,7 @@ export default async function CalendarPage({
           toDate: currentBounds.endDate,
         });
         const currentMonthUpcoming = loadedMonth.events.find((event) =>
-          isUpcomingCalendarEvent(event, nowUtcMs, todayDate),
+          isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
         );
         const firstUpcomingDate = currentMonthUpcoming
           ? publicEventCalendarStartDate(currentMonthUpcoming)
@@ -183,6 +184,7 @@ export default async function CalendarPage({
         maxMonth={resolvedMonth.maxMonth}
         minMonth={resolvedMonth.minMonth}
         month={resolvedMonth.month}
+        nowUtcMs={nowUtcMs}
         siteOrigin={origin?.origin ?? null}
         todayDate={todayDate}
       />
@@ -197,19 +199,6 @@ export default async function CalendarPage({
       </nav>
     </main>
   );
-}
-
-function isUpcomingCalendarEvent(
-  event: PublicEventCardDto,
-  nowUtcMs: number,
-  todayDate: string,
-): boolean {
-  if (event.status !== "confirmed" && event.status !== "tentative") {
-    return false;
-  }
-  return event.schedule.kind === "timed"
-    ? Date.parse(event.schedule.endsAtUtc) > nowUtcMs
-    : event.schedule.endDateExclusive > todayDate;
 }
 
 function mergeCalendarEvents(
