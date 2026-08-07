@@ -197,13 +197,15 @@ test("Phase 7 export controls keep explicit useful touch targets", () => {
   );
 });
 
-test("global public navigation disables speculative RSC prefetches", () => {
+test("public navigation enables framework prefetch while private preview and organizer links stay opted out", () => {
   const header = source("app", "_components", "SiteHeader.tsx");
   const footer = source("app", "_components", "SiteFooter.tsx");
+  const preview = source("app", "_organizer", "PublicPreviewShell.tsx");
 
+  assert.match(header, /prefetchInternalLinks = true/u);
   assert.match(
     header,
-    /<Link[\s\S]*?href=\{item\.href\}[\s\S]*?prefetch=\{false\}/u,
+    /<Link[\s\S]*?href=\{item\.href\}[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
   );
   assert.match(header, /return Object\.freeze\(requiredNavigation\)/u);
   assert.doesNotMatch(
@@ -212,11 +214,46 @@ test("global public navigation disables speculative RSC prefetches", () => {
   );
   assert.match(
     footer,
-    /<Link[\s\S]*?href=\{item\.href\}[\s\S]*?prefetch=\{false\}/u,
+    /<Link[\s\S]*?href=\{item\.href\}[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
   );
+  assert.match(footer, /prefetchInternalLinks = true/u);
   assert.match(
     footer,
     /<Link href="\/organizer" prefetch=\{false\}>/u,
+  );
+  assert.equal(
+    (preview.match(/prefetchInternalLinks=\{false\}/gu) ?? []).length,
+    2,
+  );
+});
+
+test("public route loading feedback is accessible, stable, overflow-safe, and reduced-motion-safe", () => {
+  const loading = source("app", "loading.tsx");
+  const styles = source("app", "globals.css");
+
+  assert.match(loading, /className="route-loading"/u);
+  assert.match(loading, /aria-busy="true"/u);
+  assert.match(loading, /aria-labelledby="route-loading-status"/u);
+  assert.match(loading, /role="status"/u);
+  assert.match(loading, /aria-live="polite"/u);
+  assert.match(loading, /Loading the next page\.\.\./u);
+  assert.match(loading, /className="route-loading__skeleton" aria-hidden="true"/u);
+
+  assert.match(
+    styles,
+    /\.route-loading\s*\{[^}]*box-sizing:\s*border-box;[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*min-height:\s*clamp\([^;]+;[^}]*overflow-x:\s*clip;[^}]*contain:\s*layout paint;/su,
+  );
+  assert.match(
+    styles,
+    /\.wordmark,\s*\.primary-nav a,\s*\.footer-nav-group a\s*\{[^}]*min-block-size:\s*2\.75rem;/su,
+  );
+  assert.match(
+    styles,
+    /@media \(prefers-reduced-motion: no-preference\)\s*\{[\s\S]*\.route-loading__shape\s*\{[^}]*animation:\s*route-loading-pulse/su,
+  );
+  assert.match(
+    styles,
+    /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*\.route-loading__shape\s*\{[^}]*animation:\s*none;/su,
   );
 });
 

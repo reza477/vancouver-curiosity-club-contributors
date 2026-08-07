@@ -334,8 +334,12 @@ test("Events is an independent upcoming list with filters and no public diagnost
   assert.doesNotMatch(`${page}\n${renderer}`, /PublicMonthCalendar/u);
   assert.doesNotMatch(page, /refreshMeetupCalendarSourceIfDue/);
   assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/);
-  assert.match(maintenance, /attemptedMeetupRefresh/);
+  assert.match(maintenance, /schedulePublicMeetupRefresh/);
   assert.match(worker, /maintenanceRedirect/);
+  assert.match(
+    worker,
+    /const response = await handler\.fetch[\s\S]*?const securedResponse = secureResponse[\s\S]*?schedulePublicMeetupRefresh\([\s\S]*?ctx\.waitUntil\(task\)[\s\S]*?return securedResponse/u,
+  );
   assert.match(
     renderer,
     /state:\s*value\("state"\) === "past" \? "past" : "upcoming"/u,
@@ -350,7 +354,7 @@ test("Events is an independent upcoming list with filters and no public diagnost
     `${page}\n${renderer}`,
     /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,
   );
-  assert.match(calendar, /queryPublicEvents/);
+  assert.match(calendar, /queryPublicEventSlice/);
   assert.doesNotMatch(calendar, /readPublicMeetupSyncState/);
   assert.doesNotMatch(calendar, /CalendarSourceStatus|data-source-status/);
   assert.doesNotMatch(
@@ -365,7 +369,7 @@ test("Events is an independent upcoming list with filters and no public diagnost
     /<Link href="\/events">List<\/Link>[\s\S]*?aria-current="page" href="\/calendar"/u,
   );
   assert.match(calendar, /path:\s*"\/calendar"/);
-  assert.match(calendar, /queryPublicEvents/);
+  assert.match(calendar, /queryPublicEventSlice/);
   assert.doesNotMatch(calendar, /permanentRedirect/);
   assert.match(projection, /UNIFIED_PUBLIC_EVENT_CTE_SQL/);
   assert.match(projection, /generation\.state = 'published'/);

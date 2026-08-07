@@ -105,6 +105,7 @@ export async function PublicPreviewShell({
         brandName={shell.site.brandName}
         logoAssetId={shell.site.logoAssetId}
         navigation={shell.navigation.header}
+        prefetchInternalLinks={false}
         privateMedia
       />
       <div
@@ -125,6 +126,7 @@ export async function PublicPreviewShell({
         location={shell.site.locationLabel}
         mission={shell.site.footerMission}
         navigation={shell.navigation.footer}
+        prefetchInternalLinks={false}
       />
     </div>
   );

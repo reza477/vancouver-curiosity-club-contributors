@@ -1,15 +1,17 @@
 import type { D1DatabaseLike } from "../auth";
 import {
-  getPublicPageContent,
-  loadPublicCatalog,
   type PublicCatalogDto,
   type PublicPageDto,
 } from "./catalog";
 import { vancouverCalendarDate } from "./date";
 import {
-  queryPublicEvents,
+  queryPublicEventSlice,
   type PublicEventCardDto,
 } from "./events";
+import {
+  getRequestPublicCatalog,
+  getRequestPublicPageContent,
+} from "./request-cache";
 
 export type PublicHomeData = Readonly<{
   catalog: PublicCatalogDto;
@@ -29,12 +31,12 @@ export async function loadPublicHomeData(
     organizationId: string;
   }>,
 ): Promise<PublicHomeData | null> {
-  const catalog = await loadPublicCatalog(database);
+  const catalog = await getRequestPublicCatalog(database);
   if (!catalog) return null;
 
   const [page, eventPage] = await Promise.all([
-    getPublicPageContent(database, "home"),
-    queryPublicEvents(database, {
+    getRequestPublicPageContent(database, "home"),
+    queryPublicEventSlice(database, {
       organizationId: input.organizationId,
       nowUtcMs: input.nowUtcMs,
       todayDate: vancouverCalendarDate(input.nowUtcMs),

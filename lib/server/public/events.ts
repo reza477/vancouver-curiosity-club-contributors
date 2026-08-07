@@ -1061,6 +1061,14 @@ export type PublicEventPageDto = Readonly<{
   view: PublicEventListView;
 }>;
 
+export type PublicEventSliceDto = Readonly<{
+  events: readonly PublicEventCardDto[];
+  hasMore: boolean;
+  page: number;
+  pageSize: number;
+  view: PublicEventListView;
+}>;
+
 export type GetPublicEventInput = Readonly<{
   organizationId: unknown;
   slug: unknown;
@@ -4156,6 +4164,57 @@ export async function queryPublicEvents(
     page: parsed.page,
     pageSize: parsed.pageSize,
     hasMore: offset + events.length < totalCount,
+    view: parsed.view,
+  });
+}
+
+/**
+ * Reads one bounded card slice without running a second full-projection count.
+ * Use this for surfaces such as Home and Calendar that never display an exact
+ * result total. A limit-plus-one row proves whether another page exists, while
+ * every row that could be exposed still passes the public-slug collision and
+ * source/Club/Program revalidation boundary.
+ */
+export async function queryPublicEventSlice(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: QueryPublicEventsInput,
+): Promise<PublicEventSliceDto> {
+  const parsed = parsePublicEventQuery(input);
+  const filter = buildPublicEventFilter(parsed);
+  const commonBindings: D1Value[] = [
+    parsed.organizationId,
+    parsed.organizationId,
+    parsed.organizationId,
+    ...filter.bindings,
+  ];
+  const offset = (parsed.page - 1) * parsed.pageSize;
+  const result = await database
+    .prepare(
+      `${UNIFIED_PUBLIC_EVENT_CTE_SQL}
+       SELECT ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
+       FROM public_events AS public_event
+       WHERE ${filter.sql}
+       ${publicEventOrderSql(parsed.view)}
+       LIMIT ? OFFSET ?`,
+    )
+    .bind(...commonBindings, parsed.pageSize + 1, offset)
+    .all<Record<string, unknown>>();
+  assertSuccessfulResult(result);
+  const rows = result.results ?? [];
+  for (const row of rows) assertSinglePublicSlug(row);
+  const hasMore = rows.length > parsed.pageSize;
+  const enrichedRows = await enrichPublicEventRows(
+    database,
+    parsed.organizationId,
+    rows.slice(0, parsed.pageSize),
+  );
+  return Object.freeze({
+    events: Object.freeze(
+      enrichedRows.map((row) => toPublicEventCardDto(row)),
+    ),
+    hasMore,
+    page: parsed.page,
+    pageSize: parsed.pageSize,
     view: parsed.view,
   });
 }

@@ -206,8 +206,12 @@ test("Events defaults to a list while Calendar remains the optional month view",
   );
   assert.doesNotMatch(events, /refreshMeetupCalendarSourceIfDue/u);
   assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/u);
-  assert.match(maintenance, /attemptedMeetupRefresh/u);
+  assert.match(maintenance, /schedulePublicMeetupRefresh/u);
   assert.match(worker, /maintenanceRedirect/u);
+  assert.match(
+    worker,
+    /const response = await handler\.fetch[\s\S]*?const securedResponse = secureResponse[\s\S]*?schedulePublicMeetupRefresh\([\s\S]*?ctx\.waitUntil\(task\)[\s\S]*?return securedResponse/u,
+  );
 });
 
 test("public editorial surfaces use D1 readers without dead forms or discussion claims", async () => {

@@ -4,13 +4,13 @@ import { HomePageRenderer } from "@/app/_components/HomePageRenderer";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import {
-  resolvePublicOrganization,
   type PublicCatalogDto,
   type PublicPageDto,
 } from "@/lib/server/public/catalog";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 import { loadPublicHomeData } from "@/lib/server/public/home";
 import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
+import { getRequestPublicOrganization } from "@/lib/server/public/request-cache";
 import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
@@ -61,7 +61,7 @@ async function loadHome(): Promise<{
 } | null> {
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (!organization) return null;
     const nowUtcMs = readServerUtcMs();
     return loadPublicHomeData(database, {

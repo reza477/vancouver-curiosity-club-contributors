@@ -10,10 +10,10 @@ import {
 } from "@/lib/public-calendar";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
-import { resolvePublicOrganization } from "@/lib/server/public/catalog";
+import { getRequestPublicOrganization } from "@/lib/server/public/request-cache";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
 import {
-  queryPublicEvents,
+  queryPublicEventSlice,
   type PublicEventCardDto,
 } from "@/lib/server/public/events";
 import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
@@ -75,10 +75,10 @@ export default async function CalendarPage({
 
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (organization) {
       if (raw.month === undefined) {
-        const firstUpcoming = await queryPublicEvents(database, {
+        const firstUpcoming = await queryPublicEventSlice(database, {
           organizationId: organization.id,
           nowUtcMs,
           todayDate,
@@ -96,7 +96,7 @@ export default async function CalendarPage({
       }
       const bounds = publicCalendarMonthBounds(resolvedMonth.month);
       const [past, upcoming] = await Promise.all([
-        queryPublicEvents(database, {
+        queryPublicEventSlice(database, {
           organizationId: organization.id,
           nowUtcMs,
           todayDate,
@@ -106,7 +106,7 @@ export default async function CalendarPage({
           page: 1,
           pageSize: 48,
         }),
-        queryPublicEvents(database, {
+        queryPublicEventSlice(database, {
           organizationId: organization.id,
           nowUtcMs,
           todayDate,

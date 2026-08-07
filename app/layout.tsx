@@ -8,12 +8,14 @@ import {
 } from "@/lib/server/public/origin";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import {
-  getPublicSiteContext,
-  loadPublicCatalog,
-  resolvePublicOrganization,
   type PublicNavigationItemDto,
   type PublicSiteContextDto,
 } from "@/lib/server/public/catalog";
+import {
+  getRequestPublicCatalog,
+  getRequestPublicOrganization,
+  getRequestPublicSiteContext,
+} from "@/lib/server/public/request-cache";
 import {
   resolveMediaAssetsForRendering,
   type ResponsiveMediaAssetDto,
@@ -77,8 +79,8 @@ export async function generateMetadata(): Promise<Metadata> {
     try {
       const { database } = getRuntimeAuthConfiguration();
       const [site, organization] = await Promise.all([
-        getPublicSiteContext(database),
-        resolvePublicOrganization(database),
+        getRequestPublicSiteContext(database),
+        getRequestPublicOrganization(database),
       ]);
       publicSite = site;
       if (site) {
@@ -168,8 +170,8 @@ export default async function RootLayout({
     try {
       const { database } = getRuntimeAuthConfiguration();
       const [catalog, organization] = await Promise.all([
-        loadPublicCatalog(database),
-        resolvePublicOrganization(database),
+        getRequestPublicCatalog(database),
+        getRequestPublicOrganization(database),
       ]);
       if (catalog) {
         let logoAssetId: string | null = null;

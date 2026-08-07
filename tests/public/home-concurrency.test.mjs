@@ -90,7 +90,7 @@ test("Home bounds peak D1 read concurrency at the catalog fan-out of five", asyn
     homeSource,
     /view:\s*"upcoming"[\s\S]*?page:\s*1[\s\S]*?pageSize:\s*3/u,
   );
-  assert.equal(statementCount, 8);
+  assert.equal(statementCount, 7);
   assert.equal(
     peak,
     5,

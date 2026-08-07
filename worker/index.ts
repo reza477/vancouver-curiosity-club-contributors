@@ -2,7 +2,11 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { ensureDatabaseInvariants } from "../lib/server/database/invariants";
-import { runRequestMaintenance } from "../lib/server/database/request-maintenance";
+import {
+  runRequestMaintenance,
+  schedulePublicMeetupRefresh,
+  type PublicMeetupRefreshFailure,
+} from "../lib/server/database/request-maintenance";
 import {
   clearInvitationTokenCookie,
   invitationTokenCookie,
@@ -58,6 +62,21 @@ function maintenanceRedirect(requestUrl: URL): Response {
 function maintenanceUnavailableResponse(): Response {
   return databaseInvariantUnavailableResponse(
     "A required data refresh could not be completed safely. Please try again shortly.",
+  );
+}
+
+function logPublicMeetupRefreshFailure(
+  failure: PublicMeetupRefreshFailure,
+): void {
+  console.error(
+    JSON.stringify({
+      code: "public_meetup_refresh_deferred",
+      event:
+        failure === "refresh_failed"
+          ? "public_meetup_refresh_failed"
+          : "public_meetup_refresh_unavailable",
+      level: "error",
+    }),
   );
 }
 
@@ -353,8 +372,8 @@ const worker = {
       } else {
         console.error(
           JSON.stringify({
-            code: "public_meetup_refresh_deferred",
-            event: "public_meetup_refresh_failed",
+            code: "starter_copy_reconciliation_deferred",
+            event: "starter_copy_reconciliation_failed",
             level: "error",
           }),
         );
@@ -383,12 +402,22 @@ const worker = {
       requestPathname,
     );
     const response = await handler.fetch(securedRequest, env, ctx);
-    return secureResponse(
+    const securedResponse = secureResponse(
       request,
       response,
       policy,
       normalizedPathname,
     );
+    schedulePublicMeetupRefresh(
+      env.DB,
+      {
+        method: request.method,
+        pathname: requestPathname,
+      },
+      (task) => ctx.waitUntil(task),
+      logPublicMeetupRefreshFailure,
+    );
+    return securedResponse;
   },
 };
 

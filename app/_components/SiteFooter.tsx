@@ -13,6 +13,7 @@ export function SiteFooter({
   location = "Vancouver, British Columbia",
   mission = null,
   navigation = [],
+  prefetchInternalLinks = true,
 }: Readonly<{
   brandName?: string;
   externalLinks?: readonly ExternalLink[];
@@ -20,6 +21,7 @@ export function SiteFooter({
   location?: string;
   mission?: string | null;
   navigation?: readonly PublicNavigationItemDto[];
+  prefetchInternalLinks?: boolean;
 }>) {
   const footerNavigation = normalizedFooterNavigation(navigation);
   return (
@@ -34,13 +36,21 @@ export function SiteFooter({
         <div className="footer-nav-group">
           <p>Explore</p>
           {footerNavigation.explore.map((item) => (
-            <FooterLink item={item} key={item.href} />
+            <FooterLink
+              item={item}
+              key={item.href}
+              prefetchInternalLinks={prefetchInternalLinks}
+            />
           ))}
         </div>
         <div className="footer-nav-group">
           <p>Field notes</p>
           {footerNavigation.policies.map((item) => (
-            <FooterLink item={item} key={item.href} />
+            <FooterLink
+              item={item}
+              key={item.href}
+              prefetchInternalLinks={prefetchInternalLinks}
+            />
           ))}
           <Link href="/organizer" prefetch={false}>
             Organizer Login
@@ -73,9 +83,13 @@ export function SiteFooter({
 
 function FooterLink({
   item,
-}: Readonly<{ item: PublicNavigationItemDto }>) {
+  prefetchInternalLinks,
+}: Readonly<{
+  item: PublicNavigationItemDto;
+  prefetchInternalLinks: boolean;
+}>) {
   return item.href.startsWith("/") ? (
-    <Link href={item.href} prefetch={false}>
+    <Link href={item.href} prefetch={prefetchInternalLinks}>
       {item.label}
     </Link>
   ) : (

@@ -10,7 +10,6 @@ import {
 import type { FieldArtworkTone } from "@/app/_components/FieldArtwork";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import {
-  getPublicPageContent,
   getPublicSiteContext,
   getPublicSlugRedirect,
   listPublicClubs,
@@ -21,6 +20,11 @@ import {
   type PublicPageDto,
   type PublicPageSectionDto,
 } from "@/lib/server/public/catalog";
+import {
+  getRequestPublicOrganization,
+  getRequestPublicPageContent,
+  getRequestPublicSiteContext,
+} from "@/lib/server/public/request-cache";
 import { readServerUtcMs } from "@/lib/server/clock";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
 import {
@@ -71,7 +75,7 @@ export async function loadEditorialPage(
 ): Promise<EditorialPageLoadState> {
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const page = await getPublicPageContent(database, slug);
+    const page = await getRequestPublicPageContent(database, slug);
     if (page) return Object.freeze({ kind: "available" as const, page });
     return Object.freeze({ kind: "missing" as const });
   } catch {
@@ -151,8 +155,8 @@ export async function buildEditorialMetadata({
   if (page) {
     try {
       const { database } = getRuntimeAuthConfiguration();
-      const organization = await resolvePublicOrganization(database);
-      site = await getPublicSiteContext(database);
+      const organization = await getRequestPublicOrganization(database);
+      site = await getRequestPublicSiteContext(database);
       const assetIds = [
         page.openGraphAssetId,
         site?.openGraphAssetId ?? null,

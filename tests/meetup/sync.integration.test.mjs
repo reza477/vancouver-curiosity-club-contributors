@@ -11,7 +11,10 @@ import {
   refreshMeetupCalendarSourceIfDue,
 } from "../../lib/server/meetup/index.ts";
 import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
-import { runRequestMaintenance } from "../../lib/server/database/request-maintenance.ts";
+import {
+  runRequestMaintenance,
+  schedulePublicMeetupRefresh,
+} from "../../lib/server/database/request-maintenance.ts";
 import { reconcileDueOrganizerPublications } from "../../lib/server/organizer/publication.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { normalizeAllDayConflictInterval } from "../../lib/server/organizer/conflict-domain.ts";
@@ -516,12 +519,22 @@ async function runEventsMaintenance(
   refreshOptions,
 ) {
   let refreshResult = null;
+  const backgroundTasks = [];
+  const failures = [];
   const maintenance = await runRequestMaintenance(
     database,
     { method: "GET", pathname: "/events" },
     {
       reconcilePublication: (binding) =>
         reconcileDueOrganizerPublications(binding, { limit: 1 }),
+    },
+  );
+  const scheduled = schedulePublicMeetupRefresh(
+    database,
+    { method: "GET", pathname: "/events" },
+    (task) => backgroundTasks.push(task),
+    (failure) => failures.push(failure),
+    {
       async refreshMeetup(binding) {
         refreshResult = await refreshMeetupCalendarSourceIfDue(
           binding,
@@ -531,7 +544,8 @@ async function runEventsMaintenance(
       },
     },
   );
-  return { maintenance, refreshResult };
+  await Promise.all(backgroundTasks);
+  return { failures, maintenance, refreshResult, scheduled };
 }
 
 function sourceOverlapDraftInput(title) {
@@ -2232,7 +2246,7 @@ async function assertNoManualRefreshResidue(database) {
   });
 }
 
-test("Worker refresh-on-view preflight plus a due bounded two-row slice stays within the D1 statement cap", async (t) => {
+test("Worker background refresh plus a due bounded two-row slice stays within the D1 statement cap", async (t) => {
   const innerDatabase = createDatabase();
   t.after(() => innerDatabase.close());
   await ensureDatabaseInvariantsReady(innerDatabase);
@@ -2273,10 +2287,9 @@ test("Worker refresh-on-view preflight plus a due bounded two-row slice stays wi
     },
   );
   const refreshed = firstMaintenance.refreshResult;
-  assert.deepEqual(firstMaintenance.maintenance, {
-    kind: "redirect",
-    source: "meetup",
-  });
+  assert.deepEqual(firstMaintenance.maintenance, { kind: "continue" });
+  assert.equal(firstMaintenance.scheduled, true);
+  assert.deepEqual(firstMaintenance.failures, []);
   assert.equal(
     refreshed.outcome,
     "partial",
@@ -2307,10 +2320,9 @@ test("Worker refresh-on-view preflight plus a due bounded two-row slice stays wi
     },
   );
   const completed = resumedMaintenance.refreshResult;
-  assert.deepEqual(resumedMaintenance.maintenance, {
-    kind: "redirect",
-    source: "meetup",
-  });
+  assert.deepEqual(resumedMaintenance.maintenance, { kind: "continue" });
+  assert.equal(resumedMaintenance.scheduled, true);
+  assert.deepEqual(resumedMaintenance.failures, []);
   assert.equal(completed.outcome, "completed");
   assert.equal(completed.counts.created, 1);
   assert.deepEqual(finalSliceRequest.counts(), {
@@ -2334,6 +2346,8 @@ test("Worker refresh-on-view preflight plus a due bounded two-row slice stays wi
   assert.deepEqual(idleMaintenance.maintenance, {
     kind: "continue",
   });
+  assert.equal(idleMaintenance.scheduled, true);
+  assert.deepEqual(idleMaintenance.failures, []);
   assert.equal(notDue.outcome, "not_due");
   assert.deepEqual(idleRequest.counts(), {
     batchLengths: [],
@@ -2341,8 +2355,8 @@ test("Worker refresh-on-view preflight plus a due bounded two-row slice stays wi
   });
 });
 
-test("Worker refresh-on-view conflict and failure paths redirect within the D1 statement cap", async (t) => {
-  await t.test("two rejected conflicts complete without route rendering", async (t) => {
+test("Worker background refresh conflict and failure paths stay within the D1 statement cap", async (t) => {
+  await t.test("two rejected conflicts do not block route rendering", async (t) => {
     const innerDatabase = createDatabase();
     t.after(() => innerDatabase.close());
     await ensureDatabaseInvariantsReady(innerDatabase);
@@ -2382,10 +2396,9 @@ test("Worker refresh-on-view conflict and failure paths redirect within the D1 s
       nowUtcMs: 2_000,
       organizationId: ORGANIZATION_ID,
     });
-    assert.deepEqual(result.maintenance, {
-      kind: "redirect",
-      source: "meetup",
-    });
+    assert.deepEqual(result.maintenance, { kind: "continue" });
+    assert.equal(result.scheduled, true);
+    assert.deepEqual(result.failures, []);
     assert.equal(result.refreshResult.outcome, "completed");
     assert.equal(result.refreshResult.counts.rejected, 2);
     assert.deepEqual(database.counts(), {
@@ -2398,7 +2411,7 @@ test("Worker refresh-on-view conflict and failure paths redirect within the D1 s
     );
   });
 
-  await t.test("failed fetch redirects to the durable failure state", async (t) => {
+  await t.test("failed fetch records durable failure without blocking rendering", async (t) => {
     const innerDatabase = createDatabase();
     t.after(() => innerDatabase.close());
     await ensureDatabaseInvariantsReady(innerDatabase);
@@ -2412,11 +2425,10 @@ test("Worker refresh-on-view conflict and failure paths redirect within the D1 s
       nowUtcMs: 2_000,
       organizationId: ORGANIZATION_ID,
     });
-    assert.deepEqual(result.maintenance, {
-      kind: "redirect",
-      source: "meetup",
-    });
+    assert.deepEqual(result.maintenance, { kind: "continue" });
+    assert.equal(result.scheduled, true);
     assert.equal(result.refreshResult.outcome, "failed");
+    assert.deepEqual(result.failures, ["refresh_failed"]);
     assert.deepEqual(database.counts(), {
       batchLengths: [2],
       statementCount: 9,

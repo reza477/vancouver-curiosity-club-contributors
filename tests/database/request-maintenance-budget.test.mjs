@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   runRequestMaintenance,
+  schedulePublicMeetupRefresh,
   shouldReconcilePhase7StarterCopy,
   shouldReconcileScheduledPublication,
   shouldRefreshPublicMeetupCalendar,
@@ -14,86 +15,27 @@ const DATABASE_INVARIANT_FAST_PATH = 2;
 const PUBLICATION_NO_DUE = 2;
 const PUBLICATION_DUE_MAXIMUM =
   ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM;
-const MEETUP_NOT_DUE = 1;
-const MEETUP_DUE_TWO_ROW_PARTIAL = 32;
 
-test("the Worker maintenance contract separates publication and Meetup refresh invocations", async (t) => {
-  await t.test("no due work continues to the route within budget", async () => {
+test("synchronous request maintenance excludes Meetup refresh work", async (t) => {
+  await t.test("no due publication continues to the route within budget", async () => {
     const trace = [];
     const result = await maintenance(
       trace,
       publicationResult(),
-      meetupResult("not_due"),
     );
     assert.deepEqual(result, { kind: "continue" });
-    assert.deepEqual(trace, ["publication", "meetup"]);
+    assert.deepEqual(trace, ["publication"]);
     assert.equal(
-      DATABASE_INVARIANT_FAST_PATH +
-        PUBLICATION_NO_DUE +
-        MEETUP_NOT_DUE,
-      5,
+      DATABASE_INVARIANT_FAST_PATH + PUBLICATION_NO_DUE,
+      4,
     );
   });
 
-  await t.test("a busy Meetup lease renders the last completed snapshot", async () => {
-    const trace = [];
-    const result = await maintenance(
-      trace,
-      publicationResult(),
-      meetupResult("busy"),
-    );
-    assert.deepEqual(result, { kind: "continue" });
-    assert.deepEqual(trace, ["publication", "meetup"]);
-  });
-
-  await t.test("completed Meetup attempts still redirect before rendering", async () => {
-    for (const outcome of [
-      "completed",
-      "partial",
-      "failed",
-      "not_modified",
-    ]) {
-      const trace = [];
-      const result = await maintenance(
-        trace,
-        publicationResult(),
-        meetupResult(outcome),
-      );
-      assert.deepEqual(
-        result,
-        { kind: "redirect", source: "meetup" },
-        outcome,
-      );
-      assert.deepEqual(trace, ["publication", "meetup"], outcome);
-    }
-  });
-
-  await t.test("a due Meetup slice redirects before route rendering", async () => {
-    const trace = [];
-    const result = await maintenance(
-      trace,
-      publicationResult(),
-      meetupResult("partial"),
-    );
-    assert.deepEqual(result, {
-      kind: "redirect",
-      source: "meetup",
-    });
-    assert.deepEqual(trace, ["publication", "meetup"]);
-    assert.equal(
-      DATABASE_INVARIANT_FAST_PATH +
-        PUBLICATION_NO_DUE +
-        MEETUP_DUE_TWO_ROW_PARTIAL,
-      36,
-    );
-  });
-
-  await t.test("a due publication redirects before Meetup or route work", async () => {
+  await t.test("a due publication still redirects before route work", async () => {
     const trace = [];
     const result = await maintenance(
       trace,
       publicationResult({ executed: 1, inspected: 1 }),
-      meetupResult("partial"),
     );
     assert.deepEqual(result, {
       kind: "redirect",
@@ -106,42 +48,7 @@ test("the Worker maintenance contract separates publication and Meetup refresh i
     );
   });
 
-  await t.test("co-due work takes two independently bounded invocations", async () => {
-    const firstTrace = [];
-    const first = await maintenance(
-      firstTrace,
-      publicationResult({ executed: 1, inspected: 1 }),
-      meetupResult("partial"),
-    );
-    assert.deepEqual(first, {
-      kind: "redirect",
-      source: "publication",
-    });
-    assert.deepEqual(firstTrace, ["publication"]);
-
-    const secondTrace = [];
-    const second = await maintenance(
-      secondTrace,
-      publicationResult(),
-      meetupResult("partial"),
-    );
-    assert.deepEqual(second, {
-      kind: "redirect",
-      source: "meetup",
-    });
-    assert.deepEqual(secondTrace, ["publication", "meetup"]);
-    assert.deepEqual(
-      [
-        DATABASE_INVARIANT_FAST_PATH + PUBLICATION_DUE_MAXIMUM,
-        DATABASE_INVARIANT_FAST_PATH +
-          PUBLICATION_NO_DUE +
-          MEETUP_DUE_TWO_ROW_PARTIAL,
-      ],
-      [31, 36],
-    );
-  });
-
-  await t.test("transient publication failure returns unavailable without Meetup work", async () => {
+  await t.test("transient publication failure remains fail closed", async () => {
     const trace = [];
     const result = await maintenance(
       trace,
@@ -149,13 +56,149 @@ test("the Worker maintenance contract separates publication and Meetup refresh i
         inspected: 1,
         transientFailures: 1,
       }),
-      meetupResult("partial"),
     );
     assert.deepEqual(result, {
       kind: "unavailable",
       source: "publication",
     });
     assert.deepEqual(trace, ["publication"]);
+  });
+});
+
+test("public Meetup refresh is one bounded background task per eligible request", async (t) => {
+  await t.test("rendering can complete while a due refresh remains pending", async () => {
+    const tasks = [];
+    const failures = [];
+    let refreshCalls = 0;
+    let releaseRefresh;
+    let settled = false;
+    const pendingRefresh = new Promise((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const synchronousMaintenance = await maintenance(
+      [],
+      publicationResult(),
+    );
+    assert.deepEqual(synchronousMaintenance, { kind: "continue" });
+
+    const scheduled = schedulePublicMeetupRefresh(
+      {},
+      { method: "GET", pathname: "/events.rsc" },
+      (task) => {
+        tasks.push(task);
+        task.then(() => {
+          settled = true;
+        });
+      },
+      (failure) => failures.push(failure),
+      {
+        async refreshMeetup() {
+          refreshCalls += 1;
+          return pendingRefresh;
+        },
+      },
+    );
+
+    assert.equal(scheduled, true);
+    assert.equal(tasks.length, 1);
+    assert.equal(settled, false);
+    await Promise.resolve();
+    assert.equal(refreshCalls, 1);
+    assert.equal(settled, false);
+
+    releaseRefresh(meetupResult("partial"));
+    await tasks[0];
+    assert.equal(settled, true);
+    assert.deepEqual(failures, []);
+  });
+
+  await t.test("durable and unexpected failures resolve organizer/log-only", async () => {
+    for (const scenario of [
+      {
+        expectedFailure: "refresh_failed",
+        refresh: async () => meetupResult("failed"),
+      },
+      {
+        expectedFailure: "refresh_unavailable",
+        refresh: async () => {
+          throw new Error("private technical failure");
+        },
+      },
+    ]) {
+      const tasks = [];
+      const failures = [];
+      assert.equal(
+        schedulePublicMeetupRefresh(
+          {},
+          { method: "GET", pathname: "/calendar" },
+          (task) => tasks.push(task),
+          (failure) => failures.push(failure),
+          { refreshMeetup: scenario.refresh },
+        ),
+        true,
+      );
+      assert.equal(tasks.length, 1);
+      await assert.doesNotReject(tasks[0]);
+      assert.deepEqual(failures, [scenario.expectedFailure]);
+    }
+  });
+
+  await t.test("every eligible document or RSC request registers one refresh", async () => {
+    for (const request of [
+      { method: "GET", pathname: "/" },
+      { method: "HEAD", pathname: "/calendar" },
+      { method: "GET", pathname: "/events.rsc" },
+    ]) {
+      const tasks = [];
+      let refreshCalls = 0;
+      assert.equal(
+        schedulePublicMeetupRefresh(
+          {},
+          request,
+          (task) => tasks.push(task),
+          undefined,
+          {
+            async refreshMeetup() {
+              refreshCalls += 1;
+              return meetupResult("busy");
+            },
+          },
+        ),
+        true,
+      );
+      assert.equal(tasks.length, 1, request.pathname);
+      await tasks[0];
+      assert.equal(refreshCalls, 1, request.pathname);
+    }
+  });
+
+  await t.test("ineligible requests schedule no work", async () => {
+    let refreshCalls = 0;
+    const tasks = [];
+    for (const request of [
+      { method: "POST", pathname: "/events" },
+      { method: "GET", pathname: "/events/example" },
+      { method: "GET", pathname: "/about" },
+    ]) {
+      assert.equal(
+        schedulePublicMeetupRefresh(
+          {},
+          request,
+          (task) => tasks.push(task),
+          undefined,
+          {
+            async refreshMeetup() {
+              refreshCalls += 1;
+              return meetupResult("not_due");
+            },
+          },
+        ),
+        false,
+      );
+    }
+    await Promise.resolve();
+    assert.equal(tasks.length, 0);
+    assert.equal(refreshCalls, 0);
   });
 });
 
@@ -249,10 +292,6 @@ test("one starter-copy outcome redirects before ordinary public work", async () 
         trace.push("starter-copy");
         return "processed";
       },
-      async refreshMeetup() {
-        trace.push("meetup");
-        return meetupResult("not_due");
-      },
     },
   );
   assert.deepEqual(result, { kind: "redirect", source: "cms" });
@@ -262,7 +301,6 @@ test("one starter-copy outcome redirects before ordinary public work", async () 
 async function maintenance(
   trace,
   publication,
-  meetup,
 ) {
   return runRequestMaintenance(
     {},
@@ -271,10 +309,6 @@ async function maintenance(
       async reconcilePublication() {
         trace.push("publication");
         return publication;
-      },
-      async refreshMeetup() {
-        trace.push("meetup");
-        return meetup;
       },
     },
   );

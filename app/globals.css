@@ -6410,3 +6410,156 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
     transform: none !important;
   }
 }
+
+/* Public route feedback reserves stable space while the next RSC payload loads. */
+.route-loading {
+  box-sizing: border-box;
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  width: 100%;
+  max-width: 108rem;
+  min-width: 0;
+  min-height: clamp(34rem, 72svh, 52rem);
+  margin-inline: auto;
+  padding:
+    clamp(2rem, 5vw, 4.5rem)
+    max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right))
+    clamp(3rem, 6vw, 5rem)
+    max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  overflow: hidden;
+  overflow-x: clip;
+  contain: layout paint;
+}
+
+.route-loading__status {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+}
+
+.route-loading__skeleton,
+.route-loading__masthead,
+.route-loading__card {
+  display: grid;
+  min-width: 0;
+}
+
+.route-loading__skeleton {
+  gap: clamp(2.5rem, 6vw, 5rem);
+}
+
+.route-loading__masthead {
+  gap: 0.9rem;
+  min-height: 14rem;
+  align-content: start;
+}
+
+.route-loading__shape {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  background: var(--paper-deep);
+}
+
+.route-loading__eyebrow {
+  width: min(13rem, 46%);
+  height: 0.8rem;
+}
+
+.route-loading__title {
+  width: min(48rem, 88%);
+  height: clamp(3.5rem, 8vw, 6rem);
+  margin-top: 0.55rem;
+}
+
+.route-loading__copy {
+  width: min(40rem, 82%);
+  height: 1rem;
+}
+
+.route-loading__copy--short {
+  width: min(29rem, 60%);
+}
+
+.route-loading__cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(1rem, 2.5vw, 2rem);
+  min-width: 0;
+}
+
+.route-loading__card {
+  gap: 0.8rem;
+  min-height: 18rem;
+  align-content: start;
+  padding: clamp(0.75rem, 2vw, 1.1rem);
+  border: 1px solid var(--line);
+}
+
+.route-loading__poster {
+  aspect-ratio: 3 / 2;
+}
+
+.route-loading__card-title {
+  width: 82%;
+  height: 1.45rem;
+}
+
+.route-loading__card-copy {
+  width: 64%;
+  height: 0.85rem;
+}
+
+.wordmark,
+.primary-nav a,
+.footer-nav-group a {
+  min-block-size: 2.75rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .route-loading__shape {
+    animation: route-loading-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes route-loading-pulse {
+  0%,
+  100% {
+    opacity: 0.52;
+  }
+
+  50% {
+    opacity: 0.82;
+  }
+}
+
+@media (max-width: 48rem) {
+  .route-loading {
+    min-height: clamp(32rem, 68svh, 44rem);
+  }
+
+  .route-loading__cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .route-loading__card {
+    min-height: 0;
+  }
+
+  .route-loading__poster {
+    aspect-ratio: 16 / 7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-loading__shape {
+    animation: none;
+  }
+}

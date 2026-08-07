@@ -15,11 +15,13 @@ const requiredNavigation = [
 export function SiteHeader({
   brandName = "Vancouver Curiosity Club",
   logoAssetId = null,
+  prefetchInternalLinks = true,
   privateMedia = false,
 }: Readonly<{
   brandName?: string;
   logoAssetId?: string | null;
   navigation?: readonly PublicNavigationItemDto[];
+  prefetchInternalLinks?: boolean;
   privateMedia?: boolean;
 }>) {
   const primaryNavigation = normalizedPrimaryNavigation();
@@ -29,7 +31,7 @@ export function SiteHeader({
         className="wordmark"
         href="/"
         aria-label={`${brandName} home`}
-        prefetch={false}
+        prefetch={prefetchInternalLinks}
       >
         {logoAssetId ? (
           <Image
@@ -56,7 +58,10 @@ export function SiteHeader({
         className="primary-nav"
         aria-label="Primary navigation"
       >
-        <NavigationLinks navigation={primaryNavigation} />
+        <NavigationLinks
+          navigation={primaryNavigation}
+          prefetchInternalLinks={prefetchInternalLinks}
+        />
       </nav>
     </header>
   );
@@ -64,8 +69,10 @@ export function SiteHeader({
 
 function NavigationLinks({
   navigation,
+  prefetchInternalLinks,
 }: Readonly<{
   navigation: readonly PublicNavigationItemDto[];
+  prefetchInternalLinks: boolean;
 }>) {
   const pathname = usePathname();
   return (
@@ -82,7 +89,7 @@ function NavigationLinks({
             data-primary-destination={item.label.toLowerCase()}
             href={item.href}
             key={item.href}
-            prefetch={false}
+            prefetch={prefetchInternalLinks}
           >
             {item.label}
           </Link>
