@@ -268,6 +268,7 @@ test("Owner backup route embeds the exact build source revision instead of an un
     "app/api/organizer/exports/backup.json/route.ts",
   );
   const vite = source("vite.config.ts");
+  const sourceRevision = source("build/source-revision.ts");
   assert.match(
     route,
     /sourceRevision:\s*__VCC_SOURCE_REVISION__/u,
@@ -277,8 +278,13 @@ test("Owner backup route embeds the exact build source revision instead of an un
     /sourceRevision:\s*"unavailable"/u,
   );
   assert.match(
-    vite,
+    sourceRevision,
     /execFileSync\("git",\s*\["rev-parse",\s*"HEAD"\]/u,
+  );
+  assert.match(vite, /import\s*\{\s*readSourceRevision\s*\}/u);
+  assert.match(
+    vite,
+    /readSourceRevision\(\{[\s\S]*requireClean:\s*command\s*===\s*"build"/u,
   );
   assert.match(
     vite,

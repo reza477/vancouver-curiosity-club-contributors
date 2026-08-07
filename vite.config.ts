@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
+import { readSourceRevision } from "./build/source-revision";
 import { sites } from "./build/sites-vite-plugin";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
@@ -11,7 +11,6 @@ const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
-const sourceRevision = readSourceRevision();
 
 const localBindingConfig = {
   main: "./worker/index.ts",
@@ -35,7 +34,10 @@ const localBindingConfig = {
     : [],
 };
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
+  const sourceRevision = readSourceRevision({
+    requireClean: command === "build",
+  });
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= "false";
@@ -62,25 +64,3 @@ export default defineConfig(async () => {
     ],
   };
 });
-
-function readSourceRevision(): string {
-  const configured = process.env.VCC_SOURCE_REVISION?.trim().toLowerCase();
-  if (configured && /^[0-9a-f]{7,64}$/u.test(configured)) {
-    return configured;
-  }
-  try {
-    const revision = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .trim()
-      .toLowerCase();
-    if (/^[0-9a-f]{7,64}$/u.test(revision)) return revision;
-  } catch {
-    // The explicit error below keeps provenance failure actionable.
-  }
-  throw new Error(
-    "A real Git source revision is required to build the Owner backup.",
-  );
-}
