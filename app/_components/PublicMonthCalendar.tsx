@@ -243,6 +243,7 @@ export function PublicMonthCalendar({
                             ]
                               .filter(Boolean)
                               .join(" ")}
+                            data-event-lane={dayEvents[0]?.lane?.slug}
                             data-public-calendar-date={cell.date}
                             onClick={() => {
                               setFocusDate(cell.date);
@@ -315,6 +316,7 @@ export function PublicMonthCalendar({
                   return (
                     <button
                       aria-pressed={eventDate === activeDate}
+                      data-event-lane={event.lane?.slug ?? "think"}
                       key={event.slug}
                       onClick={() => {
                         setFocusDate(eventDate);

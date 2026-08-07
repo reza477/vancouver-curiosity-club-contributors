@@ -278,7 +278,7 @@ function HomeHeroPoster({
         fetchPriority={index === 0 ? "high" : "auto"}
         height={event.artwork.dimensions.large.height}
         loading={index === 0 ? "eager" : "lazy"}
-        sizes="(max-width: 700px) 64vw, 25vw"
+        sizes="(max-width: 700px) 100vw, (max-width: 1120px) 50vw, 38vw"
         src={event.artwork.url}
         srcSet={responsiveImageSrcSet([
           {

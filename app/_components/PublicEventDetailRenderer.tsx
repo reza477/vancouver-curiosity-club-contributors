@@ -47,35 +47,37 @@ export function PublicEventDetailRenderer({
                 maxWidth: `${event.artwork.dimensions.large.width}px`,
               }}
             >
-              {/* The gated media route revalidates rights and published usage on every
-                  request. Next/Image's optimizer cache would bypass that revocation
-                  boundary, so this responsive image must load the controlled URLs
-                  directly. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt={event.artwork.altText ?? ""}
-                height={event.artwork.dimensions.large.height}
-                sizes="(max-width: 720px) 100vw, (max-width: 1280px) 44vw, 620px"
-                src={event.artwork.url}
-                srcSet={responsiveImageSrcSet([
-                  {
-                    url: event.artwork.srcSet.small,
-                    width: event.artwork.dimensions.small.width,
-                  },
-                  {
-                    url: event.artwork.srcSet.medium,
-                    width: event.artwork.dimensions.medium.width,
-                  },
-                  {
-                    url: event.artwork.srcSet.large,
-                    width: event.artwork.dimensions.large.width,
-                  },
-                ])}
-                style={{
-                  objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-                }}
-                width={event.artwork.dimensions.large.width}
-              />
+              <div className="event-detail__artwork-frame">
+                {/* The gated media route revalidates rights and published usage on every
+                    request. Next/Image's optimizer cache would bypass that revocation
+                    boundary, so this responsive image must load the controlled URLs
+                    directly. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  alt={event.artwork.altText ?? ""}
+                  height={event.artwork.dimensions.large.height}
+                  sizes="(max-width: 720px) 100vw, (max-width: 1280px) 48vw, 720px"
+                  src={event.artwork.url}
+                  srcSet={responsiveImageSrcSet([
+                    {
+                      url: event.artwork.srcSet.small,
+                      width: event.artwork.dimensions.small.width,
+                    },
+                    {
+                      url: event.artwork.srcSet.medium,
+                      width: event.artwork.dimensions.medium.width,
+                    },
+                    {
+                      url: event.artwork.srcSet.large,
+                      width: event.artwork.dimensions.large.width,
+                    },
+                  ])}
+                  style={{
+                    objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+                  }}
+                  width={event.artwork.dimensions.large.width}
+                />
+              </div>
               <figcaption>Artwork: {event.artwork.credit}</figcaption>
             </figure>
           ) : (

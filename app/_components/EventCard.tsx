@@ -33,38 +33,40 @@ export function EventCard({
     >
       {event.artwork ? (
         <figure className="event-card__artwork">
-          {/* The gated media route revalidates rights and published usage on every
-              request. Next/Image's optimizer cache would bypass that revocation
-              boundary, so this responsive image must load the controlled URLs
-              directly. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt={event.artwork.altText ?? ""}
-            decoding="async"
-            fetchPriority={priority ? "high" : "auto"}
-            height={event.artwork.dimensions.large.height}
-            loading={priority ? "eager" : "lazy"}
-            sizes="(max-width: 640px) 42vw, (max-width: 1100px) 32vw, 360px"
-            src={event.artwork.url}
-            srcSet={responsiveImageSrcSet([
-              {
-                url: event.artwork.srcSet.small,
-                width: event.artwork.dimensions.small.width,
-              },
-              {
-                url: event.artwork.srcSet.medium,
-                width: event.artwork.dimensions.medium.width,
-              },
-              {
-                url: event.artwork.srcSet.large,
-                width: event.artwork.dimensions.large.width,
-              },
-            ])}
-            style={{
-              objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-            }}
-            width={event.artwork.dimensions.large.width}
-          />
+          <div className="event-card__artwork-frame">
+            {/* The gated media route revalidates rights and published usage on every
+                request. Next/Image's optimizer cache would bypass that revocation
+                boundary, so this responsive image must load the controlled URLs
+                directly. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              alt={event.artwork.altText ?? ""}
+              decoding="async"
+              fetchPriority={priority ? "high" : "auto"}
+              height={event.artwork.dimensions.large.height}
+              loading={priority ? "eager" : "lazy"}
+              sizes="(max-width: 640px) 100vw, (max-width: 1100px) 38vw, 480px"
+              src={event.artwork.url}
+              srcSet={responsiveImageSrcSet([
+                {
+                  url: event.artwork.srcSet.small,
+                  width: event.artwork.dimensions.small.width,
+                },
+                {
+                  url: event.artwork.srcSet.medium,
+                  width: event.artwork.dimensions.medium.width,
+                },
+                {
+                  url: event.artwork.srcSet.large,
+                  width: event.artwork.dimensions.large.width,
+                },
+              ])}
+              style={{
+                objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+              }}
+              width={event.artwork.dimensions.large.width}
+            />
+          </div>
           <figcaption>Artwork: {event.artwork.credit}</figcaption>
         </figure>
       ) : (
