@@ -13,6 +13,29 @@ import {
 
 const projectRoot = new URL("../", import.meta.url);
 
+function getMaxWidthMediaBlocks(styles) {
+  const blocks = [];
+  const mediaStart = /@media\s*\(max-width:\s*([\d.]+)rem\)\s*\{/gu;
+
+  for (const match of styles.matchAll(mediaStart)) {
+    let depth = 1;
+    let cursor = match.index + match[0].length;
+
+    while (cursor < styles.length && depth > 0) {
+      if (styles[cursor] === "{") depth += 1;
+      if (styles[cursor] === "}") depth -= 1;
+      cursor += 1;
+    }
+
+    blocks.push({
+      body: styles.slice(match.index + match[0].length, cursor - 1),
+      maxWidthRem: Number(match[1]),
+    });
+  }
+
+  return blocks;
+}
+
 test("Meetup refresh selection runs canonical clubs first, finishes partial clubs, aggregates counts, and stops at a hard limit", async () => {
   const calls = [];
   const remainingOutcomes = new Map([
@@ -258,9 +281,31 @@ test("the public cultural identity is poster-led, lane-aware, and motion-safe", 
     /\.field-artwork__orbit,[\s\S]*?\.field-artwork__disc\s*\{\s*animation:\s*none !important;/u,
   );
   assert.match(styles, /\.public-calendar__mobile-agenda\s*\{\s*display:\s*none;/u);
+});
+
+test("the calendar switches to its named-event agenda at 768px", async () => {
+  const styles = await readFile(
+    new URL("app/globals.css", projectRoot),
+    "utf8",
+  );
+  const rulesApplicableAt768 = getMaxWidthMediaBlocks(styles)
+    .filter(({ maxWidthRem }) => maxWidthRem >= 48)
+    .map(({ body }) => body)
+    .join("\n");
   assert.match(
-    styles,
-    /@media \(max-width: 42rem\)[\s\S]*?\.public-calendar__mobile-agenda\s*\{[\s\S]*?display:\s*block;/u,
+    rulesApplicableAt768,
+    /\.public-calendar__layout\s*\{[^}]*grid-template-columns:\s*1fr;/u,
+    "the calendar must collapse to one column at an exact 768px viewport",
+  );
+  assert.match(
+    rulesApplicableAt768,
+    /\.public-calendar__day-panel\s*\{[^}]*position:\s*static;/u,
+    "the selected-day panel must stop being sticky at an exact 768px viewport",
+  );
+  assert.match(
+    rulesApplicableAt768,
+    /\.public-calendar__mobile-agenda\s*\{[^}]*display:\s*block;/u,
+    "the named-event agenda must be visible at an exact 768px viewport",
   );
 });
 

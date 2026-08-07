@@ -4107,7 +4107,7 @@ main,
   }
 }
 
-@media (max-width: 42rem) {
+@media (max-width: 52rem) {
   .public-calendar__layout {
     grid-template-columns: 1fr;
   }
@@ -5322,7 +5322,7 @@ body[data-surface="public"] {
   }
 }
 
-@media (max-width: 42rem) {
+@media (max-width: 52rem) {
   body[data-surface="public"] {
     background-attachment: scroll;
   }
