@@ -13,6 +13,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     header,
     footer,
     catalog,
+    requestCache,
     css,
     packageJson,
   ] =
@@ -36,6 +37,10 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
       new URL("lib/server/public/catalog-definitions.ts", projectRoot),
       "utf8",
     ),
+    readFile(
+      new URL("lib/server/public/request-cache.ts", projectRoot),
+      "utf8",
+    ),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
     readFile(new URL("package.json", projectRoot), "utf8"),
   ]);
@@ -45,9 +50,21 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.doesNotMatch(page, /CalendarPage|PublicMonthCalendar/u);
   assert.match(homeRenderer, /<StructuredData/u);
   assert.doesNotMatch(page, /loadCommunityDestinations|sameAs/u);
-  assert.match(homeData, /loadPublicCatalog/);
-  assert.match(homeData, /getPublicPageContent/);
-  assert.match(homeData, /queryPublicEvents/);
+  assert.match(homeData, /await getRequestPublicCatalog\(database\)/u);
+  assert.match(requestCache, /import \{ cache \} from "react";/u);
+  assert.match(
+    requestCache,
+    /getRequestPublicCatalog\s*=\s*cache\([\s\S]*?loadPublicCatalog\(database\)/u,
+  );
+  assert.match(
+    homeData,
+    /getRequestPublicPageContent\(database, "home"\)/u,
+  );
+  assert.match(
+    requestCache,
+    /getRequestPublicPageContent\s*=\s*cache\([\s\S]*?getPublicPageContent\(database, slug\)/u,
+  );
+  assert.match(homeData, /queryPublicEventSlice\(database, \{/u);
   assert.match(homeData, /pageSize:\s*3/u);
   assert.match(homeRenderer, /Books, films, ideas, walks & creative nights in Vancouver/u);
   assert.match(homeRenderer, /Come curious\. Leave knowing people\./u);
