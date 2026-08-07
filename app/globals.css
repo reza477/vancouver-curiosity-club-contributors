@@ -6260,8 +6260,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   .home-hero h1,
   .about-hero h1,
   .events-page-masthead h1,
-  .page-masthead__copy h1,
-  .event-detail__header h1 {
+  .page-masthead__copy h1 {
     font-size: clamp(3rem, 13vw, 3.5rem);
     line-height: 0.95;
   }
@@ -6344,6 +6343,37 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
     box-shadow: 0 0 0 2px var(--ink);
     font-weight: 800;
     text-decoration: none;
+  }
+
+  .event-detail__summary {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .event-detail__header {
+    order: 1;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .event-detail__header h1 {
+    max-width: none;
+    font-size: clamp(3rem, 13vw, 3.5rem);
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+  }
+
+  .event-detail__stamp {
+    display: none;
+  }
+
+  .event-detail__facts {
+    order: 2;
+  }
+
+  .event-detail__deck {
+    order: 3;
+    margin-top: 2rem;
   }
 
   .event-detail-page:has(.event-detail__mobile-rsvp) {

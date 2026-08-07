@@ -101,15 +101,16 @@ export function PublicEventDetailRenderer({
                   {event.category ? ` · ${event.category.name}` : ""}
                 </p>
                 <h1>{event.title}</h1>
-                {event.summary ? (
-                  <p className="event-detail__deck">{event.summary}</p>
-                ) : null}
               </div>
               <div className="event-detail__stamp" aria-hidden="true">
                 <span>{schedule.month}</span>
                 <strong>{schedule.day}</strong>
               </div>
             </header>
+
+            {event.summary ? (
+              <p className="event-detail__deck">{event.summary}</p>
+            ) : null}
 
             <section
               className="event-detail__facts"
