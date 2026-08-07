@@ -58,28 +58,28 @@ export default async function AboutPage() {
             <h2 id="about-lanes-title">Choose what catches your attention.</h2>
           </div>
           <div className="about-club__lane-grid">
-            <article>
+            <article data-event-lane="think">
               <h3>Think</h3>
               <p>
                 Books, film, philosophy, debate, psychology, artificial
                 intelligence, technology, and serious discussion.
               </p>
             </article>
-            <article>
+            <article data-event-lane="reset-and-make">
               <h3>Reset &amp; Make</h3>
               <p>
                 Meditation, journaling, poetry, creative workshops, reflective
                 practice, and silent reading.
               </p>
             </article>
-            <article>
+            <article data-event-lane="explore">
               <h3>Explore</h3>
               <p>
                 Walks, hikes, art, culture, neighbourhood outings, and
                 discovering Vancouver.
               </p>
             </article>
-            <article>
+            <article data-event-lane="eat-and-play">
               <h3>Eat &amp; Play</h3>
               <p>
                 Restaurant outings, karaoke, casual social events, and playful

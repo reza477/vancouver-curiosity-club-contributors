@@ -103,6 +103,61 @@ test("event titles use a clean color change instead of a hover underline", async
   );
 });
 
+test("Living Field Notes keeps the public identity mathematical, lane-aware, and motion-safe", async () => {
+  const [artwork, calendar, cards, about, contribute, styles] =
+    await Promise.all([
+      readFile(
+        new URL("app/_components/FieldArtwork.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(
+        new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(
+        new URL("app/_components/EventCard.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
+      readFile(
+        new URL("app/_components/EditorialRouteBodies.tsx", projectRoot),
+        "utf8",
+      ),
+      readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    ]);
+
+  for (const shape of ["orbit", "satellite", "spark"]) {
+    assert.match(artwork, new RegExp(`field-artwork__${shape}`, "u"));
+  }
+  assert.match(calendar, /data-event-lane=\{item\.lane\?\.slug\}/u);
+  assert.match(calendar, /data-event-lane=\{event\.lane\?\.slug\}/u);
+  assert.match(calendar, /className="public-calendar__mobile-agenda"/u);
+  assert.match(calendar, /todayHasEvents/u);
+  assert.match(cards, /data-event-lane=\{event\.lane\?\.slug\}/u);
+  for (const slug of [
+    "think",
+    "reset-and-make",
+    "explore",
+    "eat-and-play",
+  ]) {
+    assert.match(about, new RegExp(`data-event-lane="${slug}"`, "u"));
+  }
+  for (const path of ["volunteer", "host", "partner"]) {
+    assert.match(
+      contribute,
+      new RegExp(`data-contribution-path="${path}"`, "u"),
+    );
+  }
+  assert.match(styles, /Living Field Notes:/u);
+  assert.match(styles, /@media \(prefers-reduced-motion: no-preference\)/u);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/u);
+  assert.match(styles, /\.public-calendar__mobile-agenda\s*\{\s*display:\s*none;/u);
+  assert.match(
+    styles,
+    /@media \(max-width: 42rem\)[\s\S]*?\.public-calendar__mobile-agenda\s*\{[\s\S]*?display:\s*block;/u,
+  );
+});
+
 test("About explains the club inside the existing editorial main", async () => {
   const [about, editorialPage, catalog, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),

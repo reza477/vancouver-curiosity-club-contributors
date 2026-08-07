@@ -27,6 +27,7 @@ export function EventCard({
   return (
     <article
       className={`event-card${compact ? " event-card--compact" : ""}`}
+      data-event-lane={event.lane?.slug}
       data-event-status={event.status}
     >
       <div className="event-card__date" aria-hidden="true">

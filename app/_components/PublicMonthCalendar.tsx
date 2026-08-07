@@ -60,12 +60,21 @@ export function PublicMonthCalendar({
       ),
     [cells, events],
   );
-  const firstEventDate = [...events]
+  const eventDates = [...events]
     .map(publicEventCalendarStartDate)
     .filter((date) => date.startsWith(`${month}-`))
-    .sort()[0];
+    .sort();
+  const firstEventDate = eventDates[0];
+  const firstUpcomingEventDate = eventDates.find((date) => date >= todayDate);
+  const todayHasEvents = todayDate.startsWith(`${month}-`)
+    ? (eventsByDate.get(todayDate)?.length ?? 0) > 0
+    : false;
   const initialDate =
-    todayDate.startsWith(`${month}-`) ? todayDate : firstEventDate ?? `${month}-01`;
+    todayHasEvents
+      ? todayDate
+      : firstUpcomingEventDate ??
+        firstEventDate ??
+        (todayDate.startsWith(`${month}-`) ? todayDate : `${month}-01`);
   const [activeDate, setActiveDate] = useState(initialDate);
   const [focusDate, setFocusDate] = useState(initialDate);
   const dayPanelRef = useRef<HTMLElement>(null);
@@ -130,11 +139,14 @@ export function PublicMonthCalendar({
       aria-labelledby="public-calendar-title"
     >
       <header className="public-calendar__toolbar">
-        <div>
+        <div className="public-calendar__title-lockup">
           <p className="section-kicker">Month at a glance</p>
           <h1 id="public-calendar-title">
             {formatPublicCalendarMonth(month)}
           </h1>
+          <p className="public-calendar__invitation">
+            Pick a date. See the poster. Join the gathering.
+          </p>
         </div>
         <nav aria-label="Calendar months">
           {previousMonth ? (
@@ -252,7 +264,12 @@ export function PublicMonthCalendar({
                                 />
                                 <span className="public-calendar__day-titles">
                                   {dayEvents.slice(0, 2).map((item) => (
-                                    <span key={item.slug}>{item.title}</span>
+                                    <span
+                                      data-event-lane={item.lane?.slug}
+                                      key={item.slug}
+                                    >
+                                      {item.title}
+                                    </span>
                                   ))}
                                   {count > 2 ? (
                                     <span>+{count - 2} more</span>
@@ -272,6 +289,67 @@ export function PublicMonthCalendar({
             Click or tap a date to select it. Its details stay open until you
             select another date. Arrow keys move between days.
           </p>
+          {events.length > 0 ? (
+            <section
+              className="public-calendar__mobile-agenda"
+              aria-labelledby="public-calendar-mobile-agenda-title"
+            >
+              <div className="public-calendar__mobile-agenda-heading">
+                <p className="section-kicker">This month</p>
+                <h2 id="public-calendar-mobile-agenda-title">
+                  See what is coming up
+                </h2>
+              </div>
+              <div className="public-calendar__mobile-agenda-list">
+                {events.slice(0, 12).map((event) => {
+                  const eventDate = publicEventCalendarStartDate(event);
+                  return (
+                    <button
+                      aria-pressed={eventDate === activeDate}
+                      key={event.slug}
+                      onClick={() => {
+                        setFocusDate(eventDate);
+                        setActiveDate(eventDate);
+                        revealDayPanelForTouch();
+                      }}
+                      type="button"
+                    >
+                      {event.artwork ? (
+                        <>
+                          {/* The controlled media route revalidates public usage. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            alt=""
+                            decoding="async"
+                            height={event.artwork.dimensions.small.height}
+                            loading="lazy"
+                            src={event.artwork.srcSet.small}
+                            width={event.artwork.dimensions.small.width}
+                          />
+                        </>
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="public-calendar__mobile-agenda-fallback"
+                          data-event-lane={event.lane?.slug}
+                        />
+                      )}
+                      <span>
+                        <small>{formatPublicCalendarDate(eventDate)}</small>
+                        <strong>{event.title}</strong>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {events.length > 12 ? (
+                <p className="public-calendar__mobile-agenda-more">
+                  {events.length - 12} more events remain visible in the month
+                  grid.
+                </p>
+              ) : null}
+            </section>
+          ) : null}
         </div>
 
         <aside
@@ -349,6 +427,7 @@ function CalendarEventPreview({
   return (
     <article
       className="public-calendar-event"
+      data-event-lane={event.lane?.slug}
       data-event-status={event.status}
     >
       {event.artwork ? (

@@ -65,17 +65,17 @@ export function GetInvolvedRouteBody({
           </p>
         </div>
         <div className="contribution-paths">
-          <a href="#volunteer">
+          <a data-contribution-path="volunteer" href="#volunteer">
             <span aria-hidden="true">01</span>
             <strong>Volunteer</strong>
             <small>Help welcome people or support an event.</small>
           </a>
-          <Link href="/host-an-event">
+          <Link data-contribution-path="host" href="/host-an-event">
             <span aria-hidden="true">02</span>
             <strong>Host an event</strong>
             <small>Share a topic, activity, or gathering idea.</small>
           </Link>
-          <a href="#partner">
+          <a data-contribution-path="partner" href="#partner">
             <span aria-hidden="true">03</span>
             <strong>Offer a venue or partnership</strong>
             <small>Start a practical conversation with the organizers.</small>

@@ -289,6 +289,10 @@ test("month calendar renders an accessible date grid, calendar actions, approved
     markup,
     /data-public-calendar-date="2026-07-06"[\s\S]*?public-calendar__day-titles[\s\S]*?>Night walk<[\s\S]*?>Reading retreat</u,
   );
+  assert.match(markup, /class="public-calendar__mobile-agenda"/u);
+  assert.match(markup, />See what is coming up<\/h2>/u);
+  assert.match(markup, /src="\/media\/poster-1\/webp_480"/u);
+  assert.match(markup, /data-event-lane="explore"/u);
   assert.match(markup, /href="\/calendar\?month=2026-07">Today<\/a>/u);
 
   assert.match(markup, /src="\/media\/poster-1\/webp_1600"/u);
@@ -312,6 +316,53 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.match(
     markup,
     /https%3A%2F%2Fclub\.example%2Fevents%2Fnight-walk/u,
+  );
+});
+
+test("an empty today opens the nearest event instead of an empty first impression", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PublicMonthCalendar, {
+      complete: true,
+      events: Object.freeze([
+        timedEvent({
+          schedule: Object.freeze({
+            endsAtUtc: "2026-07-03T03:00:00.000Z",
+            kind: "timed",
+            startsAtUtc: "2026-07-03T01:00:00.000Z",
+            timeZone: "America/Vancouver",
+          }),
+          slug: "past-night-walk",
+          title: "Past night walk",
+        }),
+        timedEvent({
+          schedule: Object.freeze({
+            endsAtUtc: "2026-07-07T03:00:00.000Z",
+            kind: "timed",
+            startsAtUtc: "2026-07-07T01:00:00.000Z",
+            timeZone: "America/Vancouver",
+          }),
+        }),
+      ]),
+      maxMonth: "2027-07",
+      minMonth: "2025-07",
+      month: "2026-07",
+      siteOrigin: "https://club.example",
+      todayDate: "2026-07-04",
+    }),
+  );
+
+  assert.match(
+    markup,
+    /aria-label="Monday, July 6, 2026\. 1 event: Night walk\."[\s\S]*?aria-pressed="true"[\s\S]*?public-calendar__day--selected/u,
+  );
+  assert.match(
+    markup,
+    /<h3 id="public-calendar-day-heading">Monday, July 6, 2026<\/h3>/u,
+  );
+  assert.match(markup, />Night walk<\/a>/u);
+  assert.doesNotMatch(
+    markup,
+    /<h3 id="public-calendar-day-heading">Thursday, July 2, 2026<\/h3>/u,
   );
 });
 
