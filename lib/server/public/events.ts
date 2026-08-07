@@ -5783,12 +5783,22 @@ function buildPublicEventFilter(
     "category_slug",
     input.categorySlug,
   );
-  addEqualityFilter(
-    clauses,
-    bindings,
-    "attendance_mode",
-    input.attendanceModeDatabaseValue,
-  );
+  if (input.attendanceModeDatabaseValue !== null) {
+    // Meetup snapshots can gain a confirmed public venue before their legacy
+    // planning row is reclassified from location_undecided. Public DTOs already
+    // normalize that combination to in-person; apply the same effective mode to
+    // filtering so a venue-backed event cannot appear under the contradictory
+    // "Location undecided" filter or disappear from "In person".
+    clauses.push(`(
+      CASE
+        WHEN public_event.attendance_mode = 'location_undecided'
+         AND length(trim(COALESCE(public_event.venue_public_name, ''))) > 0
+        THEN 'in_person'
+        ELSE public_event.attendance_mode
+      END
+    ) = ?`);
+    bindings.push(input.attendanceModeDatabaseValue);
+  }
   if (input.excludeSlug !== null) {
     clauses.push("public_event.slug <> ?");
     bindings.push(input.excludeSlug);

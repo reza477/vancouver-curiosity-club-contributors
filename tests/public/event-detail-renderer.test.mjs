@@ -115,6 +115,7 @@ test("event cards lead with a poster and expose verified associations and locati
       compact: true,
       event: Object.freeze({
         ...TORONTO_EVENT,
+        attendanceMode: "location-undecided",
         artwork: Object.freeze({
           altText: "A confirmed event poster.",
           credit: "Vancouver Curiosity Club",
@@ -155,6 +156,7 @@ test("event cards lead with a poster and expose verified associations and locati
   assert.match(markup, />City culture<\/span>/u);
   assert.match(markup, /Vancouver Public Library/u);
   assert.match(markup, /350 W Georgia Street, Vancouver/u);
+  assert.doesNotMatch(markup, /Location undecided/u);
 });
 
 test("event leads keep RSVP and lane-specific poster fallback near the title", () => {

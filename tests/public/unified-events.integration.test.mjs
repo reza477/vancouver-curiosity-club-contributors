@@ -804,6 +804,44 @@ test("owner venue selection atomically overrides or suppresses synchronized Meet
     address: "900 Source Address",
     name: "Meetup Source Venue",
   });
+  assert.equal(event?.attendanceMode, "in-person");
+
+  const inPerson = await queryPublicEvents(database, {
+    ...upcomingInput(),
+    attendanceMode: "in-person",
+  });
+  assert.equal(
+    inPerson.events.some(({ slug }) => slug === "meetup-active-event"),
+    true,
+  );
+  const undecided = await queryPublicEvents(database, {
+    ...upcomingInput(),
+    attendanceMode: "location-undecided",
+  });
+  assert.equal(
+    undecided.events.some(({ slug }) => slug === "meetup-active-event"),
+    false,
+  );
+
+  const detail = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "meetup-active-event",
+  });
+  assert.ok(detail);
+  const jsonLd = buildPublicEventJsonLd(
+    detail,
+    "https://site.synthetic.invalid/events/meetup-active-event",
+    "Synthetic Site",
+  );
+  assert.equal(
+    jsonLd.eventAttendanceMode,
+    "https://schema.org/OfflineEventAttendanceMode",
+  );
+  assert.deepEqual(jsonLd.location, {
+    "@type": "Place",
+    address: "900 Source Address",
+    name: "Meetup Source Venue",
+  });
 });
 
 test("all exact cross-post aliases stay out of public projections while the canonical event and Reset remain visible", async (t) => {
