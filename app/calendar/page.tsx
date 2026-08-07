@@ -77,15 +77,33 @@ export default async function CalendarPage({
     const { database } = getRuntimeAuthConfiguration();
     const organization = await getRequestPublicOrganization(database);
     if (organization) {
+      let prefetchedUpcoming:
+        | Awaited<ReturnType<typeof queryPublicEventSlice>>
+        | null = null;
       if (raw.month === undefined) {
-        const firstUpcoming = await queryPublicEventSlice(database, {
+        const currentBounds = publicCalendarMonthBounds(
+          resolvedMonth.month,
+        );
+        const currentMonthUpcoming = await queryPublicEventSlice(database, {
           organizationId: organization.id,
           nowUtcMs,
           todayDate,
           view: "upcoming",
+          fromDate: currentBounds.startDate,
+          toDate: currentBounds.endDate,
           page: 1,
-          pageSize: 1,
+          pageSize: 48,
         });
+        const firstUpcoming = currentMonthUpcoming.events[0]
+          ? currentMonthUpcoming
+          : await queryPublicEventSlice(database, {
+              organizationId: organization.id,
+              nowUtcMs,
+              todayDate,
+              view: "upcoming",
+              page: 1,
+              pageSize: 1,
+            });
         resolvedMonth = resolvePublicCalendarLandingMonth(
           raw.month,
           todayDate,
@@ -93,6 +111,9 @@ export default async function CalendarPage({
             ? publicEventCalendarStartDate(firstUpcoming.events[0])
             : null,
         );
+        if (resolvedMonth.month === todayDate.slice(0, 7)) {
+          prefetchedUpcoming = currentMonthUpcoming;
+        }
       }
       const bounds = publicCalendarMonthBounds(resolvedMonth.month);
       const [past, upcoming] = await Promise.all([
@@ -106,16 +127,17 @@ export default async function CalendarPage({
           page: 1,
           pageSize: 48,
         }),
-        queryPublicEventSlice(database, {
-          organizationId: organization.id,
-          nowUtcMs,
-          todayDate,
-          view: "upcoming",
-          fromDate: bounds.startDate,
-          toDate: bounds.endDate,
-          page: 1,
-          pageSize: 48,
-        }),
+        prefetchedUpcoming ??
+          queryPublicEventSlice(database, {
+            organizationId: organization.id,
+            nowUtcMs,
+            todayDate,
+            view: "upcoming",
+            fromDate: bounds.startDate,
+            toDate: bounds.endDate,
+            page: 1,
+            pageSize: 48,
+          }),
       ]);
       events = mergeCalendarEvents(past.events, upcoming.events);
       hasMore = past.hasMore || upcoming.hasMore;
