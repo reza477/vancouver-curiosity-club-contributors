@@ -910,7 +910,10 @@ test("Calendar is an indexable month-at-a-glance public destination", async () =
   );
   assert.match(html, /Download upcoming events/u);
   assert.match(html, /iCalendar \(\.ics\)/u);
-  assert.match(html, /<h1 id="public-calendar-title">/u);
+  assert.match(
+    html,
+    /<h1(?=[^>]*class="public-calendar__title")(?=[^>]*id="public-calendar-title")[^>]*>/u,
+  );
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
   assert.doesNotMatch(html, /<h1>Calendar<\/h1>/u);
   assert.doesNotMatch(html, /List and filters/u);
