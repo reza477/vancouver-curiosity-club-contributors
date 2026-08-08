@@ -390,7 +390,7 @@ test("Events leads with a full calendar, keeps upcoming and past lists, and expo
 
   assert.match(page, /EventsPageRenderer/u);
   assert.match(page, /eventListValues\(raw\)/u);
-  assert.match(page, /queryPublicEvents/u);
+  assert.match(page, /queryPublicEventSlice/u);
   assert.match(page, /view:\s*values\.state/u);
   assert.match(page, /pageSize:\s*12/u);
   assert.doesNotMatch(page, /from "\.\.\/calendar\/page"/u);

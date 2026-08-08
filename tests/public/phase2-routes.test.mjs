@@ -169,7 +169,7 @@ test("Events combines a full calendar with upcoming and past lists while Calenda
 
   assert.match(events, /EventsPageRenderer/u);
   assert.match(events, /eventListValues\(raw\)/u);
-  assert.match(events, /queryPublicEvents/u);
+  assert.match(events, /queryPublicEventSlice/u);
   assert.match(events, /loadPublicMonthCalendar/u);
   assert.match(events, /view:\s*values\.state/u);
   assert.doesNotMatch(events, /from "\.\.\/calendar\/page"/u);

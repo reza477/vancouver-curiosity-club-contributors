@@ -12,7 +12,10 @@ import {
   getRequestPublicPageContent,
 } from "@/lib/server/public/request-cache";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
-import { queryPublicEvents } from "@/lib/server/public/events";
+import {
+  queryPublicEventSlice,
+  type PublicEventSliceDto,
+} from "@/lib/server/public/events";
 import {
   emptyPublicMonthCalendar,
   loadPublicMonthCalendar,
@@ -60,30 +63,65 @@ export default async function EventsPage({
   let pageContent:
     | Awaited<ReturnType<typeof getRequestPublicPageContent>>
     | null = null;
-  let eventPage = emptyEventPage(values.state);
+  let eventPage: PublicEventSliceDto = emptyEventPage(values.state);
   let calendar = emptyPublicMonthCalendar(raw.month, todayDate);
+  let eventListAvailable = true;
+  let calendarAvailable = true;
 
   try {
     const { database } = getRuntimeAuthConfiguration();
     const organization = await getRequestPublicOrganization(database);
     if (organization) {
-      [pageContent, eventPage, calendar] = await Promise.all([
-        getRequestPublicPageContent(database, "events"),
-        queryPublicEvents(database, {
+      try {
+        pageContent = await getRequestPublicPageContent(database, "events");
+      } catch {
+        writeSafeLog("warn", "public_events_content_unavailable", {
+          code: "partial_failure",
+          operation: "read_public_events_content",
+          route: "/events",
+          status: 200,
+        });
+      }
+
+      try {
+        eventPage = await queryPublicEventSlice(database, {
           organizationId: organization.id,
           nowUtcMs,
           todayDate,
           view: values.state,
           page: values.page,
           pageSize: 12,
-        }),
-        loadPublicMonthCalendar(database, {
+        });
+      } catch {
+        eventListAvailable = false;
+        writeSafeLog("error", "public_event_list_unavailable", {
+          code: "partial_failure",
+          operation: "list_public_events",
+          route: "/events",
+          status: 200,
+        });
+      }
+
+      try {
+        calendar = await loadPublicMonthCalendar(database, {
           organizationId: organization.id,
           nowUtcMs,
           rawMonth: raw.month,
           todayDate,
-        }),
-      ]);
+        });
+      } catch {
+        calendarAvailable = false;
+        writeSafeLog("error", "public_event_calendar_unavailable", {
+          code: "partial_failure",
+          operation: "read_public_event_calendar",
+          route: "/events",
+          status: 200,
+        });
+      }
+
+      if (!eventListAvailable && !calendarAvailable) {
+        throw new Error("Both public event projections are unavailable.");
+      }
     }
   } catch {
     writeSafeLog("error", "public_events_unavailable", {
@@ -99,7 +137,9 @@ export default async function EventsPage({
   return (
     <EventsPageRenderer
       calendar={calendar}
+      calendarAvailable={calendarAvailable}
       eventPage={eventPage}
+      eventListAvailable={eventListAvailable}
       nowUtcMs={nowUtcMs}
       pageContent={pageContent}
       siteOrigin={origin?.origin ?? null}

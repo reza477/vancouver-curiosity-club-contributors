@@ -408,15 +408,20 @@ const worker = {
       policy,
       normalizedPathname,
     );
-    schedulePublicMeetupRefresh(
-      env.DB,
-      {
-        method: request.method,
-        pathname: requestPathname,
-      },
-      (task) => ctx.waitUntil(task),
-      logPublicMeetupRefreshFailure,
-    );
+    const isRscPrefetch =
+      request.headers.get("RSC") === "1" ||
+      requestPathname.endsWith(".rsc");
+    if (securedResponse.status < 500 && !isRscPrefetch) {
+      schedulePublicMeetupRefresh(
+        env.DB,
+        {
+          method: request.method,
+          pathname: requestPathname,
+        },
+        (task) => ctx.waitUntil(task),
+        logPublicMeetupRefreshFailure,
+      );
+    }
     return securedResponse;
   },
 };

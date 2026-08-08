@@ -18,6 +18,8 @@ import {
   listRelatedPublicEvents,
   listUpcomingPublicEvents,
   listUpcomingPublicMeetupEvents,
+  queryPublicCalendarMonth,
+  queryPublicEventSlice,
   queryPublicEvents,
   queryPublicEventsForExport,
   revalidatePublicEventExportRecords,
@@ -140,6 +142,23 @@ test("public event statements compile and execute through real Miniflare D1", as
     view: "upcoming",
   };
   assert.equal((await queryPublicEvents(database, queryInput)).totalCount, 0);
+  assert.deepEqual(await queryPublicEventSlice(database, queryInput), {
+    events: [],
+    hasMore: false,
+    page: 1,
+    pageSize: 12,
+    view: "upcoming",
+  });
+  assert.deepEqual(
+    await queryPublicCalendarMonth(database, {
+      fromDate: "2026-08-01",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+      toDate: "2026-08-31",
+    }),
+    { events: [], hasMore: false },
+  );
   assert.deepEqual(
     await queryPublicEventsForExport(database, {
       ...queryInput,

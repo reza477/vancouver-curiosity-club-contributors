@@ -6,7 +6,10 @@ import type {
   PublicCommunityLinkDto,
   PublicPageDto,
 } from "@/lib/server/public/catalog";
-import type { PublicEventPageDto } from "@/lib/server/public/events";
+import type {
+  PublicEventPageDto,
+  PublicEventSliceDto,
+} from "@/lib/server/public/events";
 import type { PublicMonthCalendarData } from "@/lib/server/public/month-calendar";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 
@@ -18,7 +21,9 @@ export type EventListValues = Readonly<{
 
 export async function EventsPageRenderer({
   calendar,
+  calendarAvailable = true,
   eventPage,
+  eventListAvailable = true,
   nowUtcMs,
   pageContent,
   previewCommunityLinks,
@@ -29,7 +34,9 @@ export async function EventsPageRenderer({
   values,
 }: Readonly<{
   calendar: PublicMonthCalendarData;
-  eventPage: PublicEventPageDto;
+  calendarAvailable?: boolean;
+  eventPage: PublicEventSliceDto;
+  eventListAvailable?: boolean;
   nowUtcMs: number;
   pageContent: PublicPageDto | null;
   previewCommunityLinks?: readonly PublicCommunityLinkDto[];
@@ -76,6 +83,12 @@ export async function EventsPageRenderer({
       </header>
 
       <div className="events-page__calendar public-calendar-page">
+        {!calendarAvailable ? (
+          <div className="calendar-notice" role="status">
+            Calendar dates are temporarily unavailable. Gatherings are still
+            listed below.
+          </div>
+        ) : null}
         {calendar.resolvedMonth.invalid ? (
           <div className="calendar-notice" role="alert">
             That month is outside the available calendar window. The current
@@ -117,10 +130,20 @@ export async function EventsPageRenderer({
           <div>
             <p className="section-kicker">All public listings</p>
             <h2 id="events-list-title">{listTitle}</h2>
-            <p aria-live="polite">
-              {eventPage.totalCount}{" "}
-              {eventPage.totalCount === 1 ? "gathering" : "gatherings"}
-            </p>
+            {eventListAvailable ? (
+              <p aria-live="polite">
+                {eventPage.events.length}{" "}
+                {eventPage.events.length === 1
+                  ? "gathering shown"
+                  : "gatherings shown"}
+                {eventPage.hasMore ? " — more available" : ""}
+              </p>
+            ) : (
+              <p aria-live="polite">
+                The gathering list is temporarily unavailable. Choose a date
+                in the calendar or try again.
+              </p>
+            )}
           </div>
           <nav
             aria-label="Event timeframe"
@@ -145,7 +168,9 @@ export async function EventsPageRenderer({
         <EventCollection
           events={eventPage.events}
           emptyMessage={
-            values.state === "past"
+            !eventListAvailable
+              ? "The gathering list is temporarily unavailable. Choose a date in the calendar or try again."
+              : values.state === "past"
               ? "No past events are currently available in the public catalog."
               : "When a real event is published, it will appear here."
           }
@@ -172,7 +197,7 @@ function Pagination({
   page,
   values,
 }: Readonly<{
-  page: PublicEventPageDto;
+  page: PublicEventSliceDto;
   values: EventListValues;
 }>) {
   if (page.page === 1 && !page.hasMore) return null;
@@ -183,12 +208,7 @@ function Pagination({
       ) : (
         <span />
       )}
-      <span>
-        Page {page.page}
-        {page.totalCount > 0
-          ? ` of ${Math.ceil(page.totalCount / page.pageSize)}`
-          : ""}
-      </span>
+      <span>Page {page.page}</span>
       {page.hasMore ? (
         <Link href={pageHref(values, page.page + 1)}>Next →</Link>
       ) : (
