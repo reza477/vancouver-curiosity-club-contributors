@@ -251,7 +251,7 @@ test("public routes keep distinct canonical renderers and private previews keep 
   assert.match(homeRoute, /<HomePageRenderer/u);
   assert.doesNotMatch(homeRoute, /CalendarPage|PublicMonthCalendar/u);
   assert.match(eventsRoute, /<EventsPageRenderer/u);
-  assert.match(eventsRoute, /view:\s*raw\.state/u);
+  assert.match(eventsRoute, /view:\s*values\.state/u);
   assert.doesNotMatch(eventsRoute, /calendar\/page|readPublicMeetupSyncState/u);
   assert.match(calendarRoute, /<PublicMonthCalendar/u);
   assert.doesNotMatch(calendarRoute, /<HomePageRenderer|<EventsPageRenderer/u);

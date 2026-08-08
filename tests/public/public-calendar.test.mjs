@@ -281,7 +281,10 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.match(markup, /aria-pressed="true"/u);
   assert.match(markup, /aria-current="date"/u);
   assert.match(markup, /<table class="public-calendar__grid">/u);
-  assert.match(markup, /<h1 id="public-calendar-title">July 2026<\/h1>/u);
+  assert.match(
+    markup,
+    /<h1[^>]*id="public-calendar-title"[^>]*>July 2026<\/h1>/u,
+  );
   assert.equal((markup.match(/<h1/gu) ?? []).length, 1);
   assert.equal((markup.match(/<th scope="col">/gu) ?? []).length, 7);
   assert.match(markup, /tabindex="0"/u);

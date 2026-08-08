@@ -138,16 +138,12 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });
 
-test("Events defaults to a list while Calendar remains the optional month view", async () => {
-  const [calendar, events, renderer, filters, maintenance, worker] = await Promise.all([
+test("Events combines a full calendar with upcoming and past lists while Calendar remains canonical", async () => {
+  const [calendar, events, renderer, maintenance, worker] = await Promise.all([
     readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
     readFile(
       new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
-      "utf8",
-    ),
-    readFile(
-      new URL("app/_components/EventFilters.tsx", projectRoot),
       "utf8",
     ),
     readFile(
@@ -171,35 +167,32 @@ test("Events defaults to a list while Calendar remains the optional month view",
   );
 
   assert.match(events, /EventsPageRenderer/u);
-  assert.match(events, /eventFilterValues\(raw\)/u);
+  assert.match(events, /eventListValues\(raw\)/u);
   assert.match(events, /queryPublicEvents/u);
-  assert.match(events, /view:\s*raw\.state/u);
-  assert.doesNotMatch(events, /from "\.\.\/calendar\/page"|PublicMonthCalendar/u);
+  assert.match(events, /loadPublicMonthCalendar/u);
+  assert.match(events, /view:\s*values\.state/u);
+  assert.doesNotMatch(events, /from "\.\.\/calendar\/page"/u);
+  assert.match(`${events}\n${renderer}`, /PublicMonthCalendar/u);
   assert.match(
     renderer,
-    /state:\s*value\("state"\) === "past" \? "past" : "upcoming"/u,
+    /state:\s*params\.state === "past" \? "past" : "upcoming"/u,
   );
-  assert.match(
+  assert.match(renderer, />\s*Upcoming\s*</u);
+  assert.match(renderer, />\s*Past\s*</u);
+  assert.doesNotMatch(renderer, /<EventFilters\b/u);
+  assert.doesNotMatch(
     renderer,
-    /<Link aria-current="page" href="\/events">[\s\S]*?List[\s\S]*?<Link href="\/calendar">Month<\/Link>/u,
+    /public-export-actions|Download this public view|exportHref\(/u,
   );
-  assert.match(renderer, /<EventFilters/u);
+  assert.ok(
+    renderer.indexOf("<PublicMonthCalendar") <
+      renderer.indexOf("<EventCollection"),
+    "the full month calendar must appear before the event list",
+  );
   assert.match(renderer, /<EventCollection/u);
-  assert.match(filters, /method="get"/u);
-  assert.match(filters, /key=\{filterFormKey\(values\)\}/u);
-  assert.match(filters, /href=\{`\/events\?state=\$\{values\.state\}`\}/u);
-  assert.match(filters, /Clear Filters/u);
-  for (const name of [
-    "q",
-    "from",
-    "to",
-    "club",
-    "lane",
-    "category",
-    "format",
-  ]) {
-    assert.match(filters, new RegExp(`name="${name}"`));
-  }
+  assert.match(calendar, /Download upcoming events/u);
+  assert.match(calendar, /href="\/events\/calendar\.ics"/u);
+  assert.match(calendar, /href="\/events\/events\.csv"/u);
   assert.doesNotMatch(
     `${calendar}\n${events}\n${renderer}`,
     /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,

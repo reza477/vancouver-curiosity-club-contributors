@@ -200,7 +200,15 @@ test("homepage leads with the club purpose and eight distinct sections", async (
   assert.match(calendar, /<PublicMonthCalendar/u);
   assert.doesNotMatch(calendar, /<h1>Calendar<\/h1>/u);
   assert.doesNotMatch(calendar, /className="public-calendar-intro"/u);
-  assert.match(month, /<h1 id="public-calendar-title">/u);
+  assert.match(month, /headingLevel = 1/u);
+  assert.match(
+    month,
+    /const MonthHeading = headingLevel === 2 \? "h2" : "h1"/u,
+  );
+  assert.match(
+    month,
+    /<MonthHeading[\s\S]*?id="public-calendar-title"/u,
+  );
   assert.ok(
     calendar.indexOf('className="calendar-view-switcher event-view-switcher"') <
       calendar.indexOf("<PublicMonthCalendar"),
@@ -343,8 +351,16 @@ test("About is concise, reassuring, evidence-backed, and event-led", async () =>
   assert.match(styles, /\.about-founder-note/u);
 });
 
-test("Events is an independent upcoming list with filters and no public diagnostics", async () => {
-  const [page, renderer, calendar, filters, projection, worker, maintenance] =
+test("Events leads with a full calendar, keeps upcoming and past lists, and exposes no public diagnostics", async () => {
+  const [
+    page,
+    renderer,
+    calendar,
+    monthCalendar,
+    projection,
+    worker,
+    maintenance,
+  ] =
     await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
     readFile(
@@ -353,7 +369,7 @@ test("Events is an independent upcoming list with filters and no public diagnost
     ),
     readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
     readFile(
-      new URL("app/_components/EventFilters.tsx", projectRoot),
+      new URL("lib/server/public/month-calendar.ts", projectRoot),
       "utf8",
     ),
     readFile(
@@ -371,12 +387,12 @@ test("Events is an independent upcoming list with filters and no public diagnost
   ]);
 
   assert.match(page, /EventsPageRenderer/u);
-  assert.match(page, /eventFilterValues\(raw\)/u);
+  assert.match(page, /eventListValues\(raw\)/u);
   assert.match(page, /queryPublicEvents/u);
-  assert.match(page, /view:\s*raw\.state/u);
+  assert.match(page, /view:\s*values\.state/u);
   assert.match(page, /pageSize:\s*12/u);
   assert.doesNotMatch(page, /from "\.\.\/calendar\/page"/u);
-  assert.doesNotMatch(`${page}\n${renderer}`, /PublicMonthCalendar/u);
+  assert.match(`${page}\n${renderer}`, /PublicMonthCalendar/u);
   assert.doesNotMatch(page, /refreshMeetupCalendarSourceIfDue/);
   assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/);
   assert.match(maintenance, /schedulePublicMeetupRefresh/);
@@ -387,34 +403,42 @@ test("Events is an independent upcoming list with filters and no public diagnost
   );
   assert.match(
     renderer,
-    /state:\s*value\("state"\) === "past" \? "past" : "upcoming"/u,
+    /state:\s*params\.state === "past" \? "past" : "upcoming"/u,
   );
-  assert.match(
+  assert.match(renderer, />\s*Upcoming\s*</u);
+  assert.match(renderer, />\s*Past\s*</u);
+  assert.doesNotMatch(renderer, /<EventFilters\b/u);
+  assert.doesNotMatch(
     renderer,
-    /<Link aria-current="page" href="\/events">[\s\S]*?List[\s\S]*?<Link href="\/calendar">Month<\/Link>/u,
+    /public-export-actions|Download this public view|exportHref\(/u,
   );
-  assert.match(renderer, /<EventFilters/u);
+  assert.ok(
+    renderer.indexOf("<PublicMonthCalendar") <
+      renderer.indexOf("<EventCollection"),
+    "the full month calendar must appear before the event list",
+  );
   assert.match(renderer, /<EventCollection/u);
   assert.doesNotMatch(
     `${page}\n${renderer}`,
     /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,
   );
-  assert.match(calendar, /queryPublicEventSlice/);
+  assert.match(calendar, /loadPublicMonthCalendar/);
   assert.doesNotMatch(calendar, /readPublicMeetupSyncState/);
   assert.doesNotMatch(calendar, /CalendarSourceStatus|data-source-status/);
   assert.doesNotMatch(
     calendar,
     /latest Meetup check|Meetup refresh|last complete calendar|Last completed/u,
   );
-  assert.match(filters, /method="get"/);
-  assert.match(filters, /Clear Filters/);
   assert.match(calendar, /PublicMonthCalendar/);
   assert.match(
     calendar,
     /<Link href="\/events">List<\/Link>[\s\S]*?aria-current="page" href="\/calendar"/u,
   );
   assert.match(calendar, /path:\s*"\/calendar"/);
-  assert.match(calendar, /queryPublicEventSlice/);
+  assert.match(monthCalendar, /queryPublicEventSlice/);
+  assert.match(calendar, /Download upcoming events/);
+  assert.match(calendar, /href="\/events\/calendar\.ics"/);
+  assert.match(calendar, /href="\/events\/events\.csv"/);
   assert.doesNotMatch(calendar, /permanentRedirect/);
   assert.match(projection, /UNIFIED_PUBLIC_EVENT_CTE_SQL/);
   assert.match(projection, /generation\.state = 'published'/);

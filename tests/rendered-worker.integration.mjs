@@ -737,7 +737,7 @@ test("the retired Community destination redirects to Contribute", async () => {
   assertNoPrivateSentinels(html);
 });
 
-test("Events renders the canonical upcoming list and keeps Month optional", async () => {
+test("Events renders a full calendar before its upcoming and past lists", async () => {
   const response = await fetchPath("/events");
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -747,22 +747,42 @@ test("Events renders the canonical upcoming list and keeps Month optional", asyn
   );
   assert.match(html, /<title>Events · Vancouver Curiosity Club<\/title>/iu);
   assert.match(html, /Vancouver gatherings/u);
-  assert.match(html, /Find your next field note/u);
-  assert.match(html, /Apply filters/u);
+  assert.match(html, /Month at a glance/u);
+  assert.match(html, /public-calendar__grid/u);
+  assert.equal((html.match(/<h1\b/gu) ?? []).length, 1);
   assert.match(
     html,
-    /<a(?=[^>]*href="\/events")(?=[^>]*aria-current="page")[^>]*>List<\/a>/u,
+    /<h2(?=[^>]*class="public-calendar__title")(?=[^>]*id="public-calendar-title")[^>]*>/u,
   );
-  assert.match(html, /href="\/calendar">Month<\/a>/u);
-  assert.doesNotMatch(html, /Month at a glance|public-calendar__grid/u);
+  assert.match(html, /href="\/events\?month=\d{4}-\d{2}">Today<\/a>/u);
+  assert.match(
+    html,
+    /<a(?=[^>]*href="\/events\?state=upcoming")(?=[^>]*aria-current="page")[^>]*>Upcoming<\/a>/u,
+  );
+  assert.match(html, /href="\/events\?state=past">Past<\/a>/u);
+  assert.doesNotMatch(html, /Find your next field note|Apply filters/u);
+  assert.doesNotMatch(html, /public-export-actions|Download this public view/u);
+  const resultIndex = Math.max(
+    html.indexOf('class="event-list"'),
+    html.indexOf('class="public-empty-state"'),
+  );
+  assert.ok(resultIndex >= 0, "the event-list result must remain rendered");
+  assert.ok(
+    html.indexOf("public-calendar__grid") < resultIndex,
+    "the full month calendar must render before the event-list result",
+  );
   assertSharedChrome(html);
   assertNoPrivateSentinels(html);
 
-  const filtered = await fetchPath("/events?q=unlikely-match&lane=think");
-  assert.equal(filtered.status, 200);
+  const past = await fetchPath("/events?state=past");
+  assert.equal(past.status, 200);
   assert.equal(
-    filtered.headers.get("x-robots-tag"),
+    past.headers.get("x-robots-tag"),
     "noindex, follow, noarchive",
+  );
+  assert.match(
+    await past.text(),
+    /<a(?=[^>]*href="\/events\?state=past")(?=[^>]*aria-current="page")[^>]*>Past<\/a>/u,
   );
 });
 

@@ -31,8 +31,10 @@ const WEEKDAYS = [
 ] as const;
 
 export function PublicMonthCalendar({
+  calendarRoute = "/calendar",
   complete,
   events,
+  headingLevel = 1,
   maxMonth,
   minMonth,
   month,
@@ -40,8 +42,10 @@ export function PublicMonthCalendar({
   siteOrigin = null,
   todayDate,
 }: Readonly<{
+  calendarRoute?: string;
   complete: boolean;
   events: readonly PublicEventCardDto[];
+  headingLevel?: 1 | 2;
   maxMonth: string;
   minMonth: string;
   month: string;
@@ -49,6 +53,7 @@ export function PublicMonthCalendar({
   siteOrigin?: string | null;
   todayDate: string;
 }>) {
+  const MonthHeading = headingLevel === 2 ? "h2" : "h1";
   const cells = useMemo(() => publicCalendarMonthCells(month), [month]);
   const eventsByDate = useMemo(
     () =>
@@ -150,22 +155,33 @@ export function PublicMonthCalendar({
       <header className="public-calendar__toolbar">
         <div className="public-calendar__title-lockup">
           <p className="section-kicker">Month at a glance</p>
-          <h1 id="public-calendar-title">
+          <MonthHeading
+            className="public-calendar__title"
+            id="public-calendar-title"
+          >
             {formatPublicCalendarMonth(month)}
-          </h1>
+          </MonthHeading>
           <p className="public-calendar__invitation">
             Pick a date. See the poster. Join the gathering.
           </p>
         </div>
         <nav aria-label="Calendar months">
           {previousMonth ? (
-            <Link href={calendarHref(previousMonth)}>Previous month</Link>
+            <Link href={calendarHref(previousMonth, calendarRoute)}>
+              Previous month
+            </Link>
           ) : (
             <span aria-hidden="true" />
           )}
-          <Link href={calendarHref(todayDate.slice(0, 7))}>Today</Link>
+          <Link
+            href={calendarHref(todayDate.slice(0, 7), calendarRoute)}
+          >
+            Today
+          </Link>
           {nextMonth ? (
-            <Link href={calendarHref(nextMonth)}>Next month</Link>
+            <Link href={calendarHref(nextMonth, calendarRoute)}>
+              Next month
+            </Link>
           ) : (
             <span aria-hidden="true" />
           )}
@@ -536,8 +552,9 @@ function publicEventStatusLabel(
   return "Confirmed";
 }
 
-function calendarHref(month: string): string {
-  return `/calendar?month=${encodeURIComponent(month)}`;
+function calendarHref(month: string, route: string): string {
+  const separator = route.includes("?") ? "&" : "?";
+  return `${route}${separator}month=${encodeURIComponent(month)}`;
 }
 
 function shiftMonthForHref(month: string, delta: number): string {

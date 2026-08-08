@@ -2,28 +2,23 @@ import type { Metadata } from "next";
 import {
   EventsPageRenderer,
   emptyEventPage,
-  eventFilterValues,
+  eventListValues,
 } from "@/app/_components/EventsPageRenderer";
 import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import {
-  getPublicPageContent,
-  listPublicClubs,
-  listPublicLanes,
-  resolvePublicOrganization,
-  type PublicClubDto,
-  type PublicLaneDto,
-} from "@/lib/server/public/catalog";
+  getRequestPublicOrganization,
+  getRequestPublicPageContent,
+} from "@/lib/server/public/request-cache";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
+import { queryPublicEvents } from "@/lib/server/public/events";
 import {
-  listPublicEventCategoryOptions,
-  queryPublicEvents,
-  type PublicEventCategoryOption,
-  type PublicEventPageDto,
-} from "@/lib/server/public/events";
+  emptyPublicMonthCalendar,
+  loadPublicMonthCalendar,
+} from "@/lib/server/public/month-calendar";
+import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
 import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
-import { InputValidationError } from "@/lib/validation";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
 export const dynamic = "force-dynamic";
@@ -58,51 +53,37 @@ export default async function EventsPage({
   searchParams,
 }: Readonly<{ searchParams: PageSearchParams }>) {
   const raw = await searchParams;
-  const values = eventFilterValues(raw);
+  const values = eventListValues(raw);
   const nowUtcMs = readServerUtcMs();
   const todayDate = vancouverCalendarDate(nowUtcMs);
+  const originPromise = getTrustedRequestOrigin();
   let pageContent:
-    | Awaited<ReturnType<typeof getPublicPageContent>>
+    | Awaited<ReturnType<typeof getRequestPublicPageContent>>
     | null = null;
-  let clubs: readonly PublicClubDto[] = [];
-  let lanes: readonly PublicLaneDto[] = [];
-  let categories: readonly PublicEventCategoryOption[] = [];
-  let eventPage: PublicEventPageDto = emptyEventPage(values.state);
-  let invalidFilters = false;
+  let eventPage = emptyEventPage(values.state);
+  let calendar = emptyPublicMonthCalendar(raw.month, todayDate);
 
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (organization) {
-      [pageContent, clubs, lanes, categories] = await Promise.all([
-        getPublicPageContent(database, "events"),
-        listPublicClubs(database),
-        listPublicLanes(database),
-        listPublicEventCategoryOptions(database, organization.id),
-      ]);
-      try {
-        eventPage = await queryPublicEvents(database, {
+      [pageContent, eventPage, calendar] = await Promise.all([
+        getRequestPublicPageContent(database, "events"),
+        queryPublicEvents(database, {
           organizationId: organization.id,
           nowUtcMs,
           todayDate,
-          view: raw.state,
-          keyword: raw.q,
-          fromDate: raw.from,
-          toDate: raw.to,
-          clubSlug: raw.club,
-          laneSlug: raw.lane,
-          categorySlug: raw.category,
-          attendanceMode: raw.format,
-          page: raw.page,
+          view: values.state,
+          page: values.page,
           pageSize: 12,
-        });
-      } catch (error) {
-        if (error instanceof InputValidationError) {
-          invalidFilters = true;
-        } else {
-          throw error;
-        }
-      }
+        }),
+        loadPublicMonthCalendar(database, {
+          organizationId: organization.id,
+          nowUtcMs,
+          rawMonth: raw.month,
+          todayDate,
+        }),
+      ]);
     }
   } catch {
     writeSafeLog("error", "public_events_unavailable", {
@@ -113,15 +94,16 @@ export default async function EventsPage({
     });
     publicServiceUnavailable();
   }
+  const origin = await originPromise;
 
   return (
     <EventsPageRenderer
-      categories={categories}
-      clubs={clubs}
+      calendar={calendar}
       eventPage={eventPage}
-      invalidFilters={invalidFilters}
-      lanes={lanes}
+      nowUtcMs={nowUtcMs}
       pageContent={pageContent}
+      siteOrigin={origin?.origin ?? null}
+      todayDate={todayDate}
       values={values}
     />
   );

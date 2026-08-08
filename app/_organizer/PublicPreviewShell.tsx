@@ -11,7 +11,7 @@ import { HomePageRenderer } from "@/app/_components/HomePageRenderer";
 import {
   EventsPageRenderer,
   emptyEventPage,
-  eventFilterValues,
+  eventListValues,
 } from "@/app/_components/EventsPageRenderer";
 import {
   CommunityDestinations,
@@ -25,7 +25,6 @@ import { SiteHeader } from "@/app/_components/SiteHeader";
 import styles from "@/app/_organizer/phase6.module.css";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
-import { readPublicMeetupSyncState } from "@/lib/server/meetup";
 import type {
   CmsRevisionPreviewDto,
 } from "@/lib/server/organizer/cms";
@@ -48,10 +47,11 @@ import {
   type PublicProgramDto,
 } from "@/lib/server/public/catalog";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
+import { queryPublicEvents } from "@/lib/server/public/events";
 import {
-  listPublicEventCategoryOptions,
-  queryPublicEvents,
-} from "@/lib/server/public/events";
+  emptyPublicMonthCalendar,
+  loadPublicMonthCalendar,
+} from "@/lib/server/public/month-calendar";
 import {
   resolveMediaAssetsForRendering,
 } from "@/lib/server/media/usage";
@@ -163,20 +163,19 @@ async function PreviewEntityBody({
       );
     }
     if (snapshot.slug === "events") {
-      const values = eventFilterValues({});
+      const values = eventListValues({});
       const context = await loadPreviewEventsContext();
       return (
         <EventsPageRenderer
-          categories={context.categories}
-          clubs={catalog.clubs}
+          calendar={context.calendar}
           eventPage={context.eventPage}
-          invalidFilters={false}
-          lanes={catalog.lanes}
+          nowUtcMs={context.nowUtcMs}
           pageContent={page}
           previewCommunityLinks={catalog.communityLinks}
           previewMediaAssets={preview.mediaAssets}
           privatePreview
-          sync={context.sync}
+          siteOrigin={null}
+          todayDate={context.todayDate}
           values={values}
         />
       );
@@ -453,32 +452,40 @@ async function loadPreviewHomeEvents() {
 }
 
 async function loadPreviewEventsContext() {
+  const nowUtcMs = readServerUtcMs();
+  const todayDate = vancouverCalendarDate(nowUtcMs);
   const fallback = Object.freeze({
-    categories: Object.freeze([]),
+    calendar: emptyPublicMonthCalendar(undefined, todayDate),
     eventPage: emptyEventPage("upcoming"),
-    sync: Object.freeze({
-      lastSuccessAt: null,
-      status: "not_connected" as const,
-    }),
+    nowUtcMs,
+    todayDate,
   });
   try {
     const { database } = getRuntimeAuthConfiguration();
     const organization = await resolvePublicOrganization(database);
     if (!organization) return fallback;
-    const nowUtcMs = readServerUtcMs();
-    const [categories, eventPage, sync] = await Promise.all([
-      listPublicEventCategoryOptions(database, organization.id),
+    const [calendar, eventPage] = await Promise.all([
+      loadPublicMonthCalendar(database, {
+        organizationId: organization.id,
+        nowUtcMs,
+        rawMonth: undefined,
+        todayDate,
+      }),
       queryPublicEvents(database, {
         organizationId: organization.id,
         nowUtcMs,
         page: 1,
         pageSize: 12,
-        todayDate: vancouverCalendarDate(nowUtcMs),
+        todayDate,
         view: "upcoming",
       }),
-      readPublicMeetupSyncState(database, organization.id, nowUtcMs),
     ]);
-    return Object.freeze({ categories, eventPage, sync });
+    return Object.freeze({
+      calendar,
+      eventPage,
+      nowUtcMs,
+      todayDate,
+    });
   } catch {
     return fallback;
   }
