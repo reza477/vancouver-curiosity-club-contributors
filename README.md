@@ -133,7 +133,9 @@ The current local source redesign separates discovery from the calendar utility:
 - The application does not create visitor accounts. Organizer authentication
   remains a separate private workspace. Public pages are now available without
   sign-in; public access does not grant organizer membership or authorization.
-- The primary navigation is Events, Clubs, About, and Host an Event.
+- The primary navigation is Events, Clubs, About, and Feedback. Feedback opens
+  the existing public Contact form; Host an Event remains available from Get
+  Involved.
 - Event descriptions preserve source headings, paragraphs, lists, and safe
   external links; event-specific RSVP and ticket destinations remain clickable.
 - Public pages never expose source-sync diagnostics. The organizer workspace

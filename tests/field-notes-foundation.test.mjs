@@ -83,7 +83,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     ['{ href: "/events", label: "Events" }', "Events"],
     ['{ href: "/clubs", label: "Clubs" }', "Clubs"],
     ['{ href: "/about", label: "About" }', "About"],
-    ['{ href: "/host-an-event", label: "Host an Event" }', "Host an Event"],
+    ['{ href: "/contact", label: "Feedback" }', "Feedback"],
   ];
   let previousDestination = -1;
   for (const [literal, label] of destinations) {

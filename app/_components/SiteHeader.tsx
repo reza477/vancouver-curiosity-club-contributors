@@ -9,7 +9,7 @@ const requiredNavigation = [
   { href: "/events", label: "Events" },
   { href: "/clubs", label: "Clubs" },
   { href: "/about", label: "About" },
-  { href: "/host-an-event", label: "Host an Event" },
+  { href: "/contact", label: "Feedback" },
 ] as const;
 
 export function SiteHeader({

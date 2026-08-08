@@ -103,7 +103,7 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
     ["/events", "Events"],
     ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/host-an-event", "Host an Event"],
+    ["/contact", "Feedback"],
   ]) {
     assert.match(
       header,

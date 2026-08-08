@@ -2426,7 +2426,10 @@ function assertSharedChrome(html) {
   assert.match(html, /href="\/clubs"/u);
   assert.doesNotMatch(html, /href="\/community"/u);
   assert.match(html, /href="\/about"/u);
-  assert.match(html, /href="\/host-an-event"/u);
+  assert.match(
+    html,
+    /<a(?=[^>]*href="\/contact")(?=[^>]*data-primary-destination="feedback")[^>]*>Feedback<\/a>/u,
+  );
   assert.match(html, /href="\/get-involved"/u);
   assert.match(html, />Get Involved<\/a>/u);
   assert.match(html, /Organizer Login/u);

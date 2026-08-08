@@ -49,7 +49,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
     ["/events", "Events"],
     ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/host-an-event", "Host an Event"],
+    ["/contact", "Feedback"],
   ];
   let priorDestinationIndex = -1;
   for (const [href, label] of primaryDestinations) {

@@ -62,8 +62,9 @@ remain unchanged.
 - Checkpoint 2 separates the routes: `/` is a human-first eight-section
   homepage, `/events` defaults to the upcoming list, and `/calendar` retains
   the optional month grid. Primary navigation is Events, Clubs, About, and
-  Host an Event. Calendar selection starts at the nearest upcoming event when
-  one exists.
+  Feedback, which opens the existing public Contact form. Host an Event remains
+  available from Get Involved. Calendar selection starts at the nearest
+  upcoming event when one exists.
 - Checkpoint 3 applies the compact cream/navy editorial system, real
   source-controlled event posters, lane/club accents, poster-led cards,
   concise About and event-detail layouts, near-top RSVP, sticky mobile RSVP,

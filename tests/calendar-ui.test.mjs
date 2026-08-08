@@ -763,7 +763,7 @@ test("the exact four primary destinations stay ordered and map related routes ac
     ["/events", "Events"],
     ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/host-an-event", "Host an Event"],
+    ["/contact", "Feedback"],
   ];
   let priorDestinationIndex = -1;
   for (const [href, label] of destinations) {
@@ -779,6 +779,11 @@ test("the exact four primary destinations stay ordered and map related routes ac
     4,
   );
   assert.doesNotMatch(header, /\{ href: "\/community", label: "Community" \}/u);
+  assert.doesNotMatch(
+    header,
+    /\{ href: "\/host-an-event", label: "Host an Event" \}/u,
+    "the primary header must no longer contain Host an Event",
+  );
   assert.doesNotMatch(footer, /\{ href: "\/community", label: "Community" \}/u);
   assert.match(footer, /item\.href === "\/community"/u);
   assert.doesNotMatch(header, /\{ href: "\/calendar", label: "Calendar" \}/u);
