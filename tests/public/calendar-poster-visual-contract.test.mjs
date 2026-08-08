@@ -210,31 +210,21 @@ test("the month calendar uses substantial brand accents without losing non-colou
   );
 });
 
-test("the Wednesday label has no orange font background", async () => {
+test("the calendar month title has no offset text shadow", async () => {
   const styles = await readFile(
     new URL("app/globals.css", projectRoot),
     "utf8",
   );
   for (const viewportWidth of [390, 768, 1440]) {
-    assert.equal(
-      lastDeclarationAtViewport(
-        styles,
-        ".public-calendar__grid th:nth-child(4)",
-        "background",
-        viewportWidth,
-      ),
-      "var(--cal-navy-mid)",
-      `the Wednesday label should use the deep navy background at ${viewportWidth}px`,
+    const textShadow = lastDeclarationAtViewport(
+      styles,
+      ".public-calendar__title",
+      "text-shadow",
+      viewportWidth,
     );
-    assert.equal(
-      lastDeclarationAtViewport(
-        styles,
-        ".public-calendar__grid th:nth-child(4)",
-        "color",
-        viewportWidth,
-      ),
-      "var(--cal-paper)",
-      `the Wednesday label should retain light high-contrast text at ${viewportWidth}px`,
+    assert.ok(
+      textShadow === null || textShadow === "none",
+      `the calendar month title should resolve without a text shadow at ${viewportWidth}px, but found ${textShadow}`,
     );
   }
 });

@@ -4884,7 +4884,6 @@ body[data-surface="public"] {
 
 .public-calendar__title {
   font-size: clamp(3.2rem, 7vw, 7.2rem);
-  text-shadow: 0.055em 0.055em 0 color-mix(in srgb, var(--coral) 80%, var(--paper));
 }
 
 .public-calendar__invitation {
@@ -5904,6 +5903,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   --cal-gold: #d89a2f;
   --cal-header-blue: #234e9b;
   --cal-header-teal: #006d68;
+  --cal-header-ochre: #9f5700;
   --cal-header-brick: #a94236;
   --lane-think: #234e9b;
   --lane-think-wash: #e1e7f2;
@@ -5975,7 +5975,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 }
 
 .public-calendar__grid th:nth-child(4) {
-  background: var(--cal-navy-mid);
+  background: var(--cal-header-ochre);
   color: var(--cal-paper);
 }
 
