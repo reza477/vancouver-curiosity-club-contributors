@@ -31,7 +31,7 @@ const WEEKDAYS = [
 ] as const;
 
 export function PublicMonthCalendar({
-  calendarRoute = "/calendar",
+  calendarRoute = "/events",
   complete,
   events,
   headingLevel = 1,
@@ -411,7 +411,7 @@ export function PublicMonthCalendar({
               <p>
                 {complete
                   ? "Dates with an event are marked with a dark dot."
-                  : "Use the list and filters view for the complete result set."}
+                  : "Use the event list below for the complete result set."}
               </p>
             </div>
           )}

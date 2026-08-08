@@ -31,7 +31,7 @@ export default async function NotFound() {
           available. The published calendar and club notes are still nearby.
         </p>
         <div className="error-actions">
-          <Link href="/calendar">Explore the calendar</Link>
+          <Link href="/events">Explore events</Link>
           <Link href="/clubs">Browse clubs</Link>
           <Link href="/">Return home</Link>
         </div>
@@ -64,7 +64,7 @@ function PublicServiceFailure({
           Please try again in a moment.
         </p>
         <div className="error-actions">
-          <Link href={isEvents ? "/calendar" : "/"}>
+          <Link href={isEvents ? "/events" : "/"}>
             Try this page again
           </Link>
           {isEvents ? <Link href="/">Return home</Link> : null}

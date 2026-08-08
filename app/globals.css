@@ -3109,30 +3109,6 @@ main,
   font-size: 0.92rem;
 }
 
-.calendar-view-switcher {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  align-items: center;
-  padding:
-    1rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right))
-    1rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--paper-deep);
-}
-
-.calendar-view-switcher a,
-.calendar-view-switcher span {
-  display: inline-flex;
-  min-height: 2.75rem;
-  align-items: center;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--ink);
-  font-weight: 750;
-  text-decoration: none;
-}
-
 .calendar-notice {
   margin: 1rem
     max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right))
@@ -4139,7 +4115,6 @@ main,
     font-size: clamp(3.25rem, 17vw, 5.3rem);
   }
 
-  .calendar-view-switcher,
   .calendar-home-introduction,
   .public-calendar {
     padding-right: max(0.25rem, env(safe-area-inset-right));
@@ -5904,17 +5879,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   margin: 0;
 }
 
-.event-view-switcher {
-  justify-content: flex-start;
-  border-top: 0;
-  background: var(--paper);
-}
-
-.event-view-switcher a[aria-current="page"] {
-  background: var(--ink);
-  color: var(--paper);
-}
-
 .event-filters {
   padding-top: clamp(2.5rem, 5vw, 4.5rem);
   padding-bottom: clamp(2.5rem, 5vw, 4.5rem);
@@ -5924,7 +5888,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 .filter-grid select,
 .filter-actions :is(a, button),
 .event-view-tabs a,
-.calendar-view-switcher :is(a, span),
 .public-export-actions a {
   min-height: 2.75rem;
 }
@@ -6692,7 +6655,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
     grid-column: auto;
   }
 
-  .calendar-view-switcher,
   .public-calendar {
     padding-right: max(0.75rem, env(safe-area-inset-right));
     padding-left: max(0.75rem, env(safe-area-inset-left));

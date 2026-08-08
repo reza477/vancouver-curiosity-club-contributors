@@ -241,10 +241,10 @@ test("community editor identity changes cannot retain the previous link form", (
   assert.match(editor, /required/u);
 });
 
-test("public routes keep distinct canonical renderers and private previews keep one focus target", () => {
+test("public routes keep one combined Events renderer and private previews keep one focus target", () => {
   const homeRoute = source("app", "page.tsx");
   const eventsRoute = source("app", "events", "page.tsx");
-  const calendarRoute = source("app", "calendar", "page.tsx");
+  const calendarRoute = source("app", "calendar", "route.ts");
   const clubRoute = source("app", "clubs", "[slug]", "page.tsx");
   const preview = source("app", "_organizer", "PublicPreviewShell.tsx");
 
@@ -253,8 +253,14 @@ test("public routes keep distinct canonical renderers and private previews keep 
   assert.match(eventsRoute, /<EventsPageRenderer/u);
   assert.match(eventsRoute, /view:\s*values\.state/u);
   assert.doesNotMatch(eventsRoute, /calendar\/page|readPublicMeetupSyncState/u);
-  assert.match(calendarRoute, /<PublicMonthCalendar/u);
-  assert.doesNotMatch(calendarRoute, /<HomePageRenderer|<EventsPageRenderer/u);
+  assert.match(calendarRoute, /new URL\(request\.url\)/u);
+  assert.match(calendarRoute, /new URL\(["']\/events["'], source\)/u);
+  assert.match(calendarRoute, /source\.searchParams\.getAll\(["']month["']\)/u);
+  assert.match(calendarRoute, /Response\.redirect\(destination, 308\)/u);
+  assert.doesNotMatch(
+    calendarRoute,
+    /<PublicMonthCalendar|<HomePageRenderer|<EventsPageRenderer|calendar-view-switcher/u,
+  );
   assert.match(clubRoute, /<ClubDetailRenderer/u);
   assert.match(preview, /<HomePageRenderer/u);
   assert.match(preview, /<EventsPageRenderer/u);

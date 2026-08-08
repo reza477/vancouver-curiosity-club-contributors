@@ -144,7 +144,7 @@ test("homepage leads with the club purpose and eight distinct sections", async (
   const [page, calendar, month, homeRenderer, homeData] =
     await Promise.all([
       readFile(new URL("app/page.tsx", projectRoot), "utf8"),
-      readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
+      readFile(new URL("app/calendar/route.ts", projectRoot), "utf8"),
       readFile(
         new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
         "utf8",
@@ -197,9 +197,15 @@ test("homepage leads with the club purpose and eight distinct sections", async (
     /PublicMonthCalendar|public-calendar__grid|calendar-view-switcher/u,
   );
 
-  assert.match(calendar, /<PublicMonthCalendar/u);
-  assert.doesNotMatch(calendar, /<h1>Calendar<\/h1>/u);
-  assert.doesNotMatch(calendar, /className="public-calendar-intro"/u);
+  assert.match(calendar, /new URL\(request\.url\)/u);
+  assert.match(calendar, /new URL\(["']\/events["'], source\)/u);
+  assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
+  assert.match(
+    calendar,
+    /destination\.searchParams\.set\(["']month["'], month\)/u,
+  );
+  assert.match(calendar, /Response\.redirect\(destination, 308\)/u);
+  assert.doesNotMatch(calendar, /<PublicMonthCalendar|calendar-view-switcher/u);
   assert.match(month, /headingLevel = 1/u);
   assert.match(
     month,
@@ -208,10 +214,6 @@ test("homepage leads with the club purpose and eight distinct sections", async (
   assert.match(
     month,
     /<MonthHeading[\s\S]*?id="public-calendar-title"/u,
-  );
-  assert.ok(
-    calendar.indexOf('className="calendar-view-switcher event-view-switcher"') <
-      calendar.indexOf("<PublicMonthCalendar"),
   );
   assert.doesNotMatch(
     calendar,
@@ -367,7 +369,7 @@ test("Events leads with a full calendar, keeps upcoming and past lists, and expo
       new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
       "utf8",
     ),
-    readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/calendar/route.ts", projectRoot), "utf8"),
     readFile(
       new URL("lib/server/public/month-calendar.ts", projectRoot),
       "utf8",
@@ -422,24 +424,24 @@ test("Events leads with a full calendar, keeps upcoming and past lists, and expo
     `${page}\n${renderer}`,
     /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,
   );
-  assert.match(calendar, /loadPublicMonthCalendar/);
+  assert.match(calendar, /new URL\(request\.url\)/u);
+  assert.match(calendar, /new URL\(["']\/events["'], source\)/u);
+  assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
+  assert.match(
+    calendar,
+    /destination\.searchParams\.set\(["']month["'], month\)/u,
+  );
+  assert.match(calendar, /Response\.redirect\(destination, 308\)/u);
   assert.doesNotMatch(calendar, /readPublicMeetupSyncState/);
   assert.doesNotMatch(calendar, /CalendarSourceStatus|data-source-status/);
   assert.doesNotMatch(
     calendar,
     /latest Meetup check|Meetup refresh|last complete calendar|Last completed/u,
   );
-  assert.match(calendar, /PublicMonthCalendar/);
-  assert.match(
-    calendar,
-    /<Link href="\/events">List<\/Link>[\s\S]*?aria-current="page" href="\/calendar"/u,
-  );
-  assert.match(calendar, /path:\s*"\/calendar"/);
+  assert.doesNotMatch(calendar, /<PublicMonthCalendar|calendar-view-switcher/u);
+  assert.doesNotMatch(renderer, /calendar-view-switcher/u);
   assert.match(monthCalendar, /queryPublicEventSlice/);
-  assert.match(calendar, /Download upcoming events/);
-  assert.match(calendar, /href="\/events\/calendar\.ics"/);
-  assert.match(calendar, /href="\/events\/events\.csv"/);
-  assert.doesNotMatch(calendar, /permanentRedirect/);
+  assert.doesNotMatch(calendar, /Download upcoming events/);
   assert.match(projection, /UNIFIED_PUBLIC_EVENT_CTE_SQL/);
   assert.match(projection, /generation\.state = 'published'/);
   assert.match(

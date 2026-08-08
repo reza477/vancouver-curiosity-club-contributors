@@ -10,7 +10,7 @@ import {
 const projectRoot = new URL("../../", import.meta.url);
 const requiredPublicRoutes = [
   "app/page.tsx",
-  "app/calendar/page.tsx",
+  "app/calendar/route.ts",
   "app/events/page.tsx",
   "app/events/[slug]/page.tsx",
   "app/clubs/page.tsx",
@@ -71,7 +71,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.match(header, /pathname === href/u);
   assert.match(header, /pathname\.startsWith\(`\$\{href\}\/`\)/u);
   for (const href of [
-    "/calendar",
+    "/events",
     "/clubs",
     "/about",
     "/get-involved",
@@ -138,9 +138,9 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });
 
-test("Events combines a full calendar with upcoming and past lists while Calendar remains canonical", async () => {
+test("Events combines a full calendar with upcoming and past lists while Calendar forwards into it", async () => {
   const [calendar, events, renderer, maintenance, worker] = await Promise.all([
-    readFile(new URL("app/calendar/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/calendar/route.ts", projectRoot), "utf8"),
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
     readFile(
       new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
@@ -153,14 +153,15 @@ test("Events combines a full calendar with upcoming and past lists while Calenda
     readFile(new URL("worker/index.ts", projectRoot), "utf8"),
   ]);
 
-  assert.match(calendar, /path:\s*"\/calendar"/u);
-  assert.match(calendar, /PublicMonthCalendar/u);
-  assert.match(calendar, /Object\.keys\(params\)\.length === 0/u);
-  assert.doesNotMatch(calendar, /permanentRedirect/u);
+  assert.match(calendar, /new URL\(request\.url\)/u);
+  assert.match(calendar, /new URL\(["']\/events["'], source\)/u);
+  assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
     calendar,
-    /<Link href="\/events">List<\/Link>[\s\S]*?aria-current="page" href="\/calendar"/u,
+    /destination\.searchParams\.set\(["']month["'], month\)/u,
   );
+  assert.match(calendar, /Response\.redirect\(destination, 308\)/u);
+  assert.doesNotMatch(calendar, /<PublicMonthCalendar|calendar-view-switcher/u);
   assert.doesNotMatch(
     calendar,
     /home-hero|home-newcomer|Come curious\. Leave knowing people\.|calendar-home-introduction/u,
@@ -184,15 +185,14 @@ test("Events combines a full calendar with upcoming and past lists while Calenda
     renderer,
     /public-export-actions|Download this public view|exportHref\(/u,
   );
+  assert.doesNotMatch(renderer, /calendar-view-switcher/u);
   assert.ok(
     renderer.indexOf("<PublicMonthCalendar") <
       renderer.indexOf("<EventCollection"),
     "the full month calendar must appear before the event list",
   );
   assert.match(renderer, /<EventCollection/u);
-  assert.match(calendar, /Download upcoming events/u);
-  assert.match(calendar, /href="\/events\/calendar\.ics"/u);
-  assert.match(calendar, /href="\/events\/events\.csv"/u);
+  assert.doesNotMatch(calendar, /Download upcoming events/u);
   assert.doesNotMatch(
     `${calendar}\n${events}\n${renderer}`,
     /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,

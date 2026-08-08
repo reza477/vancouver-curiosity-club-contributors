@@ -106,7 +106,7 @@ function normalizedFooterNavigation(
   policies: readonly PublicNavigationItemDto[];
 }> {
   const fallbackExplore = [
-    { href: "/calendar", label: "Calendar" },
+    { href: "/events", label: "Events" },
     { href: "/clubs", label: "Clubs" },
     { href: "/about", label: "About" },
     { href: "/get-involved", label: "Get Involved" },
@@ -127,7 +127,11 @@ function normalizedFooterNavigation(
   const seen = new Set<string>();
   const explore: PublicNavigationItemDto[] = [];
   const policies: PublicNavigationItemDto[] = [];
-  for (const item of source) {
+  for (const sourceItem of source) {
+    const item =
+      sourceItem.href === "/calendar"
+        ? { ...sourceItem, href: "/events", label: "Events" }
+        : sourceItem;
     if (
       item.href === "/organizer" ||
       item.href === "/community" ||

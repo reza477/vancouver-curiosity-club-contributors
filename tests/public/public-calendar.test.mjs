@@ -298,7 +298,7 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.match(markup, />See what is coming up<\/h2>/u);
   assert.match(markup, /src="\/media\/poster-1\/webp_480"/u);
   assert.match(markup, /data-event-lane="explore"/u);
-  assert.match(markup, /href="\/calendar\?month=2026-07">Today<\/a>/u);
+  assert.match(markup, /href="\/events\?month=2026-07">Today<\/a>/u);
 
   assert.match(markup, /src="\/media\/poster-1\/webp_1600"/u);
   assert.match(markup, /alt="A colourful Meetup event poster\."/u);
@@ -550,27 +550,27 @@ test("page mastheads retain semantic copy without repeated abstract artwork", ()
   assert.doesNotMatch(markup, /field-artwork/u);
 });
 
-test("the public calendar route renders the month experience instead of redirecting", async () => {
-  const page = await readFile(
-    new URL("app/calendar/page.tsx", projectRoot),
+test("the public calendar route preserves month while forwarding to combined Events", async () => {
+  const route = await readFile(
+    new URL("app/calendar/route.ts", projectRoot),
     "utf8",
   );
 
-  assert.match(page, /PublicMonthCalendar/u);
-  assert.doesNotMatch(page, /<h1>Calendar<\/h1>/u);
+  assert.match(route, /new URL\(request\.url\)/u);
+  assert.match(route, /new URL\(["']\/events["'], source\)/u);
+  assert.match(route, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
-    page,
-    /<Link href="\/events">List<\/Link>[\s\S]*?aria-current="page" href="\/calendar"/u,
+    route,
+    /destination\.searchParams\.set\(["']month["'], month\)/u,
   );
-  assert.match(page, /siteOrigin=\{origin\?\.origin \?\? null\}/u);
-  assert.doesNotMatch(page, /permanentRedirect/u);
-  assert.doesNotMatch(page, /redirect\(\s*["']\/events["']\s*\)/u);
+  assert.match(route, /Response\.redirect\(destination, 308\)/u);
+  assert.doesNotMatch(route, /<PublicMonthCalendar|calendar-view-switcher/u);
   assert.doesNotMatch(
-    page,
+    route,
     /home-hero|home-newcomer|Come curious\. Leave knowing people\.|calendar-home-introduction/u,
   );
   assert.doesNotMatch(
-    page,
+    route,
     /readPublicMeetupSyncState|CalendarSourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot/u,
   );
 });

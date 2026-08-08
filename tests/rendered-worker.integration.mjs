@@ -114,7 +114,7 @@ const OWNER_AUTH_HEADERS = Object.freeze({
 const INVITATION_TOKEN = "R".repeat(43);
 const PUBLIC_PATHS = [
   "/",
-  "/calendar",
+  "/events",
   "/clubs",
   "/clubs/vancouver-curiosity-club",
   "/about",
@@ -737,7 +737,7 @@ test("the retired Community destination redirects to Contribute", async () => {
   assertNoPrivateSentinels(html);
 });
 
-test("Events renders a full calendar before its upcoming and past lists", async () => {
+test("Events is the single calendar-first upcoming and past list destination", async () => {
   const response = await fetchPath("/events");
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -760,6 +760,8 @@ test("Events renders a full calendar before its upcoming and past lists", async 
     /<a(?=[^>]*href="\/events\?state=upcoming")(?=[^>]*aria-current="page")[^>]*>Upcoming<\/a>/u,
   );
   assert.match(html, /href="\/events\?state=past">Past<\/a>/u);
+  assert.doesNotMatch(html, /aria-label="Event views"/u);
+  assert.doesNotMatch(html, /href="\/calendar"/u);
   assert.doesNotMatch(html, /Find your next field note|Apply filters/u);
   assert.doesNotMatch(html, /public-export-actions|Download this public view/u);
   const resultIndex = Math.max(
@@ -786,10 +788,10 @@ test("Events renders a full calendar before its upcoming and past lists", async 
   );
 });
 
-test("Home and Calendar public-service failures return truthful noindex 503 responses", async () => {
+test("Home and Events public-service failures return truthful noindex 503 responses", async () => {
   const unavailableRuntime = createBuiltRuntime();
   try {
-    for (const path of ["/", "/calendar"]) {
+    for (const path of ["/", "/events"]) {
       const response = await unavailableRuntime.dispatchFetch(
         new URL(path, "https://preview.example"),
       );
@@ -890,41 +892,20 @@ test("a cancelled event detail renders only published facts and accurate structu
   assertNoPrivateSentinels(html);
 });
 
-test("Calendar is an indexable month-at-a-glance public destination", async () => {
-  const response = await fetchPath("/calendar");
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("x-robots-tag"), null);
-  const html = await response.text();
-  assert.match(html, /<title>Calendar · Vancouver Curiosity Club<\/title>/iu);
-  assert.match(
-    html,
-    /rel="canonical" href="https:\/\/preview\.example\/calendar"/iu,
-  );
-  assert.match(html, /Month at a glance/u);
-  assert.match(html, /public-calendar__grid/u);
-  assert.match(html, /aria-label="Event views"/u);
-  assert.match(html, /href="\/events">List<\/a>/u);
-  assert.match(
-    html,
-    /<a(?=[^>]*href="\/calendar")(?=[^>]*aria-current="page")[^>]*>Month<\/a>/u,
-  );
-  assert.match(html, /Download upcoming events/u);
-  assert.match(html, /iCalendar \(\.ics\)/u);
-  assert.match(
-    html,
-    /<h1(?=[^>]*class="public-calendar__title")(?=[^>]*id="public-calendar-title")[^>]*>/u,
-  );
-  assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
-  assert.doesNotMatch(html, /<h1>Calendar<\/h1>/u);
-  assert.doesNotMatch(html, /List and filters/u);
-  assertNoPrivateSentinels(html);
-
-  const filtered = await fetchPath("/calendar?month=2026-07");
-  assert.equal(filtered.status, 200);
-  assert.equal(
-    filtered.headers.get("x-robots-tag"),
-    "noindex, follow, noarchive",
-  );
+test("Calendar permanently redirects to Events and preserves the month", async () => {
+  for (const [sourcePath, destinationPath] of [
+    ["/calendar", "/events"],
+    ["/calendar?month=2026-07", "/events?month=2026-07"],
+  ]) {
+    const response = await fetchPath(sourcePath, { redirect: "manual" });
+    assert.equal(response.status, 308, sourcePath);
+    assert.equal(
+      new URL(response.headers.get("location"), "https://preview.example")
+        .href,
+      new URL(destinationPath, "https://preview.example").href,
+      sourcePath,
+    );
+  }
 });
 
 test("robots and sitemap contain only public canonical routes", async () => {
@@ -958,7 +939,6 @@ test("robots and sitemap contain only public canonical routes", async () => {
   const sitemap = await sitemapResponse.text();
   for (const path of [
     "/",
-    "/calendar",
     "/events",
     "/clubs",
     "/about",
@@ -983,6 +963,10 @@ test("robots and sitemap contain only public canonical routes", async () => {
       `sitemap missing ${path}`,
     );
   }
+  assert.doesNotMatch(
+    sitemap,
+    /<loc>https:\/\/preview\.example\/calendar<\/loc>/u,
+  );
   assert.doesNotMatch(
     sitemap,
     /<loc>[^<]*(?:\/organizer|\/api\/|\?|off-radar-eats|draft-private)[^<]*<\/loc>/u,
@@ -1206,7 +1190,7 @@ test("unknown, guessed, and draft routes use the custom noindex 404", async () =
       );
       assert.match(html, /name="robots" content="noindex, nofollow/u);
     }
-    assert.match(html, /Explore the calendar/u);
+    assert.match(html, /Explore events/u);
     assertSharedChrome(html);
     assertNoPrivateSentinels(html);
   }
@@ -1665,7 +1649,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   async function assertAbsentFromPublicSurfaces(label) {
     for (const [path, status] of [
       ["/", 200],
-      ["/calendar?month=2026-10", 200],
+      ["/events?month=2026-10", 200],
       ["/clubs/vancouver-curiosity-club", 200],
       ["/sitemap.xml", 200],
       [detailPath, 404],
@@ -1836,12 +1820,12 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
     new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
   );
 
-  const calendarResponse = await fetchPath("/calendar?month=2026-10");
-  assert.equal(calendarResponse.status, 200);
-  const calendarHtml = await calendarResponse.text();
-  assert.match(calendarHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  const monthEventsResponse = await fetchPath("/events?month=2026-10");
+  assert.equal(monthEventsResponse.status, 200);
+  const monthEventsHtml = await monthEventsResponse.text();
+  assert.match(monthEventsHtml, new RegExp(escapeRegex(publicTitle), "u"));
   assert.match(
-    calendarHtml,
+    monthEventsHtml,
     new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
   );
 
@@ -1929,7 +1913,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   );
   for (const body of [
     homeHtml,
-    calendarHtml,
+    monthEventsHtml,
     detailHtml,
     clubHtml,
     publishedSitemap,
@@ -2439,7 +2423,6 @@ function assertSharedChrome(html) {
   assert.match(html, /Vancouver Curiosity Club/u);
   assert.match(html, /aria-label="Primary navigation"/u);
   assert.match(html, /href="\/events"/u);
-  assert.match(html, /href="\/calendar"/u);
   assert.match(html, /href="\/clubs"/u);
   assert.doesNotMatch(html, /href="\/community"/u);
   assert.match(html, /href="\/about"/u);

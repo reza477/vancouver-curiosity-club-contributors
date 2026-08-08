@@ -118,6 +118,59 @@ test("Events renders the full month calendar before its event list", async () =>
   );
 });
 
+test("public Events has no separate List or Month view switcher", async () => {
+  const [calendarRoute, monthCalendar, renderer] = await Promise.all([
+    readFile(new URL("app/calendar/route.ts", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
+      "utf8",
+    ),
+  ]);
+  const publicEventsSurface = `${calendarRoute}\n${monthCalendar}\n${renderer}`;
+
+  assert.doesNotMatch(
+    publicEventsSurface,
+    /calendar-view-switcher|aria-label=["']Event views["']/u,
+    "the combined calendar-and-list experience must not offer redundant List/Month views",
+  );
+  assert.doesNotMatch(
+    publicEventsSurface,
+    />\s*List\s*<[^>]*>[\s\S]{0,300}>\s*Month\s*</u,
+    "public visitors must not be asked to choose between List and Month",
+  );
+  assert.doesNotMatch(
+    publicEventsSurface,
+    /list and filters view/u,
+    "calendar guidance must point to the event list below, not retired filters",
+  );
+});
+
+test("Calendar forwards its month query to the combined Events experience", async () => {
+  const calendarRoute = await readFile(
+    new URL("app/calendar/route.ts", projectRoot),
+    "utf8",
+  );
+
+  assert.match(calendarRoute, /new URL\(request\.url\)/u);
+  assert.match(calendarRoute, /new URL\(["']\/events["'], source\)/u);
+  assert.match(
+    calendarRoute,
+    /source\.searchParams\.getAll\(["']month["']\)/u,
+  );
+  assert.match(
+    calendarRoute,
+    /destination\.searchParams\.set\(["']month["'], month\)/u,
+    "the legacy /calendar route must safely preserve a requested month",
+  );
+  assert.match(calendarRoute, /Response\.redirect\(destination, 308\)/u);
+  assert.doesNotMatch(calendarRoute, /<PublicMonthCalendar\b/u);
+  assert.doesNotMatch(calendarRoute, /Download upcoming events/u);
+});
+
 test("Events preserves Upcoming and Past list semantics", async () => {
   const [page, renderedComponentClosure] = await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
