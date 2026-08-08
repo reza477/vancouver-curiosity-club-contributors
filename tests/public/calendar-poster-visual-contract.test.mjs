@@ -210,6 +210,35 @@ test("the month calendar uses substantial brand accents without losing non-colou
   );
 });
 
+test("the Wednesday label has no orange font background", async () => {
+  const styles = await readFile(
+    new URL("app/globals.css", projectRoot),
+    "utf8",
+  );
+  for (const viewportWidth of [390, 768, 1440]) {
+    assert.equal(
+      lastDeclarationAtViewport(
+        styles,
+        ".public-calendar__grid th:nth-child(4)",
+        "background",
+        viewportWidth,
+      ),
+      "var(--cal-navy-mid)",
+      `the Wednesday label should use the deep navy background at ${viewportWidth}px`,
+    );
+    assert.equal(
+      lastDeclarationAtViewport(
+        styles,
+        ".public-calendar__grid th:nth-child(4)",
+        "color",
+        viewportWidth,
+      ),
+      "var(--cal-paper)",
+      `the Wednesday label should retain light high-contrast text at ${viewportWidth}px`,
+    );
+  }
+});
+
 test("event posters stay horizontal and uncropped across desktop, tablet, and phone discovery surfaces", async () => {
   const [calendar, cards, styles] = await Promise.all([
     readFile(
