@@ -1,21 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --paper: #f3efe4;
-  --paper-deep: #e8e0cf;
-  --ink: #071b31;
-  --ink-soft: var(--cms-foreground, #26394a);
-  --forest: #145e59;
-  --teal: #008a8f;
-  --cobalt: #1747d1;
-  --coral: #e85b48;
-  --amber: #d79123;
+  --paper: #fff9f5;
+  --paper-deep: #f2edff;
+  --ink: #221c3d;
+  --ink-soft: #514b68;
+  --forest: #5b2cc9;
+  --teal: #006d77;
+  --cobalt: #2457d6;
+  --coral: #ff7867;
+  --amber: #f7c74a;
+  --coral-strong: #b83350;
+  --amber-strong: #895000;
+  --blue-surface: #e4eeff;
+  --teal-surface: #ddf8f3;
+  --amber-surface: #fff0cc;
+  --coral-surface: #ffe4e8;
   /*
    * Coral and amber are fixed Field Notes surfaces. Their text and component
    * boundaries cannot inherit a customizable foreground whose contrast is
    * only proven against paper.
    */
-  --warm-surface-ink: #071b31;
+  --warm-surface-ink: #221c3d;
   --warm-surface-inverse: #ffffff;
   /*
    * Public foreground/background pairs are validated at publication time.
@@ -66,10 +72,11 @@ body {
 }
 
 body[data-surface="public"] {
-  --paper: var(--cms-background, #f3efe4);
-  --ink: var(--cms-foreground, #071b31);
-  --forest: var(--cms-accent, #145e59);
-  --cobalt: var(--cms-secondary, #1747d1);
+  --paper: var(--cms-background, #fff9f5);
+  --ink: var(--cms-foreground, #221c3d);
+  --ink-soft: var(--cms-foreground, #514b68);
+  --forest: var(--cms-accent, #5b2cc9);
+  --cobalt: var(--cms-secondary, #2457d6);
 }
 
 body[data-surface="public"][data-typography="humanist"] {
@@ -191,7 +198,7 @@ textarea:focus-visible {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 0.5rem;
-  background-color: #071b31;
+  background-color: var(--ink);
   background-image: url("/icon.png");
   background-position: center;
   background-repeat: no-repeat;
@@ -324,15 +331,17 @@ textarea:focus-visible {
 
 .primary-nav a:hover,
 .primary-nav a:focus-visible {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--paper-deep);
+  color: var(--ink);
   text-decoration: none;
 }
 
 .primary-nav a[aria-current="page"] {
-  border: 1px solid var(--ink);
-  background: var(--ink);
+  border: 1px solid var(--forest);
+  background: var(--forest);
   color: var(--paper);
+  box-shadow: 0 0.25rem 0.75rem
+    color-mix(in srgb, var(--forest) 24%, transparent);
 }
 
 .footer-nav-group,
@@ -514,7 +523,7 @@ main,
   grid-template-columns: minmax(14rem, 0.7fr) minmax(0, 2.3fr);
   gap: clamp(2rem, 5vw, 6rem);
   padding: clamp(2.4rem, 5vw, 4.8rem) clamp(1rem, 4vw, 3.25rem);
-  background: var(--ink);
+  background: var(--cobalt);
   color: var(--paper);
 }
 
@@ -831,7 +840,7 @@ main,
     max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right))
     max(clamp(2.5rem, 5vw, 4.5rem), env(safe-area-inset-bottom))
     max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
-  background: var(--ink);
+  background: var(--cobalt);
   color: var(--paper);
 }
 
@@ -1137,7 +1146,8 @@ main,
 }
 
 .error-actions button {
-  background: var(--ink);
+  border-color: var(--forest);
+  background: var(--forest);
   color: var(--paper);
 }
 
@@ -2227,12 +2237,12 @@ main,
 
 .editorial-actions__links a:first-child,
 .club-detail__destination > a {
-  background: var(--ink);
+  background: var(--forest);
   color: var(--paper);
 }
 
 .community-destinations {
-  background: var(--ink);
+  background: var(--forest);
   color: var(--paper);
 }
 
@@ -2640,7 +2650,19 @@ main,
 .primary-action,
 .home-hero__actions .primary-action,
 .filter-actions button {
-  background: var(--ink);
+  border-color: var(--forest);
+  background: var(--forest);
+  color: var(--paper);
+}
+
+.primary-action:hover,
+.primary-action:focus-visible,
+.home-hero__actions .primary-action:hover,
+.home-hero__actions .primary-action:focus-visible,
+.filter-actions button:hover,
+.filter-actions button:focus-visible {
+  border-color: var(--cobalt);
+  background: var(--cobalt);
   color: var(--paper);
 }
 
@@ -2795,7 +2817,7 @@ main,
   position: static;
   max-width: none;
   padding: 0.35rem 0.55rem;
-  background: var(--ink);
+  background: var(--forest);
   color: var(--paper);
   font-family: var(--mono);
   font-size: 0.75rem;
@@ -3193,7 +3215,7 @@ main,
 
 .calendar-home-introduction a:hover,
 .calendar-home-introduction a:focus-visible {
-  background: var(--ink);
+  background: var(--cobalt);
   color: var(--paper);
 }
 
@@ -3237,7 +3259,7 @@ main,
 }
 
 .about-club__lanes {
-  background: var(--ink);
+  background: var(--forest);
   color: var(--paper);
 }
 
@@ -3623,7 +3645,7 @@ main,
 }
 
 .add-to-calendar__choices a:hover {
-  background: var(--ink);
+  background: var(--forest);
   color: var(--paper);
 }
 
@@ -4030,7 +4052,15 @@ main,
 
 .share-controls button {
   cursor: pointer;
-  background: var(--ink);
+  border-color: var(--forest);
+  background: var(--forest);
+  color: var(--paper);
+}
+
+.share-controls button:hover,
+.share-controls button:focus-visible {
+  border-color: var(--cobalt);
+  background: var(--cobalt);
   color: var(--paper);
 }
 
@@ -4345,9 +4375,9 @@ main,
   border: 1px solid var(--line, currentColor);
   border-top-width: 0.55rem;
   border-radius: 0.8rem;
-  background: var(--paper, #f5f0e6);
-  color: var(--ink, #26394a);
-  box-shadow: 0.5rem 0.5rem 0 var(--ink, #26394a);
+  background: var(--paper, #fff9f5);
+  color: var(--ink, #221c3d);
+  box-shadow: 0.5rem 0.5rem 0 var(--ink, #221c3d);
 }
 
 .public-submission[data-form-key="volunteer"] {
@@ -4391,7 +4421,7 @@ main,
 .public-submission__skeleton span {
   min-height: 4.5rem;
   border-radius: 0.45rem;
-  background: color-mix(in srgb, var(--ink, #26394a) 12%, transparent);
+  background: color-mix(in srgb, var(--ink, #221c3d) 12%, transparent);
 }
 
 .public-submission__skeleton-wide,
@@ -4415,9 +4445,9 @@ main,
   justify-items: start;
   gap: 1rem;
   padding: 1.25rem;
-  border: 2px solid var(--ink, #26394a);
+  border: 2px solid var(--ink, #221c3d);
   border-radius: 0.6rem;
-  background: var(--paper-deep, #e8e0cf);
+  background: var(--paper-deep, #f2edff);
 }
 
 .public-submission__load-error p {
@@ -4450,10 +4480,10 @@ main,
   width: 100%;
   min-height: 3rem;
   padding: 0.72rem 0.8rem;
-  border: 1px solid var(--ink, #26394a);
+  border: 1px solid var(--ink, #221c3d);
   border-radius: 0.45rem;
-  background: var(--paper, #f5f0e6);
-  color: var(--ink, #26394a);
+  background: var(--paper, #fff9f5);
+  color: var(--ink, #221c3d);
   font: inherit;
 }
 
@@ -4466,7 +4496,7 @@ main,
 .public-submission select:focus-visible,
 .public-submission textarea:focus-visible,
 .public-submission button:focus-visible {
-  outline: 0.2rem solid var(--cms-foreground, #26394a);
+  outline: 0.2rem solid var(--cms-foreground, #221c3d);
   outline-offset: 0.18rem;
 }
 
@@ -4501,7 +4531,7 @@ main,
 
 .public-submission__error-summary {
   padding: 1rem 1.15rem;
-  border: 2px solid var(--ink, #26394a);
+  border: 2px solid var(--ink, #221c3d);
   border-radius: 0.6rem;
 }
 
@@ -4525,10 +4555,10 @@ main,
   justify-self: start;
   min-height: 3rem;
   padding: 0.75rem 1.15rem;
-  border: 1px solid var(--ink, #26394a);
+  border: 1px solid var(--forest, #5b2cc9);
   border-radius: 999px;
-  background: var(--ink, #26394a);
-  color: var(--paper, #f5f0e6);
+  background: var(--forest, #5b2cc9);
+  color: var(--paper, #fff9f5);
   font: inherit;
   font-weight: 800;
 }
@@ -4538,6 +4568,13 @@ main,
   opacity: 0.65;
 }
 
+.public-submission button:hover:not(:disabled),
+.public-submission button:focus-visible:not(:disabled) {
+  border-color: var(--cobalt, #2457d6);
+  background: var(--cobalt, #2457d6);
+  color: var(--paper, #fff9f5);
+}
+
 .public-submission__notice {
   min-height: 1.5rem;
   margin: 0;
@@ -4545,9 +4582,9 @@ main,
 
 .public-submission__success {
   padding: 1.25rem;
-  border: 2px solid var(--ink, #26394a);
+  border: 2px solid var(--ink, #221c3d);
   border-radius: 0.6rem;
-  background: var(--paper-deep, #e8e0cf);
+  background: var(--paper-deep, #f2edff);
 }
 
 .public-submission__honeypot {
@@ -5127,7 +5164,8 @@ body[data-surface="public"] {
 .calendar-home-introduction a {
   border-width: 2px;
   border-radius: 999px;
-  background: var(--ink);
+  border-color: var(--forest);
+  background: var(--forest);
   color: var(--paper);
 }
 
@@ -5155,8 +5193,13 @@ body[data-surface="public"] {
 .event-card__arrow {
   border-width: 2px;
   background: var(--event-accent);
-  color: var(--ink);
+  color: var(--paper);
   box-shadow: 0.18rem 0.18rem 0 var(--ink);
+}
+
+.event-card[data-event-lane="explore"] .event-card__arrow,
+.event-card[data-event-lane="eat-and-play"] .event-card__arrow {
+  color: var(--ink);
 }
 
 .about-club__lane-grid {
@@ -5474,7 +5517,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 .site-header::after {
   bottom: 0;
   height: 1px;
-  background: var(--ink);
+  background: var(--forest);
 }
 
 .wordmark-mark,
@@ -5486,8 +5529,10 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 
 .primary-nav {
   border-radius: 0.65rem;
-  background: var(--paper);
-  box-shadow: none;
+  border-color: color-mix(in srgb, var(--ink) 28%, transparent);
+  background: var(--paper-deep);
+  box-shadow: 0 0.45rem 1.2rem
+    color-mix(in srgb, var(--forest) 12%, transparent);
 }
 
 .primary-nav a[data-primary-destination]:not([aria-current="page"]) {
@@ -5496,8 +5541,8 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 
 .primary-nav a[data-primary-destination]:not([aria-current="page"]):hover,
 .primary-nav a[data-primary-destination]:not([aria-current="page"]):focus-visible {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--paper);
+  color: var(--forest);
 }
 
 .field-artwork__orbit,
@@ -5685,7 +5730,12 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 }
 
 .lane-index {
-  background: var(--ink);
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+
+.lane-index .section-kicker {
+  color: var(--forest);
 }
 
 .lane-index__grid {
@@ -5696,22 +5746,40 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 
 .lane-note {
   --lane-accent: var(--cobalt);
+  --lane-link: var(--cobalt);
+  --lane-surface: var(--blue-surface);
   min-height: 20rem;
   border: 0;
   border-top: 0.5rem solid var(--lane-accent);
-  background: var(--ink);
+  background: var(--lane-surface);
+  color: var(--ink);
 }
 
 .lane-note[data-event-lane="reset-and-make"] {
   --lane-accent: var(--teal);
+  --lane-link: var(--teal);
+  --lane-surface: var(--teal-surface);
 }
 
 .lane-note[data-event-lane="explore"] {
   --lane-accent: var(--amber);
+  --lane-link: var(--amber-strong);
+  --lane-surface: var(--amber-surface);
 }
 
 .lane-note[data-event-lane="eat-and-play"] {
   --lane-accent: var(--coral);
+  --lane-link: var(--coral-strong);
+  --lane-surface: var(--coral-surface);
+}
+
+.lane-note > div > span,
+.lane-note p {
+  color: var(--ink);
+}
+
+.lane-note a {
+  color: var(--lane-link);
 }
 
 .lane-note h3 {
@@ -5760,8 +5828,8 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 
 .home-closing,
 .about-closing {
-  border-color: var(--ink);
-  background: var(--ink);
+  border-color: var(--forest);
+  background: var(--forest);
   color: var(--paper);
 }
 
@@ -5860,7 +5928,8 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 }
 
 .events-page__timeframe a[aria-current="page"] {
-  background: var(--ink);
+  border-color: var(--forest);
+  background: var(--forest);
   color: var(--paper);
 }
 
@@ -5892,27 +5961,27 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 }
 
 .public-calendar-page {
-  --cal-paper: #f7f0e2;
-  --cal-paper-deep: #e9dcc7;
-  --cal-weekend: #f0e4d3;
-  --cal-outside: #ded1bc;
-  --cal-navy: #0b1f33;
-  --cal-navy-mid: #173a5e;
-  --cal-muted: #4d5b68;
-  --cal-line: #8b795e;
-  --cal-gold: #d89a2f;
-  --cal-header-blue: #234e9b;
-  --cal-header-teal: #006d68;
-  --cal-header-ochre: #9f5700;
-  --cal-header-brick: #a94236;
-  --lane-think: #234e9b;
-  --lane-think-wash: #e1e7f2;
-  --lane-reset: #006d68;
-  --lane-reset-wash: #dcebe4;
-  --lane-explore: #9f5700;
-  --lane-explore-wash: #f3e3bf;
-  --lane-play: #a94236;
-  --lane-play-wash: #f1dcd3;
+  --cal-paper: #fff9f5;
+  --cal-paper-deep: #f2edff;
+  --cal-weekend: #ece5ff;
+  --cal-outside: #ded8ec;
+  --cal-navy: #28245a;
+  --cal-navy-mid: #4338ca;
+  --cal-muted: #514b68;
+  --cal-line: #7d7595;
+  --cal-gold: #f7c74a;
+  --cal-header-blue: #3659d9;
+  --cal-header-teal: #00747b;
+  --cal-header-ochre: #9b5900;
+  --cal-header-brick: #b44258;
+  --lane-think: #3659d9;
+  --lane-think-wash: #e4eeff;
+  --lane-reset: #00747b;
+  --lane-reset-wash: #ddf8f3;
+  --lane-explore: #9b5900;
+  --lane-explore-wash: #fff0cc;
+  --lane-play: #b44258;
+  --lane-play-wash: #ffe4e8;
   background: var(--cal-paper);
 }
 
@@ -6088,7 +6157,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 
 .public-calendar__day-panel {
   border-color: var(--cal-navy);
-  background: var(--cal-navy);
+  background: var(--cal-navy-mid);
   color: var(--cal-paper);
   box-shadow:
     0.5rem 0.5rem 0 var(--lane-reset),
@@ -6381,13 +6450,13 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   align-content: end;
   gap: 0.6rem;
   padding: clamp(1rem, 2.5vw, 2rem);
-  background: var(--ink);
+  background: var(--cobalt);
   color: var(--paper);
 }
 
 .event-artwork-fallback[data-event-lane="reset-and-make"] {
   background: var(--teal);
-  color: var(--ink);
+  color: var(--paper);
 }
 
 .event-artwork-fallback[data-event-lane="explore"] {
@@ -6682,9 +6751,9 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
     justify-content: center;
     padding: 0.75rem 1rem;
     border: 2px solid var(--paper);
-    background: var(--ink);
+    background: var(--forest);
     color: var(--paper);
-    box-shadow: 0 0 0 2px var(--ink);
+    box-shadow: 0 0 0 2px var(--forest);
     font-weight: 800;
     text-decoration: none;
   }

@@ -22,7 +22,9 @@ import {
 } from "@/lib/server/media/usage";
 import {
   buildRootMetadataIcons,
+  resolvePublicBrandPalette,
   SHIPPED_BRAND_NAME,
+  SHIPPED_BRAND_PALETTE,
 } from "@/lib/brand";
 import { isPrivateOrIdentityPath } from "@/lib/request-pathname";
 import "./globals.css";
@@ -72,7 +74,7 @@ export async function generateMetadata(): Promise<Metadata> {
   let brandName = title;
   let siteTitle = title;
   let siteDescription = description;
-  let publishedThemeColor = "#061a3a";
+  let publishedThemeColor: string = SHIPPED_BRAND_PALETTE.foreground;
   let publicSite: PublicSiteContextDto | null = null;
   let publicLogo: ResponsiveMediaAssetDto | null = null;
   if (!isPrivatePath) {
@@ -88,7 +90,8 @@ export async function generateMetadata(): Promise<Metadata> {
         siteTitle = site.seoTitle ?? site.brandName;
         siteDescription = site.metaDescription ?? site.mission;
         publishedThemeColor =
-          site.palette?.foreground ?? publishedThemeColor;
+          resolvePublicBrandPalette(site.palette)?.foreground ??
+          publishedThemeColor;
         if (organization && site.logoAssetId) {
           publicLogo =
             (
@@ -210,12 +213,13 @@ export default async function RootLayout({
       // catalog content. Route-level states report D1 availability.
     }
   }
-  const publicStyle = shell?.palette
+  const publicPalette = resolvePublicBrandPalette(shell?.palette);
+  const publicStyle = publicPalette
     ? ({
-        "--cms-accent": shell.palette.accent,
-        "--cms-background": shell.palette.background,
-        "--cms-foreground": shell.palette.foreground,
-        "--cms-secondary": shell.palette.secondary,
+        "--cms-accent": publicPalette.accent,
+        "--cms-background": publicPalette.background,
+        "--cms-foreground": publicPalette.foreground,
+        "--cms-secondary": publicPalette.secondary,
       } as CSSProperties)
     : undefined;
 

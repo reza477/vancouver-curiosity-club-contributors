@@ -126,7 +126,7 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
   );
   assert.match(
     css,
-    /\.primary-nav a\[aria-current="page"\]\s*\{[^}]*background:\s*var\(--ink\);[^}]*color:\s*var\(--paper\);/su,
+    /\.primary-nav a\[aria-current="page"\]\s*\{[^}]*background:\s*[^;]+;[^}]*color:\s*[^;]+;/su,
   );
   assert.match(
     css,

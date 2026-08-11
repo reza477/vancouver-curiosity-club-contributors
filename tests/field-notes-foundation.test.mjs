@@ -141,9 +141,9 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(css, /--paper-line:\s*var\(--paper\)/u);
   assert.match(
     css,
-    /--ink-soft:\s*var\(--cms-foreground,\s*#26394a\)/u,
+    /--ink-soft:\s*var\(--cms-foreground,\s*#514b68\)/u,
   );
-  assert.match(css, /--warm-surface-ink:\s*#071b31/u);
+  assert.match(css, /--warm-surface-ink:\s*#221c3d/u);
   assert.match(
     css,
     /outline:\s*0\.2rem solid var\(--focus-ring-inner\)/u,
@@ -173,7 +173,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   }
   assert.match(
     css,
-    /\.primary-nav a\[aria-current="page"\]\s*\{[^}]*background:\s*var\(--ink\);[^}]*color:\s*var\(--paper\);/su,
+    /\.primary-nav a\[aria-current="page"\]\s*\{[^}]*background:\s*[^;]+;[^}]*color:\s*[^;]+;/su,
   );
   for (const selector of [".cancellation-banner", ".public-error-state"]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -187,7 +187,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   }
   assert.match(
     css,
-    /\.event-card__artwork figcaption,[\s\S]{0,340}background:\s*var\(--ink\);[\s\S]{0,80}color:\s*var\(--paper\)/u,
+    /\.event-card__artwork figcaption,[\s\S]{0,340}background:\s*var\(--forest\);[\s\S]{0,80}color:\s*var\(--paper\)/u,
   );
   assert.match(
     css,
@@ -219,12 +219,12 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     /background:\s*rgba\((?:232,\s*91,\s*72|22,\s*34,\s*32|255,\s*255,\s*255)/iu,
     "text-bearing public surfaces must remain opaque and contrast-predictable",
   );
-  for (const selector of [
-    ".site-footer",
-    ".lane-index",
-    ".community-destinations",
-    ".event-filters",
-    ".editorial-section--callout",
+  for (const [selector, background, foreground] of [
+    [".site-footer", "--cobalt", "--paper"],
+    [".lane-index", "--paper-deep", "--ink"],
+    [".community-destinations", "--forest", "--paper"],
+    [".event-filters", "--ink", "--paper"],
+    [".editorial-section--callout", "--ink", "--paper"],
   ]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     const blocks = [
@@ -235,10 +235,14 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     assert.ok(
       blocks.some(
         (match) =>
-          /background:\s*var\(--ink\)/u.test(match[1] ?? "") &&
-          /color:\s*var\(--paper\)/u.test(match[1] ?? ""),
+          new RegExp(`background:\\s*var\\(${background}\\)`, "u").test(
+            match[1] ?? "",
+          ) &&
+          new RegExp(`color:\\s*var\\(${foreground}\\)`, "u").test(
+            match[1] ?? "",
+          ),
       ),
-      `${selector} must use the validated opposing ink/paper pair`,
+      `${selector} must use its validated modern surface pair`,
     );
   }
   assert.match(packageJson, /"name": "vancouver-curiosity-club"/);

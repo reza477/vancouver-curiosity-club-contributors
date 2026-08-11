@@ -5572,7 +5572,7 @@ async function siteIdentityPublicationStatements(
   );
 }
 
-const CLUB_THEME_SURFACE = "#E8E0CF";
+const CLUB_THEME_SURFACE = "#F2EDFF";
 
 function clubThemeHasRequiredContrast(
   themeColor: string,

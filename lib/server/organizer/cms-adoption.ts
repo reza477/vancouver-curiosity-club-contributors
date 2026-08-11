@@ -1247,6 +1247,9 @@ async function readClubCandidates(
     await Promise.all(
       rows.map(async (row) => {
         const description = requiredString(row.description);
+        const hasDetails =
+          row.detail_updated_at !== null &&
+          row.detail_updated_at !== undefined;
         const isPublished =
           row.publication_status === "published" &&
           optionalInteger(row.published_at) !== null;
@@ -1266,10 +1269,8 @@ async function readClubCandidates(
               name: requiredString(row.name),
               slug: requiredString(row.slug),
             },
-            details: row.detail_updated_at === null ||
-                row.detail_updated_at === undefined
-              ? null
-              : {
+            details: hasDetails
+              ? {
                   confirmedSocialLinks: JSON.parse(
                     requiredString(row.confirmed_social_links_json),
                   ),
@@ -1298,7 +1299,8 @@ async function readClubCandidates(
                     row.thumbnail_media_asset_id,
                   ),
                   typicalFormat: optionalString(row.typical_format),
-                },
+                }
+              : null,
             profile: {
               featured: Boolean(row.is_featured),
               laneId: requiredString(row.lane_id),
@@ -1325,7 +1327,9 @@ async function readClubCandidates(
             slug: requiredString(row.slug),
             socialUrls: [],
             summary: description.slice(0, 500),
-            themeColor: "#0C665E",
+            themeColor: hasDetails
+              ? requiredString(row.theme_color)
+              : "#2457D6",
             thumbnailAssetId: null,
             typicalFormat: null,
             whatToExpect: null,
@@ -1507,7 +1511,7 @@ async function readProgramCandidates(
           slug,
           socialUrls: [],
           summary: description.slice(0, 500),
-          themeColor: "#0C665E",
+          themeColor: "#2457D6",
           thumbnailAssetId: null,
           typicalFormat: null,
           whatToExpect: null,
@@ -1738,10 +1742,10 @@ async function readIdentityCandidate(
     openGraphAssetId: existing.openGraphAssetId ?? null,
     palette:
       existing.palette ?? {
-        accent: "#2156D8",
-        background: "#F5F0E6",
-        foreground: "#142C30",
-        secondary: "#0C665E",
+        accent: "#5B2CC9",
+        background: "#FFF9F5",
+        foreground: "#221C3D",
+        secondary: "#2457D6",
       },
     seoTitle: existing.seoTitle ?? brandName,
     tagline:

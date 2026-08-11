@@ -57,8 +57,9 @@ test("metadata and the web manifest declare only real local brand assets", async
   assert.match(manifestSource, /getPublicSiteContext/u);
   assert.match(manifestSource, /buildPublicManifest\(site, logo\)/u);
   assert.match(brandSource, /site\?\.brandName/u);
-  assert.match(brandSource, /site\?\.palette\?\.background/u);
-  assert.match(brandSource, /site\?\.palette\?\.foreground/u);
+  assert.match(brandSource, /resolvePublicBrandPalette\(site\?\.palette\)/u);
+  assert.match(brandSource, /palette\?\.background/u);
+  assert.match(brandSource, /palette\?\.foreground/u);
   assert.match(brandSource, /display:\s*"standalone"/u);
   for (const icon of [
     "/icon-192.png",
@@ -95,11 +96,11 @@ test("preserves the master artwork outside the public build surface", async () =
   assert.equal(bytes.readUInt32BE(20), 2_048, "master height");
   assert.equal(
     createHash("sha256").update(vector).digest("hex"),
-    "b6e67df604fca185022da09aaa6dcf59acea6baf8c8ace79960da331724ac5da",
+    "4e2221998dbfa48971db7bb8215a816b1b6165927254d07db3b85751969f669d",
     "the vector geometry is intentional and reviewable",
   );
   assert.match(vector, /Curiosity Prism/u);
-  for (const color of ["#071B31", "#2156D8", "#E85B48", "#0C665E"]) {
+  for (const color of ["#221C3D", "#5B2CC9", "#FF7867", "#2457D6"]) {
     assert.match(vector, new RegExp(color, "u"));
   }
   assert.doesNotMatch(vector, /<script|<image|filter=|linearGradient|radialGradient/iu);
@@ -117,15 +118,15 @@ test("preserves the master artwork outside the public build surface", async () =
 
 test("every shipped brand image matches the deterministic generated artifact", async () => {
   const expectedHashes = new Map([
-    ["public/favicon-16.png", "e1e8960b362dc05ad84a03d4e02260d4157a71f4c8918bc2f5fcce730fc280ba"],
-    ["public/favicon-32.png", "9c9cc743270b42aa303ae9a252b95bc69853486b150ec3d1c1674a4373f755ac"],
-    ["public/favicon-48.png", "a4048a13510914e8568bea5ba1f0399cd53eb757069b12ee25eaafa018cdc648"],
-    ["public/icon.png", "70e8e7638692b719a998c679a6e9176ac120555f52f9ace145d9194ba4d202a6"],
-    ["public/apple-touch-icon.png", "54ac9f1fcc724a747f04d8e71c92b27a4688eb0679abc9410f9b1d4ced101991"],
-    ["public/icon-192.png", "f13e2c3a68513eb262aec969924035064ea3cd97a325890ac2f4f83a4932a645"],
-    ["public/icon-512.png", "6b3b60a5a9082348b46592ab5a545ab42c16ab9b44213a42a2d7ed71e4eb864c"],
-    ["public/icon-maskable-512.png", "3f87ef5ba64bde3b7a03156e610df14175e4a1e6aaae666206087c3b0ae3d018"],
-    ["public/og.png", "7285a22a9d3790dd04174c24c9278c78edccbe1f2f9f2153a2df5cb9160e6324"],
+    ["public/favicon-16.png", "949f9130118e3bd22e12e635c23ddf092e9cd8d925a9d26cb91ea202444e19a1"],
+    ["public/favicon-32.png", "8994aa9bc1a0b1a41f92802133764282599d545472cd0adcab6635d218c42c64"],
+    ["public/favicon-48.png", "dc85003bb5bdc084ee13dcc4265e5cc5f88b1d62f5fdeb180becc500392c87ad"],
+    ["public/icon.png", "bbe376ccf4198ac44a40a8524d46b47e20737b911ade11bbf1b23d18e3e95566"],
+    ["public/apple-touch-icon.png", "1e59ae4b9258a66e59ef89d1882f8ae782b5397b82abd36ceb6fb15059c7ad0f"],
+    ["public/icon-192.png", "13d6427dcbb03800c3b94c06a8673399729f9e5a5d4241824779b7710d1f762e"],
+    ["public/icon-512.png", "7d8d85f7f9e2512e60c721d83baa13942c85c974a788b7203df244f374f5f313"],
+    ["public/icon-maskable-512.png", "66037918ca434ce59de51580b55b34fb9f0a2ca75ce2caf1da80b766cfa08baa"],
+    ["public/og.png", "a099e9cf7bad5ff914a943da46f6e0c49e2564df7ca3dd05bfc147e546602880"],
   ]);
   assert.equal(expectedHashes.size, pngAssets.length);
   for (const [path] of pngAssets) {

@@ -3,13 +3,26 @@ import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 
 export const SHIPPED_BRAND_NAME = "Vancouver Curiosity Club";
 export const SHIPPED_BRAND_TAGLINE = "A social calendar with a brain.";
-export const SHIPPED_BRAND_PALETTE = Object.freeze({
+export const LEGACY_SHIPPED_BRAND_PALETTE = Object.freeze({
   accent: "#2156D8",
   background: "#F5F0E6",
   foreground: "#142C30",
   secondary: "#0C665E",
 });
+export const SHIPPED_BRAND_PALETTE = Object.freeze({
+  accent: "#5B2CC9",
+  background: "#FFF9F5",
+  foreground: "#221C3D",
+  secondary: "#2457D6",
+});
 export const SHIPPED_BRAND_TYPOGRAPHY = "editorial";
+
+export type BrandPalette = Readonly<{
+  accent: string;
+  background: string;
+  foreground: string;
+  secondary: string;
+}>;
 
 type BrandArtworkIdentity = Readonly<{
   brandName: string;
@@ -65,15 +78,20 @@ export function usesShippedVisualSystem(
   return (
     usesShippedBrandText(identity) &&
     identity.typography === SHIPPED_BRAND_TYPOGRAPHY &&
-    Boolean(palette) &&
-    palette?.accent.toUpperCase() === SHIPPED_BRAND_PALETTE.accent &&
-    palette.background.toUpperCase() ===
-      SHIPPED_BRAND_PALETTE.background &&
-    palette.foreground.toUpperCase() ===
-      SHIPPED_BRAND_PALETTE.foreground &&
-    palette.secondary.toUpperCase() ===
-      SHIPPED_BRAND_PALETTE.secondary
+    palette !== null &&
+    palette !== undefined &&
+    (matchesBrandPalette(palette, SHIPPED_BRAND_PALETTE) ||
+      matchesBrandPalette(palette, LEGACY_SHIPPED_BRAND_PALETTE))
   );
+}
+
+export function resolvePublicBrandPalette(
+  palette: BrandPalette | null | undefined,
+): BrandPalette | null {
+  if (!palette) return null;
+  return matchesBrandPalette(palette, LEGACY_SHIPPED_BRAND_PALETTE)
+    ? SHIPPED_BRAND_PALETTE
+    : palette;
 }
 
 export function requiresCompleteBrandArtwork(
@@ -131,10 +149,7 @@ export function buildPublicManifest(
   site:
     | (Readonly<{
         brandName: string;
-        palette: Readonly<{
-          background: string;
-          foreground: string;
-        }> | null;
+        palette: BrandPalette | null;
         tagline: string;
       }> & Readonly<{ logoAssetId?: string | null }>)
     | null,
@@ -143,8 +158,10 @@ export function buildPublicManifest(
   const name = site?.brandName ?? SHIPPED_BRAND_NAME;
   const shortName = site?.brandName.slice(0, 30) ?? "Curiosity Club";
   const description = site?.tagline ?? SHIPPED_BRAND_TAGLINE;
-  const backgroundColor = site?.palette?.background ?? "#f4efe5";
-  const themeColor = site?.palette?.foreground ?? "#061a3a";
+  const palette = resolvePublicBrandPalette(site?.palette);
+  const backgroundColor =
+    palette?.background ?? SHIPPED_BRAND_PALETTE.background;
+  const themeColor = palette?.foreground ?? SHIPPED_BRAND_PALETTE.foreground;
   return {
     name,
     short_name: shortName,
@@ -155,6 +172,18 @@ export function buildPublicManifest(
     theme_color: themeColor,
     icons: manifestIcons(site, logo),
   };
+}
+
+function matchesBrandPalette(
+  palette: BrandPalette,
+  expected: BrandPalette,
+): boolean {
+  return (
+    palette.accent.toUpperCase() === expected.accent &&
+    palette.background.toUpperCase() === expected.background &&
+    palette.foreground.toUpperCase() === expected.foreground &&
+    palette.secondary.toUpperCase() === expected.secondary
+  );
 }
 
 function manifestIcons(

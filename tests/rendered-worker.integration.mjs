@@ -598,8 +598,8 @@ test("the built public root is indexable and carries the production security con
   assert.match(html, /self\.__VINEXT_RSC_DONE__=true/u);
 
   const renderedCss = await readRenderedStyles(html);
-  assert.match(renderedCss, /--ink-soft:var\(--cms-foreground,#26394a\)/u);
-  assert.match(renderedCss, /--warm-surface-ink:#071b31/u);
+  assert.match(renderedCss, /--ink-soft:var\(--cms-foreground,#514b68\)/u);
+  assert.match(renderedCss, /--warm-surface-ink:#221c3d/u);
   assert.match(renderedCss, /--focus-ring-inner:#000(?:000)?/u);
   assert.match(renderedCss, /--focus-ring-outer:#fff(?:fff)?/u);
   assert.match(

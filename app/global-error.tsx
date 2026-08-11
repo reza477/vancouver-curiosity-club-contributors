@@ -19,8 +19,8 @@ export default function GlobalError({
     <html lang="en-CA">
       <body
         style={{
-          background: "#f3efe4",
-          color: "#071b31",
+          background: "#fff9f5",
+          color: "#221c3d",
           fontFamily: "Arial, Helvetica, sans-serif",
           margin: 0,
         }}
@@ -43,9 +43,9 @@ export default function GlobalError({
               type="button"
               onClick={reset}
               style={{
-                background: "#071b31",
+                background: "#5b2cc9",
                 border: 0,
-                color: "#f3efe4",
+                color: "#fff9f5",
                 cursor: "pointer",
                 font: "inherit",
                 padding: "0.8rem 1rem",
@@ -59,4 +59,3 @@ export default function GlobalError({
     </html>
   );
 }
-

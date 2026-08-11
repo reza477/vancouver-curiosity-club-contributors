@@ -23,13 +23,13 @@ test("non-current primary navigation labels stay visible on hover and keyboard f
 
     assert.equal(
       background?.value,
-      "var(--ink)",
-      `the ${interaction} state should retain the dark primary-navigation surface`,
+      "var(--paper)",
+      `the ${interaction} state should use the light modern navigation surface`,
     );
     assert.equal(
       color?.value,
-      "var(--paper)",
-      `the ${interaction} state must use light text; dark text on the dark hover surface makes the label disappear`,
+      "var(--forest)",
+      `the ${interaction} state must keep the violet label readable on the light surface`,
     );
   }
 });

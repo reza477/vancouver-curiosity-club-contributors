@@ -200,7 +200,7 @@ test("the month calendar uses substantial brand accents without losing non-colou
   );
   assert.match(
     styles,
-    /--cal-line:\s*#8b795e;/u,
+    /--cal-line:\s*#7d7595;/u,
     "calendar cell boundaries need at least 3:1 contrast against adjacent cells",
   );
   assert.match(

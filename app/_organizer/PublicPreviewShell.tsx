@@ -23,6 +23,7 @@ import { PageMasthead } from "@/app/_components/PageMasthead";
 import { SiteFooter } from "@/app/_components/SiteFooter";
 import { SiteHeader } from "@/app/_components/SiteHeader";
 import styles from "@/app/_organizer/phase6.module.css";
+import { resolvePublicBrandPalette } from "@/lib/brand";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import type {
@@ -71,18 +72,19 @@ export async function PublicPreviewShell({
   preview: CmsRevisionPreviewDto;
 }>) {
   const shell = previewShell(catalog, preview);
-  const previewStyle = shell.site.palette
+  const previewPalette = resolvePublicBrandPalette(shell.site.palette);
+  const previewStyle = previewPalette
     ? ({
-        "--cms-accent": shell.site.palette.accent,
-        "--cms-background": shell.site.palette.background,
-        "--cms-foreground": shell.site.palette.foreground,
-        "--cms-secondary": shell.site.palette.secondary,
-        "--background": shell.site.palette.background,
-        "--cobalt": shell.site.palette.secondary,
-        "--forest": shell.site.palette.accent,
-        "--foreground": shell.site.palette.foreground,
-        "--ink": shell.site.palette.foreground,
-        "--paper": shell.site.palette.background,
+        "--cms-accent": previewPalette.accent,
+        "--cms-background": previewPalette.background,
+        "--cms-foreground": previewPalette.foreground,
+        "--cms-secondary": previewPalette.secondary,
+        "--background": previewPalette.background,
+        "--cobalt": previewPalette.secondary,
+        "--forest": previewPalette.accent,
+        "--foreground": previewPalette.foreground,
+        "--ink": previewPalette.foreground,
+        "--paper": previewPalette.background,
       } as CSSProperties)
     : undefined;
   return (

@@ -67,7 +67,7 @@ export function CreateClubProfileDraftButton({
               slug: club.slug,
               socialUrls: [],
               summary: "",
-              themeColor: "#0C665E",
+              themeColor: "#2457D6",
               thumbnailAssetId: null,
               typicalFormat: null,
               whatToExpect: null,

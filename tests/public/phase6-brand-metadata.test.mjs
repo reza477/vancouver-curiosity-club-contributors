@@ -8,12 +8,32 @@ import {
 import {
   buildPublicManifest,
   buildRootMetadataIcons,
+  LEGACY_SHIPPED_BRAND_PALETTE,
   requiresCompleteBrandArtwork,
+  resolvePublicBrandPalette,
   SHIPPED_BRAND_NAME,
   SHIPPED_BRAND_PALETTE,
   SHIPPED_BRAND_TAGLINE,
   usesShippedSocialArtwork,
 } from "../../lib/brand.ts";
+
+test("the legacy published palette resolves to the modern shipped color system", () => {
+  assert.deepEqual(
+    resolvePublicBrandPalette(LEGACY_SHIPPED_BRAND_PALETTE),
+    SHIPPED_BRAND_PALETTE,
+  );
+  const manifest = buildPublicManifest(
+    {
+      brandName: SHIPPED_BRAND_NAME,
+      logoAssetId: null,
+      palette: LEGACY_SHIPPED_BRAND_PALETTE,
+      tagline: SHIPPED_BRAND_TAGLINE,
+    },
+    null,
+  );
+  assert.equal(manifest.background_color, SHIPPED_BRAND_PALETTE.background);
+  assert.equal(manifest.theme_color, SHIPPED_BRAND_PALETTE.foreground);
+});
 
 const customSite = Object.freeze({
   brandName: "Synthetic Field Notes",

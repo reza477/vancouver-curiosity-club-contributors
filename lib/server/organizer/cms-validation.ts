@@ -789,7 +789,7 @@ export function parseClubProfileSnapshot(
     );
   }
   const themeColor = hexColor(input.themeColor, "snapshot.themeColor");
-  for (const background of ["#F3EFE4", "#E8E0CF"] as const) {
+  for (const background of ["#FFF9F5", "#F2EDFF"] as const) {
     if (contrastRatio(themeColor, background) < 4.5) {
       throw validationIssue(
         "snapshot.themeColor",
@@ -938,7 +938,7 @@ export function parseProgramProfileSnapshot(
     );
   }
   const themeColor = hexColor(input.themeColor, "snapshot.themeColor");
-  for (const background of ["#F3EFE4", "#E8E0CF"] as const) {
+  for (const background of ["#FFF9F5", "#F2EDFF"] as const) {
     if (contrastRatio(themeColor, background) < 4.5) {
       throw validationIssue(
         "snapshot.themeColor",
@@ -1526,11 +1526,11 @@ function parsePalette(value: unknown): CmsSiteIdentitySnapshot["palette"] {
   });
   const textBackgroundPairs = [
     ["foreground", palette.foreground, "background", palette.background],
-    ["foreground", palette.foreground, "paper-deep", "#E8E0CF"],
+    ["foreground", palette.foreground, "paper-deep", "#F2EDFF"],
     ["accent", palette.accent, "background", palette.background],
-    ["accent", palette.accent, "paper-deep", "#E8E0CF"],
+    ["accent", palette.accent, "paper-deep", "#F2EDFF"],
     ["secondary", palette.secondary, "background", palette.background],
-    ["secondary", palette.secondary, "paper-deep", "#E8E0CF"],
+    ["secondary", palette.secondary, "paper-deep", "#F2EDFF"],
   ] as const;
   for (const [textName, textColor, backgroundName, backgroundColor] of
     textBackgroundPairs) {
