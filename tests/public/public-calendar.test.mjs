@@ -482,6 +482,56 @@ test("the phone agenda renders every upcoming event and excludes past events", a
   );
 });
 
+test("the phone selected-date events sit directly below the month grid and before the upcoming agenda", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PublicMonthCalendar, {
+      complete: true,
+      events: Object.freeze([
+        timedEvent({
+          slug: "meditation-and-sketching",
+          title: "Meditation and sketching",
+        }),
+        timedEvent({
+          slug: "mangoes-latin-dance-night",
+          title: "Mangoes Latin dance night",
+        }),
+      ]),
+      maxMonth: "2027-07",
+      minMonth: "2025-07",
+      month: "2026-07",
+      nowUtcMs: Date.parse("2026-07-05T07:00:00.000Z"),
+      siteOrigin: "https://club.example",
+      todayDate: "2026-07-05",
+    }),
+  );
+  const gridIndex = markup.indexOf('class="public-calendar__grid"');
+  const dayPanelIndex = markup.indexOf('class="public-calendar__day-panel"');
+  const upcomingAgendaIndex = markup.indexOf(
+    'class="public-calendar__mobile-agenda"',
+  );
+
+  assert.ok(gridIndex >= 0, "the month grid must render");
+  assert.ok(dayPanelIndex >= 0, "the selected-date event panel must render");
+  assert.ok(upcomingAgendaIndex >= 0, "the upcoming mobile agenda must render");
+  assert.equal(
+    (markup.match(/id="public-calendar-day-panel"/gu) ?? []).length,
+    1,
+    "responsive layouts must share one selected-date panel",
+  );
+  assert.ok(
+    gridIndex < dayPanelIndex && dayPanelIndex < upcomingAgendaIndex,
+    "on phones, selected-date events must appear between the month grid and See what is coming up",
+  );
+
+  const selectedDateMarkup = markup.slice(dayPanelIndex, upcomingAgendaIndex);
+  assert.match(selectedDateMarkup, />Meditation and sketching<\/a>/u);
+  assert.match(selectedDateMarkup, />Mangoes Latin dance night<\/a>/u);
+  assert.match(
+    markup.slice(upcomingAgendaIndex),
+    /aria-controls="public-calendar-day-panel"/u,
+  );
+});
+
 test("calendar interaction contract locks details to click, touch, focus, and keyboard selection", async () => {
   const source = await readFile(
     new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
@@ -508,8 +558,11 @@ test("calendar interaction contract locks details to click, touch, focus, and ke
   }
   assert.match(source, /requestAnimationFrame/u);
   assert.match(source, /\.focus\(\)/u);
-  assert.match(source, /scrollIntoView/u);
-  assert.match(source, /prefers-reduced-motion/u);
+  assert.doesNotMatch(
+    source,
+    /scrollIntoView|revealDayPanelForTouch/u,
+    "selecting a date must update the nearby panel without forcing the phone viewport to jump",
+  );
   assert.match(source, /setActiveDate\(cell\.date\)/u);
   assert.match(source, /setFocusDate\(cell\.date\)/u);
   assert.match(source, /tabIndex=\{cell\.date === focusDate \? 0 : -1\}/u);

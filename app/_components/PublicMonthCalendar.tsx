@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   useMemo,
-  useRef,
   useState,
   type KeyboardEvent,
 } from "react";
@@ -91,24 +90,11 @@ export function PublicMonthCalendar({
         (todayDate.startsWith(`${month}-`) ? todayDate : `${month}-01`);
   const [activeDate, setActiveDate] = useState(initialDate);
   const [focusDate, setFocusDate] = useState(initialDate);
-  const dayPanelRef = useRef<HTMLElement>(null);
   const activeEvents = eventsByDate.get(activeDate) ?? [];
   const previousMonth =
     month > minMonth ? shiftMonthForHref(month, -1) : null;
   const nextMonth =
     month < maxMonth ? shiftMonthForHref(month, 1) : null;
-
-  function revealDayPanelForTouch() {
-    if (!window.matchMedia("(hover: none)").matches) return;
-    window.requestAnimationFrame(() => {
-      dayPanelRef.current?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
-        block: "start",
-      });
-    });
-  }
 
   function moveFocus(
     event: KeyboardEvent<HTMLButtonElement>,
@@ -264,7 +250,6 @@ export function PublicMonthCalendar({
                             onClick={() => {
                               setFocusDate(cell.date);
                               setActiveDate(cell.date);
-                              revealDayPanelForTouch();
                             }}
                             onFocus={() => {
                               setFocusDate(cell.date);
@@ -315,69 +300,12 @@ export function PublicMonthCalendar({
             Click or tap a date to select it. Its details stay open until you
             select another date. Arrow keys move between days.
           </p>
-          {mobileAgendaEvents.length > 0 ? (
-            <section
-              className="public-calendar__mobile-agenda"
-              aria-labelledby="public-calendar-mobile-agenda-title"
-            >
-              <div className="public-calendar__mobile-agenda-heading">
-                <p className="section-kicker">This month</p>
-                <h2 id="public-calendar-mobile-agenda-title">
-                  See what is coming up
-                </h2>
-              </div>
-              <div className="public-calendar__mobile-agenda-list">
-                {mobileAgendaEvents.map((event) => {
-                  const eventDate = publicEventCalendarStartDate(event);
-                  return (
-                    <button
-                      aria-pressed={eventDate === activeDate}
-                      data-event-lane={event.lane?.slug ?? "think"}
-                      key={event.slug}
-                      onClick={() => {
-                        setFocusDate(eventDate);
-                        setActiveDate(eventDate);
-                        revealDayPanelForTouch();
-                      }}
-                      type="button"
-                    >
-                      {event.artwork ? (
-                        <>
-                          {/* The controlled media route revalidates public usage. */}
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            alt=""
-                            decoding="async"
-                            height={event.artwork.dimensions.small.height}
-                            loading="lazy"
-                            src={event.artwork.srcSet.small}
-                            width={event.artwork.dimensions.small.width}
-                          />
-                        </>
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="public-calendar__mobile-agenda-fallback"
-                          data-event-lane={event.lane?.slug}
-                        />
-                      )}
-                      <span>
-                        <small>{formatPublicCalendarDate(eventDate)}</small>
-                        <strong>{event.title}</strong>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
         </div>
 
         <aside
           className="public-calendar__day-panel"
           id="public-calendar-day-panel"
           aria-labelledby="public-calendar-day-heading"
-          ref={dayPanelRef}
         >
           <div className="public-calendar__day-heading">
             <p className="section-kicker">
@@ -425,6 +353,63 @@ export function PublicMonthCalendar({
             {activeEvents.length === 1 ? "event shown" : "events shown"}.
           </p>
         </aside>
+
+        {mobileAgendaEvents.length > 0 ? (
+          <section
+            className="public-calendar__mobile-agenda"
+            aria-labelledby="public-calendar-mobile-agenda-title"
+          >
+            <div className="public-calendar__mobile-agenda-heading">
+              <p className="section-kicker">This month</p>
+              <h2 id="public-calendar-mobile-agenda-title">
+                See what is coming up
+              </h2>
+            </div>
+            <div className="public-calendar__mobile-agenda-list">
+              {mobileAgendaEvents.map((event) => {
+                const eventDate = publicEventCalendarStartDate(event);
+                return (
+                  <button
+                    aria-controls="public-calendar-day-panel"
+                    aria-pressed={eventDate === activeDate}
+                    data-event-lane={event.lane?.slug ?? "think"}
+                    key={event.slug}
+                    onClick={() => {
+                      setFocusDate(eventDate);
+                      setActiveDate(eventDate);
+                    }}
+                    type="button"
+                  >
+                    {event.artwork ? (
+                      <>
+                        {/* The controlled media route revalidates public usage. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          alt=""
+                          decoding="async"
+                          height={event.artwork.dimensions.small.height}
+                          loading="lazy"
+                          src={event.artwork.srcSet.small}
+                          width={event.artwork.dimensions.small.width}
+                        />
+                      </>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="public-calendar__mobile-agenda-fallback"
+                        data-event-lane={event.lane?.slug}
+                      />
+                    )}
+                    <span>
+                      <small>{formatPublicCalendarDate(eventDate)}</small>
+                      <strong>{event.title}</strong>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
       </div>
     </section>
   );
