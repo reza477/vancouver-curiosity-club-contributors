@@ -5,7 +5,6 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import sharp from "sharp";
-import { synchronizedMeetupPosterResponse } from "../../lib/server/meetup/poster-response.ts";
 import { getSynchronizedMeetupPoster } from "../../lib/server/meetup/posters.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
@@ -555,115 +554,6 @@ test("poster fetch redirects and failed or malformed transforms return a bounded
   });
 });
 
-test("the binding-injected poster response serves cacheable bytes and conditional requests", async (t) => {
-  const database = createPosterDatabase();
-  t.after(() => database.close());
-  const { webp480 } = await createImageFixtures();
-  const bucket = new MemoryPosterBucket();
-  const sourceDigest = createHash("sha256")
-    .update(POSTER_SOURCE_URL)
-    .digest("hex");
-  const objectKey = `meetup-posters/${sourceDigest}/480.webp`;
-  await bucket.put(objectKey, webp480, {
-    httpMetadata: { contentType: "image/webp" },
-  });
-  const dependencies = {
-    bucket,
-    database,
-    images: {
-      input() {
-        throw new Error("A cached poster must not invoke Images.");
-      },
-    },
-  };
-  const input = {
-    eventId: EVENT_ID,
-    groupSlug: GROUP_SLUG,
-    variant: "small",
-  };
-  const etag = `"${sourceDigest}-small"`;
-
-  const response = await synchronizedMeetupPosterResponse(
-    new Request(`https://example.test/meetup-posters/${GROUP_SLUG}/${EVENT_ID}/small`),
-    dependencies,
-    input,
-  );
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("content-type"), "image/webp");
-  assert.equal(response.headers.get("content-disposition"), "inline");
-  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
-  assert.equal(
-    response.headers.get("cache-control"),
-    "public, max-age=3600, stale-while-revalidate=86400",
-  );
-  assert.equal(response.headers.get("etag"), etag);
-  assert.deepEqual(
-    new Uint8Array(await response.arrayBuffer()),
-    new Uint8Array(webp480),
-  );
-
-  const conditional = await synchronizedMeetupPosterResponse(
-    new Request(
-      `https://example.test/meetup-posters/${GROUP_SLUG}/${EVENT_ID}/small`,
-      { headers: { "If-None-Match": etag } },
-    ),
-    dependencies,
-    input,
-  );
-  assert.equal(conditional.status, 304);
-  assert.equal(conditional.headers.get("etag"), etag);
-  assert.equal((await conditional.arrayBuffer()).byteLength, 0);
-});
-
-test("the Worker intercepts synchronized poster routes with runtime bindings before app work", async () => {
-  const workerSource = await readFile(
-    join(process.cwd(), "worker", "index.ts"),
-    "utf8",
-  );
-  const routeSource = await readFile(
-    join(
-      process.cwd(),
-      "app",
-      "meetup-posters",
-      "[groupSlug]",
-      "[eventId]",
-      "[variant]",
-      "route.ts",
-    ),
-    "utf8",
-  );
-
-  assert.match(
-    workerSource,
-    /const SYNCHRONIZED_MEETUP_POSTER_PATH\s*=\s*\/\^\\\/meetup-posters\\\/\(\[a-z0-9-\]\+\)\\\/\(\[0-9\]\+\)\\\/\(small\|medium\|large\)\$\/u/u,
-  );
-  const posterInterceptionIndex = workerSource.indexOf(
-    "const synchronizedPosterMatch",
-  );
-  const invariantIndex = workerSource.indexOf(
-    "const invariantStatus = await ensureDatabaseInvariants",
-  );
-  const handlerIndex = workerSource.indexOf("await handler.fetch");
-  assert.ok(posterInterceptionIndex >= 0);
-  assert.ok(
-    posterInterceptionIndex < invariantIndex,
-    "poster delivery must not wait for database-wide invariants",
-  );
-  assert.ok(
-    posterInterceptionIndex < handlerIndex,
-    "poster delivery must bypass the framework route handler",
-  );
-  assert.match(
-    workerSource,
-    /if \(synchronizedPosterMatch\) \{[\s\S]*?synchronizedMeetupPosterResponse\(\s*request,\s*\{\s*bucket: env\.MEDIA,\s*database: env\.DB,\s*images: env\.IMAGES,?\s*\},[\s\S]*?eventId: synchronizedPosterMatch\[2\],[\s\S]*?groupSlug: synchronizedPosterMatch\[1\],[\s\S]*?variant: synchronizedPosterMatch\[3\],[\s\S]*?safeErrorResponse\(error,[\s\S]*?return secureResponse\(/u,
-  );
-  assert.match(
-    routeSource,
-    /synchronizedMeetupPosterResponse\([\s\S]*?bucket:\s*getRuntimeMediaBucket\(\),[\s\S]*?database:\s*getRuntimeAuthConfiguration\(\)\.database,[\s\S]*?images:\s*getRuntimeImagesBinding\(\)/u,
-  );
-  assert.match(routeSource, /safeErrorResponse\(error/u);
-});
-
 test("public poster route keeps bytes first-party, cacheable, conditional, and nosniff", async () => {
   const routeSource = await readFile(
     join(
@@ -677,31 +567,17 @@ test("public poster route keeps bytes first-party, cacheable, conditional, and n
     ),
     "utf8",
   );
-  const responseSource = await readFile(
-    join(
-      process.cwd(),
-      "lib",
-      "server",
-      "meetup",
-      "poster-response.ts",
-    ),
-    "utf8",
-  );
-  assert.match(routeSource, /synchronizedMeetupPosterResponse\(/u);
+  assert.match(routeSource, /getSynchronizedMeetupPoster\(/u);
   assert.match(routeSource, /getRuntimeMediaBucket\(\)/u);
   assert.match(routeSource, /getRuntimeImagesBinding\(\)/u);
-  assert.match(responseSource, /getSynchronizedMeetupPoster\(/u);
-  assert.match(responseSource, /request\.headers\.get\("if-none-match"\) === etag/u);
-  assert.match(responseSource, /status:\s*304/u);
+  assert.match(routeSource, /request\.headers\.get\("if-none-match"\) === etag/u);
+  assert.match(routeSource, /status:\s*304/u);
   assert.match(
-    responseSource,
+    routeSource,
     /"Cache-Control":\s*"public, max-age=3600, stale-while-revalidate=86400"/u,
   );
-  assert.match(responseSource, /"Content-Disposition":\s*"inline"/u);
-  assert.match(responseSource, /"X-Content-Type-Options":\s*"nosniff"/u);
+  assert.match(routeSource, /"Content-Disposition":\s*"inline"/u);
+  assert.match(routeSource, /"X-Content-Type-Options":\s*"nosniff"/u);
   assert.match(routeSource, /safeErrorResponse\(error/u);
-  assert.doesNotMatch(
-    `${routeSource}\n${responseSource}`,
-    /secure\.meetupstatic\.com/u,
-  );
+  assert.doesNotMatch(routeSource, /secure\.meetupstatic\.com/u);
 });

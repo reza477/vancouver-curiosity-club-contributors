@@ -12,13 +12,11 @@ import {
   invitationTokenCookie,
   isInvitationToken,
 } from "../lib/server/organizer/invitation-token-cookie";
-import { synchronizedMeetupPosterResponse } from "../lib/server/meetup/poster-response";
 import {
   isPrivateOrIdentityPath,
   normalizeEncodedRequestPathname,
   safeRequestPathname,
 } from "../lib/request-pathname";
-import { safeErrorResponse } from "../lib/validation/server-observability";
 
 interface Env {
   ASSETS: Fetcher;
@@ -41,8 +39,6 @@ interface ExecutionContext {
 const TRUSTED_REQUEST_ORIGIN_HEADER = "x-vcc-request-origin";
 const TRUSTED_REQUEST_PATHNAME_HEADER = "x-vcc-request-pathname";
 const TRUSTED_CSP_NONCE_HEADER = "x-vcc-csp-nonce";
-const SYNCHRONIZED_MEETUP_POSTER_PATH =
-  /^\/meetup-posters\/([a-z0-9-]+)\/([0-9]+)\/(small|medium|large)$/u;
 
 function isLocalRequest(requestUrl: URL): boolean {
   return (
@@ -314,39 +310,6 @@ const worker = {
           return result.response();
         },
       }, allowedWidths);
-      return secureResponse(
-        request,
-        response,
-        policy,
-        normalizedPathname,
-      );
-    }
-
-    const synchronizedPosterMatch = SYNCHRONIZED_MEETUP_POSTER_PATH.exec(
-      normalizedPathname,
-    );
-    if (synchronizedPosterMatch) {
-      let response: Response;
-      try {
-        response = await synchronizedMeetupPosterResponse(
-          request,
-          {
-            bucket: env.MEDIA,
-            database: env.DB,
-            images: env.IMAGES,
-          },
-          {
-            eventId: synchronizedPosterMatch[2],
-            groupSlug: synchronizedPosterMatch[1],
-            variant: synchronizedPosterMatch[3],
-          },
-        );
-      } catch (error) {
-        response = safeErrorResponse(error, {
-          operation: "read_synchronized_meetup_poster",
-          route: "/meetup-posters/[groupSlug]/[eventId]/[variant]",
-        });
-      }
       return secureResponse(
         request,
         response,
