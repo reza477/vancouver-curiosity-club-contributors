@@ -121,7 +121,7 @@ export async function getSynchronizedMeetupPoster(
   const transformed = await images
     .input(new Blob([originalBody.buffer], { type: original.mimeType }).stream())
     .transform({ fit: "cover", height: target.height, width: target.width })
-    .output({ format: "webp", quality: 85 });
+    .output({ format: "image/webp", quality: 85 });
   const response = await transformed.response();
   if (!response.ok) throw posterUnavailable();
   const bytes = new Uint8Array(

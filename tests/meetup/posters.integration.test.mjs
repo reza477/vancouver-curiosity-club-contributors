@@ -309,7 +309,7 @@ test("active published Meetup poster is transformed once, cached in R2, and isol
         kind: "transform",
         options: { fit: "cover", height: 270, width: 480 },
       },
-      { kind: "output", options: { format: "webp", quality: 85 } },
+      { kind: "output", options: { format: "image/webp", quality: 85 } },
     ],
   );
   assert.deepEqual(bucket.puts, [

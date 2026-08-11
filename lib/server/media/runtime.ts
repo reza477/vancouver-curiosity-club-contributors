@@ -93,6 +93,6 @@ async function decodeWithImagesBinding(
   const stream = new Blob([bytes], { type: mimeType }).stream();
   const result = await images.input(stream)
     .transform({ width: 1 })
-    .output({ format: "webp", quality: 75 });
+    .output({ format: "image/webp", quality: 75 });
   return result.response();
 }
