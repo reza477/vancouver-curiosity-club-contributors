@@ -9,7 +9,9 @@ import {
 } from "../../lib/meetup-event-enrichment.ts";
 import {
   CURATED_MEETUP_EVENT_POSTERS,
+  CURATED_MEETUP_POSTER_SOURCE_OVERRIDES,
   curatedMeetupPosterForEventUrl,
+  curatedMeetupPosterForSourceUrl,
 } from "../../lib/meetup-event-posters.ts";
 import {
   toPublicEventCardDto,
@@ -301,6 +303,118 @@ test("a curated Meetup event prefers its bundled poster over a synchronized post
   assert.doesNotMatch(
     JSON.stringify(card.artwork),
     /meetup-posters|Synchronized Meetup poster/iu,
+  );
+});
+
+test("reported recurring mobile cards reuse verified first-party poster copies", async () => {
+  const reportedEvents = [
+    {
+      eventId: "315081514",
+      photoId: "533159115",
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/e/6/e/b/highres_533159115.jpeg",
+      title: "Meditation + Journaling Circle",
+    },
+    {
+      eventId: "315081515",
+      photoId: "533159115",
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/e/6/e/b/highres_533159115.jpeg",
+      title: "Meditation + Journaling Circle",
+    },
+    {
+      eventId: "315785787",
+      photoId: "535044448",
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/5/f/8/0/highres_535044448.jpeg",
+      title: "Sketching and socializing at Riley Park",
+    },
+    {
+      eventId: "315913931",
+      photoId: "535044448",
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/5/f/8/0/highres_535044448.jpeg",
+      title: "Sketching and socializing at Riley Park",
+    },
+    {
+      eventId: "316023162",
+      photoId: "535553384",
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/d/0/8/8/highres_535553384.jpeg",
+      title: "Mangos Latin Dance Night",
+    },
+  ];
+
+  assert.equal(
+    Object.keys(CURATED_MEETUP_POSTER_SOURCE_OVERRIDES).length,
+    3,
+  );
+  for (const event of reportedEvents) {
+    const card = toPublicEventCardDto({
+      all_day_end_date_exclusive: null,
+      all_day_start_date: null,
+      artwork_usage_count: 0,
+      attendance_mode: "in_person",
+      category_color_token: null,
+      category_name: null,
+      category_slug: null,
+      club_name: "Vancouver Curiosity Club",
+      club_slug: "vancouver-curiosity-club",
+      ends_at_utc: Date.parse("2026-08-16T07:30:00.000Z"),
+      event_status: "confirmed",
+      lane_name: "Think",
+      lane_slug: "think",
+      meetup_poster_alt_text: `${event.title} event poster.`,
+      meetup_poster_credit: "Vancouver Curiosity Club event poster via Meetup",
+      meetup_poster_source_url: event.sourceUrl,
+      program_name: null,
+      program_slug: null,
+      public_slug_count: 1,
+      rsvp_mode: "meetup",
+      rsvp_url: `https://www.meetup.com/vancouver-meetup-group/events/${event.eventId}/`,
+      slug: `reported-${event.eventId}`,
+      starts_at_utc: Date.parse("2026-08-16T04:30:00.000Z"),
+      summary: "A current Vancouver Curiosity Club gathering.",
+      time_kind: "timed",
+      timezone: "America/Vancouver",
+      title: event.title,
+      venue_public_address: "Vancouver, BC",
+      venue_public_name: "Public venue",
+    });
+    const expectedSrcSet = {
+      large: `/event-posters/meetup-photo-${event.photoId}.jpeg`,
+      medium: `/event-posters/meetup-photo-${event.photoId}-960.jpeg`,
+      small: `/event-posters/meetup-photo-${event.photoId}-480.jpeg`,
+    };
+
+    assert.deepEqual(card.artwork?.srcSet, expectedSrcSet, event.title);
+    assert.equal(card.artwork?.url, expectedSrcSet.large, event.title);
+    assert.equal(
+      curatedMeetupPosterForSourceUrl(event.sourceUrl),
+      CURATED_MEETUP_POSTER_SOURCE_OVERRIDES[event.sourceUrl],
+    );
+    assert.doesNotMatch(
+      JSON.stringify(card.artwork),
+      /\/meetup-posters\//u,
+      event.title,
+    );
+
+    for (const localPath of Object.values(expectedSrcSet)) {
+      const bytes = await readFile(
+        new URL(`../../public${localPath}`, import.meta.url),
+      );
+      const metadata = await sharp(bytes).metadata();
+      assert.equal(metadata.format, "jpeg", `${event.title}:${localPath}`);
+      assert.ok(metadata.width >= 480, `${event.title}:${localPath}`);
+      assert.ok(metadata.height >= 270, `${event.title}:${localPath}`);
+    }
+  }
+
+  assert.equal(
+    curatedMeetupPosterForSourceUrl(
+      "https://secure.meetupstatic.com/photos/event/e/6/e/b/highres_533159115.jpeg?attacker=1",
+    ),
+    null,
   );
 });
 

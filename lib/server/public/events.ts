@@ -28,7 +28,10 @@ import {
   publicProgramProjectionParityD1Sql,
 } from "./cms-projection-contract";
 import { currentPublishedOrganizerProfilePhotoUsageTargetSql } from "../media/public-usage-contract";
-import { curatedMeetupPosterForEventUrl } from "../../meetup-event-posters";
+import {
+  curatedMeetupPosterForEventUrl,
+  curatedMeetupPosterForSourceUrl,
+} from "../../meetup-event-posters";
 import {
   curatedMeetupEventForEventUrl,
   meetupDescriptionBlocksToPlainText,
@@ -5293,7 +5296,10 @@ export function toPublicEventCardDto(
   const approvedArtwork = publicArtwork(row);
   const curatedMeetupEvent = curatedMeetupEventForEventUrl(rsvpUrl);
   const curatedMeetupPoster =
-    approvedArtwork === null ? curatedMeetupPosterForEventUrl(rsvpUrl) : null;
+    approvedArtwork === null
+      ? curatedMeetupPosterForEventUrl(rsvpUrl) ??
+        curatedMeetupPosterForSourceUrl(row.meetup_poster_source_url)
+      : null;
   const synchronizedMeetupPoster =
     approvedArtwork === null && curatedMeetupPoster === null
       ? synchronizedMeetupPosterDto(row, rsvpUrl)
