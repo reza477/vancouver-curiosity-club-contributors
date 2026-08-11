@@ -5867,3 +5867,50 @@ export const eventCalendarComponentRevisions = sqliteTable(
     ),
   ],
 );
+
+/**
+ * Bounded, public-only render snapshots for the Events calendar. The heavy
+ * unified event projection populates this table on a miss; ordinary public
+ * requests then read one indexed JSON value instead of rebuilding the same
+ * projection. Cache keys include the build revision and normalized calendar
+ * context, while the short expiry bounds how long an organizer-side change
+ * can remain cached.
+ */
+export const publicEventCalendarSnapshots = sqliteTable(
+  "public_event_calendar_snapshots",
+  {
+    cacheKey: text("cache_key").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    snapshotJson: text("snapshot_json").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+  },
+  (table) => [
+    index("public_event_calendar_snapshots_org_expiry_idx").on(
+      table.organizationId,
+      table.expiresAt,
+    ),
+    check(
+      "public_event_calendar_snapshots_key_check",
+      sql`length(${table.cacheKey}) BETWEEN 1 AND 512
+          AND ${table.cacheKey} = trim(${table.cacheKey})`,
+    ),
+    check(
+      "public_event_calendar_snapshots_json_check",
+      sql`json_valid(${table.snapshotJson})
+          AND json_type(${table.snapshotJson}) = 'object'
+          AND length(${table.snapshotJson}) BETWEEN 2 AND 1000000`,
+    ),
+    check(
+      "public_event_calendar_snapshots_timestamp_check",
+      sql`${table.createdAt} BETWEEN 0 AND 8640000000000000
+          AND ${table.updatedAt} BETWEEN ${table.createdAt}
+              AND 8640000000000000
+          AND ${table.expiresAt} > ${table.updatedAt}
+          AND ${table.expiresAt} <= 8640000000000000`,
+    ),
+  ],
+);

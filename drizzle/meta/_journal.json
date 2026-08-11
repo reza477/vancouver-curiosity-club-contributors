@@ -71,6 +71,13 @@
       "when": 1786077266794,
       "tag": "0017_bright_captain_america",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1786486740166,
+      "tag": "0018_public_event_calendar_snapshots",
+      "breakpoints": true
     }
   ]
 }

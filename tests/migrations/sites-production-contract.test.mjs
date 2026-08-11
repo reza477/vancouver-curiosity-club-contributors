@@ -21,12 +21,13 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0015_phase6_cms_media.sql",
   "0016_phase7_import_export_forms.sql",
   "0017_bright_captain_america.sql",
+  "0018_public_event_calendar_snapshots.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
-  checks: 243,
-  explicitIndexes: 199,
-  foreignKeys: 299,
-  tables: 87,
+  checks: 246,
+  explicitIndexes: 200,
+  foreignKeys: 300,
+  tables: 88,
   triggers: 0,
   uniqueIndexes: 79,
 });
@@ -48,9 +49,10 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0015_snapshot.json",
       "0016_snapshot.json",
       "0017_snapshot.json",
+      "0018_snapshot.json",
       "_journal.json",
     ],
-    "the normalized chain must include the complete Meetup public-content sidecar migration",
+    "the normalized chain must include every public-content and Events snapshot migration",
   );
 
   const journal = JSON.parse(
@@ -69,6 +71,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 15, tag: "0015_phase6_cms_media" },
       { idx: 16, tag: "0016_phase7_import_export_forms" },
       { idx: 17, tag: "0017_bright_captain_america" },
+      { idx: 18, tag: "0018_public_event_calendar_snapshots" },
     ],
   );
   assert.deepEqual(
@@ -83,6 +86,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0015",
       "0016",
       "0017",
+      "0018",
     ].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
@@ -96,7 +100,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199],
+    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200],
     "migration snapshots must match the cumulative packaged index state",
   );
 
@@ -165,6 +169,19 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
   assert.match(
     meetupPublicContentFragments[0],
     /CREATE TABLE IF NOT EXISTS `meetup_event_snapshot_public_contents`/u,
+  );
+
+  const eventSnapshotFragments = productionFragments(
+    migrationSql("0018_public_event_calendar_snapshots.sql"),
+  );
+  assert.equal(eventSnapshotFragments.length, 2);
+  assert.match(
+    eventSnapshotFragments[0],
+    /CREATE TABLE IF NOT EXISTS `public_event_calendar_snapshots`/u,
+  );
+  assert.match(
+    eventSnapshotFragments[1],
+    /CREATE INDEX IF NOT EXISTS `public_event_calendar_snapshots_org_expiry_idx`/u,
   );
 
   const database = new DatabaseSync(":memory:");

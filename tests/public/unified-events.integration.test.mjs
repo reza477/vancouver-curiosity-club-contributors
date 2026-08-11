@@ -41,6 +41,22 @@ const ACTIVE_MEETUP_POSTER_SOURCE =
   "https://secure.meetupstatic.com/photos/event/a/b/c/highres_535545462.jpeg";
 const PENDING_MEETUP_POSTER_SOURCE =
   "https://secure.meetupstatic.com/photos/event/d/e/f/highres_999999999.jpeg";
+const ACTIVE_MEETUP_ARTWORK = Object.freeze({
+  altText: "Active snapshot event poster.",
+  credit: "Vancouver Curiosity Club via Meetup",
+  dimensions: Object.freeze({
+    large: Object.freeze({ height: 900, width: 1_600 }),
+    medium: Object.freeze({ height: 540, width: 960 }),
+    small: Object.freeze({ height: 270, width: 480 }),
+  }),
+  focalPoint: Object.freeze({ x: 5_000, y: 5_000 }),
+  srcSet: Object.freeze({
+    large: "/meetup-posters/synthetic-public-group/9001/large",
+    medium: "/meetup-posters/synthetic-public-group/9001/medium",
+    small: "/meetup-posters/synthetic-public-group/9001/small",
+  }),
+  url: "/meetup-posters/synthetic-public-group/9001/large",
+});
 const PRIVATE_SENTINELS = Object.freeze([
   "PRIVATE_EVENT_NOTE_SENTINEL",
   "PRIVATE_MEETING_SENTINEL",
@@ -729,33 +745,61 @@ test("active Meetup snapshots project only first-party synchronized poster URLs"
     (event) => event.slug === "meetup-active-event",
   );
   assert.ok(active);
-  const expectedArtwork = {
-    altText: "Active snapshot event poster.",
-    credit: "Vancouver Curiosity Club via Meetup",
-    dimensions: {
-      large: { height: 900, width: 1_600 },
-      medium: { height: 540, width: 960 },
-      small: { height: 270, width: 480 },
-    },
-    focalPoint: { x: 5_000, y: 5_000 },
-    srcSet: {
-      large: "/meetup-posters/synthetic-public-group/9001/large",
-      medium: "/meetup-posters/synthetic-public-group/9001/medium",
-      small: "/meetup-posters/synthetic-public-group/9001/small",
-    },
-    url: "/meetup-posters/synthetic-public-group/9001/large",
-  };
-  assert.deepEqual(active.artwork, expectedArtwork);
+  assert.deepEqual(active.artwork, ACTIVE_MEETUP_ARTWORK);
 
   const detail = await getPublicEventBySlug(database, {
     organizationId: ORGANIZATION_ID,
     slug: "meetup-active-event",
   });
   assert.ok(detail);
-  assert.deepEqual(detail.artwork, expectedArtwork);
+  assert.deepEqual(detail.artwork, ACTIVE_MEETUP_ARTWORK);
   const serialized = JSON.stringify({ active, detail });
   assert.equal(serialized.includes("secure.meetupstatic.com"), false);
   assert.equal(serialized.includes("PENDING POSTER"), false);
+});
+
+test("poster-bearing Events data round-trips from a cold projection to a D1 snapshot hit", async (t) => {
+  const database = await createFixture(t);
+  const projections = countUnifiedPublicEventProjections(database);
+  const { loadPublicEventsPageData } = await import(
+    "../../lib/server/public/events-page.ts"
+  );
+  const input = {
+    cacheOrigin: null,
+    nowUtcMs: NOW_UTC_MS,
+    organizationId: ORGANIZATION_ID,
+    rawMonth: "2026-08",
+    todayDate: TODAY_DATE,
+  };
+
+  const cold = await loadPublicEventsPageData(projections.database, input);
+  const coldPosterEvent = cold.calendar.events.find(
+    (event) => event.slug === "meetup-active-event",
+  );
+  assert.ok(coldPosterEvent);
+  assert.deepEqual(coldPosterEvent.artwork, ACTIVE_MEETUP_ARTWORK);
+  assert.equal(
+    projections.count(),
+    1,
+    "the cold request must execute the unified public-event projection once",
+  );
+
+  const warm = await loadPublicEventsPageData(projections.database, {
+    ...input,
+    nowUtcMs: NOW_UTC_MS + 1_000,
+  });
+  assert.deepEqual(warm, cold);
+  assert.deepEqual(
+    warm.calendar.events.find(
+      (event) => event.slug === "meetup-active-event",
+    )?.artwork,
+    ACTIVE_MEETUP_ARTWORK,
+  );
+  assert.equal(
+    projections.count(),
+    1,
+    "the D1 snapshot hit must not repeat the unified public-event projection",
+  );
 });
 
 test("owner venue selection atomically overrides or suppresses synchronized Meetup venue data", async (t) => {
@@ -4762,6 +4806,63 @@ async function insertSnapshot(
         updatedAt,
       )
       .run();
+  }
+}
+
+function countUnifiedPublicEventProjections(database) {
+  const innerStatements = new WeakMap();
+  const statementSql = new WeakMap();
+  let projectionCount = 0;
+
+  const inspectedDatabase = {
+    batch(statements) {
+      const inner = statements.map((statement) => {
+        const unwrapped = innerStatements.get(statement);
+        const sql = statementSql.get(statement);
+        assert.ok(unwrapped, "the batch contains an uninspected statement");
+        assert.equal(typeof sql, "string");
+        record(sql);
+        return unwrapped;
+      });
+      return database.batch(inner);
+    },
+    prepare(sql) {
+      return wrap(database.prepare(sql), sql);
+    },
+  };
+
+  return Object.freeze({
+    count: () => projectionCount,
+    database: inspectedDatabase,
+  });
+
+  function wrap(statement, sql) {
+    const wrapped = {
+      bind(...values) {
+        return wrap(statement.bind(...values), sql);
+      },
+      first(...args) {
+        record(sql);
+        return statement.first(...args);
+      },
+      all(...args) {
+        record(sql);
+        return statement.all(...args);
+      },
+      run(...args) {
+        record(sql);
+        return statement.run(...args);
+      },
+    };
+    innerStatements.set(wrapped, statement);
+    statementSql.set(wrapped, sql);
+    return wrapped;
+  }
+
+  function record(sql) {
+    if (/\bevents_page_public_events\s+AS\s+MATERIALIZED\b/u.test(sql)) {
+      projectionCount += 1;
+    }
   }
 }
 

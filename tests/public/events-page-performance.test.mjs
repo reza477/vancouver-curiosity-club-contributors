@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { countD1Statements } from "../auth/intercept-d1.mjs";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
 const NOW_UTC_MS = Date.parse("2026-08-11T19:00:00.000Z");
@@ -129,7 +128,8 @@ test("the combined Events loader preserves a bounded empty calendar", async (t) 
   );
   const database = new SqliteD1TestDatabase(await generatedMigrationSql());
   t.after(() => database.close());
-  const counter = countD1Statements(database);
+  seedSnapshotOrganization(database);
+  const counter = inspectD1Statements(database);
 
   const loaded = await loadPublicEventsPageData(counter.database, {
     nowUtcMs: NOW_UTC_MS,
@@ -150,9 +150,29 @@ test("the combined Events loader preserves a bounded empty calendar", async (t) 
     shiftedToUpcoming: false,
   });
   assert.equal(loaded.calendarAvailable, true);
-  assert.ok(
-    counter.count() <= 2,
-    `an empty combined Events load used ${counter.count()} D1 statements`,
+  assert.equal(
+    counter.count(),
+    4,
+    "the cold load performs one indexed miss, one unified projection, and one bounded cleanup/upsert batch",
+  );
+  assert.equal(counter.projectionCount(), 1);
+
+  const warm = await loadPublicEventsPageData(counter.database, {
+    nowUtcMs: NOW_UTC_MS + 1_000,
+    organizationId: ORGANIZATION_ID,
+    rawMonth: "2026-08",
+    todayDate: TODAY_DATE,
+  });
+  assert.deepEqual(warm, loaded);
+  assert.equal(
+    counter.count(),
+    5,
+    "the warm load adds only one indexed cache read",
+  );
+  assert.equal(
+    counter.projectionCount(),
+    1,
+    "the warm load must not repeat the unified public-event projection",
   );
 });
 
@@ -162,7 +182,8 @@ test("the unqualified Events landing reuses its empty landing result", async (t)
   );
   const database = new SqliteD1TestDatabase(await generatedMigrationSql());
   t.after(() => database.close());
-  const counter = countD1Statements(database);
+  seedSnapshotOrganization(database);
+  const counter = inspectD1Statements(database);
 
   const loaded = await loadPublicEventsPageData(counter.database, {
     nowUtcMs: NOW_UTC_MS,
@@ -175,9 +196,25 @@ test("the unqualified Events landing reuses its empty landing result", async (t)
   assert.deepEqual(loaded.calendar.events, []);
   assert.equal(loaded.calendar.resolvedMonth.month, "2026-08");
   assert.equal(loaded.calendar.shiftedToUpcoming, false);
-  assert.ok(
-    counter.count() <= 2,
+  assert.equal(counter.count(), 4);
+  assert.equal(
+    counter.projectionCount(),
+    1,
     "the default landing must not run a separate nearest-event projection after the bundled landing result already proved there is no target",
+  );
+
+  const warm = await loadPublicEventsPageData(counter.database, {
+    nowUtcMs: NOW_UTC_MS + 1_000,
+    organizationId: ORGANIZATION_ID,
+    rawMonth: undefined,
+    todayDate: TODAY_DATE,
+  });
+  assert.deepEqual(warm, loaded);
+  assert.equal(counter.count(), 5);
+  assert.equal(
+    counter.projectionCount(),
+    1,
+    "the identical landing request must be served without another unified projection",
   );
 });
 
@@ -238,6 +275,76 @@ async function generatedMigrationSql() {
       ),
     )
   ).join("\n");
+}
+
+function seedSnapshotOrganization(database) {
+  database.exec(`
+    INSERT INTO organizations (id, name, slug, timezone)
+    VALUES (
+      '${ORGANIZATION_ID}',
+      'Events page performance',
+      'events-page-performance',
+      'America/Vancouver'
+    );
+  `);
+}
+
+function inspectD1Statements(database) {
+  const innerStatements = new WeakMap();
+  const statementSql = new WeakMap();
+  let statementCount = 0;
+  let projectionCount = 0;
+
+  const inspected = {
+    batch(statements) {
+      const inner = statements.map((statement) => {
+        const unwrapped = innerStatements.get(statement);
+        const sql = statementSql.get(statement);
+        assert.ok(unwrapped, "the batch contains an uninspected statement");
+        assert.equal(typeof sql, "string");
+        record(sql);
+        return unwrapped;
+      });
+      return database.batch(inner);
+    },
+    prepare(sql) {
+      return wrap(database.prepare(sql), sql);
+    },
+  };
+
+  return Object.freeze({
+    count: () => statementCount,
+    database: inspected,
+    projectionCount: () => projectionCount,
+  });
+
+  function wrap(statement, sql) {
+    const wrapped = {
+      bind(...values) {
+        return wrap(statement.bind(...values), sql);
+      },
+      first(...args) {
+        record(sql);
+        return statement.first(...args);
+      },
+      all(...args) {
+        record(sql);
+        return statement.all(...args);
+      },
+      run(...args) {
+        record(sql);
+        return statement.run(...args);
+      },
+    };
+    innerStatements.set(wrapped, statement);
+    statementSql.set(wrapped, sql);
+    return wrapped;
+  }
+
+  function record(sql) {
+    statementCount += 1;
+    if (/\bpublic_events\s+AS\s*\(/u.test(sql)) projectionCount += 1;
+  }
 }
 
 function failBundleThenStandalone(database, shouldFailStandalone) {

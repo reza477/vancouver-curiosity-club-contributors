@@ -152,6 +152,38 @@ async function fetchPath(path, init) {
   });
 }
 
+async function clearPublicEventsSnapshotCache() {
+  const database = await runtime.getD1Database("DB");
+  const snapshots = await database
+    .prepare(
+      `SELECT cache_key
+       FROM public_event_calendar_snapshots
+       WHERE organization_id = ?`,
+    )
+    .bind(ORGANIZATION_ID)
+    .all();
+  const cache = (await runtime.getCaches()).default;
+  await Promise.all(
+    snapshots.results.map((row) => {
+      assert.equal(typeof row.cache_key, "string");
+      const url = new URL(
+        "/.__vcc-cache/public-events",
+        "https://preview.example",
+      );
+      url.searchParams.set("key", row.cache_key);
+      return cache.delete(url.toString());
+    }),
+  );
+  await database
+    .prepare(
+      `DELETE FROM public_event_calendar_snapshots
+       WHERE organization_id = ?`,
+    )
+    .bind(ORGANIZATION_ID)
+    .run();
+  return snapshots.results.length;
+}
+
 async function readRenderedStyles(html) {
   const hrefs = [...html.matchAll(/<link\b[^>]*>/giu)].flatMap(
     ([linkTag]) => {
@@ -272,6 +304,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0015_phase6_cms_media.sql",
     "0016_phase7_import_export_forms.sql",
     "0017_bright_captain_america.sql",
+    "0018_public_event_calendar_snapshots.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -343,7 +376,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    87,
+    88,
   );
   assert.equal(
     await database
@@ -354,7 +387,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    199,
+    200,
   );
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
@@ -1799,6 +1832,11 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(workspace.event.publicationStatus, "published");
   assert.equal(workspace.publicPath, detailPath);
 
+  assert.ok(
+    (await clearPublicEventsSnapshotCache()) > 0,
+    "the lifecycle test must cross the bounded public Events snapshot boundary",
+  );
+
   const homeResponse = await fetchPath("/");
   assert.equal(homeResponse.status, 200);
   const homeHtml = await homeResponse.text();
@@ -1927,6 +1965,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(unpublished.outcome, "unpublished");
   workspace = unpublished.workspace;
   assert.equal(workspace.event.publicationStatus, "unpublished");
+  await clearPublicEventsSnapshotCache();
   await assertAbsentFromPublicSurfaces("explicitly unpublished event");
 
   const requestedPublicationAt = Date.now() + 4_000;
@@ -1971,6 +2010,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.ok(reconciledDetail, "the due publication did not reconcile");
   const reconciledHtml = await reconciledDetail.text();
   assert.match(reconciledHtml, new RegExp(escapeRegex(publicTitle), "u"));
+  await clearPublicEventsSnapshotCache();
   const postReconciliationEvents = await fetchPath("/events");
   assert.equal(postReconciliationEvents.status, 200);
   assert.match(
@@ -2031,6 +2071,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(cancelled.planningStatus, "cancelled");
   assert.equal(cancelled.publicationStatus, "published");
 
+  await clearPublicEventsSnapshotCache();
   const cancelledEventsResponse = await fetchPath("/events");
   assert.equal(cancelledEventsResponse.status, 200);
   const cancelledEventsHtml = await cancelledEventsResponse.text();

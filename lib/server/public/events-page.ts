@@ -13,10 +13,17 @@ import {
 } from "@/lib/server/public/events";
 import type { PublicMonthCalendarData } from "@/lib/server/public/month-calendar";
 import { writeSafeLog } from "@/lib/validation/server-observability";
+import {
+  readPublicEventsSnapshot,
+  writePublicEventsSnapshot,
+  type PublicEventsSnapshotServices,
+} from "@/lib/server/public/event-calendar-snapshot";
 
-type PublicEventsPageDatabase = Pick<D1DatabaseLike, "prepare">;
+type PublicEventsPageDatabase = Pick<D1DatabaseLike, "prepare"> &
+  Partial<Pick<D1DatabaseLike, "batch">>;
 
 export type LoadPublicEventsPageDataInput = Readonly<{
+  cacheOrigin?: string | null;
   nowUtcMs: number;
   organizationId: string;
   rawMonth: unknown;
@@ -35,6 +42,35 @@ export type PublicEventsPageData = Readonly<{
  * was already read successfully.
  */
 export async function loadPublicEventsPageData(
+  database: PublicEventsPageDatabase,
+  input: LoadPublicEventsPageDataInput,
+  snapshotServices: PublicEventsSnapshotServices = {},
+): Promise<PublicEventsPageData> {
+  const snapshotContext = {
+    cacheOrigin: input.cacheOrigin,
+    nowUtcMs: input.nowUtcMs,
+    organizationId: input.organizationId,
+    rawMonth: input.rawMonth,
+    todayDate: input.todayDate,
+  };
+  const cached = await readPublicEventsSnapshot(
+    database,
+    snapshotContext,
+    snapshotServices,
+  );
+  if (cached) return cached;
+
+  const loaded = await loadPublicEventsPageDataUncached(database, input);
+  await writePublicEventsSnapshot(
+    database,
+    snapshotContext,
+    loaded,
+    snapshotServices,
+  );
+  return loaded;
+}
+
+async function loadPublicEventsPageDataUncached(
   database: PublicEventsPageDatabase,
   input: LoadPublicEventsPageDataInput,
 ): Promise<PublicEventsPageData> {

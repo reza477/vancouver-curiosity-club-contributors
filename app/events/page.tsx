@@ -50,7 +50,7 @@ export default async function EventsPage({
   const raw = await searchParams;
   const nowUtcMs = readServerUtcMs();
   const todayDate = vancouverCalendarDate(nowUtcMs);
-  const originPromise = getTrustedRequestOrigin();
+  const origin = await getTrustedRequestOrigin();
   let pageContent:
     | Awaited<ReturnType<typeof getRequestPublicPageContent>>
     | null = null;
@@ -74,6 +74,7 @@ export default async function EventsPage({
         return null;
       });
       const loaded = await loadPublicEventsPageData(database, {
+        cacheOrigin: origin?.origin ?? null,
         organizationId: organization.id,
         nowUtcMs,
         rawMonth: raw.month,
@@ -92,7 +93,6 @@ export default async function EventsPage({
     });
     publicServiceUnavailable();
   }
-  const origin = await originPromise;
 
   return (
     <EventsPageRenderer
