@@ -16,6 +16,7 @@ import {
   listRelatedPublicEvents,
   queryPublicCalendarMonth,
   queryPublicEvents,
+  queryPublicCalendarLandingBundle,
   queryPublicEventsForExport,
   resolveEditorialPublishedEventSelectionProofs,
   resolvePublishedEventSelections,
@@ -31,6 +32,7 @@ import {
 import { InputValidationError } from "../../lib/validation/index.ts";
 import { MEETUP_EVENT_ALIAS_URLS } from "../../lib/server/meetup/event-aliases.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import { countD1Statements } from "../auth/intercept-d1.mjs";
 
 const ORGANIZATION_ID = "org_phase_2_public";
 const NOW_UTC_MS = Date.parse("2026-07-25T12:00:00.000Z");
@@ -855,6 +857,9 @@ test("all exact cross-post aliases stay out of public projections while the cano
     "https://www.meetup.com/vancouver-meetup-group/events/315976207/",
     "https://www.meetup.com/vancouver-meetup-group/events/315511485/",
     "https://www.meetup.com/vancouver-meetup-group/events/315851495/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315776403/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315511487/",
+    "https://www.meetup.com/vancouver-meetup-group/events/315777485/",
   ];
   assert.deepEqual(MEETUP_EVENT_ALIAS_URLS, aliasUrls);
   const canonicalUrl =
@@ -909,8 +914,8 @@ test("all exact cross-post aliases stay out of public projections while the cano
       1, 1, 0, 'published', 0, 200, 200, 200, NULL
     );
     UPDATE meetup_sync_generations
-    SET expected_item_count = 11,
-        processed_item_count = 11
+    SET expected_item_count = 14,
+        processed_item_count = 14
     WHERE id = 'generation_active';
   `);
 
@@ -994,7 +999,7 @@ test("all exact cross-post aliases stay out of public projections while the cano
     externalId: "wednesday-reset-316010049",
     generationId: "generation_active",
     id: "snapshot_wednesday_reset",
-    ordinal: 10,
+    ordinal: 13,
     startsAt: "2026-08-13T01:00:00.000Z",
     status: "confirmed",
     title: "Wednesday Night Reset",
@@ -2501,6 +2506,27 @@ test("calendar month matches the bounded list union and fails closed on exposed 
     boundedUnion,
   );
   assert.equal(august.hasMore, false);
+
+  const bundleStatements = countD1Statements(database);
+  const bundled = await queryPublicCalendarLandingBundle(
+    bundleStatements.database,
+    {
+      calendar: {
+        organizationId: ORGANIZATION_ID,
+        nowUtcMs: NOW_UTC_MS,
+        todayDate: TODAY_DATE,
+        ...augustBounds,
+      },
+      includeLandingEvent: true,
+    },
+  );
+  assert.deepEqual(bundled.calendar, august);
+  assert.deepEqual(bundled.landingEvent, upcoming.events[0] ?? null);
+  assert.ok(
+    bundleStatements.count() <= 4,
+    `the mixed-source Events bundle used ${bundleStatements.count()} D1 statements`,
+  );
+
   for (const excludedSlug of [
     "related-manual-conversation",
     "cancelled-manual-event",

@@ -616,7 +616,7 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(
     renderedCss,
-    /\.event-card__artwork figcaption,[^{]*\{[^}]*background:var\(--ink\)[^}]*color:var\(--paper\)/u,
+    /\.event-card__artwork figcaption,[^{]*\{[^}]*background:var\(--forest\)[^}]*color:var\(--paper\)/u,
   );
   assert.match(
     renderedCss,
@@ -737,7 +737,7 @@ test("the retired Community destination redirects to Contribute", async () => {
   assertNoPrivateSentinels(html);
 });
 
-test("Events is the single calendar-first upcoming and past list destination", async () => {
+test("Events is the single calendar-only discovery destination", async () => {
   const response = await fetchPath("/events");
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -755,24 +755,13 @@ test("Events is the single calendar-first upcoming and past list destination", a
     /<h2(?=[^>]*class="public-calendar__title")(?=[^>]*id="public-calendar-title")[^>]*>/u,
   );
   assert.match(html, /href="\/events\?month=\d{4}-\d{2}">Today<\/a>/u);
-  assert.match(
-    html,
-    /<a(?=[^>]*href="\/events\?state=upcoming")(?=[^>]*aria-current="page")[^>]*>Upcoming<\/a>/u,
-  );
-  assert.match(html, /href="\/events\?state=past">Past<\/a>/u);
-  assert.doesNotMatch(html, /aria-label="Event views"/u);
+  assert.match(html, /public-calendar__day-panel/u);
+  assert.doesNotMatch(html, /aria-label="Event views"|aria-label="Event timeframe"/u);
+  assert.doesNotMatch(html, /href="\/events\?state=(?:upcoming|past)"/u);
   assert.doesNotMatch(html, /href="\/calendar"/u);
   assert.doesNotMatch(html, /Find your next field note|Apply filters/u);
   assert.doesNotMatch(html, /public-export-actions|Download this public view/u);
-  const resultIndex = Math.max(
-    html.indexOf('class="event-list"'),
-    html.indexOf('class="public-empty-state"'),
-  );
-  assert.ok(resultIndex >= 0, "the event-list result must remain rendered");
-  assert.ok(
-    html.indexOf("public-calendar__grid") < resultIndex,
-    "the full month calendar must render before the event-list result",
-  );
+  assert.doesNotMatch(html, /class="event-list"|events-page__list/u);
   assertSharedChrome(html);
   assertNoPrivateSentinels(html);
 
@@ -782,10 +771,9 @@ test("Events is the single calendar-first upcoming and past list destination", a
     past.headers.get("x-robots-tag"),
     "noindex, follow, noarchive",
   );
-  assert.match(
-    await past.text(),
-    /<a(?=[^>]*href="\/events\?state=past")(?=[^>]*aria-current="page")[^>]*>Past<\/a>/u,
-  );
+  const pastHtml = await past.text();
+  assert.match(pastHtml, /public-calendar__grid/u);
+  assert.doesNotMatch(pastHtml, /aria-label="Event timeframe"|>Past<\/a>/u);
 });
 
 test("Home and Events public-service failures return truthful noindex 503 responses", async () => {

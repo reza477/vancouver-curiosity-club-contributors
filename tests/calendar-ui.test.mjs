@@ -353,7 +353,7 @@ test("About is concise, reassuring, evidence-backed, and event-led", async () =>
   assert.match(styles, /\.about-founder-note/u);
 });
 
-test("Events leads with a full calendar, keeps upcoming and past lists, and exposes no public diagnostics", async () => {
+test("Events leads with one full calendar and exposes no public diagnostics", async () => {
   const [
     page,
     renderer,
@@ -389,37 +389,34 @@ test("Events leads with a full calendar, keeps upcoming and past lists, and expo
   ]);
 
   assert.match(page, /EventsPageRenderer/u);
-  assert.match(page, /eventListValues\(raw\)/u);
-  assert.match(page, /queryPublicEventSlice/u);
-  assert.match(page, /view:\s*values\.state/u);
-  assert.match(page, /pageSize:\s*12/u);
+  assert.doesNotMatch(page, /eventListValues\(raw\)/u);
+  assert.match(page, /loadPublicEventsPageData/u);
+  assert.doesNotMatch(
+    page,
+    /\bqueryPublicEventSlice\b|\bloadPublicMonthCalendar\b/u,
+  );
+  assert.doesNotMatch(page, /values\.state|values\.page/u);
   assert.doesNotMatch(page, /from "\.\.\/calendar\/page"/u);
   assert.match(`${page}\n${renderer}`, /PublicMonthCalendar/u);
   assert.doesNotMatch(page, /refreshMeetupCalendarSourceIfDue/);
-  assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/);
-  assert.match(maintenance, /schedulePublicMeetupRefresh/);
+  assert.doesNotMatch(
+    maintenance,
+    /refreshMeetupCalendarSourceIfDue|schedulePublicMeetupRefresh/u,
+  );
   assert.match(worker, /maintenanceRedirect/);
-  assert.match(
+  assert.doesNotMatch(
     worker,
-    /const response = await handler\.fetch[\s\S]*?const securedResponse = secureResponse[\s\S]*?schedulePublicMeetupRefresh\([\s\S]*?ctx\.waitUntil\(task\)[\s\S]*?return securedResponse/u,
+    /schedulePublicMeetupRefresh|public_meetup_refresh_/u,
   );
-  assert.match(
-    renderer,
-    /state:\s*params\.state === "past" \? "past" : "upcoming"/u,
-  );
-  assert.match(renderer, />\s*Upcoming\s*</u);
-  assert.match(renderer, />\s*Past\s*</u);
+  assert.doesNotMatch(renderer, /Event timeframe|>\s*Upcoming\s*<|>\s*Past\s*</u);
   assert.doesNotMatch(renderer, /<EventFilters\b/u);
   assert.doesNotMatch(
     renderer,
     /public-export-actions|Download this public view|exportHref\(/u,
   );
-  assert.ok(
-    renderer.indexOf("<PublicMonthCalendar") <
-      renderer.indexOf("<EventCollection"),
-    "the full month calendar must appear before the event list",
-  );
-  assert.match(renderer, /<EventCollection/u);
+  assert.match(renderer, /<PublicMonthCalendar/u);
+  assert.doesNotMatch(renderer, /<EventCollection|<Pagination|events-page__list/u);
+  assert.doesNotMatch(renderer, /EditorialSection|editorial-sections/u);
   assert.doesNotMatch(
     `${page}\n${renderer}`,
     /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,

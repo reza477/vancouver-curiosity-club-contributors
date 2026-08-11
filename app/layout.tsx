@@ -12,7 +12,7 @@ import {
   type PublicSiteContextDto,
 } from "@/lib/server/public/catalog";
 import {
-  getRequestPublicCatalog,
+  getRequestPublicNavigation,
   getRequestPublicOrganization,
   getRequestPublicSiteContext,
 } from "@/lib/server/public/request-cache";
@@ -172,13 +172,14 @@ export default async function RootLayout({
   if (!isPrivatePath) {
     try {
       const { database } = getRuntimeAuthConfiguration();
-      const [catalog, organization] = await Promise.all([
-        getRequestPublicCatalog(database),
+      const [site, navigation, organization] = await Promise.all([
+        getRequestPublicSiteContext(database),
+        getRequestPublicNavigation(database),
         getRequestPublicOrganization(database),
       ]);
-      if (catalog) {
+      if (site) {
         let logoAssetId: string | null = null;
-        if (organization && catalog.site.logoAssetId) {
+        if (organization && site.logoAssetId) {
           logoAssetId =
             (
               await resolveMediaAssetsForRendering(database, {
@@ -186,7 +187,7 @@ export default async function RootLayout({
                 publicationScope: "published",
                 usages: [
                   {
-                    assetId: catalog.site.logoAssetId,
+                    assetId: site.logoAssetId,
                     entityKey: organization.id,
                     entityType: "site_logo",
                     usageKind: "logo",
@@ -196,16 +197,16 @@ export default async function RootLayout({
             )[0]?.assetId ?? null;
         }
         shell = {
-          brandName: catalog.site.brandName,
+          brandName: site.brandName,
           externalLinks: [],
-          footerNavigation: catalog.navigation.footer,
-          headerNavigation: catalog.navigation.header,
-          legalFooter: catalog.site.legalFooter,
-          location: catalog.site.locationLabel,
+          footerNavigation: navigation.footer,
+          headerNavigation: navigation.header,
+          legalFooter: site.legalFooter,
+          location: site.locationLabel,
           logoAssetId,
-          mission: catalog.site.footerMission,
-          palette: catalog.site.palette,
-          typography: catalog.site.typography,
+          mission: site.footerMission,
+          palette: site.palette,
+          typography: site.typography,
         };
       }
     } catch {

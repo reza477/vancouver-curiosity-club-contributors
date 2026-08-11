@@ -153,7 +153,10 @@ export function PublicMonthCalendar({
         </div>
         <nav aria-label="Calendar months">
           {previousMonth ? (
-            <Link href={calendarHref(previousMonth, calendarRoute)}>
+            <Link
+              href={calendarHref(previousMonth, calendarRoute)}
+              prefetch={false}
+            >
               Previous month
             </Link>
           ) : (
@@ -161,11 +164,15 @@ export function PublicMonthCalendar({
           )}
           <Link
             href={calendarHref(todayDate.slice(0, 7), calendarRoute)}
+            prefetch={false}
           >
             Today
           </Link>
           {nextMonth ? (
-            <Link href={calendarHref(nextMonth, calendarRoute)}>
+            <Link
+              href={calendarHref(nextMonth, calendarRoute)}
+              prefetch={false}
+            >
               Next month
             </Link>
           ) : (
@@ -296,10 +303,6 @@ export function PublicMonthCalendar({
               ))}
             </tbody>
           </table>
-          <p className="public-calendar__keyboard-help">
-            Click or tap a date to select it. Its details stay open until you
-            select another date. Arrow keys move between days.
-          </p>
         </div>
 
         <aside
@@ -339,7 +342,7 @@ export function PublicMonthCalendar({
               <p>
                 {complete
                   ? "Dates with an event are marked with a dark dot."
-                  : "Use the event list below for the complete result set."}
+                  : "Some published events may not be shown in this month view."}
               </p>
             </div>
           )}
@@ -491,7 +494,9 @@ function CalendarEventPreview({
           {formatPublicCalendarEventTime(event)} / {location}
         </p>
         <h4>
-          <Link href={`/events/${event.slug}`}>{event.title}</Link>
+          <Link href={`/events/${event.slug}`} prefetch={false}>
+            {event.title}
+          </Link>
         </h4>
         {event.venue?.address ? (
           <p className="public-calendar-event__location">
@@ -500,7 +505,9 @@ function CalendarEventPreview({
         ) : null}
         {event.summary ? <p>{event.summary}</p> : null}
         <div className="public-calendar-event__actions">
-          <Link href={`/events/${event.slug}`}>Event details</Link>
+          <Link href={`/events/${event.slug}`} prefetch={false}>
+            Event details
+          </Link>
           {event.rsvpMode === "meetup" && event.rsvpUrl ? (
             <a
               aria-label="RSVP on Meetup (opens in a new tab)"

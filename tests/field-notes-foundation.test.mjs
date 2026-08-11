@@ -54,8 +54,13 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(requestCache, /import \{ cache \} from "react";/u);
   assert.match(
     requestCache,
-    /getRequestPublicCatalog\s*=\s*cache\([\s\S]*?loadPublicCatalog\(database\)/u,
+    /getRequestPublicNavigation\s*=\s*cache\([\s\S]*?listPublicNavigation\(database\)/u,
   );
+  assert.match(
+    requestCache,
+    /getRequestPublicCatalog\s*=\s*cache\([\s\S]*?getRequestPublicSiteContext\(database\)[\s\S]*?getRequestPublicLanes\(database\)[\s\S]*?getRequestPublicClubs\(database\)[\s\S]*?getRequestPublicCommunityLinks\(database\)[\s\S]*?getRequestPublicNavigation\(database\)/u,
+  );
+  assert.doesNotMatch(requestCache, /loadPublicCatalog/u);
   assert.match(
     homeData,
     /getRequestPublicPageContent\(database, "home"\)/u,
@@ -76,6 +81,9 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(catalog, /A social calendar with a brain\./);
   assert.match(catalog, /Vancouver Curiosity Club/);
   assert.match(layout, /Skip to main content/);
+  assert.match(layout, /getRequestPublicNavigation\(database\)/u);
+  assert.match(layout, /getRequestPublicSiteContext\(database\)/u);
+  assert.doesNotMatch(layout, /getRequestPublicCatalog/u);
   assert.match(layout, /<SiteHeader[\s\S]*brandName=\{shell\?\.brandName\}/);
   assert.match(layout, /<SiteFooter/);
   assert.match(header, /aria-label="Primary navigation"/);

@@ -138,7 +138,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });
 
-test("Events combines a full calendar with upcoming and past lists while Calendar forwards into it", async () => {
+test("Events renders one full calendar while Calendar forwards into it", async () => {
   const [calendar, events, renderer, maintenance, worker] = await Promise.all([
     readFile(new URL("app/calendar/route.ts", projectRoot), "utf8"),
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
@@ -168,42 +168,39 @@ test("Events combines a full calendar with upcoming and past lists while Calenda
   );
 
   assert.match(events, /EventsPageRenderer/u);
-  assert.match(events, /eventListValues\(raw\)/u);
-  assert.match(events, /queryPublicEventSlice/u);
-  assert.match(events, /loadPublicMonthCalendar/u);
-  assert.match(events, /view:\s*values\.state/u);
+  assert.doesNotMatch(events, /eventListValues\(raw\)/u);
+  assert.match(events, /loadPublicEventsPageData/u);
+  assert.doesNotMatch(
+    events,
+    /\bqueryPublicEventSlice\b|\bloadPublicMonthCalendar\b/u,
+  );
+  assert.doesNotMatch(events, /values\.state|values\.page/u);
   assert.doesNotMatch(events, /from "\.\.\/calendar\/page"/u);
   assert.match(`${events}\n${renderer}`, /PublicMonthCalendar/u);
-  assert.match(
-    renderer,
-    /state:\s*params\.state === "past" \? "past" : "upcoming"/u,
-  );
-  assert.match(renderer, />\s*Upcoming\s*</u);
-  assert.match(renderer, />\s*Past\s*</u);
+  assert.doesNotMatch(renderer, /Event timeframe|>\s*Upcoming\s*<|>\s*Past\s*</u);
   assert.doesNotMatch(renderer, /<EventFilters\b/u);
   assert.doesNotMatch(
     renderer,
     /public-export-actions|Download this public view|exportHref\(/u,
   );
   assert.doesNotMatch(renderer, /calendar-view-switcher/u);
-  assert.ok(
-    renderer.indexOf("<PublicMonthCalendar") <
-      renderer.indexOf("<EventCollection"),
-    "the full month calendar must appear before the event list",
-  );
-  assert.match(renderer, /<EventCollection/u);
+  assert.match(renderer, /<PublicMonthCalendar/u);
+  assert.doesNotMatch(renderer, /<EventCollection|<Pagination|events-page__list/u);
+  assert.doesNotMatch(renderer, /EditorialSection|editorial-sections/u);
   assert.doesNotMatch(calendar, /Download upcoming events/u);
   assert.doesNotMatch(
     `${calendar}\n${events}\n${renderer}`,
     /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,
   );
   assert.doesNotMatch(events, /refreshMeetupCalendarSourceIfDue/u);
-  assert.match(maintenance, /refreshMeetupCalendarSourceIfDue/u);
-  assert.match(maintenance, /schedulePublicMeetupRefresh/u);
+  assert.doesNotMatch(
+    maintenance,
+    /refreshMeetupCalendarSourceIfDue|schedulePublicMeetupRefresh/u,
+  );
   assert.match(worker, /maintenanceRedirect/u);
-  assert.match(
+  assert.doesNotMatch(
     worker,
-    /const response = await handler\.fetch[\s\S]*?const securedResponse = secureResponse[\s\S]*?schedulePublicMeetupRefresh\([\s\S]*?ctx\.waitUntil\(task\)[\s\S]*?return securedResponse/u,
+    /schedulePublicMeetupRefresh|public_meetup_refresh_/u,
   );
 });
 

@@ -44,7 +44,11 @@ export function HomePageRenderer({
           <h1 id="home-title">{HERO_HEADING}</h1>
           <p className="home-hero__deck">{HERO_BODY}</p>
           <div className="home-hero__actions">
-            <Link className="primary-action" href="/events">
+            <Link
+              className="primary-action"
+              href="/events"
+              prefetch={false}
+            >
               See upcoming gatherings
             </Link>
             <Link href="#new-here">New here? Start here</Link>
@@ -68,7 +72,9 @@ export function HomePageRenderer({
             <p className="section-kicker">Coming up next</p>
             <h2 id="home-events-title">Three ways to join in</h2>
           </div>
-          <Link href="/events">See all upcoming gatherings</Link>
+          <Link href="/events" prefetch={false}>
+            See all upcoming gatherings
+          </Link>
         </div>
         {upcomingEvents.length > 0 ? (
           <div className="event-list">
@@ -81,7 +87,9 @@ export function HomePageRenderer({
             <p className="section-kicker">Upcoming gatherings</p>
             <h3>No upcoming event is published yet.</h3>
             <p>Check the complete events page for the latest public listings.</p>
-            <Link href="/events">Open events</Link>
+            <Link href="/events" prefetch={false}>
+              Open events
+            </Link>
           </div>
         )}
       </section>
@@ -147,7 +155,10 @@ export function HomePageRenderer({
               </div>
               <h3>{lane.name}</h3>
               {lane.description ? <p>{lane.description}</p> : null}
-              <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
+              <Link
+                href={`/events?lane=${encodeURIComponent(lane.slug)}`}
+                prefetch={false}
+              >
                 Explore {lane.name}
               </Link>
             </article>
@@ -217,7 +228,11 @@ export function HomePageRenderer({
           <p>Choose a published gathering and take the next small step.</p>
         </div>
         <div className="home-invitation__actions">
-          <Link className="primary-action" href="/events">
+          <Link
+            className="primary-action"
+            href="/events"
+            prefetch={false}
+          >
             See upcoming gatherings
           </Link>
         </div>
@@ -300,7 +315,9 @@ function HomeHeroPoster({
         width={event.artwork.dimensions.large.width}
       />
       <figcaption>
-        <Link href={`/events/${event.slug}`}>{event.title}</Link>
+        <Link href={`/events/${event.slug}`} prefetch={false}>
+          {event.title}
+        </Link>
         <span>Artwork: {event.artwork.credit}</span>
       </figcaption>
     </figure>

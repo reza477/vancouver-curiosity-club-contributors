@@ -1085,6 +1085,16 @@ export type PublicCalendarMonthDto = Readonly<{
   hasMore: boolean;
 }>;
 
+export type QueryPublicCalendarLandingBundleInput = Readonly<{
+  calendar: QueryPublicCalendarMonthInput;
+  includeLandingEvent?: boolean;
+}>;
+
+export type PublicCalendarLandingBundleDto = Readonly<{
+  calendar: PublicCalendarMonthDto;
+  landingEvent: PublicEventCardDto | null;
+}>;
+
 export type GetPublicEventInput = Readonly<{
   organizationId: unknown;
   slug: unknown;
@@ -1163,6 +1173,15 @@ type ParsedPublicEventQuery = Readonly<{
   toUtcMsExclusive: number | null;
   view: PublicEventListView;
 }>;
+
+type ParsedPublicCalendarMonthQuery = ParsedPublicEventQuery &
+  Readonly<{
+    fromDate: string;
+    fromUtcMs: number;
+    toDate: string;
+    toDateExclusive: string;
+    toUtcMsExclusive: number;
+  }>;
 
 /**
  * Shared production projection for every public event surface.
@@ -4113,6 +4132,31 @@ export function parsePublicEventQuery(
   });
 }
 
+function parsePublicCalendarMonthQuery(
+  input: QueryPublicCalendarMonthInput,
+): ParsedPublicCalendarMonthQuery {
+  const parsed = parsePublicEventQuery({
+    ...input,
+    page: 1,
+    pageSize: 48,
+    view: "upcoming",
+  });
+  if (
+    parsed.fromDate === null ||
+    parsed.fromUtcMs === null ||
+    parsed.toDate === null ||
+    parsed.toDateExclusive === null ||
+    parsed.toUtcMsExclusive === null
+  ) {
+    throw validationIssue(
+      "fromDate",
+      "invalid_date_range",
+      "Calendar month bounds are required.",
+    );
+  }
+  return parsed as ParsedPublicCalendarMonthQuery;
+}
+
 export async function queryPublicEvents(
   database: Pick<D1DatabaseLike, "prepare">,
   input: QueryPublicEventsInput,
@@ -4238,6 +4282,128 @@ export async function queryPublicEventSlice(
 const PUBLIC_CALENDAR_MONTH_EVENT_LIMIT = 96;
 
 /**
+ * Reads one calendar month and (when needed) the nearest upcoming event from
+ * one materialized public-event projection. The two bounded result groups are
+ * labelled in SQL, enriched once, then rebuilt into the same DTOs used by the
+ * standalone public queries.
+ */
+export async function queryPublicCalendarLandingBundle(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: QueryPublicCalendarLandingBundleInput,
+): Promise<PublicCalendarLandingBundleDto> {
+  const calendar = parsePublicCalendarMonthQuery(input.calendar);
+  const landing = parsePublicEventQuery({
+    nowUtcMs: calendar.nowUtcMs,
+    organizationId: calendar.organizationId,
+    page: 1,
+    pageSize: 1,
+    todayDate: calendar.todayDate,
+    view: "upcoming",
+  });
+  const calendarFilter = buildPublicCalendarMonthFilter(calendar);
+  const landingFilter = buildPublicEventFilter(landing);
+  const upcomingOrder = publicEventOrderExpression("upcoming");
+  const result = await database
+    .prepare(
+      `${UNIFIED_PUBLIC_EVENT_CTE_SQL},
+       events_page_public_events AS MATERIALIZED (
+         SELECT *
+         FROM public_events
+       ),
+       events_page_calendar AS (
+         SELECT public_event.*,
+                row_number() OVER (
+                  ORDER BY ${upcomingOrder}
+                ) AS public_result_ordinal
+         FROM events_page_public_events AS public_event
+         WHERE ${calendarFilter.sql}
+         ORDER BY ${upcomingOrder}
+         LIMIT ?
+       ),
+       events_page_landing AS (
+         SELECT public_event.*,
+                row_number() OVER (
+                  ORDER BY ${upcomingOrder}
+                ) AS public_result_ordinal
+         FROM events_page_public_events AS public_event
+         WHERE ? = 1
+           AND ${landingFilter.sql}
+         ORDER BY ${upcomingOrder}
+         LIMIT 1
+       )
+       SELECT 'calendar' AS public_result_kind,
+              public_event.public_result_ordinal,
+              ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
+       FROM events_page_calendar AS public_event
+       UNION ALL
+       SELECT 'landing' AS public_result_kind,
+              public_event.public_result_ordinal,
+              ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
+       FROM events_page_landing AS public_event
+       ORDER BY public_result_kind, public_result_ordinal`,
+    )
+    .bind(
+      calendar.organizationId,
+      calendar.organizationId,
+      calendar.organizationId,
+      ...calendarFilter.bindings,
+      PUBLIC_CALENDAR_MONTH_EVENT_LIMIT + 1,
+      input.includeLandingEvent === true ? 1 : 0,
+      ...landingFilter.bindings,
+    )
+    .all<Record<string, unknown>>();
+  assertSuccessfulResult(result);
+  const rows = result.results ?? [];
+  for (const row of rows) assertSinglePublicSlug(row);
+  const calendarRows = rows.filter(
+    (row) => row.public_result_kind === "calendar",
+  );
+  const landingRows = rows.filter(
+    (row) => row.public_result_kind === "landing",
+  );
+  const rowsToRender = [
+    ...calendarRows.slice(0, PUBLIC_CALENDAR_MONTH_EVENT_LIMIT),
+    ...landingRows.slice(0, 1),
+  ];
+  const uniqueRows = new Map<string, Record<string, unknown>>();
+  for (const row of rowsToRender) {
+    uniqueRows.set(publicEventResultIdentity(row), row);
+  }
+  const enrichedRows = await enrichPublicEventRows(
+    database,
+    calendar.organizationId,
+    [...uniqueRows.values()],
+  );
+  const eventByIdentity = new Map(
+    enrichedRows.map((row) => [
+      publicEventResultIdentity(row),
+      toPublicEventCardDto(row),
+    ]),
+  );
+  const eventsFor = (
+    sourceRows: readonly Record<string, unknown>[],
+  ): readonly PublicEventCardDto[] =>
+    Object.freeze(
+      sourceRows.flatMap((row) => {
+        const event = eventByIdentity.get(publicEventResultIdentity(row));
+        return event ? [event] : [];
+      }),
+    );
+  const renderedCalendarRows = calendarRows.slice(
+    0,
+    PUBLIC_CALENDAR_MONTH_EVENT_LIMIT,
+  );
+  return Object.freeze({
+    calendar: Object.freeze({
+      events: eventsFor(renderedCalendarRows),
+      hasMore:
+        calendarRows.length > PUBLIC_CALENDAR_MONTH_EVENT_LIMIT,
+    }),
+    landingEvent: eventsFor(landingRows.slice(0, 1))[0] ?? null,
+  });
+}
+
+/**
  * Reads the calendar's complete past/upcoming union with one unified public
  * projection. Confirmed and tentative events remain visible on either side of
  * now; completed events are included only after they end, exactly matching the
@@ -4247,65 +4413,14 @@ export async function queryPublicCalendarMonth(
   database: Pick<D1DatabaseLike, "prepare">,
   input: QueryPublicCalendarMonthInput,
 ): Promise<PublicCalendarMonthDto> {
-  const parsed = parsePublicEventQuery({
-    ...input,
-    page: 1,
-    pageSize: 48,
-    view: "upcoming",
-  });
-  if (
-    parsed.fromDate === null ||
-    parsed.fromUtcMs === null ||
-    parsed.toDateExclusive === null ||
-    parsed.toUtcMsExclusive === null
-  ) {
-    throw validationIssue(
-      "fromDate",
-      "invalid_date_range",
-      "Calendar month bounds are required.",
-    );
-  }
+  const parsed = parsePublicCalendarMonthQuery(input);
+  const filter = buildPublicCalendarMonthFilter(parsed);
   const result = await database
     .prepare(
       `${UNIFIED_PUBLIC_EVENT_CTE_SQL}
        SELECT ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
        FROM public_events AS public_event
-       WHERE (
-         public_event.event_status IN ('confirmed', 'tentative')
-         OR (
-           public_event.event_status = 'completed'
-           AND (
-             (
-               public_event.time_kind = 'timed'
-               AND public_event.ends_at_utc <= ?
-             )
-             OR (
-               public_event.time_kind = 'all_day'
-               AND public_event.all_day_end_date_exclusive <= ?
-             )
-           )
-         )
-       )
-       AND (
-         (
-           public_event.time_kind = 'timed'
-           AND public_event.ends_at_utc > ?
-         )
-         OR (
-           public_event.time_kind = 'all_day'
-           AND public_event.all_day_end_date_exclusive > ?
-         )
-       )
-       AND (
-         (
-           public_event.time_kind = 'timed'
-           AND public_event.starts_at_utc < ?
-         )
-         OR (
-           public_event.time_kind = 'all_day'
-           AND public_event.all_day_start_date < ?
-         )
-       )
+       WHERE ${filter.sql}
        ${publicEventOrderSql("upcoming")}
        LIMIT ?`,
     )
@@ -4313,12 +4428,7 @@ export async function queryPublicCalendarMonth(
       parsed.organizationId,
       parsed.organizationId,
       parsed.organizationId,
-      parsed.nowUtcMs,
-      parsed.todayDate,
-      parsed.fromUtcMs,
-      parsed.fromDate,
-      parsed.toUtcMsExclusive,
-      parsed.toDateExclusive,
+      ...filter.bindings,
       PUBLIC_CALENDAR_MONTH_EVENT_LIMIT + 1,
     )
     .all<Record<string, unknown>>();
@@ -5841,6 +5951,57 @@ function buildPublicEventFilter(
   });
 }
 
+function buildPublicCalendarMonthFilter(
+  input: ParsedPublicCalendarMonthQuery,
+): Readonly<{ bindings: readonly D1Value[]; sql: string }> {
+  return Object.freeze({
+    bindings: Object.freeze([
+      input.nowUtcMs,
+      input.todayDate,
+      input.fromUtcMs,
+      input.fromDate,
+      input.toUtcMsExclusive,
+      input.toDateExclusive,
+    ]),
+    sql: `(
+      public_event.event_status IN ('confirmed', 'tentative')
+      OR (
+        public_event.event_status = 'completed'
+        AND (
+          (
+            public_event.time_kind = 'timed'
+            AND public_event.ends_at_utc <= ?
+          )
+          OR (
+            public_event.time_kind = 'all_day'
+            AND public_event.all_day_end_date_exclusive <= ?
+          )
+        )
+      )
+    )
+    AND (
+      (
+        public_event.time_kind = 'timed'
+        AND public_event.ends_at_utc > ?
+      )
+      OR (
+        public_event.time_kind = 'all_day'
+        AND public_event.all_day_end_date_exclusive > ?
+      )
+    )
+    AND (
+      (
+        public_event.time_kind = 'timed'
+        AND public_event.starts_at_utc < ?
+      )
+      OR (
+        public_event.time_kind = 'all_day'
+        AND public_event.all_day_start_date < ?
+      )
+    )`,
+  });
+}
+
 function addEqualityFilter(
   clauses: string[],
   bindings: D1Value[],
@@ -5858,11 +6019,28 @@ function addEqualityFilter(
 }
 
 function publicEventOrderSql(view: PublicEventListView): string {
+  return `ORDER BY ${publicEventOrderExpression(view)}`;
+}
+
+function publicEventOrderExpression(view: PublicEventListView): string {
   const direction = view === "upcoming" ? "ASC" : "DESC";
-  return `ORDER BY
-    ${publicEventSortExpression("public_event")} ${direction},
+  return `${publicEventSortExpression("public_event")} ${direction},
     public_event.title COLLATE NOCASE ${direction},
     public_event.slug ${direction}`;
+}
+
+function publicEventResultIdentity(row: Record<string, unknown>): string {
+  return [
+    parseIdentifier(
+      row.public_source_identity_key,
+      "publicEvent.sourceIdentity",
+    ),
+    parseIdentifier(row.slug, "publicEvent.slug"),
+    parseFiniteInteger(row.public_source_version, {
+      path: "publicEvent.sourceVersion",
+      minimum: 0,
+    }),
+  ].join("\u0000");
 }
 
 function publicEventSortExpression(alias: string): string {

@@ -11,12 +11,10 @@ export type {
   MeetupProgramClub,
 } from "./clubs";
 export {
-  listDefaultPublicMeetupCalendar,
   listPublicMeetupCalendar,
   readPublicMeetupSyncState,
 } from "./public";
 export type {
-  ListDefaultPublicMeetupCalendarInput,
   ListPublicMeetupCalendarInput,
 } from "./public";
 export {

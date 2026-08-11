@@ -82,10 +82,13 @@ export function EventCard({
           <strong>{schedule.day}</strong>
         </div>
         <div aria-label="Event associations" className="event-card__meta">
-          <Link href={`/clubs/${event.club.slug}`}>{event.club.name}</Link>
+          <Link href={`/clubs/${event.club.slug}`} prefetch={false}>
+            {event.club.name}
+          </Link>
           {event.program ? (
             <Link
               href={`/clubs/${event.club.slug}/programs/${event.program.slug}`}
+              prefetch={false}
             >
               {event.program.name}
             </Link>
@@ -99,7 +102,9 @@ export function EventCard({
           ) : null}
         </div>
         <h3>
-          <Link href={`/events/${event.slug}`}>{event.title}</Link>
+          <Link href={`/events/${event.slug}`} prefetch={false}>
+            {event.title}
+          </Link>
         </h3>
         {event.summary && !compact ? <p>{event.summary}</p> : null}
         <dl className="event-card__facts">
@@ -122,6 +127,7 @@ export function EventCard({
         aria-label={`View details for ${event.title}`}
         className="event-card__arrow"
         href={`/events/${event.slug}`}
+        prefetch={false}
       >
         <span aria-hidden="true">→</span>
       </Link>

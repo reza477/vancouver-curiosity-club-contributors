@@ -17,6 +17,7 @@ import {
   toPublicEventCardDto,
   toPublicEventDetailDto,
 } from "../../lib/server/public/events.ts";
+import { canonicalMeetupEventUrlForAlias } from "../../lib/server/meetup/event-aliases.ts";
 
 function descriptionInlines(blocks) {
   return blocks.flatMap((block) =>
@@ -347,7 +348,7 @@ test("reported recurring mobile cards reuse verified first-party poster copies",
 
   assert.equal(
     Object.keys(CURATED_MEETUP_POSTER_SOURCE_OVERRIDES).length,
-    3,
+    5,
   );
   for (const event of reportedEvents) {
     const card = toPublicEventCardDto({
@@ -416,6 +417,97 @@ test("reported recurring mobile cards reuse verified first-party poster copies",
     ),
     null,
   );
+});
+
+test("canonical cross-post cards use bundled poster copies after alias resolution", async () => {
+  const canonicalEvents = [
+    {
+      aliasId: "315776403",
+      canonicalId: "315776148",
+      photoId: "535306516",
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/b/5/b/4/highres_535306516.jpeg",
+      title:
+        "Princess Mononoke - can humans build without destroying something sacred?",
+    },
+    {
+      aliasId: "315511487",
+      canonicalId: "315510890",
+      photoId: "535020979",
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/3/d/3/highres_535020979.jpeg",
+      title:
+        "Eyes Wide Shut - marriage, desire, and rich-people nightmare rituals",
+    },
+  ];
+
+  for (const event of canonicalEvents) {
+    const canonicalUrl =
+      `https://www.meetup.com/vancouver-literature-and-film/events/${event.canonicalId}/`;
+    assert.equal(
+      canonicalMeetupEventUrlForAlias(
+        `https://www.meetup.com/vancouver-meetup-group/events/${event.aliasId}/`,
+      ),
+      canonicalUrl,
+    );
+    const card = toPublicEventCardDto({
+      all_day_end_date_exclusive: null,
+      all_day_start_date: null,
+      artwork_usage_count: 0,
+      attendance_mode: "in_person",
+      category_color_token: null,
+      category_name: null,
+      category_slug: null,
+      club_name: "Vancouver Literature and Film",
+      club_slug: "vancouver-literature-and-film",
+      ends_at_utc: Date.parse("2026-08-24T02:00:00.000Z"),
+      event_status: "confirmed",
+      lane_name: "Think",
+      lane_slug: "think",
+      meetup_poster_alt_text: `${event.title} event poster.`,
+      meetup_poster_credit: "Vancouver Curiosity Club event poster via Meetup",
+      meetup_poster_source_url: event.sourceUrl,
+      program_name: null,
+      program_slug: null,
+      public_slug_count: 1,
+      rsvp_mode: "meetup",
+      rsvp_url: canonicalUrl,
+      slug: `canonical-${event.canonicalId}`,
+      starts_at_utc: Date.parse("2026-08-23T20:00:00.000Z"),
+      summary: "A canonical Vancouver Literature and Film gathering.",
+      time_kind: "timed",
+      timezone: "America/Vancouver",
+      title: event.title,
+      venue_public_address: "Vancouver, BC",
+      venue_public_name: "Public venue",
+    });
+    const expectedSrcSet = {
+      large: `/event-posters/meetup-photo-${event.photoId}.jpeg`,
+      medium: `/event-posters/meetup-photo-${event.photoId}-960.jpeg`,
+      small: `/event-posters/meetup-photo-${event.photoId}-480.jpeg`,
+    };
+
+    assert.deepEqual(card.artwork?.srcSet, expectedSrcSet, event.title);
+    assert.equal(card.artwork?.url, expectedSrcSet.large, event.title);
+    assert.doesNotMatch(
+      JSON.stringify(card.artwork),
+      /\/meetup-posters\//u,
+      event.title,
+    );
+    for (const [localPath, expectedWidth, expectedHeight] of [
+      [expectedSrcSet.small, 480, 270],
+      [expectedSrcSet.medium, 960, 540],
+      [expectedSrcSet.large, 1_600, 900],
+    ]) {
+      const bytes = await readFile(
+        new URL(`../../public${localPath}`, import.meta.url),
+      );
+      const metadata = await sharp(bytes).metadata();
+      assert.equal(metadata.format, "jpeg", `${event.title}:${localPath}`);
+      assert.equal(metadata.width, expectedWidth, `${event.title}:${localPath}`);
+      assert.equal(metadata.height, expectedHeight, `${event.title}:${localPath}`);
+    }
+  }
 });
 
 test("verified Meetup content fills only missing public fields", () => {

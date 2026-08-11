@@ -1,50 +1,21 @@
-import Link from "next/link";
-import { EditorialSection, loadEditorialRenderContext } from "./EditorialPage";
-import { EventCollection } from "./EventCollection";
 import { PublicMonthCalendar } from "./PublicMonthCalendar";
-import type {
-  PublicCommunityLinkDto,
-  PublicPageDto,
-} from "@/lib/server/public/catalog";
-import type {
-  PublicEventPageDto,
-  PublicEventSliceDto,
-} from "@/lib/server/public/events";
+import type { PublicPageDto } from "@/lib/server/public/catalog";
 import type { PublicMonthCalendarData } from "@/lib/server/public/month-calendar";
-import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 
-export type EventListValues = Readonly<{
-  month: string;
-  page: number;
-  state: "past" | "upcoming";
-}>;
-
-export async function EventsPageRenderer({
+export function EventsPageRenderer({
   calendar,
   calendarAvailable = true,
-  eventPage,
-  eventListAvailable = true,
   nowUtcMs,
   pageContent,
-  previewCommunityLinks,
-  previewMediaAssets,
-  privatePreview = false,
   siteOrigin,
   todayDate,
-  values,
 }: Readonly<{
   calendar: PublicMonthCalendarData;
   calendarAvailable?: boolean;
-  eventPage: PublicEventSliceDto;
-  eventListAvailable?: boolean;
   nowUtcMs: number;
   pageContent: PublicPageDto | null;
-  previewCommunityLinks?: readonly PublicCommunityLinkDto[];
-  previewMediaAssets?: readonly ResponsiveMediaAssetDto[];
-  privatePreview?: boolean;
   siteOrigin: string | null;
   todayDate: string;
-  values: EventListValues;
 }>) {
   const intro = pageContent
     ? pageContent.sections.find((section) => {
@@ -52,19 +23,6 @@ export async function EventsPageRenderer({
         return type === "intro" || type === "hero";
       })
     : null;
-  const sections = pageContent
-    ? pageContent.sections.filter((section) => section !== intro)
-    : [];
-  const renderContext = pageContent
-    ? await loadEditorialRenderContext({
-        page: pageContent,
-        previewCommunityLinks,
-        previewMediaAssets,
-        privatePreview,
-      })
-    : null;
-  const listTitle =
-    values.state === "past" ? "Past gatherings" : "Upcoming gatherings";
 
   return (
     <main className="public-page events-page">
@@ -85,8 +43,8 @@ export async function EventsPageRenderer({
       <div className="events-page__calendar public-calendar-page">
         {!calendarAvailable ? (
           <div className="calendar-notice" role="status">
-            Calendar dates are temporarily unavailable. Gatherings are still
-            listed below.
+            Calendar dates are temporarily unavailable. Please try again in a
+            moment.
           </div>
         ) : null}
         {calendar.resolvedMonth.invalid ? (
@@ -108,7 +66,7 @@ export async function EventsPageRenderer({
           </div>
         ) : null}
         <PublicMonthCalendar
-          calendarRoute={calendarRoute(values)}
+          calendarRoute="/events"
           complete={!calendar.hasMore}
           events={calendar.events}
           headingLevel={2}
@@ -121,150 +79,6 @@ export async function EventsPageRenderer({
           todayDate={todayDate}
         />
       </div>
-
-      <section
-        aria-labelledby="events-list-title"
-        className="events-page__list"
-      >
-        <div className="events-page__list-header">
-          <div>
-            <p className="section-kicker">All public listings</p>
-            <h2 id="events-list-title">{listTitle}</h2>
-            {eventListAvailable ? (
-              <p aria-live="polite">
-                {eventPage.events.length}{" "}
-                {eventPage.events.length === 1
-                  ? "gathering shown"
-                  : "gatherings shown"}
-                {eventPage.hasMore ? " — more available" : ""}
-              </p>
-            ) : (
-              <p aria-live="polite">
-                The gathering list is temporarily unavailable. Choose a date
-                in the calendar or try again.
-              </p>
-            )}
-          </div>
-          <nav
-            aria-label="Event timeframe"
-            className="event-view-tabs events-page__timeframe"
-          >
-            <Link
-              aria-current={
-                values.state === "upcoming" ? "page" : undefined
-              }
-              href={stateHref(values, "upcoming")}
-            >
-              Upcoming
-            </Link>
-            <Link
-              aria-current={values.state === "past" ? "page" : undefined}
-              href={stateHref(values, "past")}
-            >
-              Past
-            </Link>
-          </nav>
-        </div>
-        <EventCollection
-          events={eventPage.events}
-          emptyMessage={
-            !eventListAvailable
-              ? "The gathering list is temporarily unavailable. Choose a date in the calendar or try again."
-              : values.state === "past"
-              ? "No past events are currently available in the public catalog."
-              : "When a real event is published, it will appear here."
-          }
-        />
-        <Pagination page={eventPage} values={values} />
-      </section>
-
-      {sections.length > 0 && renderContext ? (
-        <div className="editorial-sections">
-          {sections.map((section) => (
-            <EditorialSection
-              key={section.key}
-              renderContext={renderContext}
-              section={section}
-            />
-          ))}
-        </div>
-      ) : null}
     </main>
   );
-}
-
-function Pagination({
-  page,
-  values,
-}: Readonly<{
-  page: PublicEventSliceDto;
-  values: EventListValues;
-}>) {
-  if (page.page === 1 && !page.hasMore) return null;
-  return (
-    <nav className="pagination" aria-label="Event results pages">
-      {page.page > 1 ? (
-        <Link href={pageHref(values, page.page - 1)}>← Previous</Link>
-      ) : (
-        <span />
-      )}
-      <span>Page {page.page}</span>
-      {page.hasMore ? (
-        <Link href={pageHref(values, page.page + 1)}>Next →</Link>
-      ) : (
-        <span />
-      )}
-    </nav>
-  );
-}
-
-export function eventListValues(
-  params: Record<string, string | string[] | undefined>,
-): EventListValues {
-  const month = typeof params.month === "string" ? params.month : "";
-  const rawPage = typeof params.page === "string" ? params.page : "";
-  const parsedPage = /^\d{1,4}$/u.test(rawPage) ? Number(rawPage) : 1;
-  return Object.freeze({
-    month,
-    page:
-      Number.isSafeInteger(parsedPage) && parsedPage >= 1 && parsedPage <= 1_000
-        ? parsedPage
-        : 1,
-    state: params.state === "past" ? "past" : "upcoming",
-  });
-}
-
-export function emptyEventPage(
-  view: EventListValues["state"],
-): PublicEventPageDto {
-  return Object.freeze({
-    events: Object.freeze([]),
-    hasMore: false,
-    page: 1,
-    pageSize: 12,
-    totalCount: 0,
-    view,
-  });
-}
-
-function calendarRoute(values: EventListValues): string {
-  return values.state === "past" ? "/events?state=past" : "/events";
-}
-
-function stateHref(
-  values: EventListValues,
-  state: EventListValues["state"],
-): string {
-  const params = new URLSearchParams({ state });
-  if (values.month) params.set("month", values.month);
-  return `/events?${params.toString()}`;
-}
-
-function pageHref(values: EventListValues, page: number): string {
-  const params = new URLSearchParams({
-    page: String(page),
-    state: values.state,
-  });
-  if (values.month) params.set("month", values.month);
-  return `/events?${params.toString()}`;
 }

@@ -114,11 +114,13 @@ the later stable-selection version 20 is now live.
   Vancouver Curiosity Club feed failed closed because the same gatherings are
   cross-posted under different Meetup source identities; the two completed
   snapshots remain visible and no conflict guard was weakened.
-- Meetup remains one-way and request/manual-refresh driven; Sites does not
-  guarantee a daily scheduler. The official iCalendar feeds contain no
-  poster-image field. At the Owner's direction, exact local copies of the 11
-  current public Meetup event posters are now matched by numeric Meetup event
-  ID and rendered across cards, details, metadata, and calendar day panels.
+- Meetup remains one-way and organizer/manual-refresh driven; ordinary public
+  requests only read the last completed snapshot and never schedule a refresh.
+  Sites does not guarantee a daily scheduler. The official iCalendar feeds
+  contain no poster-image field. At the Owner's direction, approved local
+  copies of public Meetup event posters are matched by exact event or source
+  identity and rendered across cards, details, metadata, and calendar day
+  panels.
   New events retain the controlled category fallback until an approved poster
   is deliberately added. Public requests never scrape or hotlink Meetup.
 - `/events` now renders the same canonical month calendar as `/calendar`, so
@@ -242,10 +244,10 @@ version 17 remains an unchanged historical candidate.
   public-projection checks. The conflict-blocked main feed is not activated by
   this source-controlled enrichment, so that 13-record inventory is not a claim
   that all 13 events are currently public.
-- Request-time Meetup synchronization remains the official one-way iCalendar
-  workflow for title, schedule, status/cancellation, and exact RSVP URL. It is
-  manual/request-driven and does not promise a daily scheduler. A separate
-  owner-invoked reconciliation prompt is checked in at
+- Organizer-authorized manual Meetup synchronization remains the official
+  one-way iCalendar workflow for title, schedule, status/cancellation, and
+  exact RSVP URL. Public requests are snapshot-only and do not promise a daily
+  scheduler. A separate owner-invoked reconciliation prompt is checked in at
   `docs/meetup-calendar-reconciliation-prompt.md`.
 - Public requests never scrape or hotlink Meetup. No migration, invariant,
   access-policy, runtime-value, hosted D1/R2, preview, domain, or deployment

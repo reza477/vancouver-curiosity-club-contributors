@@ -38,7 +38,9 @@ export default async function HomePage() {
             Published events and club information will appear here when the
             public catalog is ready.
           </p>
-          <Link href="/events">See upcoming gatherings</Link>
+          <Link href="/events" prefetch={false}>
+            See upcoming gatherings
+          </Link>
         </section>
       </main>
     );

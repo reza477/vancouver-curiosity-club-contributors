@@ -89,7 +89,9 @@ function NavigationLinks({
             data-primary-destination={item.label.toLowerCase()}
             href={item.href}
             key={item.href}
-            prefetch={prefetchInternalLinks}
+            prefetch={
+              prefetchInternalLinks && item.href !== "/events"
+            }
           >
             {item.label}
           </Link>

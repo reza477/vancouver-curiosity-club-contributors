@@ -1,9 +1,5 @@
 import type { Metadata } from "next";
-import {
-  EventsPageRenderer,
-  emptyEventPage,
-  eventListValues,
-} from "@/app/_components/EventsPageRenderer";
+import { EventsPageRenderer } from "@/app/_components/EventsPageRenderer";
 import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
@@ -12,13 +8,9 @@ import {
   getRequestPublicPageContent,
 } from "@/lib/server/public/request-cache";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
-import {
-  queryPublicEventSlice,
-  type PublicEventSliceDto,
-} from "@/lib/server/public/events";
+import { loadPublicEventsPageData } from "@/lib/server/public/events-page";
 import {
   emptyPublicMonthCalendar,
-  loadPublicMonthCalendar,
 } from "@/lib/server/public/month-calendar";
 import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
 import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
@@ -56,72 +48,40 @@ export default async function EventsPage({
   searchParams,
 }: Readonly<{ searchParams: PageSearchParams }>) {
   const raw = await searchParams;
-  const values = eventListValues(raw);
   const nowUtcMs = readServerUtcMs();
   const todayDate = vancouverCalendarDate(nowUtcMs);
   const originPromise = getTrustedRequestOrigin();
   let pageContent:
     | Awaited<ReturnType<typeof getRequestPublicPageContent>>
     | null = null;
-  let eventPage: PublicEventSliceDto = emptyEventPage(values.state);
   let calendar = emptyPublicMonthCalendar(raw.month, todayDate);
-  let eventListAvailable = true;
   let calendarAvailable = true;
 
   try {
     const { database } = getRuntimeAuthConfiguration();
     const organization = await getRequestPublicOrganization(database);
     if (organization) {
-      try {
-        pageContent = await getRequestPublicPageContent(database, "events");
-      } catch {
+      const pageContentPromise = getRequestPublicPageContent(
+        database,
+        "events",
+      ).catch(() => {
         writeSafeLog("warn", "public_events_content_unavailable", {
           code: "partial_failure",
           operation: "read_public_events_content",
           route: "/events",
           status: 200,
         });
-      }
-
-      try {
-        eventPage = await queryPublicEventSlice(database, {
-          organizationId: organization.id,
-          nowUtcMs,
-          todayDate,
-          view: values.state,
-          page: values.page,
-          pageSize: 12,
-        });
-      } catch {
-        eventListAvailable = false;
-        writeSafeLog("error", "public_event_list_unavailable", {
-          code: "partial_failure",
-          operation: "list_public_events",
-          route: "/events",
-          status: 200,
-        });
-      }
-
-      try {
-        calendar = await loadPublicMonthCalendar(database, {
-          organizationId: organization.id,
-          nowUtcMs,
-          rawMonth: raw.month,
-          todayDate,
-        });
-      } catch {
-        calendarAvailable = false;
-        writeSafeLog("error", "public_event_calendar_unavailable", {
-          code: "partial_failure",
-          operation: "read_public_event_calendar",
-          route: "/events",
-          status: 200,
-        });
-      }
-
-      if (!eventListAvailable && !calendarAvailable) {
-        throw new Error("Both public event projections are unavailable.");
-      }
+        return null;
+      });
+      const loaded = await loadPublicEventsPageData(database, {
+        organizationId: organization.id,
+        nowUtcMs,
+        rawMonth: raw.month,
+        todayDate,
+      });
+      pageContent = await pageContentPromise;
+      calendar = loaded.calendar;
+      calendarAvailable = loaded.calendarAvailable;
     }
   } catch {
     writeSafeLog("error", "public_events_unavailable", {
@@ -138,13 +98,10 @@ export default async function EventsPage({
     <EventsPageRenderer
       calendar={calendar}
       calendarAvailable={calendarAvailable}
-      eventPage={eventPage}
-      eventListAvailable={eventListAvailable}
       nowUtcMs={nowUtcMs}
       pageContent={pageContent}
       siteOrigin={origin?.origin ?? null}
       todayDate={todayDate}
-      values={values}
     />
   );
 }

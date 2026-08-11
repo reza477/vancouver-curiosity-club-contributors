@@ -26,6 +26,42 @@ export type CuratedMeetupEventPoster = Readonly<{
  * the exact event-URL checks used by the full enrichment catalog.
  */
 export const CURATED_MEETUP_POSTER_SOURCE_OVERRIDES = Object.freeze({
+  "https://secure.meetupstatic.com/photos/event/3/d/3/highres_535020979.jpeg":
+    Object.freeze({
+      altText:
+        "Eyes Wide Shut - marriage, desire, and rich-people nightmare rituals event poster.",
+      credit: "Vancouver Curiosity Club event poster via Meetup",
+      eventId: "315510890",
+      height: 900,
+      localPath: "/event-posters/meetup-photo-535020979.jpeg",
+      mediumHeight: 540,
+      mediumPath: "/event-posters/meetup-photo-535020979-960.jpeg",
+      mediumWidth: 960,
+      smallHeight: 270,
+      smallPath: "/event-posters/meetup-photo-535020979-480.jpeg",
+      smallWidth: 480,
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/3/d/3/highres_535020979.jpeg",
+      width: 1_600,
+    }),
+  "https://secure.meetupstatic.com/photos/event/b/5/b/4/highres_535306516.jpeg":
+    Object.freeze({
+      altText:
+        "Princess Mononoke - can humans build without destroying something sacred? event poster.",
+      credit: "Vancouver Curiosity Club event poster via Meetup",
+      eventId: "315776148",
+      height: 900,
+      localPath: "/event-posters/meetup-photo-535306516.jpeg",
+      mediumHeight: 540,
+      mediumPath: "/event-posters/meetup-photo-535306516-960.jpeg",
+      mediumWidth: 960,
+      smallHeight: 270,
+      smallPath: "/event-posters/meetup-photo-535306516-480.jpeg",
+      smallWidth: 480,
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/b/5/b/4/highres_535306516.jpeg",
+      width: 1_600,
+    }),
   "https://secure.meetupstatic.com/photos/event/d/0/8/8/highres_535553384.jpeg":
     Object.freeze({
       altText: "Mangos Latin Dance Night event poster.",

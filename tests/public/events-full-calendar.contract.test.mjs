@@ -1,51 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const projectRoot = new URL("../../", import.meta.url);
-const projectRootPath = fileURLToPath(projectRoot);
-
-async function localSourceClosure(relativeEntry) {
-  const visited = new Set();
-  const sources = [];
-
-  async function visit(absoluteEntry) {
-    const candidates = [
-      absoluteEntry,
-      `${absoluteEntry}.tsx`,
-      `${absoluteEntry}.ts`,
-      `${absoluteEntry}.jsx`,
-      `${absoluteEntry}.js`,
-      resolve(absoluteEntry, "index.tsx"),
-      resolve(absoluteEntry, "index.ts"),
-    ];
-    let source = null;
-    let resolvedEntry = null;
-    for (const candidate of candidates) {
-      try {
-        source = await readFile(candidate, "utf8");
-        resolvedEntry = candidate;
-        break;
-      } catch (error) {
-        if (error?.code !== "ENOENT" && error?.code !== "EISDIR") throw error;
-      }
-    }
-    if (source === null || resolvedEntry === null || visited.has(resolvedEntry)) {
-      return;
-    }
-    visited.add(resolvedEntry);
-    sources.push(source);
-
-    for (const match of source.matchAll(/from\s+["'](\.[^"']+)["']/gu)) {
-      await visit(resolve(dirname(resolvedEntry), match[1]));
-    }
-  }
-
-  await visit(resolve(projectRootPath, relativeEntry));
-  return sources.join("\n");
-}
 
 function maxWidthMediaBlocks(styles) {
   const blocks = [];
@@ -96,25 +53,20 @@ test("Events removes the filtered-download strip", async () => {
   );
 });
 
-test("Events renders the full month calendar before its event list", async () => {
+test("Events keeps the full month calendar and removes the separate event list", async () => {
   const renderer = await readFile(
     new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
     "utf8",
   );
-  const calendarIndex = renderer.indexOf("<PublicMonthCalendar");
-  const eventListIndex = renderer.indexOf("<EventCollection");
-
-  assert.ok(
-    calendarIndex >= 0,
+  assert.match(
+    renderer,
+    /<PublicMonthCalendar/u,
     "/events must render the full PublicMonthCalendar, not only a link to /calendar",
   );
-  assert.ok(
-    eventListIndex >= 0,
-    "/events must retain its accessible event-card collection after the calendar",
-  );
-  assert.ok(
-    calendarIndex < eventListIndex,
-    "the full month calendar must appear before the event list",
+  assert.doesNotMatch(
+    renderer,
+    /<EventCollection|events-page__list|Event timeframe|<Pagination/u,
+    "/events must not repeat the calendar records in a separate paginated list",
   );
 });
 
@@ -135,7 +87,7 @@ test("public Events has no separate List or Month view switcher", async () => {
   assert.doesNotMatch(
     publicEventsSurface,
     /calendar-view-switcher|aria-label=["']Event views["']/u,
-    "the combined calendar-and-list experience must not offer redundant List/Month views",
+    "the calendar experience must not offer redundant List/Month views",
   );
   assert.doesNotMatch(
     publicEventsSurface,
@@ -144,8 +96,8 @@ test("public Events has no separate List or Month view switcher", async () => {
   );
   assert.doesNotMatch(
     publicEventsSurface,
-    /list and filters view/u,
-    "calendar guidance must point to the event list below, not retired filters",
+    /list and filters view|event list below/u,
+    "calendar guidance must not point to a retired list or filter surface",
   );
 });
 
@@ -171,18 +123,34 @@ test("Calendar forwards its month query to the combined Events experience", asyn
   assert.doesNotMatch(calendarRoute, /Download upcoming events/u);
 });
 
-test("Events preserves Upcoming and Past list semantics", async () => {
-  const [page, renderedComponentClosure] = await Promise.all([
+test("Events does not parse or render retired list controls", async () => {
+  const [page, renderer, calendar] = await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
-    localSourceClosure("app/_components/EventsPageRenderer"),
+    readFile(
+      new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
+      "utf8",
+    ),
   ]);
-  const eventsSurface = `${page}\n${renderedComponentClosure}`;
+  const eventsSurface = `${page}\n${renderer}`;
 
-  assert.match(page, /view:\s*values\.state/u);
-  assert.match(eventsSurface, />\s*Upcoming\s*</u);
-  assert.match(eventsSurface, />\s*Past\s*</u);
-  assert.match(eventsSurface, /aria-current/u);
-  assert.match(eventsSurface, /state/u);
+  assert.doesNotMatch(page, /eventListValues|values\.state|values\.page/u);
+  assert.doesNotMatch(
+    eventsSurface,
+    /Event timeframe|>\s*Upcoming\s*<|>\s*Past\s*<|<Pagination/u,
+  );
+  assert.doesNotMatch(renderer, /EditorialSection|editorial-sections/u);
+  const monthIndex = calendar.indexOf('className="public-calendar__month"');
+  const dayPanelIndex = calendar.indexOf('className="public-calendar__day-panel"');
+  const agendaIndex = calendar.indexOf(
+    'className="public-calendar__mobile-agenda"',
+  );
+  assert.ok(monthIndex >= 0);
+  assert.ok(monthIndex < dayPanelIndex);
+  assert.ok(dayPanelIndex < agendaIndex);
 });
 
 test("the full calendar exposes event names in its mobile agenda", async () => {

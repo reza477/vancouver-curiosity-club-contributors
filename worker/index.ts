@@ -2,11 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { ensureDatabaseInvariants } from "../lib/server/database/invariants";
-import {
-  runRequestMaintenance,
-  schedulePublicMeetupRefresh,
-  type PublicMeetupRefreshFailure,
-} from "../lib/server/database/request-maintenance";
+import { runRequestMaintenance } from "../lib/server/database/request-maintenance";
 import {
   clearInvitationTokenCookie,
   invitationTokenCookie,
@@ -62,21 +58,6 @@ function maintenanceRedirect(requestUrl: URL): Response {
 function maintenanceUnavailableResponse(): Response {
   return databaseInvariantUnavailableResponse(
     "A required data refresh could not be completed safely. Please try again shortly.",
-  );
-}
-
-function logPublicMeetupRefreshFailure(
-  failure: PublicMeetupRefreshFailure,
-): void {
-  console.error(
-    JSON.stringify({
-      code: "public_meetup_refresh_deferred",
-      event:
-        failure === "refresh_failed"
-          ? "public_meetup_refresh_failed"
-          : "public_meetup_refresh_unavailable",
-      level: "error",
-    }),
   );
 }
 
@@ -402,27 +383,12 @@ const worker = {
       requestPathname,
     );
     const response = await handler.fetch(securedRequest, env, ctx);
-    const securedResponse = secureResponse(
+    return secureResponse(
       request,
       response,
       policy,
       normalizedPathname,
     );
-    const isRscPrefetch =
-      request.headers.get("RSC") === "1" ||
-      requestPathname.endsWith(".rsc");
-    if (securedResponse.status < 500 && !isRscPrefetch) {
-      schedulePublicMeetupRefresh(
-        env.DB,
-        {
-          method: request.method,
-          pathname: requestPathname,
-        },
-        (task) => ctx.waitUntil(task),
-        logPublicMeetupRefreshFailure,
-      );
-    }
-    return securedResponse;
   },
 };
 

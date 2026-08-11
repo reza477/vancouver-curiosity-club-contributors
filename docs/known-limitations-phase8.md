@@ -50,10 +50,10 @@
 - A Worker invocation is limited to fewer than 50 D1 statements. Large
   operations remain set-based, paginated, or resumable rather than pretending
   to finish synchronously.
-- Request-driven invariant, publication, Meetup, and catalog maintenance can
-  return a bounded retry or redirect after an actual maintenance attempt. A
-  concurrent/busy Meetup refresh renders the last completed snapshot
-  immediately. There is no cron or realtime claim.
+- Request-driven invariant, publication, and catalog maintenance can return a
+  bounded retry or redirect after an actual maintenance attempt. Public routes
+  only read the last completed Meetup snapshot; Meetup refresh is an explicit
+  organizer or trusted-maintenance action. There is no cron or realtime claim.
 - The production CSP retains inline styles because the current vinext
   framework/style path requires them. Production scripts use nonce-based
   execution and do not receive a blanket inline-script allowance.

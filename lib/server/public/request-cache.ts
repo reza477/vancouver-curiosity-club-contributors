@@ -3,8 +3,12 @@ import type { D1DatabaseLike } from "../auth";
 import {
   getPublicPageContent,
   getPublicSiteContext,
-  loadPublicCatalog,
+  listPublicClubs,
+  listPublicCommunityLinks,
+  listPublicLanes,
+  listPublicNavigation,
   resolvePublicOrganization,
+  type PublicCatalogDto,
 } from "./catalog";
 
 type PublicDatabase = Pick<D1DatabaseLike, "prepare">;
@@ -23,8 +27,39 @@ export const getRequestPublicSiteContext = cache(
   (database: PublicDatabase) => getPublicSiteContext(database),
 );
 
+export const getRequestPublicLanes = cache(
+  (database: PublicDatabase) => listPublicLanes(database),
+);
+
+export const getRequestPublicClubs = cache(
+  (database: PublicDatabase) => listPublicClubs(database),
+);
+
+export const getRequestPublicCommunityLinks = cache(
+  (database: PublicDatabase) => listPublicCommunityLinks(database),
+);
+
+export const getRequestPublicNavigation = cache(
+  (database: PublicDatabase) => listPublicNavigation(database),
+);
+
+// Home needs the complete catalog, while the shared shell needs only Site and
+// Navigation. Composing from the same leaf caches keeps both surfaces truthful
+// without making either one repeat the other's reads during a render.
 export const getRequestPublicCatalog = cache(
-  (database: PublicDatabase) => loadPublicCatalog(database),
+  async (database: PublicDatabase): Promise<PublicCatalogDto | null> => {
+    const [site, lanes, clubs, communityLinks, navigation] =
+      await Promise.all([
+        getRequestPublicSiteContext(database),
+        getRequestPublicLanes(database),
+        getRequestPublicClubs(database),
+        getRequestPublicCommunityLinks(database),
+        getRequestPublicNavigation(database),
+      ]);
+    return site
+      ? Object.freeze({ clubs, communityLinks, lanes, navigation, site })
+      : null;
+  },
 );
 
 export const getRequestPublicPageContent = cache(

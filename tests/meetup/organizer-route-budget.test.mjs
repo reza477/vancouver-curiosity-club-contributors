@@ -439,10 +439,10 @@ function assertCalendarRouteComposition() {
     /const maintenance = await runRequestMaintenance\([\s\S]*?if \(maintenance\.kind === "unavailable"\) \{[\s\S]*?return secureResponse\([\s\S]*?if \(maintenance\.kind === "redirect"\) \{[\s\S]*?return secureResponse\([\s\S]*?const response = await handler\.fetch/u,
     "synchronous CMS/publication failures and redirects must return before route dispatch",
   );
-  assert.match(
+  assert.doesNotMatch(
     workerSource,
-    /const response = await handler\.fetch[\s\S]*?const securedResponse = secureResponse[\s\S]*?schedulePublicMeetupRefresh\([\s\S]*?ctx\.waitUntil\(task\)[\s\S]*?return securedResponse/u,
-    "Meetup refresh must be registered only after public rendering finishes",
+    /schedulePublicMeetupRefresh|public_meetup_refresh_/u,
+    "ordinary public rendering must never schedule Meetup refresh work",
   );
 }
 

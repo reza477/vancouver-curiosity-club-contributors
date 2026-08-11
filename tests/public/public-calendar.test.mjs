@@ -288,8 +288,11 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.equal((markup.match(/<h1/gu) ?? []).length, 1);
   assert.equal((markup.match(/<th scope="col">/gu) ?? []).length, 7);
   assert.match(markup, /tabindex="0"/u);
-  assert.match(markup, /Click or tap a date to select it/u);
-  assert.match(markup, /details stay open until you select another date/u);
+  assert.doesNotMatch(markup, /Click or tap a date to select it/u);
+  assert.doesNotMatch(
+    markup,
+    /details stay open until you select another date/u,
+  );
   assert.match(
     markup,
     /data-public-calendar-date="2026-07-06"[\s\S]*?public-calendar__day-titles[\s\S]*?>Night walk<[\s\S]*?>Reading retreat</u,
@@ -532,7 +535,7 @@ test("the phone selected-date events sit directly below the month grid and befor
   );
 });
 
-test("calendar interaction contract locks details to click, touch, focus, and keyboard selection", async () => {
+test("calendar removes the visible interaction instruction without weakening keyboard selection", async () => {
   const source = await readFile(
     new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
     "utf8",
@@ -568,9 +571,9 @@ test("calendar interaction contract locks details to click, touch, focus, and ke
   assert.match(source, /tabIndex=\{cell\.date === focusDate \? 0 : -1\}/u);
   assert.match(source, /aria-controls="public-calendar-day-panel"/u);
   assert.match(source, /aria-pressed=\{selected\}/u);
-  assert.match(
+  assert.doesNotMatch(
     source,
-    /Its details stay open until you[\s\S]*?select another date\./u,
+    /Click or tap a date to select it|details stay open until you[\s\S]*?select another date/u,
   );
   assert.match(source, /publicEventStatusLabel/u);
   assert.match(source, /<AddToCalendar/u);

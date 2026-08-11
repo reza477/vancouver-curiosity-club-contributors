@@ -647,11 +647,11 @@ The only Phase 6 migration is
 `0015_phase6_cms_media.sql`. It is additive, retry-safe, partial-prefix safe,
 and Sites tokenizer-compatible. Runtime guards remain fail-closed and healthy
 verification is consolidated so complete Worker routes stay within D1's
-50-statement invocation limit. Request-driven scheduled publication and an
-attempted Meetup refresh use bounded maintenance invocations rather than sharing
-the database budget with a full public render. If another Meetup refresh is
-already running, the request renders the last completed snapshot without a
-redirect. There is no cron or realtime claim.
+50-statement invocation limit. Request-driven scheduled publication remains
+bounded. Ordinary public requests only read the last completed Meetup snapshot
+and never schedule or perform Meetup refresh work. Organizer-authorized manual
+refresh and the explicit due-gated maintenance entry point remain available;
+there is no cron or realtime claim.
 
 See:
 

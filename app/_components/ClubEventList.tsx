@@ -27,7 +27,9 @@ export function ClubEventList({
                   {eventSchedule(event)}
                 </p>
                 <h3>
-                  <Link href={`/events/${event.slug}`}>{event.title}</Link>
+                  <Link href={`/events/${event.slug}`} prefetch={false}>
+                    {event.title}
+                  </Link>
                 </h3>
                 {event.summary ? <p>{event.summary}</p> : null}
                 <div className="club-event-list__facts">

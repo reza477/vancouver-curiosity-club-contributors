@@ -21,6 +21,7 @@ import {
   queryPublicCalendarMonth,
   queryPublicEventSlice,
   queryPublicEvents,
+  queryPublicCalendarLandingBundle,
   queryPublicEventsForExport,
   revalidatePublicEventExportRecords,
   resolveEditorialPublishedEventSelections,
@@ -158,6 +159,22 @@ test("public event statements compile and execute through real Miniflare D1", as
       toDate: "2026-08-31",
     }),
     { events: [], hasMore: false },
+  );
+  assert.deepEqual(
+    await queryPublicCalendarLandingBundle(database, {
+      calendar: {
+        fromDate: "2026-08-01",
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+        toDate: "2026-08-31",
+      },
+      includeLandingEvent: true,
+    }),
+    {
+      calendar: { events: [], hasMore: false },
+      landingEvent: null,
+    },
   );
   assert.deepEqual(
     await queryPublicEventsForExport(database, {

@@ -8,11 +8,7 @@ import {
   HostAnEventRouteBody,
 } from "@/app/_components/EditorialRouteBodies";
 import { HomePageRenderer } from "@/app/_components/HomePageRenderer";
-import {
-  EventsPageRenderer,
-  emptyEventPage,
-  eventListValues,
-} from "@/app/_components/EventsPageRenderer";
+import { EventsPageRenderer } from "@/app/_components/EventsPageRenderer";
 import {
   CommunityDestinations,
   EditorialPage,
@@ -48,7 +44,10 @@ import {
   type PublicProgramDto,
 } from "@/lib/server/public/catalog";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
-import { queryPublicEvents } from "@/lib/server/public/events";
+import {
+  queryPublicEvents,
+  type PublicEventPageDto,
+} from "@/lib/server/public/events";
 import {
   emptyPublicMonthCalendar,
   loadPublicMonthCalendar,
@@ -165,20 +164,14 @@ async function PreviewEntityBody({
       );
     }
     if (snapshot.slug === "events") {
-      const values = eventListValues({});
       const context = await loadPreviewEventsContext();
       return (
         <EventsPageRenderer
           calendar={context.calendar}
-          eventPage={context.eventPage}
           nowUtcMs={context.nowUtcMs}
           pageContent={page}
-          previewCommunityLinks={catalog.communityLinks}
-          previewMediaAssets={preview.mediaAssets}
-          privatePreview
           siteOrigin={null}
           todayDate={context.todayDate}
-          values={values}
         />
       );
     }
@@ -286,8 +279,8 @@ async function PreviewEntityBody({
         coverMedia={cover}
         events={{
           kind: "available",
-          past: emptyEventPage("past"),
-          upcoming: emptyEventPage("upcoming"),
+          past: emptyPreviewEventPage("past"),
+          upcoming: emptyPreviewEventPage("upcoming"),
         }}
         program={programPreviewDto(
           snapshot,
@@ -458,7 +451,6 @@ async function loadPreviewEventsContext() {
   const todayDate = vancouverCalendarDate(nowUtcMs);
   const fallback = Object.freeze({
     calendar: emptyPublicMonthCalendar(undefined, todayDate),
-    eventPage: emptyEventPage("upcoming"),
     nowUtcMs,
     todayDate,
   });
@@ -466,31 +458,33 @@ async function loadPreviewEventsContext() {
     const { database } = getRuntimeAuthConfiguration();
     const organization = await resolvePublicOrganization(database);
     if (!organization) return fallback;
-    const [calendar, eventPage] = await Promise.all([
-      loadPublicMonthCalendar(database, {
-        organizationId: organization.id,
-        nowUtcMs,
-        rawMonth: undefined,
-        todayDate,
-      }),
-      queryPublicEvents(database, {
-        organizationId: organization.id,
-        nowUtcMs,
-        page: 1,
-        pageSize: 12,
-        todayDate,
-        view: "upcoming",
-      }),
-    ]);
+    const calendar = await loadPublicMonthCalendar(database, {
+      organizationId: organization.id,
+      nowUtcMs,
+      rawMonth: undefined,
+      todayDate,
+    });
     return Object.freeze({
       calendar,
-      eventPage,
       nowUtcMs,
       todayDate,
     });
   } catch {
     return fallback;
   }
+}
+
+function emptyPreviewEventPage(
+  view: "past" | "upcoming",
+): PublicEventPageDto {
+  return Object.freeze({
+    events: Object.freeze([]),
+    hasMore: false,
+    page: 1,
+    pageSize: 12,
+    totalCount: 0,
+    view,
+  });
 }
 
 async function loadPreviewClubEvents(clubId: string) {

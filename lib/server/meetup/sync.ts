@@ -473,8 +473,9 @@ export async function refreshMeetupCalendarSource(
 }
 
 /**
- * Server-only refresh-on-view path. It derives the actor from the configured
- * source and never accepts client identity, role, or actor fields.
+ * Explicit, due-gated server refresh path for trusted maintenance jobs. It
+ * derives the actor from the configured source and never accepts client
+ * identity, role, or actor fields.
  */
 export async function refreshMeetupCalendarSourceIfDue(
   database: D1DatabaseLike,

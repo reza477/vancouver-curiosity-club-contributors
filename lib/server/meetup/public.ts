@@ -12,8 +12,6 @@ import type {
   PublicMeetupCalendarDto,
   PublicMeetupSyncStatus,
 } from "./types";
-import { refreshMeetupCalendarSourceIfDue } from "./sync";
-import { MeetupSyncError } from "./errors";
 
 const SOURCE_TYPE = "meetup_ics";
 const STALE_AFTER_MS = 30 * 60_000;
@@ -23,14 +21,6 @@ export type ListPublicMeetupCalendarInput = Readonly<{
   limit?: unknown;
   nowUtcMs?: unknown;
   organizationId: unknown;
-  todayDate: unknown;
-}>;
-
-export type ListDefaultPublicMeetupCalendarInput = Readonly<{
-  fetcher?: typeof fetch;
-  fromUtcMs: unknown;
-  limit?: unknown;
-  nowUtcMs?: unknown;
   todayDate: unknown;
 }>;
 
@@ -60,62 +50,6 @@ export async function listPublicMeetupCalendar(
     limit: input.limit,
   });
   return Object.freeze({ sync, events });
-}
-
-/**
- * Public route helper. It resolves the configured organization server-side,
- * attempts the due-gated refresh, and never accepts a client organization ID.
- */
-export async function listDefaultPublicMeetupCalendar(
-  database: D1DatabaseLike,
-  input: ListDefaultPublicMeetupCalendarInput,
-): Promise<PublicMeetupCalendarDto> {
-  const now = parseFiniteInteger(input.nowUtcMs ?? Date.now(), {
-    path: "nowUtcMs",
-    minimum: 0,
-  });
-  const organizationId = await readSingleConfiguredOrganization(database);
-  if (!organizationId) {
-    return Object.freeze({
-      sync: Object.freeze({
-        status: "not_connected" as const,
-        lastSuccessAt: null,
-      }),
-      events: Object.freeze([]),
-    });
-  }
-  await refreshMeetupCalendarSourceIfDue(database, {
-    organizationId,
-    fetcher: input.fetcher,
-    nowUtcMs: now,
-  });
-  return listPublicMeetupCalendar(database, {
-    organizationId,
-    fromUtcMs: input.fromUtcMs,
-    todayDate: input.todayDate,
-    limit: input.limit,
-    nowUtcMs: now,
-  });
-}
-
-async function readSingleConfiguredOrganization(
-  database: Pick<D1DatabaseLike, "prepare">,
-): Promise<string | null> {
-  const result = await database
-    .prepare(
-      `SELECT DISTINCT organization_id
-       FROM sync_sources
-       WHERE source_type = ?
-         AND deleted_at IS NULL
-       ORDER BY created_at ASC, id ASC
-       LIMIT 2`,
-    )
-    .bind(SOURCE_TYPE)
-    .all<Record<string, unknown>>();
-  const rows = result.results ?? [];
-  if (rows.length > 1) throw new MeetupSyncError("internal_error");
-  const value = rows[0]?.organization_id;
-  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 export async function readPublicMeetupSyncState(

@@ -11,11 +11,6 @@ import {
   refreshMeetupCalendarSourceIfDue,
 } from "../../lib/server/meetup/index.ts";
 import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
-import {
-  runRequestMaintenance,
-  schedulePublicMeetupRefresh,
-} from "../../lib/server/database/request-maintenance.ts";
-import { reconcileDueOrganizerPublications } from "../../lib/server/organizer/publication.ts";
 import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
 import { normalizeAllDayConflictInterval } from "../../lib/server/organizer/conflict-domain.ts";
 import {
@@ -514,38 +509,14 @@ async function refresh(
   });
 }
 
-async function runEventsMaintenance(
+async function runDueMeetupRefresh(
   database,
   refreshOptions,
 ) {
-  let refreshResult = null;
-  const backgroundTasks = [];
-  const failures = [];
-  const maintenance = await runRequestMaintenance(
+  return refreshMeetupCalendarSourceIfDue(
     database,
-    { method: "GET", pathname: "/events" },
-    {
-      reconcilePublication: (binding) =>
-        reconcileDueOrganizerPublications(binding, { limit: 1 }),
-    },
+    refreshOptions,
   );
-  const scheduled = schedulePublicMeetupRefresh(
-    database,
-    { method: "GET", pathname: "/events" },
-    (task) => backgroundTasks.push(task),
-    (failure) => failures.push(failure),
-    {
-      async refreshMeetup(binding) {
-        refreshResult = await refreshMeetupCalendarSourceIfDue(
-          binding,
-          refreshOptions,
-        );
-        return refreshResult;
-      },
-    },
-  );
-  await Promise.all(backgroundTasks);
-  return { failures, maintenance, refreshResult, scheduled };
 }
 
 function sourceOverlapDraftInput(title) {
@@ -869,7 +840,19 @@ test("exact cross-post aliases share canonical events and publish a later unique
     "https://www.meetup.com/vancouver-meetup-group/events/315511480/";
   assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlOne), canonicalUrlOne);
   assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlTwo), canonicalUrlTwo);
-  assert.equal(MEETUP_EVENT_ALIASES.length, 8);
+  assert.equal(MEETUP_EVENT_ALIASES.length, 11);
+  assert.deepEqual(
+    ["315776403", "315511487", "315777485"].map((aliasId) =>
+      canonicalMeetupEventUrlForAlias(
+        `https://www.meetup.com/vancouver-meetup-group/events/${aliasId}/`,
+      ),
+    ),
+    [
+      "https://www.meetup.com/vancouver-literature-and-film/events/315776148/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/315510890/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/315777434/",
+    ],
+  );
   assert.equal(
     MEETUP_EVENT_ALIASES.find((entry) => entry.aliasUrl === aliasUrlTwo)
       ?.maxTimedEndDriftMs,
@@ -2246,7 +2229,7 @@ async function assertNoManualRefreshResidue(database) {
   });
 }
 
-test("Worker background refresh plus a due bounded two-row slice stays within the D1 statement cap", async (t) => {
+test("explicit due refresh plus a bounded two-row slice stays within the D1 statement cap", async (t) => {
   const innerDatabase = createDatabase();
   t.after(() => innerDatabase.close());
   await ensureDatabaseInvariantsReady(innerDatabase);
@@ -2277,7 +2260,7 @@ test("Worker background refresh plus a due bounded two-row slice stays within th
   );
 
   assert.equal(await ensureDatabaseInvariants(database.binding), "ready");
-  const firstMaintenance = await runEventsMaintenance(
+  const refreshed = await runDueMeetupRefresh(
     database.binding,
     {
       clock: () => 2_000,
@@ -2286,10 +2269,6 @@ test("Worker background refresh plus a due bounded two-row slice stays within th
       organizationId: ORGANIZATION_ID,
     },
   );
-  const refreshed = firstMaintenance.refreshResult;
-  assert.deepEqual(firstMaintenance.maintenance, { kind: "continue" });
-  assert.equal(firstMaintenance.scheduled, true);
-  assert.deepEqual(firstMaintenance.failures, []);
   assert.equal(
     refreshed.outcome,
     "partial",
@@ -2298,11 +2277,11 @@ test("Worker background refresh plus a due bounded two-row slice stays within th
   assert.equal(refreshed.counts.created, 2);
   assert.deepEqual(database.counts(), {
     batchLengths: [2, 9, 9, 4],
-    statementCount: 36,
+    statementCount: 34,
   });
   assert.ok(
     database.counts().statementCount <= 50,
-    `Worker refresh-on-view used ${database.counts().statementCount} D1 statements`,
+    `Explicit due refresh used ${database.counts().statementCount} D1 statements`,
   );
 
   const finalSliceRequest = exactCountingDatabase(innerDatabase);
@@ -2310,7 +2289,7 @@ test("Worker background refresh plus a due bounded two-row slice stays within th
     await ensureDatabaseInvariants(finalSliceRequest.binding),
     "ready",
   );
-  const resumedMaintenance = await runEventsMaintenance(
+  const completed = await runDueMeetupRefresh(
     finalSliceRequest.binding,
     {
       clock: () => 2_001,
@@ -2319,20 +2298,16 @@ test("Worker background refresh plus a due bounded two-row slice stays within th
       organizationId: ORGANIZATION_ID,
     },
   );
-  const completed = resumedMaintenance.refreshResult;
-  assert.deepEqual(resumedMaintenance.maintenance, { kind: "continue" });
-  assert.equal(resumedMaintenance.scheduled, true);
-  assert.deepEqual(resumedMaintenance.failures, []);
   assert.equal(completed.outcome, "completed");
   assert.equal(completed.counts.created, 1);
   assert.deepEqual(finalSliceRequest.counts(), {
     batchLengths: [9, 7],
-    statementCount: 27,
+    statementCount: 25,
   });
 
   const idleRequest = exactCountingDatabase(innerDatabase);
   assert.equal(await ensureDatabaseInvariants(idleRequest.binding), "ready");
-  const idleMaintenance = await runEventsMaintenance(
+  const notDue = await runDueMeetupRefresh(
     idleRequest.binding,
     {
       fetcher: async () => {
@@ -2342,20 +2317,14 @@ test("Worker background refresh plus a due bounded two-row slice stays within th
       organizationId: ORGANIZATION_ID,
     },
   );
-  const notDue = idleMaintenance.refreshResult;
-  assert.deepEqual(idleMaintenance.maintenance, {
-    kind: "continue",
-  });
-  assert.equal(idleMaintenance.scheduled, true);
-  assert.deepEqual(idleMaintenance.failures, []);
   assert.equal(notDue.outcome, "not_due");
   assert.deepEqual(idleRequest.counts(), {
     batchLengths: [],
-    statementCount: 5,
+    statementCount: 3,
   });
 });
 
-test("Worker background refresh conflict and failure paths stay within the D1 statement cap", async (t) => {
+test("explicit due refresh conflict and failure paths stay within the D1 statement cap", async (t) => {
   await t.test("two rejected conflicts do not block route rendering", async (t) => {
     const innerDatabase = createDatabase();
     t.after(() => innerDatabase.close());
@@ -2390,24 +2359,21 @@ test("Worker background refresh conflict and failure paths stay within the D1 st
     );
 
     assert.equal(await ensureDatabaseInvariants(database.binding), "ready");
-    const result = await runEventsMaintenance(database.binding, {
+    const result = await runDueMeetupRefresh(database.binding, {
       clock: () => 2_000,
       fetcher: sequenceFetcher([body]),
       nowUtcMs: 2_000,
       organizationId: ORGANIZATION_ID,
     });
-    assert.deepEqual(result.maintenance, { kind: "continue" });
-    assert.equal(result.scheduled, true);
-    assert.deepEqual(result.failures, []);
-    assert.equal(result.refreshResult.outcome, "completed");
-    assert.equal(result.refreshResult.counts.rejected, 2);
+    assert.equal(result.outcome, "completed");
+    assert.equal(result.counts.rejected, 2);
     assert.deepEqual(database.counts(), {
       batchLengths: [2, 3, 3, 7],
-      statementCount: 27,
+      statementCount: 25,
     });
     assert.ok(
       database.counts().statementCount < 50,
-      `Worker conflict refresh used ${database.counts().statementCount} D1 statements`,
+      `Explicit conflict refresh used ${database.counts().statementCount} D1 statements`,
     );
   });
 
@@ -2419,23 +2385,20 @@ test("Worker background refresh conflict and failure paths stay within the D1 st
     const database = exactCountingDatabase(innerDatabase);
 
     assert.equal(await ensureDatabaseInvariants(database.binding), "ready");
-    const result = await runEventsMaintenance(database.binding, {
+    const result = await runDueMeetupRefresh(database.binding, {
       clock: () => 2_000,
       fetcher: async () => new Response("", { status: 503 }),
       nowUtcMs: 2_000,
       organizationId: ORGANIZATION_ID,
     });
-    assert.deepEqual(result.maintenance, { kind: "continue" });
-    assert.equal(result.scheduled, true);
-    assert.equal(result.refreshResult.outcome, "failed");
-    assert.deepEqual(result.failures, ["refresh_failed"]);
+    assert.equal(result.outcome, "failed");
     assert.deepEqual(database.counts(), {
       batchLengths: [2],
-      statementCount: 9,
+      statementCount: 7,
     });
     assert.ok(
       database.counts().statementCount < 50,
-      `Worker failed refresh used ${database.counts().statementCount} D1 statements`,
+      `Explicit failed refresh used ${database.counts().statementCount} D1 statements`,
     );
   });
 });

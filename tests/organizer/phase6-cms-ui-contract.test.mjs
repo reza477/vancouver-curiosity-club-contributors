@@ -251,7 +251,7 @@ test("public routes keep one combined Events renderer and private previews keep 
   assert.match(homeRoute, /<HomePageRenderer/u);
   assert.doesNotMatch(homeRoute, /CalendarPage|PublicMonthCalendar/u);
   assert.match(eventsRoute, /<EventsPageRenderer/u);
-  assert.match(eventsRoute, /view:\s*values\.state/u);
+  assert.doesNotMatch(eventsRoute, /eventListValues|values\.state|values\.page/u);
   assert.doesNotMatch(eventsRoute, /calendar\/page|readPublicMeetupSyncState/u);
   assert.match(calendarRoute, /new URL\(request\.url\)/u);
   assert.match(calendarRoute, /new URL\(["']\/events["'], source\)/u);
@@ -264,6 +264,7 @@ test("public routes keep one combined Events renderer and private previews keep 
   assert.match(clubRoute, /<ClubDetailRenderer/u);
   assert.match(preview, /<HomePageRenderer/u);
   assert.match(preview, /<EventsPageRenderer/u);
+  assert.doesNotMatch(preview, /eventListValues/u);
   assert.match(preview, /<ClubDetailRenderer/u);
   for (const [route, body] of [
     [["clubs", "page.tsx"], "ClubsRouteBody"],
@@ -330,7 +331,7 @@ test("published shell and editorial metadata use live media readiness and truthf
   assert.match(layout, /resolveMediaAssetsForRendering/u);
   assert.match(
     layout,
-    /assetId: catalog\.site\.logoAssetId,[\s\S]*entityKey: organization\.id,[\s\S]*entityType: "site_logo",[\s\S]*usageKind: "logo"/u,
+    /assetId: site\.logoAssetId,[\s\S]*entityKey: organization\.id,[\s\S]*entityType: "site_logo",[\s\S]*usageKind: "logo"/u,
   );
   assert.match(layout, /publicationScope: "published"/u);
   assert.match(layout, /\)\[0\]\?\.assetId \?\? null/u);

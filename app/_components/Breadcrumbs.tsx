@@ -16,7 +16,12 @@ export function Breadcrumbs({
           return (
             <li key={`${item.label}-${index}`}>
               {item.href && !isCurrent ? (
-                <Link href={item.href}>{item.label}</Link>
+                <Link
+                  href={item.href}
+                  prefetch={!item.href.startsWith("/events")}
+                >
+                  {item.label}
+                </Link>
               ) : (
                 <span aria-current={isCurrent ? "page" : undefined}>
                   {item.label}

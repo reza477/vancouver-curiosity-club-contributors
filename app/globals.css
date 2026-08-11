@@ -3445,13 +3445,6 @@ main,
   white-space: nowrap;
 }
 
-.public-calendar__keyboard-help {
-  max-width: 70ch;
-  margin: 0.8rem 0 0;
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-}
-
 .public-calendar__day-panel {
   position: sticky;
   top: 1rem;
@@ -5880,73 +5873,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   padding-bottom: clamp(2rem, 4vw, 3rem);
 }
 
-.events-page__list {
-  padding:
-    clamp(2.5rem, 5vw, 4rem)
-    max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right))
-    clamp(4rem, 7vw, 6rem)
-    max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
-  background: var(--paper);
-}
-
-.events-page__list-header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5rem 3rem;
-  align-items: end;
-  justify-content: space-between;
-  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
-}
-
-.events-page__list-header h2 {
-  max-width: 14ch;
-  margin: 0;
-  font-family: var(--display);
-  font-size: clamp(2.5rem, 5vw, 4.5rem);
-  font-weight: 400;
-  letter-spacing: -0.055em;
-  line-height: 0.95;
-}
-
-.events-page__list-header p:last-child {
-  margin: 0.75rem 0 0;
-  color: var(--ink-soft);
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.events-page__timeframe {
-  margin: 0;
-  border-color: var(--line);
-}
-
-.events-page__timeframe a {
-  color: var(--ink);
-}
-
-.events-page__timeframe a[aria-current="page"] {
-  border-color: var(--forest);
-  background: var(--forest);
-  color: var(--paper);
-}
-
-.events-page__timeframe a:not([aria-current="page"]):hover,
-.events-page__timeframe a:not([aria-current="page"]):focus-visible {
-  background: var(--paper-deep);
-  color: var(--ink);
-}
-
-.events-page__list > .pagination {
-  margin: 2rem 0 0;
-}
-
-.events-page__list > .public-empty-state {
-  margin: 0;
-}
-
 .event-filters {
   padding-top: clamp(2.5rem, 5vw, 4.5rem);
   padding-bottom: clamp(2.5rem, 5vw, 4.5rem);
@@ -6644,25 +6570,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   .events-page-masthead {
     padding-right: max(1rem, env(safe-area-inset-right));
     padding-left: max(1rem, env(safe-area-inset-left));
-  }
-
-  .events-page__list {
-    padding-right: max(1rem, env(safe-area-inset-right));
-    padding-left: max(1rem, env(safe-area-inset-left));
-  }
-
-  .events-page__list-header {
-    display: grid;
-    align-items: start;
-  }
-
-  .events-page__timeframe {
-    width: 100%;
-  }
-
-  .events-page__timeframe a {
-    flex: 1 1 50%;
-    justify-content: center;
   }
 
   .home-hero h1,
