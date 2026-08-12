@@ -104,26 +104,41 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
       )
       .map((page) => [
         page.slug,
-        JSON.stringify(page.sections.map((section) => section.content)),
+        page.sections.map((section) => section.content),
       ]),
   );
 
-  assert.match(pageCopy.contact, /Feedback form/u);
-  assert.match(pageCopy.contact, /privately to the organizers/u);
-  assert.match(pageCopy.contact, /review and reply/u);
-  assert.match(pageCopy["get-involved"], /Volunteer/u);
-  assert.match(
-    pageCopy["get-involved"],
-    /Venue or Community Partnership/u,
-  );
-  assert.match(pageCopy["host-an-event"], /Host an Event form/u);
-  assert.match(pageCopy["host-an-event"], /does not create or publish/u);
-  assert.match(pageCopy.privacy, /send a form without creating an attendee account/u);
-  assert.match(pageCopy.privacy, /collect only the information you choose to send/u);
-  assert.match(pageCopy.privacy, /private organizer inbox/u);
-  assert.match(pageCopy.privacy, /Meetup or another external service/u);
+  assert.deepEqual(pageCopy.contact, [
+    {
+      heading: "Share feedback or ask a question",
+      text: "The Feedback form sends your comments or questions privately to the organizers so they can review and reply.",
+    },
+  ]);
+  assert.deepEqual(pageCopy["get-involved"], [
+    {
+      heading: "Bring something to the club",
+      paragraphs: [
+        "Attending a published event is the simplest way in. Use the forms below to tell the organizers how you would like to volunteer or to start a venue or community partnership conversation.",
+      ],
+      text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
+    },
+  ]);
+  assert.deepEqual(pageCopy["host-an-event"], [
+    {
+      heading: "Interested in hosting?",
+      paragraphs: [
+        "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for an organizer to assess later.",
+      ],
+      text: "Use the Host an Event form to share a proposed title or topic, a short event idea, format, optional preferred club or program, and optional timing.",
+    },
+  ]);
+  const privacyCopy = JSON.stringify(pageCopy.privacy);
+  assert.match(privacyCopy, /send a form without creating an attendee account/u);
+  assert.match(privacyCopy, /collect only the information you choose to send/u);
+  assert.match(privacyCopy, /private organizer inbox/u);
+  assert.match(privacyCopy, /Meetup or another external service/u);
   assert.doesNotMatch(
-    Object.values(pageCopy).join("\n"),
+    JSON.stringify(pageCopy),
     /No public intake form|tools are not open yet|No public contact form|no enabled public submission form/iu,
   );
 });
@@ -162,8 +177,13 @@ test(
     );
     assert.match(
       globalCss,
-      /@media\s*\(scripting:\s*none\)[\s\S]*\.public-submission__loading\s*\{[\s\S]*display:\s*none;/u,
-      "a no-script visitor must not hear or see a permanently busy skeleton",
+      /@media\s*\(scripting:\s*none\)\s*\{[\s\S]*\.public-submission__form\s*\{[\s\S]*display:\s*none;/u,
+      "a no-script visitor must see the safety notice instead of an unusable form",
+    );
+    assert.doesNotMatch(
+      globalCss,
+      /\.public-submission__(?:loading|skeleton)\b/u,
+      "the obsolete form-level loading skeleton must stay removed",
     );
     assert.match(formSource, /name="name"[\s\S]*?required/u);
     assert.match(
@@ -498,7 +518,7 @@ test(
 );
 
 test(
-  "the existing JSON POST success and validation contracts remain unchanged",
+  "JSON POST success stays concise while validation contracts remain unchanged",
   routeTestOptions,
   async (t) => {
     const [, { POST }] = routeModules;
@@ -530,10 +550,14 @@ test(
     assert.match(successBody.publicReference, /^VCC-[A-Z0-9-]+$/u);
     assert.deepEqual(successBody, {
       message:
-        `Thanks \u2014 your submission was stored in the private organizer inbox. Reference: ${successBody.publicReference}. No email confirmation was sent.`,
+        `Thanks \u2014 your submission was received for organizer review. Reference: ${successBody.publicReference}.`,
       publicReference: successBody.publicReference,
       stored: true,
     });
+    assert.doesNotMatch(
+      successBody.message,
+      /private organizer inbox|email confirmation|marketing/iu,
+    );
 
     const invalidData = await fixture();
     t.after(() => invalidData.database.close());
@@ -649,10 +673,20 @@ test(
       }),
       { kind: "continue" },
     );
+    const instancePreflightStatements = countedGet.count;
     const instanceResponse = await GET(
       new Request(`${TEST_ORIGIN}/api/forms/instance?form=contact`),
     );
     assert.equal(instanceResponse.status, 200);
+    const coldInstanceRouteStatements =
+      countedGet.count - instancePreflightStatements;
+    const beforeWarmInstance = countedGet.count;
+    const warmInstanceResponse = await GET(
+      new Request(`${TEST_ORIGIN}/api/forms/instance?form=volunteer`),
+    );
+    assert.equal(warmInstanceResponse.status, 200);
+    const warmInstanceRouteStatements =
+      countedGet.count - beforeWarmInstance;
     assert.ok(countedGet.count > 0);
     assert.ok(
       countedGet.count < 50,
@@ -791,16 +825,20 @@ test(
 
     assert.deepEqual(
       {
-        instanceGet: countedGet.count,
+        coldInstanceRoute: coldInstanceRouteStatements,
+        instancePreflight: instancePreflightStatements,
         ...measuredPosts,
+        warmInstanceRoute: warmInstanceRouteStatements,
       },
       {
-        instanceGet: 5,
-        contact: 15,
-        host_event: 16,
-        invalid_contact: 9,
-        partnership: 15,
-        volunteer: 15,
+        coldInstanceRoute: 4,
+        contact: 14,
+        host_event: 15,
+        instancePreflight: 2,
+        invalid_contact: 8,
+        partnership: 14,
+        volunteer: 14,
+        warmInstanceRoute: 2,
       },
     );
     RUNTIME_ENVIRONMENT.DB = getData.database;
@@ -1053,7 +1091,7 @@ test(
     assert.match(body.publicReference, /^VCC-[A-Z0-9-]+$/u);
     assert.deepEqual(body, {
       message:
-        `Thanks — your submission was stored in the private organizer inbox. Reference: ${body.publicReference}. No email confirmation was sent.`,
+        `Thanks — your submission was received for organizer review. Reference: ${body.publicReference}.`,
       publicReference: body.publicReference,
       stored: true,
     });
@@ -1205,20 +1243,12 @@ test(
     assert.match(sharedFormsHtml, /data-form-key="volunteer"/u);
     assert.match(sharedFormsHtml, /data-form-key="partnership"/u);
     assert.equal(
-      countMatches(
-        sharedFormsHtml,
-        new RegExp(escapeRegex(PUBLIC_FORM_PURPOSE_COPY), "gu"),
-      ),
-      2,
-    );
-
-    assert.equal(
       PUBLIC_FORM_PURPOSE_COPY,
-      "We collect your name, reply email, and the details you choose to send so authorized Vancouver Curiosity Club organizers can review and respond to this request. Submitting stores the message in the private organizer inbox. It does not enroll you in marketing or send an email confirmation.",
+      "Organizers review submissions and may use your reply email to follow up; timing varies and there is no fixed response time.",
     );
     assert.equal(
       PUBLIC_FORM_SUCCESS_COPY,
-      "Thanks — your submission was stored in the private organizer inbox.",
+      "Thanks — your submission was received for organizer review.",
     );
     assert.doesNotMatch(
       sharedFormsHtml,
@@ -1341,6 +1371,26 @@ test(
         /<main\b[^>]*class="editorial-page"/u,
         `${label} must use the canonical editorial main`,
       );
+      if (label !== "Privacy") {
+        assert.equal(
+          countMatches(html, /class="public-submission__privacy"/gu),
+          1,
+          `${label} must render one quiet privacy sentence`,
+        );
+        assert.equal(
+          countMatches(html, /class="public-submission__process"/gu),
+          1,
+          `${label} must render one truthful response-process sentence`,
+        );
+        assert.equal(
+          countMatches(
+            html,
+            new RegExp(escapeRegex(PUBLIC_FORM_PURPOSE_COPY), "gu"),
+          ),
+          1,
+          `${label} must explain the response process once per route`,
+        );
+      }
     }
     assert.match(getInvolvedHtml, /href="#volunteer"/u);
     assert.match(getInvolvedHtml, />Volunteer</u);
@@ -1387,7 +1437,7 @@ test(
       /requestAnimationFrame\(\(\) => errorSummaryRef\.current\?\.focus\(\)\)/u,
     );
     assert.match(formSource, /href=\{`#\$\{errorTargetId/u);
-    assert.match(formSource, /<Link href="\/privacy">Privacy notice<\/Link>/u);
+    assert.doesNotMatch(formSource, /<Link href="\/privacy">/u);
     assert.match(formSource, /data-form-key=\{formKey\}/u);
     assert.match(formSource, /Send this to the organizers/u);
     for (const label of [
@@ -1403,23 +1453,37 @@ test(
     assert.doesNotMatch(formSource, /Preparing secure form/u);
     assert.match(
       formSource,
-      /instanceState === "loading"[\s\S]*aria-busy="true"[\s\S]*className="public-submission__loading"[\s\S]*className="sr-only"[\s\S]*role="status"/u,
+      /instanceState === "error"[\s\S]*className="public-submission__load-error"[\s\S]*role="alert"[\s\S]*onClick=\{retryInstance\}/u,
     );
     assert.match(
       formSource,
-      /aria-hidden="true"[\s\S]*className="public-submission__skeleton"/u,
+      /instanceState === "slow"[\s\S]*You can keep filling out the form/u,
     );
     assert.match(formSource, /Try loading the form again/u);
+    assert.match(formSource, /FORM_INSTANCE_SLOW_MS = 750/u);
     assert.match(formSource, /FORM_INSTANCE_TIMEOUT_MS = 10_000/u);
+    assert.match(
+      formSource,
+      /PUBLIC_FORM_MINIMUM_COMPLETION_MS[\s\S]*window\.setTimeout\([\s\S]*PUBLIC_FORM_MINIMUM_COMPLETION_MS/u,
+    );
+    assert.match(formSource, /if \(!instanceToken \|\| busy\) return;/u);
     assert.equal(
-      countMatches(
-        sharedFormsHtml,
-        /class="public-submission__loading"/gu,
-      ),
+      countMatches(sharedFormsHtml, /<form\b/gu),
       2,
     );
-    assert.equal(countMatches(sharedFormsHtml, /aria-busy="true"/gu), 2);
-    assert.doesNotMatch(sharedFormsHtml, /<form\b|\bdisabled=""/u);
+    assert.equal(countMatches(sharedFormsHtml, /<button disabled=""/gu), 2);
+    assert.equal(
+      countMatches(sharedFormsHtml, /Preparing send/gu),
+      2,
+    );
+    assert.doesNotMatch(
+      sharedFormsHtml,
+      /<(?:input|select|textarea)[^>]*\bdisabled(?:="")?/u,
+    );
+    assert.doesNotMatch(
+      `${formSource}\n${sharedFormsHtml}`,
+      /public-submission__(?:loading|skeleton)/u,
+    );
     assert.doesNotMatch(
       formSource,
       /role=\{notice[\s\S]*aria-live="polite"/u,

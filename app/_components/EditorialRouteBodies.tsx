@@ -11,6 +11,7 @@ import type {
 } from "@/lib/server/public/catalog";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
+import { PUBLIC_FORM_PURPOSE_COPY } from "@/lib/server/phase7/public-form-contract";
 import type { ClubDirectoryNextEventsState } from "./ClubDirectory";
 
 type EditorialRoutePreviewProps = Readonly<{
@@ -93,6 +94,7 @@ export function GetInvolvedRouteBody({
           </a>
         </div>
       </section>
+      <PublicFormPageGuidance />
       {children}
     </EditorialPage>
   );
@@ -108,6 +110,7 @@ export function ContactRouteBody({
   }>) {
   return (
     <EditorialPage page={page} tone="community" {...preview}>
+      <PublicFormPageGuidance />
       {children}
     </EditorialPage>
   );
@@ -123,7 +126,22 @@ export function HostAnEventRouteBody({
   }>) {
   return (
     <EditorialPage page={page} tone="reset-make" {...preview}>
+      <PublicFormPageGuidance />
       {children}
     </EditorialPage>
+  );
+}
+
+function PublicFormPageGuidance() {
+  return (
+    <aside className="public-form-guidance" aria-label="Before you send">
+      <p className="public-submission__privacy">
+        We handle the details you send privately; read the{" "}
+        <Link href="/privacy">Privacy notice</Link> for more information.
+      </p>
+      <p className="public-submission__process">
+        {PUBLIC_FORM_PURPOSE_COPY}
+      </p>
+    </aside>
   );
 }

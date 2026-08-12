@@ -5,6 +5,7 @@ import {
   shouldReconcilePhase7StarterCopy,
   shouldReconcileScheduledPublication,
   shouldReconcileVisitorFeedbackCopy,
+  shouldReconcileVisitorFormPageCopy,
   shouldReconcileVisitorPrivacyCopy,
 } from "../../lib/server/database/request-maintenance.ts";
 import {
@@ -131,6 +132,28 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
     shouldReconcileVisitorFeedbackCopy("POST", "/contact"),
     false,
   );
+  for (const pathname of ["/get-involved", "/host-an-event"]) {
+    assert.equal(
+      shouldReconcileVisitorFormPageCopy("GET", pathname),
+      true,
+    );
+    assert.equal(
+      shouldReconcileVisitorFormPageCopy("HEAD", `${pathname}.rsc`),
+      true,
+    );
+  }
+  for (const [method, pathname] of [
+    ["POST", "/get-involved"],
+    ["GET", "/contact"],
+    ["GET", "/privacy"],
+    ["GET", "/host-an-event/extra"],
+    ["GET", "/get-involved-more"],
+  ]) {
+    assert.equal(
+      shouldReconcileVisitorFormPageCopy(method, pathname),
+      false,
+    );
+  }
   assert.equal(
     shouldReconcileVisitorPrivacyCopy("GET", "/privacy"),
     true,
@@ -147,6 +170,80 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
     shouldReconcileVisitorPrivacyCopy("POST", "/privacy"),
     false,
   );
+});
+
+test("form-page copy runs after the existing starter upgrade and only on its exact routes", async () => {
+  const firstTrace = [];
+  const first = await runRequestMaintenance(
+    {},
+    { method: "GET", pathname: "/get-involved" },
+    {
+      async reconcilePublication() {
+        firstTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileStarterCopy() {
+        firstTrace.push("starter-copy");
+        return "processed";
+      },
+      async reconcileVisitorFormPages() {
+        firstTrace.push("visitor-form-pages");
+        return "processed";
+      },
+    },
+  );
+  assert.deepEqual(first, { kind: "redirect", source: "cms" });
+  assert.deepEqual(firstTrace, ["starter-copy"]);
+
+  const nextTrace = [];
+  const next = await runRequestMaintenance(
+    {},
+    { method: "HEAD", pathname: "/host-an-event.rsc" },
+    {
+      async reconcilePublication() {
+        nextTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileStarterCopy() {
+        nextTrace.push("starter-copy");
+        return "ready";
+      },
+      async reconcileVisitorFormPages() {
+        nextTrace.push("visitor-form-pages");
+        return "processed";
+      },
+    },
+  );
+  assert.deepEqual(next, { kind: "redirect", source: "cms" });
+  assert.deepEqual(nextTrace, ["starter-copy", "visitor-form-pages"]);
+
+  const contactTrace = [];
+  assert.deepEqual(
+    await runRequestMaintenance(
+      {},
+      { method: "GET", pathname: "/contact" },
+      {
+        async reconcilePublication() {
+          contactTrace.push("publication");
+          return publicationResult();
+        },
+        async reconcileStarterCopy() {
+          contactTrace.push("starter-copy");
+          return "ready";
+        },
+        async reconcileVisitorFeedback() {
+          contactTrace.push("visitor-feedback");
+          return "ready";
+        },
+        async reconcileVisitorFormPages() {
+          contactTrace.push("visitor-form-pages");
+          return "processed";
+        },
+      },
+    ),
+    { kind: "continue" },
+  );
+  assert.deepEqual(contactTrace, ["starter-copy", "visitor-feedback"]);
 });
 
 test("one starter-copy outcome redirects before ordinary public work", async () => {

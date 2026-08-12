@@ -129,12 +129,9 @@ test("legacy starter pages upgrade one per maintenance request through exact CMS
 
   await ensureDatabaseInvariantsReady(data.database);
   const ready = countedDatabase(data.database);
-  assert.deepEqual(
-    await runRequestMaintenance(ready.database, {
-      method: "GET",
-      pathname: "/get-involved",
-    }),
-    { kind: "continue" },
+  assert.equal(
+    await reconcilePhase7StarterPageCopy(ready.database),
+    "ready",
   );
   assert.equal(ready.statementCount, 1);
 

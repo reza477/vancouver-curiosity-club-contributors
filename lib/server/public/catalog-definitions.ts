@@ -169,8 +169,7 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: "Bring something to the club",
         text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
         paragraphs: [
-          "Attending a published event is the simplest way in. The Volunteer and Venue or Community Partnership forms store the details you choose to send in the private organizer inbox.",
-          "Submitting a form does not reserve a date, guarantee publication, enroll you in marketing, or send an email confirmation.",
+          "Attending a published event is the simplest way in. Use the forms below to tell the organizers how you would like to volunteer or to start a venue or community partnership conversation.",
         ],
       }),
     ]),
@@ -179,7 +178,6 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: "Interested in hosting?",
         text: "Use the Host an Event form to share a proposed title or topic, a short event idea, format, optional preferred club or program, and optional timing.",
         paragraphs: [
-          "Submitting stores the proposal in the private organizer inbox. It does not create or publish an event, reserve a date, promise scheduling, or send an email confirmation.",
           "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for an organizer to assess later.",
         ],
       }),

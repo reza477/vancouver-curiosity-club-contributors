@@ -41,10 +41,10 @@ export const PARTNERSHIP_TYPES = [
 ] as const;
 
 export const PUBLIC_FORM_PURPOSE_COPY =
-  "We collect your name, reply email, and the details you choose to send so authorized Vancouver Curiosity Club organizers can review and respond to this request. Submitting stores the message in the private organizer inbox. It does not enroll you in marketing or send an email confirmation.";
+  "Organizers review submissions and may use your reply email to follow up; timing varies and there is no fixed response time.";
 
 export const PUBLIC_FORM_SUCCESS_COPY =
-  "Thanks — your submission was stored in the private organizer inbox.";
+  "Thanks — your submission was received for organizer review.";
 
 export type PublicFormFieldErrors = Readonly<Record<string, string>>;
 

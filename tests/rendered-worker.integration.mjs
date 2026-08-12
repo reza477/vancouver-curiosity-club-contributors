@@ -786,12 +786,24 @@ test("all required public pages render shared chrome without private sentinels",
   }
 });
 
-test("public form routes render a safe pre-hydration state", async () => {
+test("public form routes render editable fields immediately while secure send prepares", async () => {
   let renderedCss = "";
-  for (const [path, formKeys] of [
-    ["/contact", ["contact"]],
-    ["/host-an-event", ["host_event"]],
-    ["/get-involved", ["volunteer", "partnership"]],
+  for (const [path, forms] of [
+    ["/contact", [["contact", ["name", "replyEmail", "topic", "message"]]]],
+    [
+      "/host-an-event",
+      [["host_event", ["name", "replyEmail", "proposedTitle", "eventIdea"]]],
+    ],
+    [
+      "/get-involved",
+      [
+        ["volunteer", ["name", "replyEmail", "interestAreas", "howToHelp"]],
+        [
+          "partnership",
+          ["name", "replyEmail", "organizationOrVenueName", "message"],
+        ],
+      ],
+    ],
   ]) {
     const response = await fetchPath(path);
     assert.equal(response.status, 200, `${path} status`);
@@ -805,11 +817,26 @@ test("public form routes render a safe pre-hydration state", async () => {
     ].map((match) => match[0]);
     assert.equal(
       formSections.length,
-      formKeys.length,
+      forms.length,
       `${path} pre-hydration form state count`,
     );
+    assert.equal(
+      [...html.matchAll(/class="public-submission__privacy"/gu)].length,
+      1,
+      `${path} quiet privacy sentence count`,
+    );
+    assert.equal(
+      [...html.matchAll(/class="public-submission__process"/gu)].length,
+      1,
+      `${path} response-process sentence count`,
+    );
+    assert.match(
+      html,
+      /Organizers review submissions and may use your reply email to follow up; timing varies and there is no fixed response time\./u,
+      `${path} truthful response process`,
+    );
 
-    for (const [index, formKey] of formKeys.entries()) {
+    for (const [index, [formKey, expectedFields]] of forms.entries()) {
       const formSection = formSections[index];
       assert.match(
         formSection,
@@ -823,18 +850,39 @@ test("public form routes render a safe pre-hydration state", async () => {
       );
       assert.match(
         formSection,
-        /<div(?=[^>]*\baria-busy="true")(?=[^>]*\bclass="public-submission__loading")[^>]*>/u,
-        `${path} hydration loading state`,
+        new RegExp(
+          `<form(?=[^>]*\\baction="/api/forms/${escapeRegex(formKey)}")(?=[^>]*\\bmethod="post")[^>]*>`,
+          "u",
+        ),
+        `${path} native POST fallback`,
       );
+      assert.match(
+        formSection,
+        /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="")[^>]*>/u,
+        `${path} initially empty protected instance token`,
+      );
+      for (const fieldName of expectedFields) {
+        assert.match(
+          formSection,
+          new RegExp(`\\bname="${escapeRegex(fieldName)}"`, "u"),
+          `${path} immediately rendered ${fieldName} field`,
+        );
+      }
       assert.doesNotMatch(
         formSection,
-        /<(?:form|input|select|textarea)\b/iu,
-        `${path} must not expose PII controls before protection is ready`,
+        /<(?:input|select|textarea)[^>]*\bdisabled(?:="")?/iu,
+        `${path} fields must be editable while secure send prepares`,
       );
+      assert.match(
+        formSection,
+        /<button(?=[^>]*\bdisabled="")(?=[^>]*\btype="submit")[^>]*>/u,
+        `${path} only send remains gated before protection is ready`,
+      );
+      assert.match(formSection, /Preparing send/u, `${path} compact send status`);
       assert.doesNotMatch(
         formSection,
-        /\bname="(?:name|replyEmail|message|howToHelp|eventIdea|organizationName)"/iu,
-        `${path} must not serialize PII field names before protection is ready`,
+        /public-submission__(?:loading|skeleton)|aria-busy="true"/u,
+        `${path} obsolete form skeleton must stay removed`,
       );
     }
     assertNoPrivateSentinels(html);
@@ -842,8 +890,13 @@ test("public form routes render a safe pre-hydration state", async () => {
 
   assert.match(
     renderedCss,
-    /@media\s*\(scripting:none\)\{\.public-submission__loading\{[^}]*display:none/iu,
-    "the rendered no-script view must hide the permanently busy hydration state",
+    /@media\s*\(scripting:none\)\{\.public-submission__form\{[^}]*display:none/iu,
+    "the rendered no-script view must show the safety notice instead of an unusable form",
+  );
+  assert.doesNotMatch(
+    renderedCss,
+    /\.public-submission__(?:loading|skeleton)\b/u,
+    "obsolete form-level loading skeleton styles must stay removed",
   );
 });
 

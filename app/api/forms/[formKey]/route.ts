@@ -84,7 +84,7 @@ export async function POST(
       payload: body.payload,
     });
     const message =
-      `Thanks — your submission was stored in the private organizer inbox. Reference: ${result.publicReference}. No email confirmation was sent.`;
+      `Thanks — your submission was received for organizer review. Reference: ${result.publicReference}.`;
     return nativeSubmission
       ? publicFormHtml({
           backPath: publicFormBackPath(formKey),

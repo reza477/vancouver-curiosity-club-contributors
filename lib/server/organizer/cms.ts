@@ -90,6 +90,11 @@ const VISITOR_FEEDBACK_COPY_MARKER_KEY =
   "visitor_feedback_copy_upgrade";
 const VISITOR_FEEDBACK_COPY_AUDIT_SOURCE =
   "visitor_feedback_copy_upgrade";
+const VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION = 1;
+const VISITOR_FORM_PAGE_COPY_MARKER_KEY =
+  "visitor_form_page_copy_upgrade";
+const VISITOR_FORM_PAGE_COPY_AUDIT_SOURCE =
+  "visitor_form_page_copy_upgrade";
 const PHASE7_STARTER_COPY_PAGE_SLUGS = Object.freeze([
   "contact",
   "get-involved",
@@ -98,6 +103,12 @@ const PHASE7_STARTER_COPY_PAGE_SLUGS = Object.freeze([
 ] as const);
 type Phase7StarterCopyPageSlug =
   (typeof PHASE7_STARTER_COPY_PAGE_SLUGS)[number];
+const VISITOR_FORM_PAGE_COPY_PAGE_SLUGS = Object.freeze([
+  "get-involved",
+  "host-an-event",
+] as const);
+type VisitorFormPageCopyPageSlug =
+  (typeof VISITOR_FORM_PAGE_COPY_PAGE_SLUGS)[number];
 type Phase7StarterCopyOutcome = Readonly<{
   contentHash: string | null;
   outcome: "skipped" | "upgraded";
@@ -135,6 +146,9 @@ export type VisitorPrivacyCopyReconciliationResult =
 export type VisitorFeedbackCopyReconciliationResult =
   | "processed"
   | "ready";
+export type VisitorFormPageCopyReconciliationResult =
+  | "processed"
+  | "ready";
 type VisitorPrivacyCopyMarker = Readonly<{
   completedAt: number;
   contentHash: string | null;
@@ -158,6 +172,23 @@ type VisitorFeedbackCopyMarker = Readonly<{
     | "nonlegacy_copy_preserved"
     | "page_unavailable";
   version: typeof VISITOR_FEEDBACK_COPY_UPGRADE_VERSION;
+}>;
+type VisitorFormPageCopyOutcome = Readonly<{
+  contentHash: string | null;
+  outcome: "skipped" | "upgraded";
+  reason:
+    | "already_current"
+    | "legacy_copy_upgraded"
+    | "newer_draft_preserved"
+    | "nonlegacy_copy_preserved"
+    | "page_unavailable";
+  recordedAt: number;
+  slug: VisitorFormPageCopyPageSlug;
+}>;
+type VisitorFormPageCopyMarker = Readonly<{
+  completedAt: number | null;
+  outcomes: readonly VisitorFormPageCopyOutcome[];
+  version: typeof VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION;
 }>;
 const LEGACY_PHASE7_STARTER_PAGE_CONTENT = Object.freeze({
   contact: Object.freeze({
@@ -218,6 +249,35 @@ const PREVIOUS_VISITOR_FEEDBACK_PAGE_CONTENT = Object.freeze({
   text:
     "The Contact form stores your name, reply email, topic, and message in the private organizer inbox. It does not enroll you in marketing or send an email confirmation.",
 });
+const PREVIOUS_VISITOR_FORM_PAGE_CONTENT = Object.freeze({
+  "get-involved": Object.freeze({
+    heading: "Bring something to the club",
+    paragraphs: Object.freeze([
+      "Attending a published event is the simplest way in. The Volunteer and Venue or Community Partnership forms store the details you choose to send in the private organizer inbox.",
+      "Submitting a form does not reserve a date, guarantee publication, enroll you in marketing, or send an email confirmation.",
+    ]),
+    text:
+      "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
+  }),
+  "host-an-event": Object.freeze({
+    heading: "Interested in hosting?",
+    paragraphs: Object.freeze([
+      "Submitting stores the proposal in the private organizer inbox. It does not create or publish an event, reserve a date, promise scheduling, or send an email confirmation.",
+      "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for an organizer to assess later.",
+    ]),
+    text:
+      "Use the Host an Event form to share a proposed title or topic, a short event idea, format, optional preferred club or program, and optional timing.",
+  }),
+} satisfies Readonly<
+  Record<
+    VisitorFormPageCopyPageSlug,
+    Readonly<{
+      heading: string;
+      paragraphs: readonly string[];
+      text: string;
+    }>
+  >
+>);
 const PUBLIC_LEGAL_SETTING_KEY = "public_legal_status";
 const PUBLIC_IDENTITY_SETTING_KEY = "public_identity";
 const REQUIRED_SYSTEM_PAGE_SLUGS = new Set([
@@ -1917,6 +1977,175 @@ export async function reconcileVisitorFeedbackCopy(
     }),
     notifyOwner,
     now,
+  });
+  return "processed";
+}
+
+/**
+ * One-time visitor-facing copy upgrade for the Get Involved and Host an Event
+ * introductions.
+ *
+ * A call processes at most one page. Only the exact previously shipped public
+ * snapshot may be replaced. Owner drafts and every unknown/custom publication
+ * are preserved and surfaced to the Owner for review. Publication still runs
+ * through the ordinary CMS revision, receipt, projection, media, and audit
+ * protocol rather than mutating the public projection directly.
+ */
+export async function reconcileVisitorFormPageCopy(
+  database: D1DatabaseLike,
+  nowUtcMs = Date.now(),
+): Promise<VisitorFormPageCopyReconciliationResult> {
+  const now = parseTimestamp(nowUtcMs);
+  const markerEnvelope = await readVisitorFormPageCopyMarker(database);
+  if (!markerEnvelope) return "ready";
+  if (
+    markerEnvelope.marker?.completedAt !== null &&
+    markerEnvelope.marker?.outcomes.length ===
+      VISITOR_FORM_PAGE_COPY_PAGE_SLUGS.length
+  ) {
+    return "ready";
+  }
+
+  const completedSlugs = new Set(
+    markerEnvelope.marker?.outcomes.map((outcome) => outcome.slug) ?? [],
+  );
+  const slug = VISITOR_FORM_PAGE_COPY_PAGE_SLUGS.find(
+    (candidate) => !completedSlugs.has(candidate),
+  );
+  if (!slug) throw serviceUnavailable();
+
+  const targetSnapshot = phase7StarterPageSnapshot(slug, false);
+  const previousSnapshot = previousVisitorFormPageSnapshot(slug);
+  const [targetHash, previousHash] = await Promise.all([
+    contentHash(targetSnapshot),
+    contentHash(previousSnapshot),
+  ]);
+  const candidate = await readPhase7StarterCopyCandidate(
+    database,
+    markerEnvelope.organizationId,
+    slug,
+    targetHash,
+    VISITOR_FORM_PAGE_COPY_AUDIT_SOURCE,
+  );
+  if (!candidate) throw serviceUnavailable();
+
+  let outcome: VisitorFormPageCopyOutcome;
+  let notifyOwner = false;
+  if (
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftHash === targetHash &&
+    candidate.publishedHash === targetHash
+  ) {
+    outcome = visitorFormPageCopyOutcome(
+      slug,
+      "upgraded",
+      "already_current",
+      targetHash,
+      now,
+    );
+  } else if (
+    candidate.entityKey &&
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftRevisionId === candidate.publishedRevisionId &&
+    candidate.currentDraftHash === previousHash &&
+    candidate.publishedHash === previousHash
+  ) {
+    const draftVersion = await saveRevision(database, candidate.actor, {
+      auditMetadata: {
+        source: VISITOR_FORM_PAGE_COPY_AUDIT_SOURCE,
+        targetContentHash: targetHash,
+        upgradeVersion: VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: candidate.contentVersion,
+      now,
+      restoredFromRevisionId: null,
+      snapshot: targetSnapshot,
+    });
+    await publishRevisionForActor(database, candidate.actor, {
+      auditMetadata: {
+        source: VISITOR_FORM_PAGE_COPY_AUDIT_SOURCE,
+        targetContentHash: targetHash,
+        upgradeVersion: VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: draftVersion,
+      now,
+    });
+    outcome = visitorFormPageCopyOutcome(
+      slug,
+      "upgraded",
+      "legacy_copy_upgraded",
+      targetHash,
+      now,
+    );
+  } else if (
+    candidate.entityKey &&
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftRevisionId !== candidate.publishedRevisionId &&
+    candidate.currentDraftHash === targetHash &&
+    candidate.publishedHash === previousHash &&
+    candidate.currentDraftIsUpgrade
+  ) {
+    await publishRevisionForActor(database, candidate.actor, {
+      auditMetadata: {
+        resumed: true,
+        source: VISITOR_FORM_PAGE_COPY_AUDIT_SOURCE,
+        targetContentHash: targetHash,
+        upgradeVersion: VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: candidate.contentVersion,
+      now,
+    });
+    outcome = visitorFormPageCopyOutcome(
+      slug,
+      "upgraded",
+      "legacy_copy_upgraded",
+      targetHash,
+      now,
+    );
+  } else if (
+    candidate.currentDraftRevisionId !== candidate.publishedRevisionId
+  ) {
+    notifyOwner = true;
+    outcome = visitorFormPageCopyOutcome(
+      slug,
+      "skipped",
+      "newer_draft_preserved",
+      candidate.publishedHash,
+      now,
+    );
+  } else if (!candidate.entityKey || !candidate.workflowStatus) {
+    outcome = visitorFormPageCopyOutcome(
+      slug,
+      "skipped",
+      "page_unavailable",
+      null,
+      now,
+    );
+  } else {
+    notifyOwner = true;
+    outcome = visitorFormPageCopyOutcome(
+      slug,
+      "skipped",
+      "nonlegacy_copy_preserved",
+      candidate.publishedHash,
+      now,
+    );
+  }
+
+  await recordVisitorFormPageCopyOutcome(database, {
+    actor: candidate.actor,
+    entityKey: candidate.entityKey,
+    marker: markerEnvelope.marker,
+    markerJson: markerEnvelope.markerJson,
+    notifyOwner,
+    now,
+    outcome,
   });
   return "processed";
 }
@@ -7610,6 +7839,31 @@ function previousVisitorFeedbackPageSnapshot(): CmsPageSnapshot {
   });
 }
 
+function previousVisitorFormPageSnapshot(
+  slug: VisitorFormPageCopyPageSlug,
+): CmsPageSnapshot {
+  const definition = PUBLIC_CATALOG_PAGES.find(
+    (page) => page.slug === slug,
+  );
+  if (!definition) throw serviceUnavailable();
+  const blocks = [
+    {
+      config: PREVIOUS_VISITOR_FORM_PAGE_CONTENT[slug],
+      id: "intro",
+      type: "intro",
+    },
+  ];
+  const summary = firstStarterPageSummary(blocks) ?? definition.title;
+  return parsePageSnapshot({
+    blocks,
+    metaDescription: summary.slice(0, 160),
+    openGraphAssetId: null,
+    seoTitle: definition.title.slice(0, 60),
+    slug,
+    title: definition.title,
+  });
+}
+
 function phase7LegacyStarterSections(
   definition: PublicCatalogPageDefinition,
   slug: Phase7StarterCopyPageSlug,
@@ -7750,6 +8004,39 @@ async function readVisitorFeedbackCopyMarker(
   });
 }
 
+async function readVisitorFormPageCopyMarker(
+  database: D1DatabaseLike,
+): Promise<Readonly<{
+  marker: VisitorFormPageCopyMarker | null;
+  markerJson: string | null;
+  organizationId: string;
+}> | null> {
+  const row = await database
+    .prepare(
+      `SELECT organization.id AS organization_id,
+              marker.value_json AS marker_json
+       FROM organizations AS organization
+       LEFT JOIN site_settings AS marker
+         ON marker.organization_id = organization.id
+        AND marker.key = ?
+        AND marker.is_public = 0
+       WHERE organization.slug = ?
+       LIMIT 1`,
+    )
+    .bind(
+      VISITOR_FORM_PAGE_COPY_MARKER_KEY,
+      PUBLIC_ORGANIZATION_SLUG,
+    )
+    .first<Record<string, unknown>>();
+  if (!row) return null;
+  const markerJson = optionalString(row.marker_json);
+  return Object.freeze({
+    marker: markerJson ? parseVisitorFormPageCopyMarker(markerJson) : null,
+    markerJson,
+    organizationId: requiredString(row.organization_id),
+  });
+}
+
 function parseVisitorFeedbackCopyMarker(
   value: string,
 ): VisitorFeedbackCopyMarker {
@@ -7849,6 +8136,91 @@ function parseVisitorPrivacyCopyMarker(
     outcome,
     reason,
     version: VISITOR_PRIVACY_COPY_UPGRADE_VERSION,
+  });
+}
+
+function parseVisitorFormPageCopyMarker(
+  value: string,
+): VisitorFormPageCopyMarker {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(value);
+  } catch {
+    throw serviceUnavailable();
+  }
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    Array.isArray(raw) ||
+    Reflect.get(raw, "version") !==
+      VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION ||
+    !Array.isArray(Reflect.get(raw, "outcomes"))
+  ) {
+    throw serviceUnavailable();
+  }
+  const completedAtValue = Reflect.get(raw, "completedAt");
+  const completedAt =
+    completedAtValue === null
+      ? null
+      : safeNonnegativeInteger(completedAtValue);
+  const outcomes = Reflect.get(raw, "outcomes") as unknown[];
+  if (outcomes.length > VISITOR_FORM_PAGE_COPY_PAGE_SLUGS.length) {
+    throw serviceUnavailable();
+  }
+  const seen = new Set<VisitorFormPageCopyPageSlug>();
+  const parsed = outcomes.map((outcome) => {
+    if (
+      typeof outcome !== "object" ||
+      outcome === null ||
+      Array.isArray(outcome)
+    ) {
+      throw serviceUnavailable();
+    }
+    const slugValue = Reflect.get(outcome, "slug");
+    const slug = VISITOR_FORM_PAGE_COPY_PAGE_SLUGS.find(
+      (candidate) => candidate === slugValue,
+    );
+    const outcomeValue = Reflect.get(outcome, "outcome");
+    const reasonValue = Reflect.get(outcome, "reason");
+    const contentHashValue = Reflect.get(outcome, "contentHash");
+    if (
+      !slug ||
+      seen.has(slug) ||
+      (outcomeValue !== "skipped" && outcomeValue !== "upgraded") ||
+      !(
+        reasonValue === "already_current" ||
+        reasonValue === "legacy_copy_upgraded" ||
+        reasonValue === "newer_draft_preserved" ||
+        reasonValue === "nonlegacy_copy_preserved" ||
+        reasonValue === "page_unavailable"
+      ) ||
+      !(
+        contentHashValue === null ||
+        (typeof contentHashValue === "string" &&
+          /^[a-f0-9]{64}$/u.test(contentHashValue))
+      )
+    ) {
+      throw serviceUnavailable();
+    }
+    seen.add(slug);
+    return visitorFormPageCopyOutcome(
+      slug,
+      outcomeValue,
+      reasonValue,
+      contentHashValue,
+      safeNonnegativeInteger(Reflect.get(outcome, "recordedAt")),
+    );
+  });
+  if (
+    (completedAt === null) !==
+    (parsed.length < VISITOR_FORM_PAGE_COPY_PAGE_SLUGS.length)
+  ) {
+    throw serviceUnavailable();
+  }
+  return Object.freeze({
+    completedAt,
+    outcomes: Object.freeze(parsed),
+    version: VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION,
   });
 }
 
@@ -8062,6 +8434,22 @@ function phase7StarterCopyOutcome(
   });
 }
 
+function visitorFormPageCopyOutcome(
+  slug: VisitorFormPageCopyPageSlug,
+  outcome: VisitorFormPageCopyOutcome["outcome"],
+  reason: VisitorFormPageCopyOutcome["reason"],
+  contentHashValue: string | null,
+  recordedAt: number,
+): VisitorFormPageCopyOutcome {
+  return Object.freeze({
+    contentHash: contentHashValue,
+    outcome,
+    reason,
+    recordedAt,
+    slug,
+  });
+}
+
 async function recordPhase7StarterCopyOutcome(
   database: D1DatabaseLike,
   input: Readonly<{
@@ -8183,6 +8571,144 @@ async function recordPhase7StarterCopyOutcome(
   ]);
   const persisted = markerRow
     ? parsePhase7StarterCopyMarker(
+        requiredString(markerRow.value_json),
+      )
+    : null;
+  const persistedOutcome = persisted?.outcomes.find(
+    (outcome) => outcome.slug === input.outcome.slug,
+  );
+  if (
+    !persistedOutcome ||
+    persistedOutcome.outcome !== input.outcome.outcome ||
+    persistedOutcome.reason !== input.outcome.reason ||
+    persistedOutcome.contentHash !== input.outcome.contentHash ||
+    notificationRow?.exact !== 1
+  ) {
+    throw serviceUnavailable();
+  }
+}
+
+async function recordVisitorFormPageCopyOutcome(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    actor: AuthorizedMembership;
+    entityKey: string | null;
+    marker: VisitorFormPageCopyMarker | null;
+    markerJson: string | null;
+    notifyOwner: boolean;
+    now: number;
+    outcome: VisitorFormPageCopyOutcome;
+  }>,
+): Promise<void> {
+  const outcomes = Object.freeze([
+    ...(input.marker?.outcomes ?? []),
+    input.outcome,
+  ]);
+  const complete =
+    outcomes.length === VISITOR_FORM_PAGE_COPY_PAGE_SLUGS.length;
+  const nextMarker: VisitorFormPageCopyMarker = Object.freeze({
+    completedAt: complete ? input.now : null,
+    outcomes,
+    version: VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION,
+  });
+  const nextJson = canonicalJson(nextMarker);
+  const markerId =
+    `visitor-form-page-copy-marker:${input.actor.organizationId}`;
+  const notificationId =
+    `visitor-form-page-copy-skip:${input.actor.organizationId}:` +
+    input.outcome.slug;
+  const actorGuard = cmsActorGuard("owner");
+  const statements: D1PreparedStatementLike[] = [
+    database
+      .prepare(
+        `INSERT INTO site_settings (
+           id, organization_id, key, value_json, is_public,
+           updated_by_profile_id, created_at, updated_at
+         )
+         SELECT ?, ?, ?, ?, 0, ?, ?, ?
+         WHERE ${actorGuard.sql}
+         ON CONFLICT(organization_id, key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_by_profile_id = excluded.updated_by_profile_id,
+           updated_at = excluded.updated_at
+         WHERE site_settings.is_public = 0
+           AND site_settings.value_json IS ?`,
+      )
+      .bind(
+        markerId,
+        input.actor.organizationId,
+        VISITOR_FORM_PAGE_COPY_MARKER_KEY,
+        nextJson,
+        input.actor.profileId,
+        input.now,
+        input.now,
+        ...actorGuard.bindings(input.actor),
+        input.markerJson,
+      ),
+  ];
+  if (input.notifyOwner && input.entityKey) {
+    statements.push(
+      prepareNotificationInsert(database, {
+        createdAt: input.now,
+        id: notificationId,
+        organizationId: input.actor.organizationId,
+        payload: {
+          pageId: input.entityKey,
+          pageSlug: input.outcome.slug,
+          type: "cms_starter_copy_skipped",
+        },
+        recipientProfileId: input.actor.profileId,
+      }),
+    );
+  }
+  try {
+    await database.batch(statements);
+  } catch {
+    // A synchronized identical call may have recorded the same outcome first.
+  }
+
+  const [markerRow, notificationRow] = await Promise.all([
+    database
+      .prepare(
+        `SELECT value_json
+         FROM site_settings
+         WHERE organization_id = ?
+           AND key = ?
+           AND is_public = 0
+         LIMIT 1`,
+      )
+      .bind(
+        input.actor.organizationId,
+        VISITOR_FORM_PAGE_COPY_MARKER_KEY,
+      )
+      .first<Record<string, unknown>>(),
+    input.notifyOwner && input.entityKey
+      ? database
+          .prepare(
+            `SELECT 1 AS exact
+             FROM notifications
+             WHERE id = ?
+               AND organization_id = ?
+               AND recipient_profile_id = ?
+               AND type = 'cms_starter_copy_skipped'
+               AND payload_json = ?
+               AND deleted_at IS NULL
+             LIMIT 1`,
+          )
+          .bind(
+            notificationId,
+            input.actor.organizationId,
+            input.actor.profileId,
+            canonicalJson({
+              pageId: input.entityKey,
+              pageSlug: input.outcome.slug,
+            }),
+          )
+          .first<Record<string, unknown>>()
+      : Promise.resolve({ exact: 1 } as Record<string, unknown>),
+  ]);
+  const persisted = markerRow
+    ? parseVisitorFormPageCopyMarker(
         requiredString(markerRow.value_json),
       )
     : null;

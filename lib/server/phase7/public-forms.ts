@@ -12,7 +12,7 @@ import {
 } from "./public-form-contract";
 import {
   listPublicClubs,
-  listPublicProgramsForClub,
+  listPublicProgramsForClubs,
 } from "../public/catalog";
 import { isCompatibilityProgramAlias } from "../public/program-identity";
 import {
@@ -39,11 +39,22 @@ export async function listPublicFormClubProgramChoices(
   database: D1DatabaseLike,
 ): Promise<readonly PublicFormClubProgramChoice[]> {
   const clubs = await listPublicClubs(database);
+  const selectedClubs = clubs.slice(0, 12);
+  const programs = await listPublicProgramsForClubs(
+    database,
+    selectedClubs.map((club) => club.slug),
+  );
+  const programsByClub = new Map<string, typeof programs>();
+  for (const club of selectedClubs) {
+    programsByClub.set(
+      club.slug,
+      programs.filter((program) => program.parentClub.slug === club.slug),
+    );
+  }
   const choices: PublicFormClubProgramChoice[] = [];
-  for (const club of clubs.slice(0, 12)) {
+  for (const club of selectedClubs) {
     choices.push({ label: club.name, value: `club:${club.slug}` });
-    const programs = await listPublicProgramsForClub(database, club.slug);
-    for (const program of programs.slice(0, 24)) {
+    for (const program of (programsByClub.get(club.slug) ?? []).slice(0, 24)) {
       if (isCompatibilityProgramAlias(program)) continue;
       choices.push({
         label: `${program.name} — ${club.name}`,
@@ -292,7 +303,7 @@ async function assertCurrentPublicClubProgramChoice(
   if (!clubs.some((club) => club.slug === clubSlug)) throw invalidChoice();
   if (kind === "club" && programSlug === undefined) return;
   if (kind !== "program" || !programSlug) throw invalidChoice();
-  const programs = await listPublicProgramsForClub(database, clubSlug);
+  const programs = await listPublicProgramsForClubs(database, [clubSlug]);
   if (!programs.some((program) => program.slug === programSlug)) {
     throw invalidChoice();
   }

@@ -4,12 +4,11 @@ import {
   CONTACT_TOPICS,
   HOST_FORMATS,
   PARTNERSHIP_TYPES,
-  PUBLIC_FORM_PURPOSE_COPY,
   VOLUNTEER_INTERESTS,
   publicFormLabel,
   type PublicFormKey,
 } from "@/lib/server/phase7/public-form-contract";
-import Link from "next/link";
+import { PUBLIC_FORM_MINIMUM_COMPLETION_MS } from "@/lib/server/phase7/public-form-protection";
 import { useEffect, useId, useRef, useState } from "react";
 
 export type PublicFormChoice = Readonly<{
@@ -18,8 +17,9 @@ export type PublicFormChoice = Readonly<{
 }>;
 
 type FormState = Readonly<Record<string, string | readonly string[]>>;
-type FormInstanceState = "error" | "loading" | "ready";
+type FormInstanceState = "error" | "loading" | "ready" | "slow";
 
+const FORM_INSTANCE_SLOW_MS = 750;
 const FORM_INSTANCE_TIMEOUT_MS = 10_000;
 
 export function PublicSubmissionForm({
@@ -35,6 +35,8 @@ export function PublicSubmissionForm({
   const [instanceState, setInstanceState] =
     useState<FormInstanceState>("loading");
   const [instanceRequest, setInstanceRequest] = useState(0);
+  const [sendReady, setSendReady] = useState(false);
+  const [instanceNotice, setInstanceNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [success, setSuccess] = useState(false);
@@ -51,6 +53,13 @@ export function PublicSubmissionForm({
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
+    let sendReadyTimer: number | undefined;
+    const slowTimer = window.setTimeout(() => {
+      if (!active) return;
+      setInstanceState((current) =>
+        current === "loading" ? "slow" : current,
+      );
+    }, FORM_INSTANCE_SLOW_MS);
     const timeout = window.setTimeout(
       () => controller.abort(),
       FORM_INSTANCE_TIMEOUT_MS,
@@ -74,25 +83,34 @@ export function PublicSubmissionForm({
           throw new TypeError("Form instance unavailable");
         }
         if (!active) return;
+        window.clearTimeout(slowTimer);
         setInstanceToken(body.instanceToken);
         setInstanceState("ready");
-        setNotice("");
+        setInstanceNotice("");
+        sendReadyTimer = window.setTimeout(() => {
+          if (active) setSendReady(true);
+        }, PUBLIC_FORM_MINIMUM_COMPLETION_MS);
       } catch (error) {
         if (!active) return;
         setInstanceState("error");
-        setNotice(
+        setInstanceNotice(
           (error as { name?: unknown }).name === "AbortError"
             ? "The form is taking too long to load. Try again."
             : "The form is temporarily unavailable. Try again.",
         );
       } finally {
+        window.clearTimeout(slowTimer);
         window.clearTimeout(timeout);
       }
     }
     void loadInstance();
     return () => {
       active = false;
+      window.clearTimeout(slowTimer);
       window.clearTimeout(timeout);
+      if (sendReadyTimer !== undefined) {
+        window.clearTimeout(sendReadyTimer);
+      }
       controller.abort();
     };
   }, [formKey, instanceRequest]);
@@ -105,6 +123,7 @@ export function PublicSubmissionForm({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!instanceToken || busy) return;
+    if (!sendReady) return;
     setBusy(true);
     setNotice("");
     setErrors({});
@@ -168,8 +187,9 @@ export function PublicSubmissionForm({
 
   function retryInstance() {
     setInstanceToken("");
+    setSendReady(false);
     setInstanceState("loading");
-    setNotice("");
+    setInstanceNotice("");
     setInstanceRequest((current) => current + 1);
   }
 
@@ -185,11 +205,6 @@ export function PublicSubmissionForm({
       <div className="public-submission__heading">
         <p className="section-kicker">Send this to the organizers</p>
         <h2 id={`${idPrefix}-title`}>{title}</h2>
-        <p>{PUBLIC_FORM_PURPOSE_COPY}</p>
-        <p>
-          Read how form information is handled in the{" "}
-          <Link href="/privacy">Privacy notice</Link>.
-        </p>
       </div>
 
       <noscript>
@@ -198,38 +213,13 @@ export function PublicSubmissionForm({
           role="status"
         >
           <p>
-            This form needs JavaScript before you can enter or send
-            information. Your information has not been sent. Please enable
-            JavaScript and reload this page.
+            JavaScript is required to send this form. Your information has not been sent.
+            Please enable JavaScript and reload this page.
           </p>
         </div>
       </noscript>
 
-      {instanceState === "loading" ? (
-        <div
-          aria-busy="true"
-          className="public-submission__loading"
-        >
-          <span className="sr-only" role="status">
-            Loading this form…
-          </span>
-          <div aria-hidden="true" className="public-submission__skeleton">
-            <span />
-            <span />
-            <span className="public-submission__skeleton-wide" />
-            <span />
-            <span />
-            <span className="public-submission__skeleton-action" />
-          </div>
-        </div>
-      ) : instanceState === "error" ? (
-        <div className="public-submission__load-error" role="alert">
-          <p>{notice}</p>
-          <button onClick={retryInstance} type="button">
-            Try loading the form again
-          </button>
-        </div>
-      ) : success ? (
+      {success ? (
         <div
           className="public-submission__success"
           id={`${idPrefix}-success`}
@@ -480,8 +470,23 @@ export function PublicSubmissionForm({
             />
           </div>
 
+          {instanceState === "error" ? (
+            <div className="public-submission__load-error" role="alert">
+              <p>{instanceNotice}</p>
+              <button onClick={retryInstance} type="button">
+                Try loading the form again
+              </button>
+            </div>
+          ) : !sendReady ? (
+            <p className="public-submission__instance-status" role="status">
+              {instanceState === "slow"
+                ? "Send is taking a little longer to prepare. You can keep filling out the form."
+                : "Preparing send…"}
+            </p>
+          ) : null}
+
           <button
-            disabled={busy}
+            disabled={busy || !sendReady}
             type="submit"
           >
             {busy ? "Sending..." : submitButtonLabel(formKey)}

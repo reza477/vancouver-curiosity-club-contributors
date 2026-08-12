@@ -20,6 +20,25 @@ export async function ensurePublicFormProtectionKey(
   organizationId: string,
   nowUtcMs: number,
 ): Promise<string> {
+  const existing = await database
+    .prepare(
+      `SELECT key_hex
+       FROM public_form_protection_keys
+       WHERE organization_id = ?
+       LIMIT 1`,
+    )
+    .bind(organizationId)
+    .first<string>("key_hex");
+  if (typeof existing === "string" && /^[a-f0-9]{64}$/u.test(existing)) {
+    return existing;
+  }
+  if (existing !== null && existing !== undefined) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The form is temporarily unavailable.",
+    );
+  }
   const candidate = bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
   await database
     .prepare(

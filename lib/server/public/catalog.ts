@@ -1023,6 +1023,40 @@ export async function listPublicProgramsForClub(
   );
 }
 
+export async function listPublicProgramsForClubs(
+  database: Pick<D1DatabaseLike, "prepare">,
+  clubSlugs: readonly string[],
+): Promise<readonly PublicProgramDto[]> {
+  const parsedClubSlugs = [
+    ...new Set(
+      clubSlugs.flatMap((slug) => {
+        const parsed = publicSlug(slug);
+        return parsed ? [parsed] : [];
+      }),
+    ),
+  ].slice(0, 12);
+  if (parsedClubSlugs.length === 0) return Object.freeze([]);
+  const result = await database
+    .prepare(
+      `${PUBLIC_PROGRAM_SELECT_SQL}
+       AND parent_club.slug IN (${parsedClubSlugs.map(() => "?").join(", ")})
+       AND parent_profile.publication_status = 'published'
+       AND details.publication_status = 'published'
+       ORDER BY parent_club.name COLLATE NOCASE ASC,
+                details.is_featured DESC,
+                details.display_order ASC,
+                details.public_display_name COLLATE NOCASE ASC,
+                details.program_id ASC`,
+    )
+    .bind(PUBLIC_ORGANIZATION_SLUG, ...parsedClubSlugs)
+    .all<Record<string, unknown>>();
+  return Object.freeze(
+    (result.results ?? [])
+      .flatMap(toPublicProgram)
+      .filter((program) => !isCompatibilityProgramAlias(program)),
+  );
+}
+
 export async function getPublicProgramBySlugs(
   database: Pick<D1DatabaseLike, "prepare">,
   clubSlug: string,
