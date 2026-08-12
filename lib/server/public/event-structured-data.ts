@@ -46,6 +46,9 @@ export function buildPublicEventJsonLd(
     name: event.title,
     description: event.summary ?? event.description ?? undefined,
     url: canonicalUrl,
+    ...(event.artwork
+      ? { image: new URL(event.artwork.url, canonicalUrl).toString() }
+      : {}),
     ...schedule,
     eventStatus: event.isCancelled
       ? "https://schema.org/EventCancelled"
@@ -80,7 +83,12 @@ function eventLocation(
         ]
           .filter(Boolean)
           .join(", "),
-        address: event.venue.address ?? undefined,
+        address: event.venue.address
+          ? {
+              "@type": "PostalAddress",
+              name: event.venue.address,
+            }
+          : undefined,
       }
     : undefined;
   const virtualLocation = event.publicOnlineUrl

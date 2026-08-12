@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import {
   buildEditorialMetadata,
-  EditorialPage,
   EditorialUnavailable,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
+import { AccessibilityRouteBody } from "@/app/_components/EditorialRouteBodies";
 
 const route = "/accessibility";
 const slug = "accessibility";
@@ -26,5 +26,5 @@ export default async function AccessibilityPage() {
   if (loaded.kind === "unavailable") {
     return <EditorialUnavailable title="Accessibility" />;
   }
-  return <EditorialPage page={loaded.page} tone="reset-make" />;
+  return <AccessibilityRouteBody page={loaded.page} />;
 }

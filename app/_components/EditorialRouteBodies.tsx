@@ -21,6 +21,55 @@ type EditorialRoutePreviewProps = Readonly<{
   privatePreview?: boolean;
 }>;
 
+export function AccessibilityRouteBody({
+  page,
+  ...preview
+}: EditorialRoutePreviewProps &
+  Readonly<{
+    page: PublicPageDto;
+  }>) {
+  return (
+    <EditorialPage page={page} tone="reset-make" {...preview}>
+      <section
+        className="editorial-section editorial-section--prose accessibility-statement"
+        aria-labelledby="accessibility-target-title"
+      >
+        <p className="section-kicker">Accessibility statement</p>
+        <h2 id="accessibility-target-title">Our accessibility target</h2>
+        <p>We aim to meet WCAG 2.2 Level AA.</p>
+        <p>
+          This accessibility statement was reviewed on{" "}
+          <time dateTime="2026-08-12">August 12, 2026</time>.
+        </p>
+        <h3>Known limitations</h3>
+        <ul>
+          <li>
+            Some event listings do not yet include venue-access details because
+            those details have not been confirmed by an organizer.
+          </li>
+          <li>
+            Public forms require JavaScript to prepare secure sending. If
+            scripts are unavailable, a form cannot be submitted through this
+            website and no information is sent.
+          </li>
+          <li>
+            Meetup, map providers, and other external RSVP destinations have
+            their own accessibility practices, which this website cannot
+            control.
+          </li>
+        </ul>
+        <p>
+          If you encounter a barrier, use the{" "}
+          <Link href="/contact">Feedback form</Link> and choose the
+          Accessibility topic. Include the page or event and what went wrong;
+          device or assistive-technology details are welcome if you are
+          comfortable sharing them.
+        </p>
+      </section>
+    </EditorialPage>
+  );
+}
+
 export function ClubsRouteBody({
   clubs,
   mediaById,

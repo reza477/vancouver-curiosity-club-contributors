@@ -91,7 +91,7 @@ test("desktop event details place the primary RSVP beside the title and summary"
 });
 
 test("the near-title RSVP becomes the mobile sticky action without a duplicate", async () => {
-  const [markup, css] = await Promise.all([
+  const [markup, css, calendarSource] = await Promise.all([
     Promise.resolve(
       renderToStaticMarkup(
         createElement(PublicEventDetailRenderer, {
@@ -104,6 +104,10 @@ test("the near-title RSVP becomes the mobile sticky action without a duplicate",
       ),
     ),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
+      "utf8",
+    ),
   ]);
 
   assert.equal(
@@ -113,7 +117,13 @@ test("the near-title RSVP becomes the mobile sticky action without a duplicate",
   );
   assert.match(
     markup,
-    /aria-label="RSVP for Canadian Banking &amp; Investing 101 on Meetup"/u,
+    /<a(?=[^>]*\baria-label="RSVP for Canadian Banking &amp; Investing 101 on Meetup \(opens in a new tab\)")(?=[^>]*\bclass="primary-action")(?=[^>]*\bhref="https:\/\/www\.meetup\.com\/vancouver-curiosity-club\/events\/315508432\/")(?=[^>]*\brel="noreferrer noopener")(?=[^>]*\btarget="_blank")[^>]*>/u,
+    "the arrow-marked event-detail RSVP must explicitly open in a new tab",
+  );
+  assert.match(
+    calendarSource,
+    /aria-label="RSVP on Meetup \(opens in a new tab\)"[\s\S]*?rel="noreferrer noopener"[\s\S]*?target="_blank"/u,
+    "calendar and event-detail RSVP behavior must stay consistent",
   );
   assert.doesNotMatch(markup, /event-detail__mobile-rsvp/u);
 

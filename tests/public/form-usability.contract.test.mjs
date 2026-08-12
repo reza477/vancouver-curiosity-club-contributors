@@ -147,7 +147,11 @@ test("all fields are editable immediately while only secure submission prepares"
       ),
     );
     assert.match(form, /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")[^>]*>/u);
-    assert.match(form, /\bname="name"/u);
+    assert.match(
+      form,
+      /<input(?=[^>]*\bautocomplete="name")(?=[^>]*\bname="name")[^>]*>/iu,
+      `${formKey} must expose the standard name autofill purpose`,
+    );
     assert.match(form, /\bname="replyEmail"/u);
     assert.match(
       form,
@@ -180,6 +184,15 @@ test("all fields are editable immediately while only secure submission prepares"
       `${formKey} needs a compact accessible secure-send status`,
     );
     assert.doesNotMatch(form, /public-submission__skeleton/iu);
+    const honeypot = /<div(?=[^>]*\bclass="public-submission__honeypot")(?=[^>]*\baria-hidden="true")[^>]*>[\s\S]*?<\/div>/u.exec(
+      form,
+    )?.[0];
+    assert.ok(honeypot, `${formKey} honeypot must be absent from the accessibility tree`);
+    assert.match(
+      honeypot,
+      /<input(?=[^>]*\bautocomplete="off")(?=[^>]*\bname="companyFax")(?=[^>]*\btabindex="-1")[^>]*>/iu,
+      `${formKey} honeypot must also stay out of keyboard order`,
+    );
     assert.match(
       markup,
       /<noscript>[\s\S]*Your information has not been sent\.[\s\S]*Please enable[\s\S]*JavaScript and reload this page\.[\s\S]*<\/noscript>/u,

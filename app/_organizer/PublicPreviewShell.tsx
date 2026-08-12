@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { ClubDetailRenderer } from "@/app/_components/ClubDetailRenderer";
 import { ProgramDetailRenderer } from "@/app/_components/ProgramDetailRenderer";
 import {
+  AccessibilityRouteBody,
   ClubsRouteBody,
   ContactRouteBody,
   GetInvolvedRouteBody,
@@ -183,6 +184,16 @@ async function PreviewEntityBody({
           mediaById={new Map(
             media.map((asset) => [asset.assetId, asset]),
           )}
+          page={page}
+          previewCommunityLinks={catalog.communityLinks}
+          previewMediaAssets={preview.mediaAssets}
+          privatePreview
+        />
+      );
+    }
+    if (snapshot.slug === "accessibility") {
+      return (
+        <AccessibilityRouteBody
           page={page}
           previewCommunityLinks={catalog.communityLinks}
           previewMediaAssets={preview.mediaAssets}

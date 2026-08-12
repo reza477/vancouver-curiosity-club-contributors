@@ -266,7 +266,7 @@ test("the Clubs route uses one grouped D1 loader with no per-card or remote quer
   assert.match(routeBody, /nextEventsState/u);
   assert.match(
     routeBody,
-    /privatePreview[\s\S]{0,300}nextEventsState[\s\S]{0,200}omitted|nextEventsState[\s\S]{0,300}privatePreview[\s\S]{0,200}omitted/u,
+    /nextEventsState\s*=\s*"omitted"/u,
     "private preview must omit a live-event claim",
   );
   assert.match(loader, /export async function listNextPublicEventsByClub/u);

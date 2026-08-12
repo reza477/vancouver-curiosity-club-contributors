@@ -131,10 +131,11 @@ export function PublicEventDetailRenderer({
 
             {event.rsvpUrl && !event.isCancelled ? (
               <a
-                aria-label={`RSVP for ${event.title} on Meetup`}
+                aria-label={`RSVP for ${event.title} on Meetup (opens in a new tab)`}
                 className="primary-action"
                 href={event.rsvpUrl}
                 rel="noreferrer noopener"
+                target="_blank"
               >
                 RSVP on Meetup <span aria-hidden="true">↗</span>
               </a>

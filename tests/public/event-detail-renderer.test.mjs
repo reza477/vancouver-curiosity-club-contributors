@@ -528,8 +528,9 @@ test("event leads keep RSVP and lane-specific poster fallback near the title", (
   );
   assert.match(
     markup,
-    /aria-label="RSVP for Timezone event on Meetup"/u,
+    /aria-label="RSVP for Timezone event on Meetup \(opens in a new tab\)"/u,
   );
+  assert.match(markup, /class="primary-action"[^>]*target="_blank"/u);
   assert.doesNotMatch(markup, /FieldArtwork|Field Notes category artwork/u);
 });
 
