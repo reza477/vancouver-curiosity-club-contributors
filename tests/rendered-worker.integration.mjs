@@ -1023,6 +1023,41 @@ test("Calendar permanently redirects to Events and preserves the month and lane"
   }
 });
 
+test("same-name same-slug compatibility Program routes redirect to their canonical Clubs", async () => {
+  for (const slug of [
+    "vancouver-curiosity-club",
+    "vancouver-literature-and-film",
+    "vancouver-fantasy-scifi-group",
+  ]) {
+    const programPath = `/clubs/${slug}/programs/${slug}`;
+    const clubPath = `/clubs/${slug}`;
+    const response = await fetchPath(programPath, { redirect: "manual" });
+    assert.equal(response.status, 308, programPath);
+    assert.equal(
+      new URL(response.headers.get("location"), "https://preview.example")
+        .href,
+      new URL(clubPath, "https://preview.example").href,
+      programPath,
+    );
+
+    const clubResponse = await fetchPath(clubPath);
+    assert.equal(clubResponse.status, 200, clubPath);
+    assert.doesNotMatch(
+      await clubResponse.text(),
+      new RegExp(`href="${escapeRegex(programPath)}"`, "u"),
+      `${clubPath} must not link back to its collapsed compatibility Program`,
+    );
+  }
+
+  const sitemapResponse = await fetchPath("/sitemap.xml");
+  assert.equal(sitemapResponse.status, 200);
+  assert.doesNotMatch(
+    await sitemapResponse.text(),
+    /<loc>[^<]*\/clubs\/[^<]+\/programs\/[^<]+<\/loc>/u,
+    "collapsed compatibility Programs must not have canonical sitemap URLs",
+  );
+});
+
 test("robots and sitemap contain only public canonical routes", async () => {
   const robotsResponse = await fetchPath("/robots.txt");
   assert.equal(robotsResponse.status, 200);

@@ -13,12 +13,21 @@ import {
   listPublicClubs,
   listPublicCommunityLinks,
   listPublicLanes,
+  listPublicProgramsForClub,
 } from "../../lib/server/public/catalog.ts";
 import { ensureCmsAdoption } from "../../lib/server/organizer/cms-adoption.ts";
+import {
+  publishCmsEntity,
+  readCmsEntityWorkspace,
+  saveCmsEntityDraft,
+} from "../../lib/server/organizer/cms.ts";
 import { ensureMeetupProgramClubs } from "../../lib/server/meetup/clubs.ts";
 import {
   listPublicCatalogSitemapEntries,
 } from "../../lib/server/public/sitemap.ts";
+import {
+  isCompatibilityProgramAlias,
+} from "../../lib/server/public/program-identity.ts";
 import {
   PHASE6_INVARIANT_COUNT_SQL,
   PHASE6_INVARIANT_TRIGGER_STATEMENTS,
@@ -310,6 +319,142 @@ test("authorized seed creates the exact public catalog and only three safe club 
   );
 });
 
+test("same-name same-slug compatibility Programs collapse into their canonical Club", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensurePublicCatalog(database, OWNER, 2_000);
+  await ensureCmsAdoption(database, OWNER_ACTOR, 2_001);
+
+  for (const club of EXPECTED_CLUBS.slice(0, 3)) {
+    assert.deepEqual(
+      await listPublicProgramsForClub(database, club.slug),
+      [],
+      `${club.slug} must not advertise its compatibility Program as a separate public series`,
+    );
+  }
+
+  const sitemap = await listPublicCatalogSitemapEntries(
+    database,
+    "org_public",
+  );
+  assert.deepEqual(
+    sitemap.programs,
+    [],
+    "collapsed compatibility Program routes must not be indexed",
+  );
+});
+
+test("the compatibility collapse requires both the exact public name and exact slug", () => {
+  const identity = {
+    name: "Vancouver Literature and Film",
+    parentClub: {
+      name: "Vancouver Literature and Film",
+      slug: "vancouver-literature-and-film",
+    },
+    slug: "vancouver-literature-and-film",
+  };
+  assert.equal(isCompatibilityProgramAlias(identity), true);
+  assert.equal(
+    isCompatibilityProgramAlias({
+      ...identity,
+      name: "Sunday Literature Circle",
+    }),
+    false,
+  );
+  assert.equal(
+    isCompatibilityProgramAlias({
+      ...identity,
+      slug: "sunday-literature-circle",
+    }),
+    false,
+  );
+  assert.equal(
+    isCompatibilityProgramAlias({
+      ...identity,
+      name: "vancouver literature and film",
+    }),
+    false,
+    "an editorially distinct public identity must not be collapsed loosely",
+  );
+});
+
+test("an Owner-published distinct Program remains listed and indexed", async (t) => {
+  const database = createDatabase();
+  t.after(() => database.close());
+  await ensurePublicCatalog(database, OWNER, 2_000);
+  await ensureCmsAdoption(database, OWNER_ACTOR, 2_001);
+
+  const programId = await database
+    .prepare(
+      `SELECT program.id
+       FROM programs AS program
+       JOIN clubs AS club
+         ON club.id = program.club_id
+        AND club.organization_id = program.organization_id
+       WHERE program.organization_id = 'org_public'
+         AND club.slug = 'vancouver-literature-and-film'
+         AND program.deleted_at IS NULL
+       LIMIT 1`,
+    )
+    .first("id");
+  assert.equal(typeof programId, "string");
+  let workspace = await readCmsEntityWorkspace(
+    database,
+    OWNER,
+    "program_public_profile",
+    programId,
+  );
+  workspace = await saveCmsEntityDraft(
+    database,
+    OWNER,
+    "program_public_profile",
+    programId,
+    {
+      expectedContentVersion: workspace.entity.contentVersion,
+      snapshot: {
+        ...workspace.revision.snapshot,
+        name: "Sunday Literature Circle",
+        slug: "sunday-literature-circle",
+      },
+    },
+    2_010,
+  );
+  await publishCmsEntity(
+    database,
+    OWNER,
+    "program_public_profile",
+    programId,
+    { expectedContentVersion: workspace.entity.contentVersion },
+    2_011,
+  );
+
+  const programs = await listPublicProgramsForClub(
+    database,
+    "vancouver-literature-and-film",
+  );
+  assert.deepEqual(
+    programs.map(({ name, slug }) => ({ name, slug })),
+    [
+      {
+        name: "Sunday Literature Circle",
+        slug: "sunday-literature-circle",
+      },
+    ],
+  );
+  const sitemap = await listPublicCatalogSitemapEntries(
+    database,
+    "org_public",
+  );
+  assert.equal(
+    sitemap.programs.some(
+      ({ clubSlug, programSlug }) =>
+        clubSlug === "vancouver-literature-and-film" &&
+        programSlug === "sunday-literature-circle",
+    ),
+    true,
+  );
+});
+
 test("catalog sitemap entries require exact current receipt-backed route identities", async (t) => {
   const database = createDatabase();
   t.after(() => database.close());
@@ -334,7 +479,7 @@ test("catalog sitemap entries require exact current receipt-backed route identit
     baseline.programs.some(
       ({ programSlug }) => programSlug === "vancouver-curiosity-club",
     ),
-    true,
+    false,
   );
 
   database.exec(`
@@ -400,6 +545,24 @@ test("catalog sitemap entries require exact current receipt-backed route identit
         programSlug === "tampered-program",
     ),
     false,
+  );
+  database.exec(`
+    UPDATE program_public_profile_details
+    SET public_slug = 'vancouver-curiosity-club',
+        public_display_name = 'Tampered public Program name'
+    WHERE organization_id = 'org_public'
+      AND public_slug = 'tampered-program';
+  `);
+  const tamperedProgramName = await listPublicCatalogSitemapEntries(
+    database,
+    "org_public",
+  );
+  assert.equal(
+    tamperedProgramName.programs.some(
+      ({ programSlug }) => programSlug === "vancouver-curiosity-club",
+    ),
+    false,
+    "a stale mutable Program name must not create a noncanonical route",
   );
 });
 

@@ -29,6 +29,7 @@ import {
   cmsPageLiveProjectionMatchesReceiptSql,
   cmsReceiptEnvelopeMatchesRevisionSql,
 } from "./cms-materialization-contract";
+import { isCompatibilityProgramAlias } from "./program-identity";
 
 const MAX_SEED_BATCH_STATEMENTS = 49;
 const PUBLIC_CATALOG_VERSION = 1;
@@ -1015,7 +1016,11 @@ export async function listPublicProgramsForClub(
     )
     .bind(PUBLIC_ORGANIZATION_SLUG, parsedClubSlug)
     .all<Record<string, unknown>>();
-  return Object.freeze((result.results ?? []).flatMap(toPublicProgram));
+  return Object.freeze(
+    (result.results ?? [])
+      .flatMap(toPublicProgram)
+      .filter((program) => !isCompatibilityProgramAlias(program)),
+  );
 }
 
 export async function getPublicProgramBySlugs(

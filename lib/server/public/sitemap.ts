@@ -3,6 +3,7 @@ import {
   cmsPageLiveProjectionMatchesReceiptSql,
   cmsReceiptEnvelopeMatchesRevisionSql,
 } from "./cms-materialization-contract";
+import { isCompatibilityProgramAlias } from "./program-identity";
 
 const MAX_PAGE_SITEMAP_ENTRIES = 100;
 const MAX_CLUB_SITEMAP_ENTRIES = 100;
@@ -133,7 +134,9 @@ export async function listPublicCatalogSitemapEntries(
       .bind(organizationId),
     database
       .prepare(
-        `SELECT parent.slug AS club_slug,
+        `SELECT parent.name AS club_name,
+                parent.slug AS club_slug,
+                detail.public_display_name AS program_name,
                 detail.public_slug AS program_slug,
                 detail.updated_at
          FROM program_public_profile_details AS detail
@@ -206,6 +209,8 @@ export async function listPublicCatalogSitemapEntries(
            AND json_type(receipt.projection_json, '$.details') = 'object'
            AND detail.club_id =
                json_extract(receipt.projection_json, '$.details.clubId')
+           AND detail.public_display_name =
+               json_extract(receipt.projection_json, '$.details.name')
            AND detail.public_slug =
                json_extract(receipt.projection_json, '$.details.slug')
            AND json_type(parent_receipt.projection_json, '$.club') = 'object'
@@ -249,11 +254,25 @@ function toProgramEntries(
   return Object.freeze(
     (rows ?? []).flatMap((row) => {
       const clubSlug = publicSlug(row.club_slug);
+      const clubName = publicText(row.club_name);
+      const programName = publicText(row.program_name);
       const programSlug = publicSlug(row.program_slug);
       const lastModified = publicTimestamp(row.updated_at);
-      return clubSlug && programSlug && lastModified !== null
-        ? [Object.freeze({ clubSlug, lastModified, programSlug })]
-        : [];
+      if (
+        !clubName ||
+        !clubSlug ||
+        !programName ||
+        !programSlug ||
+        lastModified === null ||
+        isCompatibilityProgramAlias({
+          name: programName,
+          parentClub: { name: clubName, slug: clubSlug },
+          slug: programSlug,
+        })
+      ) {
+        return [];
+      }
+      return [Object.freeze({ clubSlug, lastModified, programSlug })];
     }),
   );
 }
@@ -271,6 +290,14 @@ function publicSlug(value: unknown): string | null {
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value) &&
     value.length <= 128
     ? value
+    : null;
+}
+
+function publicText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.normalize("NFKC").trim().replace(/\s+/gu, " ");
+  return normalized.length > 0 && normalized.length <= 160
+    ? normalized
     : null;
 }
 

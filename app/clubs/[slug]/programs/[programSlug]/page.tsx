@@ -22,6 +22,7 @@ import {
 import { queryPublicEvents } from "@/lib/server/public/events";
 import { buildPublicPageMetadata } from "@/lib/server/public/metadata";
 import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
+import { isCompatibilityProgramAlias } from "@/lib/server/public/program-identity";
 import {
   DEFAULT_TIME_ZONE,
   calendarDateInTimeZone,
@@ -96,6 +97,9 @@ export default async function ProgramDetailPage({
         </section>
       </main>
     );
+  }
+  if (isCompatibilityProgramAlias(loaded.program)) {
+    permanentRedirect(`/clubs/${loaded.program.parentClub.slug}`);
   }
   const [events, coverMedia] = await Promise.all([
     loadProgramEvents(loaded.program, route),
