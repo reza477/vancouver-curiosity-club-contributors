@@ -263,10 +263,15 @@ function legacyExternalResourceHref(
     if (eventUrl === LEGACY_PADDLEBOARDING_EVENT_URL) {
       return PADDLEBOARDING_LESSON_URL;
     }
-    if (eventUrl === LEGACY_SUMMER_CINEMA_EVENT_URL) {
-      return SUMMER_CINEMA_URL;
-    }
   }
+  const isSummerCinemaPlaceholder =
+    eventUrl === LEGACY_SUMMER_CINEMA_EVENT_URL &&
+    block.type === "paragraph" &&
+    block.content.length === 1 &&
+    block.content[0]?.type === "text" &&
+    block.content[0].text ===
+      "Official Evo Summer Cinema details: External resource";
+  if (isSummerCinemaPlaceholder) return SUMMER_CINEMA_URL;
   const isAutismSourcePlaceholder =
     eventUrl === LEGACY_AUTISM_EVENT_URL &&
     block.type === "unordered-list" &&
@@ -286,12 +291,18 @@ function normalizeLegacyDescriptionInlines(
     if (
       restoredHref !== null &&
       inline.type === "text" &&
-      inline.text === "External resource"
+      (inline.text === "External resource" ||
+        (restoredHref === SUMMER_CINEMA_URL &&
+          inline.text ===
+            "Official Evo Summer Cinema details: External resource"))
     ) {
       const displayHost = new URL(restoredHref).hostname.replace(/^www\./u, "");
       return Object.freeze({
         href: restoredHref,
-        text: `Open ${displayHost}`,
+        text:
+          restoredHref === SUMMER_CINEMA_URL
+            ? "Official Evo Summer Cinema details"
+            : `Open ${displayHost}`,
         type: "link" as const,
       });
     }

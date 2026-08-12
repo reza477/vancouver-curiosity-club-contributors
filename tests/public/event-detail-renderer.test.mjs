@@ -382,7 +382,10 @@ test("legacy Autism and summer-cinema placeholders regain only their vetted link
   const cinemaBlocks = Object.freeze([
     Object.freeze({
       content: Object.freeze([
-        Object.freeze({ text: "External resource", type: "text" }),
+        Object.freeze({
+          text: "Official Evo Summer Cinema details: External resource",
+          type: "text",
+        }),
       ]),
       type: "paragraph",
     }),
@@ -393,7 +396,7 @@ test("legacy Autism and summer-cinema placeholders regain only their vetted link
   );
   assert.deepEqual(cinema[0].content[0], {
     href: "https://summercinema.ca/",
-    text: "Open summercinema.ca",
+    text: "Official Evo Summer Cinema details",
     type: "link",
   });
   assert.deepEqual(
