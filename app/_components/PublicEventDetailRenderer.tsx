@@ -129,6 +129,17 @@ export function PublicEventDetailRenderer({
               <p className="event-detail__deck">{event.summary}</p>
             ) : null}
 
+            {event.rsvpUrl && !event.isCancelled ? (
+              <a
+                aria-label={`RSVP for ${event.title} on Meetup`}
+                className="primary-action"
+                href={event.rsvpUrl}
+                rel="noreferrer noopener"
+              >
+                RSVP on Meetup <span aria-hidden="true">↗</span>
+              </a>
+            ) : null}
+
             <section
               className="event-detail__facts"
               aria-labelledby="facts-title"
@@ -222,15 +233,6 @@ export function PublicEventDetailRenderer({
                   </div>
                 ) : null}
               </dl>
-              {event.rsvpUrl && !event.isCancelled ? (
-                <a
-                  className="primary-action"
-                  href={event.rsvpUrl}
-                  rel="noreferrer noopener"
-                >
-                  RSVP on Meetup <span aria-hidden="true">↗</span>
-                </a>
-              ) : null}
               {event.rsvpMode === "coming_soon" && !event.isCancelled ? (
                 <p className="event-detail__rsvp-note">
                   RSVP information coming soon.
@@ -336,16 +338,6 @@ export function PublicEventDetailRenderer({
         </section>
       </article>
 
-      {event.rsvpUrl && !event.isCancelled ? (
-        <a
-          aria-label={`RSVP for ${event.title} on Meetup`}
-          className="event-detail__mobile-rsvp"
-          href={event.rsvpUrl}
-          rel="noreferrer noopener"
-        >
-          RSVP on Meetup <span aria-hidden="true">↗</span>
-        </a>
-      ) : null}
     </>
   );
 }

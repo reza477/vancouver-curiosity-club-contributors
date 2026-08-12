@@ -524,9 +524,8 @@ test("event leads keep RSVP and lane-specific poster fallback near the title", (
   assert.match(markup, /Explore · City culture/u);
   assert.equal(
     (markup.match(new RegExp(`href="${rsvpUrl}"`, "gu")) ?? []).length,
-    2,
+    1,
   );
-  assert.match(markup, /class="event-detail__mobile-rsvp"/u);
   assert.match(
     markup,
     /aria-label="RSVP for Timezone event on Meetup"/u,
@@ -577,25 +576,22 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
   const summaryIndex = markup.indexOf('class="event-detail__summary"');
   const headingIndex = markup.indexOf("<h1>");
   const factsIndex = markup.indexOf('class="event-detail__facts"');
-  const primaryRsvpIndex = markup.indexOf(
-    'class="primary-action"',
-    factsIndex,
-  );
+  const primaryRsvpIndex = markup.indexOf('class="primary-action"');
   const storyIndex = markup.indexOf('class="event-detail__story"');
 
   assert.ok(leadIndex >= 0);
   assert.ok(posterIndex > leadIndex, "the poster leads the event-detail flow");
   assert.ok(summaryIndex > posterIndex, "the summary follows the poster");
   assert.ok(headingIndex > summaryIndex, "the title begins the summary");
-  assert.ok(factsIndex > headingIndex, "date and location follow the title");
-  assert.ok(primaryRsvpIndex > factsIndex, "the primary RSVP stays with facts");
-  assert.ok(storyIndex > primaryRsvpIndex, "long-form copy follows essentials");
+  assert.ok(primaryRsvpIndex > headingIndex, "the primary RSVP follows the title");
+  assert.ok(factsIndex > primaryRsvpIndex, "date and location follow the RSVP");
+  assert.ok(storyIndex > factsIndex, "long-form copy follows essentials");
   assert.match(markup, /<dt>When<\/dt>/u);
   assert.match(markup, /<dt>Location<\/dt>/u);
   assert.match(markup, /VIFF Centre/u);
   assert.equal(
     (markup.match(new RegExp(`href="${rsvpUrl}"`, "gu")) ?? []).length,
-    2,
+    1,
   );
 
   const css = await readFile(new URL("app/globals.css", projectRoot), "utf8");
@@ -635,12 +631,12 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
   );
   assert.match(
     mobileStyles,
-    /\.event-detail__mobile-rsvp\s*\{[^}]*position:\s*fixed;[^}]*bottom:\s*max\(0\.75rem,\s*env\(safe-area-inset-bottom\)\);[^}]*display:\s*flex;[^}]*min-height:\s*3\.25rem;/su,
+    /\.event-detail__summary\s*>\s*\.primary-action\s*\{[^}]*position:\s*fixed;[^}]*bottom:\s*max\(0\.75rem,\s*env\(safe-area-inset-bottom\)\);[^}]*display:\s*flex;[^}]*min-height:\s*3\.25rem;/su,
     "the 390px RSVP action must be sticky and at least 44px tall",
   );
   assert.match(
     css,
-    /\.event-detail__facts \.primary-action\s*\{[^}]*min-height:\s*2\.75rem;/su,
+    /\.event-detail__summary\s*>\s*\.primary-action\s*\{[^}]*min-height:\s*2\.75rem;/su,
     "the in-flow RSVP action must remain at least 44px tall",
   );
 });
@@ -715,7 +711,7 @@ test("cancelled event calendar actions expose only the cancellation file", () =>
   assert.match(markup, />Add to calendar<\/summary>/u);
   assert.match(markup, />Download cancellation \(\.ics\)<\/a>/u);
   assert.doesNotMatch(markup, />Google Calendar/u);
-  assert.doesNotMatch(markup, /event-detail__mobile-rsvp/u);
+  assert.doesNotMatch(markup, /class="primary-action"/u);
 });
 
 test("public event artwork renders only allowlisted media presentation fields", () => {

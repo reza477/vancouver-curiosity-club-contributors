@@ -6566,8 +6566,10 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   padding-top: clamp(1.5rem, 4vw, 3rem);
 }
 
-.event-detail__facts .primary-action {
+.event-detail__summary > .primary-action {
+  width: fit-content;
   min-height: 2.75rem;
+  margin-top: 1.25rem;
 }
 
 .event-detail__story {
@@ -6598,10 +6600,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 .club-directory__card:hover,
 .club-directory__card:focus-within {
   transform: translateY(-0.18rem);
-}
-
-.event-detail__mobile-rsvp {
-  display: none;
 }
 
 @media (max-width: 70rem) {
@@ -6754,7 +6752,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
     font-size: clamp(3rem, 13vw, 3.5rem);
   }
 
-  .event-detail__mobile-rsvp {
+  .event-detail__summary > .primary-action {
     position: fixed;
     right: max(0.75rem, env(safe-area-inset-right));
     bottom: max(0.75rem, env(safe-area-inset-bottom));
@@ -6804,7 +6802,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
     margin-top: 2rem;
   }
 
-  .event-detail-page:has(.event-detail__mobile-rsvp) {
+  .event-detail-page:has(.event-detail__summary > .primary-action) {
     padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
   }
 
