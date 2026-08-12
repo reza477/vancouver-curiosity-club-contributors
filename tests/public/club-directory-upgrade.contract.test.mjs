@@ -22,17 +22,17 @@ test("the club directory owns exactly three distinct responsive illustration set
   assert.deepEqual(
     files,
     COVER_SLUGS.flatMap((slug) =>
-      COVER_WIDTHS.map((width) => `${slug}-${width}.webp`),
+      COVER_WIDTHS.map((width) => `${slug}-${width}.jpeg`),
     ).sort(),
   );
 
   const largestVariantHashes = new Set();
   for (const slug of COVER_SLUGS) {
     for (const width of COVER_WIDTHS) {
-      const path = new URL(`${slug}-${width}.webp`, coverDirectory);
+      const path = new URL(`${slug}-${width}.jpeg`, coverDirectory);
       const bytes = await readFile(path);
       const metadata = await sharp(bytes).metadata();
-      assert.equal(metadata.format, "webp", `${slug} ${width} format`);
+      assert.equal(metadata.format, "jpeg", `${slug} ${width} format`);
       assert.equal(metadata.width, width, `${slug} ${width} width`);
       assert.equal(metadata.height, Math.round(width * 9 / 16), `${slug} ${width} height`);
       if (width === 1600) {
@@ -51,11 +51,11 @@ test("the club directory owns exactly three distinct responsive illustration set
   for (const slug of COVER_SLUGS) {
     const artwork = clubCoverArtworkForSlug(slug);
     assert.ok(artwork, `${slug} must have owned cover art`);
-    assert.equal(artwork.src, `/club-covers/${slug}-960.webp`);
+    assert.equal(artwork.src, `/club-covers/${slug}-960.jpeg`);
     assert.equal(
       artwork.srcSet,
       COVER_WIDTHS.map(
-        (width) => `/club-covers/${slug}-${width}.webp ${width}w`,
+        (width) => `/club-covers/${slug}-${width}.jpeg ${width}w`,
       ).join(", "),
     );
     assert.ok(artwork.altText.trim().length > 0, `${slug} needs useful alt text`);
@@ -109,14 +109,14 @@ test("three published clubs render distinct responsive art, prominent CMS promis
     assert.match(
       card,
       new RegExp(
-        `srcSet="/club-covers/${club.slug}-480\\.webp 480w, /club-covers/${club.slug}-960\\.webp 960w, /club-covers/${club.slug}-1600\\.webp 1600w"`,
+        `srcSet="/club-covers/${club.slug}-480\\.jpeg 480w, /club-covers/${club.slug}-960\\.jpeg 960w, /club-covers/${club.slug}-1600\\.jpeg 1600w"`,
         "u",
       ),
       `${club.name} must render all three owned responsive variants`,
     );
     assert.match(
       card,
-      new RegExp(`src="/club-covers/${club.slug}-960\\.webp"`, "u"),
+      new RegExp(`src="/club-covers/${club.slug}-960\\.jpeg"`, "u"),
     );
     assert.doesNotMatch(card, /https?:\/\/[^" ]+\.(?:jpe?g|png|webp)/iu);
   }
@@ -157,7 +157,7 @@ test("published CMS media wins in thumbnail, cover, then owned-art order", () =>
   assert.doesNotMatch(cards[1], /\/club-covers\//u);
   assert.match(
     cards[2],
-    /src="\/club-covers\/vancouver-fantasy-scifi-group-960\.webp"/u,
+    /src="\/club-covers\/vancouver-fantasy-scifi-group-960\.jpeg"/u,
   );
 });
 

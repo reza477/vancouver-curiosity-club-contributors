@@ -164,7 +164,7 @@ function ClubArtwork({
         <source
           sizes="(max-width: 52rem) calc(100vw - 4.5rem), 48vw"
           srcSet={srcSet}
-          type="image/webp"
+          type={media ? "image/webp" : "image/jpeg"}
         />
         <img
           alt={altText}

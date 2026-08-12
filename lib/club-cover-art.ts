@@ -49,8 +49,8 @@ function clubCoverArtwork({
     altText,
     credit,
     height: 540 as const,
-    src: `${base}-960.webp`,
-    srcSet: `${base}-480.webp 480w, ${base}-960.webp 960w, ${base}-1600.webp 1600w`,
+    src: `${base}-960.jpeg`,
+    srcSet: `${base}-480.jpeg 480w, ${base}-960.jpeg 960w, ${base}-1600.jpeg 1600w`,
     width: 960 as const,
   });
 }
