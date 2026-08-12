@@ -191,6 +191,19 @@ export function PublicSubmissionForm({
         </p>
       </div>
 
+      <noscript>
+        <div
+          className="public-submission__load-error public-submission__noscript"
+          role="status"
+        >
+          <p>
+            This form needs JavaScript before you can enter or send
+            information. Your information has not been sent. Please enable
+            JavaScript and reload this page.
+          </p>
+        </div>
+      </noscript>
+
       {instanceState === "loading" ? (
         <div
           aria-busy="true"
@@ -227,12 +240,15 @@ export function PublicSubmissionForm({
         </div>
       ) : (
         <form
+          acceptCharset="UTF-8"
+          action={`/api/forms/${encodeURIComponent(formKey)}`}
           aria-busy={busy}
           className="public-submission__form"
+          method="post"
           onSubmit={submit}
           ref={formRef}
-          noValidate
         >
+          <input name="instanceToken" type="hidden" value={instanceToken} />
           {Object.keys(errors).length > 0 ? (
             <div
               aria-labelledby={`${idPrefix}-error-summary-title`}
@@ -256,9 +272,12 @@ export function PublicSubmissionForm({
             </div>
           ) : null}
           <TextField
+            autoComplete="name"
             error={errors.name}
             idPrefix={idPrefix}
             label={formKey === "partnership" ? "Contact name" : "Name"}
+            maxLength={100}
+            minLength={2}
             name="name"
             onChange={(value) => update("name", value)}
             required
@@ -269,6 +288,8 @@ export function PublicSubmissionForm({
             error={errors.replyEmail}
             idPrefix={idPrefix}
             label="Reply email"
+            maxLength={254}
+            minLength={3}
             name="replyEmail"
             onChange={(value) => update("replyEmail", value)}
             required
@@ -292,6 +313,8 @@ export function PublicSubmissionForm({
                 error={errors.message}
                 idPrefix={idPrefix}
                 label="Message"
+                maxLength={4_000}
+                minLength={10}
                 multiline
                 name="message"
                 onChange={(value) => update("message", value)}
@@ -316,6 +339,8 @@ export function PublicSubmissionForm({
                 error={errors.howToHelp}
                 idPrefix={idPrefix}
                 label="How would you like to help?"
+                maxLength={4_000}
+                minLength={10}
                 multiline
                 name="howToHelp"
                 onChange={(value) => update("howToHelp", value)}
@@ -326,6 +351,7 @@ export function PublicSubmissionForm({
                 error={errors.availabilityContext}
                 idPrefix={idPrefix}
                 label="Availability or relevant context"
+                maxLength={1_000}
                 multiline
                 name="availabilityContext"
                 onChange={(value) => update("availabilityContext", value)}
@@ -340,6 +366,8 @@ export function PublicSubmissionForm({
                 error={errors.proposedTitle}
                 idPrefix={idPrefix}
                 label="Proposed event title or topic"
+                maxLength={160}
+                minLength={3}
                 name="proposedTitle"
                 onChange={(value) => update("proposedTitle", value)}
                 required
@@ -349,6 +377,8 @@ export function PublicSubmissionForm({
                 error={errors.eventIdea}
                 idPrefix={idPrefix}
                 label="Short event idea"
+                maxLength={4_000}
+                minLength={10}
                 multiline
                 name="eventIdea"
                 onChange={(value) => update("eventIdea", value)}
@@ -378,6 +408,7 @@ export function PublicSubmissionForm({
                 error={errors.preferredTiming}
                 idPrefix={idPrefix}
                 label="Preferred timing"
+                maxLength={1_000}
                 multiline
                 name="preferredTiming"
                 onChange={(value) => update("preferredTiming", value)}
@@ -392,6 +423,8 @@ export function PublicSubmissionForm({
                 error={errors.organizationOrVenueName}
                 idPrefix={idPrefix}
                 label="Organization or venue name"
+                maxLength={160}
+                minLength={2}
                 name="organizationOrVenueName"
                 onChange={(value) => update("organizationOrVenueName", value)}
                 required
@@ -411,8 +444,10 @@ export function PublicSubmissionForm({
                 error={errors.website}
                 idPrefix={idPrefix}
                 label="Website (HTTPS)"
+                maxLength={500}
                 name="website"
                 onChange={(value) => update("website", value)}
+                pattern="[Hh][Tt][Tt][Pp][Ss]://.*"
                 type="url"
                 value={stringValue(values.website)}
               />
@@ -420,6 +455,8 @@ export function PublicSubmissionForm({
                 error={errors.message}
                 idPrefix={idPrefix}
                 label="Message"
+                maxLength={4_000}
+                minLength={10}
                 multiline
                 name="message"
                 onChange={(value) => update("message", value)}
@@ -443,7 +480,7 @@ export function PublicSubmissionForm({
           </div>
 
           <button
-            disabled={busy || !instanceToken}
+            disabled={busy}
             type="submit"
           >
             {busy ? "Sending..." : submitButtonLabel(formKey)}
@@ -479,9 +516,12 @@ function TextField({
   error,
   idPrefix,
   label,
+  maxLength,
+  minLength,
   multiline = false,
   name,
   onChange,
+  pattern,
   required = false,
   type = "text",
   value,
@@ -490,9 +530,12 @@ function TextField({
   error?: string;
   idPrefix: string;
   label: string;
+  maxLength?: number;
+  minLength?: number;
   multiline?: boolean;
   name: string;
   onChange: (value: string) => void;
+  pattern?: string;
   required?: boolean;
   type?: string;
   value: string;
@@ -503,6 +546,8 @@ function TextField({
     "aria-describedby": error ? errorId : undefined,
     "aria-invalid": error ? true : undefined,
     id: inputId,
+    maxLength,
+    minLength,
     name,
     onChange: (
       event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -519,7 +564,12 @@ function TextField({
       {multiline ? (
         <textarea {...common} rows={6} />
       ) : (
-        <input {...common} autoComplete={autoComplete} type={type} />
+        <input
+          {...common}
+          autoComplete={autoComplete}
+          pattern={pattern}
+          type={type}
+        />
       )}
       {error ? (
         <small className="public-submission__error" id={errorId}>
@@ -602,6 +652,7 @@ function CheckboxGroup({
   const errorId = `${idPrefix}-${name}-error`;
   return (
     <fieldset
+      aria-required="true"
       className="public-submission__choices"
       aria-describedby={error ? errorId : undefined}
       aria-invalid={error ? true : undefined}
@@ -620,6 +671,7 @@ function CheckboxGroup({
                   : values.filter((value) => value !== option),
               )
             }
+            required={values.length === 0 && index === 0}
             type="checkbox"
             value={option}
           />

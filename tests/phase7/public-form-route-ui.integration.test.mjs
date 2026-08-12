@@ -125,6 +125,456 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
   );
 });
 
+test(
+  "every public form has an explicit POST fallback, native validation, and a no-script safety notice",
+  routeTestOptions,
+  () => {
+    const formSource = source("app/_components/PublicSubmissionForm.tsx");
+    const formOpeningTag = /<form\b[\s\S]*?>/u.exec(formSource)?.[0];
+    assert.ok(formOpeningTag, "the shared public form must render a form");
+    assert.match(formOpeningTag, /\bmethod="post"/u);
+    assert.match(
+      formOpeningTag,
+      /\baction=\{`\/api\/forms\/\$\{encodeURIComponent\(formKey\)\}`\}/u,
+      "the fallback action must POST to the allowlisted form endpoint",
+    );
+    assert.doesNotMatch(formOpeningTag, /\bmethod="get"/iu);
+    assert.doesNotMatch(formOpeningTag, /\bnoValidate\b/u);
+    assert.doesNotMatch(
+      formOpeningTag,
+      /\?(?:[^}>'"])*(?:name|replyEmail|message|eventIdea|howToHelp)=/iu,
+      "personal fields must never be encoded into the form action URL",
+    );
+
+    assert.match(
+      formSource,
+      /<noscript>[\s\S]*Your information has not been sent[\s\S]*<\/noscript>/u,
+      "visitors without JavaScript need an explicit safe state",
+    );
+    const globalCss = source("app/globals.css");
+    assert.match(
+      globalCss,
+      /\.public-submission__noscript\s*\{\s*min-height:\s*0;/u,
+      "the no-script notice must stay compact",
+    );
+    assert.match(
+      globalCss,
+      /@media\s*\(scripting:\s*none\)[\s\S]*\.public-submission__loading\s*\{[\s\S]*display:\s*none;/u,
+      "a no-script visitor must not hear or see a permanently busy skeleton",
+    );
+    assert.match(formSource, /name="name"[\s\S]*?required/u);
+    assert.match(
+      formSource,
+      /name="replyEmail"[\s\S]*?required[\s\S]*?type="email"/u,
+    );
+    for (const constraint of [
+      /autoComplete="name"[\s\S]*maxLength=\{100\}[\s\S]*minLength=\{2\}/u,
+      /label="Reply email"[\s\S]*maxLength=\{254\}[\s\S]*minLength=\{3\}/u,
+      /label="Proposed event title or topic"[\s\S]*maxLength=\{160\}[\s\S]*minLength=\{3\}/u,
+      /label="Website \(HTTPS\)"[\s\S]*maxLength=\{500\}[\s\S]*pattern="\[Hh\]\[Tt\]\[Tt\]\[Pp\]\[Ss\]:\/\/\.\*"/u,
+    ]) {
+      assert.match(formSource, constraint);
+    }
+    assert.match(
+      formSource,
+      /aria-required="true"[\s\S]*required=\{values\.length === 0 && index === 0\}/u,
+      "the volunteer group must natively require at least one choice",
+    );
+    assert.match(
+      formSource,
+      /ref=\{errorSummaryRef\}[\s\S]*role="alert"[\s\S]*tabIndex=\{-1\}/u,
+      "server validation errors must remain keyboard and screen-reader accessible",
+    );
+
+    const publicFormSurfaces = [
+      ["app/contact/page.tsx", ["contact"]],
+      ["app/host-an-event/page.tsx", ["host_event"]],
+      ["app/get-involved/page.tsx", ["volunteer", "partnership"]],
+    ];
+    const surfacedFormKeys = [];
+    for (const [path, expectedFormKeys] of publicFormSurfaces) {
+      const pageSource = source(path);
+      for (const formKey of expectedFormKeys) {
+        assert.match(
+          pageSource,
+          new RegExp(
+            `<PublicSubmissionForm\\b[^>]*\\bformKey="${escapeRegex(formKey)}"`,
+            "u",
+          ),
+          `${path} must use the safe shared transport for ${formKey}`,
+        );
+        surfacedFormKeys.push(formKey);
+      }
+    }
+    assert.deepEqual(surfacedFormKeys.sort(), [
+      "contact",
+      "host_event",
+      "partnership",
+      "volunteer",
+    ]);
+
+    const { parsePublicFormPayload, PublicFormValidationError } =
+      routeModules[6];
+    for (const formKey of surfacedFormKeys) {
+      assert.throws(
+        () => parsePublicFormPayload(formKey, {}),
+        (error) =>
+          error instanceof PublicFormValidationError &&
+          error.fieldErrors.name === "This field is required." &&
+          error.fieldErrors.replyEmail === "A reply email is required.",
+        `${formKey} must retain server-side validation`,
+      );
+    }
+    assert.match(
+      source("lib/server/phase7/public-forms.ts"),
+      /parsePublicFormPayload\(input\.formKey, input\.payload\)/u,
+      "the POST storage path must validate on the server before writing",
+    );
+  },
+);
+
+test(
+  "broken-JavaScript form POSTs fail safely without putting personal information in a URL",
+  routeTestOptions,
+  async () => {
+    const [, { POST }] = routeModules;
+    for (const formKey of [
+      "contact",
+      "host_event",
+      "partnership",
+      "volunteer",
+    ]) {
+      const sensitiveMarkers = {
+        email: `${formKey}-fallback-person@example.invalid`,
+        message: `${formKey} private fallback message 9137`,
+        name: `${formKey} Fallback Person 7241`,
+      };
+      const body = new URLSearchParams({
+        message: sensitiveMarkers.message,
+        name: sensitiveMarkers.name,
+        replyEmail: sensitiveMarkers.email,
+      });
+      const response = await POST(
+        new Request(`${TEST_ORIGIN}/api/forms/${formKey}`, {
+          body,
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            origin: TEST_ORIGIN,
+          },
+          method: "POST",
+        }),
+        routeContext(formKey),
+      );
+
+      assert.notEqual(response.status, 405, `${formKey} must accept POST`);
+      assert.match(response.headers.get("cache-control") ?? "", /no-store/u);
+      const location = response.headers.get("location");
+      if (location !== null) {
+        const resolvedLocation = new URL(location, TEST_ORIGIN);
+        for (const marker of Object.values(sensitiveMarkers)) {
+          assert.doesNotMatch(
+            resolvedLocation.href,
+            new RegExp(escapeRegex(marker), "iu"),
+            `${formKey} must not copy personal information into a redirect URL`,
+          );
+          assert.doesNotMatch(
+            resolvedLocation.href,
+            new RegExp(escapeRegex(encodeURIComponent(marker)), "iu"),
+            `${formKey} must not URL-encode personal information into a redirect`,
+          );
+        }
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      const isSafeHtmlFailure =
+        response.status >= 400 && /^text\/html(?:;|$)/iu.test(contentType);
+      const isCleanRedirect =
+        response.status >= 300 && response.status < 400 && location !== null;
+      assert.ok(
+        isSafeHtmlFailure || isCleanRedirect,
+        `${formKey} must return a human-readable safe failure or a clean redirect when JavaScript is unavailable`,
+      );
+    }
+  },
+);
+
+test(
+  "valid native Contact and Volunteer POSTs store once and return PII-free HTML",
+  routeTestOptions,
+  async (t) => {
+    const [, { POST }] = routeModules;
+    const cases = [
+      {
+        expectedPayload: {
+          message: "Please share the accessible entrance instructions.",
+          name: "Native Contact Person 5821",
+          replyEmail: "native-contact-5821@visitor.invalid",
+          topic: "Accessibility",
+        },
+        fields: [
+          ["name", "Native Contact Person 5821"],
+          ["replyEmail", "native-contact-5821@visitor.invalid"],
+          ["topic", "Accessibility"],
+          ["message", "Please share the accessible entrance instructions."],
+        ],
+        formKey: "contact",
+      },
+      {
+        expectedPayload: {
+          availabilityContext: "Weekday evenings after six.",
+          howToHelp: "I would like to welcome newcomers at gatherings.",
+          interestAreas: ["Welcoming", "Event support"],
+          name: "Native Volunteer Person 6914",
+          replyEmail: "native-volunteer-6914@visitor.invalid",
+        },
+        fields: [
+          ["name", "Native Volunteer Person 6914"],
+          ["replyEmail", "native-volunteer-6914@visitor.invalid"],
+          ["interestAreas", "Welcoming"],
+          ["interestAreas", "Event support"],
+          [
+            "howToHelp",
+            "I would like to welcome newcomers at gatherings.",
+          ],
+          ["availabilityContext", "Weekday evenings after six."],
+        ],
+        formKey: "volunteer",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const data = await fixture();
+      t.after(() => data.database.close());
+      const credentials = await pastNativeFormCredentials(
+        data.database,
+        testCase.formKey,
+      );
+      const fields = new URLSearchParams([
+        ["instanceToken", credentials.instanceToken],
+        ["companyFax", ""],
+        ...testCase.fields,
+      ]);
+      const response = await POST(
+        nativeFormRequest(`/api/forms/${testCase.formKey}`, {
+          cookie: credentials.cookie,
+          fields,
+        }),
+        routeContext(testCase.formKey),
+      );
+
+      assert.equal(response.status, 201, testCase.formKey);
+      const html = await assertPrivateNativeHtml(response, {
+        title: "Submission received",
+      });
+      for (const privateValue of Object.values(testCase.expectedPayload)
+        .flat()) {
+        assert.doesNotMatch(
+          html,
+          new RegExp(escapeRegex(privateValue), "iu"),
+          `${testCase.formKey} success HTML must not echo submitted PII`,
+        );
+      }
+      const stored = await data.database
+        .prepare(
+          `SELECT payload_json
+           FROM form_submissions
+           WHERE json_extract(payload_json, '$.replyEmail') = ?
+           LIMIT 1`,
+        )
+        .bind(testCase.expectedPayload.replyEmail)
+        .first();
+      assert.ok(stored, `${testCase.formKey} must be stored`);
+      assert.deepEqual(
+        JSON.parse(stored.payload_json),
+        testCase.expectedPayload,
+      );
+      assert.equal(
+        await tableCount(data.database, "form_submissions"),
+        1,
+      );
+    }
+  },
+);
+
+test(
+  "native POST rejects duplicate scalar and token fields without echoing them",
+  routeTestOptions,
+  async (t) => {
+    const [, { POST }] = routeModules;
+    for (const duplicateField of ["name", "instanceToken"]) {
+      const data = await fixture();
+      t.after(() => data.database.close());
+      const credentials = await pastNativeFormCredentials(
+        data.database,
+        "contact",
+      );
+      const privateName = `Duplicate ${duplicateField} Person 8173`;
+      const privateEmail =
+        `duplicate-${duplicateField}-8173@visitor.invalid`;
+      const fields = new URLSearchParams([
+        ["instanceToken", credentials.instanceToken],
+        ["companyFax", ""],
+        ["name", privateName],
+        ["replyEmail", privateEmail],
+        ["topic", "Privacy"],
+        ["message", "Please handle this private duplicate test safely."],
+      ]);
+      fields.append(
+        duplicateField,
+        duplicateField === "instanceToken"
+          ? credentials.instanceToken
+          : "Second private scalar value 2046",
+      );
+
+      const response = await POST(
+        nativeFormRequest("/api/forms/contact", {
+          cookie: credentials.cookie,
+          fields,
+        }),
+        routeContext("contact"),
+      );
+      assert.equal(response.status, 422, duplicateField);
+      const html = await assertPrivateNativeHtml(response, {
+        title: "The submission was not sent",
+      });
+      for (const privateValue of [
+        privateName,
+        privateEmail,
+        "Second private scalar value 2046",
+      ]) {
+        assert.doesNotMatch(
+          html,
+          new RegExp(escapeRegex(privateValue), "iu"),
+        );
+      }
+      assert.equal(
+        await tableCount(data.database, "form_submissions"),
+        0,
+      );
+    }
+  },
+);
+
+test(
+  "native POST over 16 KiB fails as private HTML without storing or echoing PII",
+  routeTestOptions,
+  async (t) => {
+    const data = await fixture();
+    t.after(() => data.database.close());
+    const [, { POST }] = routeModules;
+    const credentials = await pastNativeFormCredentials(
+      data.database,
+      "contact",
+    );
+    const privateSentinel = "oversized-private-sentinel-7348";
+    const fields = new URLSearchParams({
+      companyFax: "",
+      instanceToken: credentials.instanceToken,
+      message: `${privateSentinel}${"x".repeat(17_000)}`,
+      name: "Oversized Native Person 7348",
+      replyEmail: "oversized-native-7348@visitor.invalid",
+      topic: "Privacy",
+    });
+    assert.ok(new TextEncoder().encode(fields.toString()).byteLength > 16_384);
+
+    const response = await POST(
+      nativeFormRequest("/api/forms/contact", {
+        cookie: credentials.cookie,
+        fields,
+      }),
+      routeContext("contact"),
+    );
+    assert.equal(response.status, 422);
+    const html = await assertPrivateNativeHtml(response, {
+      title: "The submission was not sent",
+    });
+    assert.doesNotMatch(html, new RegExp(privateSentinel, "u"));
+    assert.doesNotMatch(html, /oversized-native-7348@visitor\.invalid/u);
+    assert.equal(await tableCount(data.database, "form_submissions"), 0);
+  },
+);
+
+test(
+  "the existing JSON POST success and validation contracts remain unchanged",
+  routeTestOptions,
+  async (t) => {
+    const [, { POST }] = routeModules;
+    const successData = await fixture();
+    t.after(() => successData.database.close());
+    const successCredentials = await pastNativeFormCredentials(
+      successData.database,
+      "contact",
+    );
+    const successResponse = await POST(
+      jsonRequest("/api/forms/contact", {
+        cookie: successCredentials.cookie,
+        instanceToken: successCredentials.instanceToken,
+        payload: {
+          message: "Please share the quiet arrival instructions.",
+          name: "JSON Contract Person",
+          replyEmail: "json-contract@visitor.invalid",
+          topic: "Event question",
+        },
+      }),
+      routeContext("contact"),
+    );
+    assert.equal(successResponse.status, 201);
+    assert.match(
+      successResponse.headers.get("content-type") ?? "",
+      /^application\/json(?:;|$)/iu,
+    );
+    const successBody = await successResponse.json();
+    assert.match(successBody.publicReference, /^VCC-[A-Z0-9-]+$/u);
+    assert.deepEqual(successBody, {
+      message:
+        `Thanks \u2014 your submission was stored in the private organizer inbox. Reference: ${successBody.publicReference}. No email confirmation was sent.`,
+      publicReference: successBody.publicReference,
+      stored: true,
+    });
+
+    const invalidData = await fixture();
+    t.after(() => invalidData.database.close());
+    const invalidCredentials = await pastNativeFormCredentials(
+      invalidData.database,
+      "contact",
+    );
+    const invalidResponse = await POST(
+      jsonRequest("/api/forms/contact", {
+        cookie: invalidCredentials.cookie,
+        instanceToken: invalidCredentials.instanceToken,
+        payload: {
+          message: "short",
+          name: "JSON Validation Person",
+          replyEmail: "not-an-email",
+          topic: "Privacy",
+        },
+      }),
+      routeContext("contact"),
+    );
+    assert.equal(invalidResponse.status, 422);
+    assert.match(
+      invalidResponse.headers.get("content-type") ?? "",
+      /^application\/json(?:;|$)/iu,
+    );
+    assert.deepEqual(await invalidResponse.json(), {
+      error: {
+        code: "validation_failed",
+        fieldErrors: {
+          message: "Use at least 10 characters.",
+          replyEmail: "Enter a valid reply email.",
+        },
+        message: "The form could not be validated.",
+      },
+      values: {
+        message: "short",
+        name: "JSON Validation Person",
+        replyEmail: "not-an-email",
+        topic: "Privacy",
+      },
+    });
+  },
+);
+
 test("Host an Event choices suppress only same-name same-slug Program aliases", async (t) => {
   const data = await fixture();
   t.after(() => data.database.close());
@@ -1084,6 +1534,55 @@ async function pastInstanceToken(database, formKey) {
   return created.token;
 }
 
+async function pastNativeFormCredentials(database, formKey) {
+  RUNTIME_ENVIRONMENT.DB = database;
+  const [{ GET }] = routeModules;
+  const response = await GET(
+    new Request(
+      `${TEST_ORIGIN}/api/forms/instance?form=${encodeURIComponent(formKey)}`,
+    ),
+  );
+  assert.equal(response.status, 200);
+  const setCookie = response.headers.get("set-cookie");
+  assert.ok(setCookie, `${formKey} must receive a real anonymous cookie`);
+  const cookie = setCookie.split(";", 1)[0];
+  assert.match(
+    cookie,
+    new RegExp(
+      `^${escapeRegex(PUBLIC_FORM_CLIENT_COOKIE)}=[A-Za-z0-9_-]{43}$`,
+      "u",
+    ),
+  );
+  const organizationId = await database
+    .prepare(
+      `SELECT id
+       FROM organizations
+       WHERE slug = 'vancouver-curiosity-and-education-society'
+         AND deleted_at IS NULL
+       LIMIT 1`,
+    )
+    .first("id");
+  const keyHex = await database
+    .prepare(
+      `SELECT key_hex
+       FROM public_form_protection_keys
+       WHERE organization_id = ?
+       LIMIT 1`,
+    )
+    .bind(organizationId)
+    .first("key_hex");
+  const created = await createPublicFormInstanceToken(
+    keyHex,
+    formKey,
+    Date.now() - 4_000,
+  );
+  assert.ok(
+    Date.now() - created.instance.issuedAt >= 3_000,
+    `${formKey} token must clear the three-second anti-spam window`,
+  );
+  return Object.freeze({ cookie, instanceToken: created.token });
+}
+
 function routeContext(formKey) {
   return { params: Promise.resolve({ formKey }) };
 }
@@ -1102,6 +1601,20 @@ function jsonRequest(path, { cookie, instanceToken, payload }) {
     },
     method: "POST",
   });
+}
+
+function nativeFormRequest(path, { cookie, fields }) {
+  const request = new Request(`${TEST_ORIGIN}${path}`, {
+    body: fields.toString(),
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      cookie,
+      origin: TEST_ORIGIN,
+    },
+    method: "POST",
+  });
+  assert.equal(new URL(request.url).search, "");
+  return request;
 }
 
 function streamedJsonRequest(path, chunks, headers) {
@@ -1249,6 +1762,23 @@ function visibleText(html) {
     .replaceAll("&#x27;", "'")
     .replace(/\s+/gu, " ")
     .trim();
+}
+
+async function assertPrivateNativeHtml(response, { title }) {
+  assert.match(
+    response.headers.get("content-type") ?? "",
+    /^text\/html(?:;|$)/iu,
+  );
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(response.headers.get("location"), null);
+  const html = await response.text();
+  assert.match(html, /^<!doctype html>/iu);
+  assert.match(
+    html,
+    new RegExp(`<h1>${escapeRegex(title)}</h1>`, "u"),
+  );
+  return html;
 }
 
 function source(path) {

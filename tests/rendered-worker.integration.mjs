@@ -786,6 +786,67 @@ test("all required public pages render shared chrome without private sentinels",
   }
 });
 
+test("public form routes render a safe pre-hydration state", async () => {
+  let renderedCss = "";
+  for (const [path, formKeys] of [
+    ["/contact", ["contact"]],
+    ["/host-an-event", ["host_event"]],
+    ["/get-involved", ["volunteer", "partnership"]],
+  ]) {
+    const response = await fetchPath(path);
+    assert.equal(response.status, 200, `${path} status`);
+    const html = await response.text();
+    if (!renderedCss) renderedCss = await readRenderedStyles(html);
+
+    const formSections = [
+      ...html.matchAll(
+        /<section(?=[^>]*\bclass="public-submission")(?=[^>]*\bdata-form-key="[^"]+")[^>]*>[\s\S]*?<\/section>/giu,
+      ),
+    ].map((match) => match[0]);
+    assert.equal(
+      formSections.length,
+      formKeys.length,
+      `${path} pre-hydration form state count`,
+    );
+
+    for (const [index, formKey] of formKeys.entries()) {
+      const formSection = formSections[index];
+      assert.match(
+        formSection,
+        new RegExp(`\\bdata-form-key="${escapeRegex(formKey)}"`, "u"),
+        `${path} form key`,
+      );
+      assert.match(
+        formSection,
+        /<noscript>[\s\S]*Your information has not been sent\.[\s\S]*Please enable[\s\S]*JavaScript and reload this page\.[\s\S]*<\/noscript>/u,
+        `${path} no-script safety notice`,
+      );
+      assert.match(
+        formSection,
+        /<div(?=[^>]*\baria-busy="true")(?=[^>]*\bclass="public-submission__loading")[^>]*>/u,
+        `${path} hydration loading state`,
+      );
+      assert.doesNotMatch(
+        formSection,
+        /<(?:form|input|select|textarea)\b/iu,
+        `${path} must not expose PII controls before protection is ready`,
+      );
+      assert.doesNotMatch(
+        formSection,
+        /\bname="(?:name|replyEmail|message|howToHelp|eventIdea|organizationName)"/iu,
+        `${path} must not serialize PII field names before protection is ready`,
+      );
+    }
+    assertNoPrivateSentinels(html);
+  }
+
+  assert.match(
+    renderedCss,
+    /@media\s*\(scripting:none\)\{\.public-submission__loading\{[^}]*display:none/iu,
+    "the rendered no-script view must hide the permanently busy hydration state",
+  );
+});
+
 test("the retired Community destination redirects to Contribute", async () => {
   const response = await fetchPath("/community");
   assert.equal(response.status, 200);

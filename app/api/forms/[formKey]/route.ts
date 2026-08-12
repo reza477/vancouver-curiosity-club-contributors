@@ -4,6 +4,7 @@ import { resolvePublicOrganization } from "@/lib/server/public/catalog";
 import {
   PublicFormValidationError,
   parsePublicFormKey,
+  type PublicFormKey,
 } from "@/lib/server/phase7/public-form-contract";
 import {
   PUBLIC_FORM_CLIENT_COOKIE,
@@ -29,11 +30,15 @@ export async function POST(
   context: Readonly<{ params: RouteParams }>,
 ): Promise<Response> {
   const routeLabel = "/api/forms/[formKey]";
+  const nativeSubmission = isNativeFormSubmission(request);
+  let formKey: PublicFormKey | null = null;
   try {
     requirePublicFormSameOrigin(request);
     const { formKey: rawFormKey } = await context.params;
-    const formKey = parsePublicFormKey(rawFormKey);
-    const body = await readBoundedJson(request, 16_384);
+    formKey = parsePublicFormKey(rawFormKey);
+    const body = nativeSubmission
+      ? await readBoundedNativeForm(request, formKey, 16_384)
+      : await readBoundedJson(request, 16_384);
     const instanceToken = body.instanceToken;
     const anonymousClientId = readCookie(
       request.headers.get("cookie"),
@@ -78,28 +83,44 @@ export async function POST(
       organizationId: organization.id,
       payload: body.payload,
     });
-    return publicFormJson(
-      {
-        message:
-          `Thanks — your submission was stored in the private organizer inbox. Reference: ${result.publicReference}. No email confirmation was sent.`,
-        publicReference: result.publicReference,
-        stored: true,
-      },
-      201,
-    );
+    const message =
+      `Thanks — your submission was stored in the private organizer inbox. Reference: ${result.publicReference}. No email confirmation was sent.`;
+    return nativeSubmission
+      ? publicFormHtml({
+          backPath: publicFormBackPath(formKey),
+          message,
+          status: 201,
+          title: "Submission received",
+        })
+      : publicFormJson(
+          {
+            message,
+            publicReference: result.publicReference,
+            stored: true,
+          },
+          201,
+        );
   } catch (error) {
     if (error instanceof PublicFormValidationError) {
-      return publicFormJson(
-        {
-          error: {
-            code: "validation_failed",
-            fieldErrors: error.fieldErrors,
-            message: error.message,
-          },
-          values: error.values,
-        },
-        422,
-      );
+      return nativeSubmission
+        ? publicFormHtml({
+            backPath: publicFormBackPath(formKey),
+            message:
+              "The form could not be validated. Go back, review the required fields, and try again. Your information is not shown on this page or in its address.",
+            status: 422,
+            title: "Please check the form",
+          })
+        : publicFormJson(
+            {
+              error: {
+                code: "validation_failed",
+                fieldErrors: error.fieldErrors,
+                message: error.message,
+              },
+              values: error.values,
+            },
+            422,
+          );
     }
     const safe = classifySafeError(error);
     writeSafeLog(
@@ -112,16 +133,99 @@ export async function POST(
         status: safe.status,
       },
     );
-    return publicFormJson(
-      {
-        error: {
-          code: safe.code,
+    return nativeSubmission
+      ? publicFormHtml({
+          backPath: publicFormBackPath(formKey),
           message: safe.message,
-        },
-      },
-      safe.status,
-    );
+          status: safe.status,
+          title:
+            safe.status >= 500
+              ? "The form is temporarily unavailable"
+              : "The submission was not sent",
+        })
+      : publicFormJson(
+          {
+            error: {
+              code: safe.code,
+              message: safe.message,
+            },
+          },
+          safe.status,
+        );
   }
+}
+
+const PUBLIC_FORM_NATIVE_FIELDS = Object.freeze({
+  contact: ["name", "replyEmail", "topic", "message"],
+  host_event: [
+    "name",
+    "replyEmail",
+    "proposedTitle",
+    "eventIdea",
+    "preferredClubOrProgram",
+    "format",
+    "preferredTiming",
+  ],
+  partnership: [
+    "name",
+    "replyEmail",
+    "organizationOrVenueName",
+    "partnershipType",
+    "website",
+    "message",
+  ],
+  volunteer: [
+    "name",
+    "replyEmail",
+    "interestAreas",
+    "howToHelp",
+    "availabilityContext",
+  ],
+} satisfies Readonly<Record<PublicFormKey, readonly string[]>>);
+
+function isNativeFormSubmission(request: Request): boolean {
+  return (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]
+    ?.trim()
+    .toLowerCase() === "application/x-www-form-urlencoded";
+}
+
+async function readBoundedNativeForm(
+  request: Request,
+  formKey: PublicFormKey,
+  maxBytes: number,
+): Promise<Record<string, unknown>> {
+  let fields: URLSearchParams;
+  try {
+    fields = new URLSearchParams(
+      await readBoundedUtf8Body(request, maxBytes),
+    );
+  } catch {
+    throw invalidBody();
+  }
+  if (
+    hasDuplicate(fields, "instanceToken") ||
+    hasDuplicate(fields, "companyFax") ||
+    PUBLIC_FORM_NATIVE_FIELDS[formKey].some(
+      (field) => field !== "interestAreas" && hasDuplicate(fields, field),
+    )
+  ) {
+    throw invalidBody();
+  }
+  const payload: Record<string, unknown> = {};
+  for (const field of PUBLIC_FORM_NATIVE_FIELDS[formKey]) {
+    payload[field] =
+      field === "interestAreas" ? fields.getAll(field) : fields.get(field);
+  }
+  return {
+    companyFax: fields.get("companyFax"),
+    instanceToken: fields.get("instanceToken"),
+    payload,
+  };
+}
+
+function hasDuplicate(fields: URLSearchParams, name: string): boolean {
+  return fields.getAll(name).length > 1;
 }
 
 function requirePublicFormSameOrigin(request: Request): void {
@@ -192,6 +296,46 @@ function publicFormJson(value: unknown, status: number): Response {
       "X-Robots-Tag": "noindex, nofollow, noarchive",
     },
   });
+}
+
+function publicFormHtml(input: Readonly<{
+  backPath: string;
+  message: string;
+  status: number;
+  title: string;
+}>): Response {
+  const title = escapeHtml(input.title);
+  const message = escapeHtml(input.message);
+  return new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} | Vancouver Curiosity Club</title></head><body><main><h1>${title}</h1><p>${message}</p><p><a href="${input.backPath}">Return to the form</a></p></main></body></html>`,
+    {
+      status: input.status,
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Type": "text/html; charset=utf-8",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+      },
+    },
+  );
+}
+
+function publicFormBackPath(formKey: PublicFormKey | null): string {
+  if (formKey === "contact") return "/contact";
+  if (formKey === "host_event") return "/host-an-event";
+  if (formKey === "volunteer") return "/get-involved#volunteer";
+  if (formKey === "partnership") return "/get-involved#partner";
+  return "/";
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function denied(): SafeApplicationError {

@@ -4459,6 +4459,16 @@ main,
   font-weight: 700;
 }
 
+.public-submission__noscript {
+  min-height: 0;
+}
+
+@media (scripting: none) {
+  .public-submission__loading {
+    display: none;
+  }
+}
+
 .public-submission__field,
 .public-submission__choices {
   display: grid;
