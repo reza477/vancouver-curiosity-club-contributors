@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EventPosterImage } from "@/app/_components/EventPosterImage";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 
@@ -38,10 +39,15 @@ export function EventCard({
                 request. Next/Image's optimizer cache would bypass that revocation
                 boundary, so this responsive image must load the controlled URLs
                 directly. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <EventPosterImage
               alt={event.artwork.altText ?? ""}
               decoding="async"
+              fallback={
+                <EventArtworkFallback
+                  className="event-card__artwork-frame"
+                  lane={event.lane}
+                />
+              }
               fetchPriority={priority ? "high" : "auto"}
               height={event.artwork.dimensions.large.height}
               loading={priority ? "eager" : "lazy"}

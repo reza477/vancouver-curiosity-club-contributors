@@ -5649,6 +5649,32 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   object-fit: contain;
 }
 
+.home-hero__poster-image-fallback {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  align-content: end;
+  gap: 0.35rem;
+  padding: clamp(1rem, 2.5vw, 2rem);
+  background: var(--cobalt);
+  color: var(--paper);
+}
+
+.home-hero__poster-image-fallback p {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.home-hero__poster-image-fallback strong {
+  font-family: var(--display);
+  font-size: clamp(1.1rem, 2.2vw, 2rem);
+  line-height: 1.05;
+}
+
 .home-hero__poster figcaption,
 .home-hero__poster--fallback {
   display: grid;

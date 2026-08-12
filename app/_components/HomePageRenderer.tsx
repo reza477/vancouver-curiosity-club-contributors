@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EventPosterImage } from "@/app/_components/EventPosterImage";
 import type { CSSProperties } from "react";
 import { EventCard } from "./EventCard";
 import { StructuredData } from "./StructuredData";
@@ -286,10 +287,19 @@ function HomeHeroPoster({
     >
       {/* Published media URLs enforce the rights and usage boundary, so these
           images intentionally bypass Next/Image's independent optimizer cache. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <EventPosterImage
         alt={event.artwork.altText ?? ""}
         decoding="async"
+        fallback={
+          <div
+            aria-label={`${event.title}, ${event.club.name} event`}
+            className="home-hero__poster-image-fallback"
+            role="img"
+          >
+            <p>{event.club.name}</p>
+            <strong>{event.title}</strong>
+          </div>
+        }
         fetchPriority={index === 0 ? "high" : "auto"}
         height={event.artwork.dimensions.large.height}
         loading={index === 0 ? "eager" : "lazy"}

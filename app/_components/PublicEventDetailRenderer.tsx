@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AddToCalendar } from "@/app/_components/AddToCalendar";
+import { EventPosterImage } from "@/app/_components/EventPosterImage";
 import {
   EventArtworkFallback,
   formatEventSchedule,
@@ -52,9 +53,14 @@ export function PublicEventDetailRenderer({
                     request. Next/Image's optimizer cache would bypass that revocation
                     boundary, so this responsive image must load the controlled URLs
                     directly. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <EventPosterImage
                   alt={event.artwork.altText ?? ""}
+                  fallback={
+                    <EventArtworkFallback
+                      className="event-detail__artwork-frame"
+                      lane={event.lane}
+                    />
+                  }
                   height={event.artwork.dimensions.large.height}
                   sizes="(max-width: 720px) 100vw, (max-width: 1280px) 48vw, 720px"
                   src={event.artwork.url}

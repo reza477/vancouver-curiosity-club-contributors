@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { AddToCalendar } from "./AddToCalendar";
+import { EventPosterImage } from "./EventPosterImage";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import {
   eventOccursOnCalendarDate,
@@ -386,10 +387,16 @@ export function PublicMonthCalendar({
                     {event.artwork ? (
                       <>
                         {/* The controlled media route revalidates public usage. */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
+                        <EventPosterImage
                           alt=""
                           decoding="async"
+                          fallback={
+                            <span
+                              aria-hidden="true"
+                              className="public-calendar__mobile-agenda-fallback"
+                              data-event-lane={event.lane?.slug}
+                            />
+                          }
                           height={event.artwork.dimensions.small.height}
                           loading="lazy"
                           src={event.artwork.srcSet.small}
@@ -442,10 +449,12 @@ function CalendarEventPreview({
       {event.artwork ? (
         <figure className="public-calendar-event__artwork">
           {/* The controlled media route revalidates current public usage. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <EventPosterImage
             alt={event.artwork.altText ?? ""}
             decoding="async"
+            fallback={
+              <CalendarEventArtworkFallback event={event} />
+            }
             height={event.artwork.dimensions.medium.height}
             loading="lazy"
             sizes="(max-width: 52rem) 100vw, 24rem"
@@ -474,19 +483,7 @@ function CalendarEventPreview({
           <figcaption>Artwork: {event.artwork.credit}</figcaption>
         </figure>
       ) : (
-        <div
-          aria-label={`${event.title}, ${event.lane?.name ?? event.club.name} event`}
-          className="public-calendar-event__artwork public-calendar-event__artwork--fallback"
-          data-event-lane={event.lane?.slug ?? "community"}
-          role="img"
-        >
-          <span className="public-calendar-event__fallback-label">
-            {event.lane?.name ?? event.club.name}
-          </span>
-          <strong className="public-calendar-event__fallback-title">
-            {event.title}
-          </strong>
-        </div>
+        <CalendarEventArtworkFallback event={event} />
       )}
       <div className="public-calendar-event__copy">
         <p>
@@ -532,6 +529,26 @@ function CalendarEventPreview({
         </div>
       </div>
     </article>
+  );
+}
+
+function CalendarEventArtworkFallback({
+  event,
+}: Readonly<{ event: PublicEventCardDto }>) {
+  return (
+    <div
+      aria-label={`${event.title}, ${event.lane?.name ?? event.club.name} event`}
+      className="public-calendar-event__artwork public-calendar-event__artwork--fallback"
+      data-event-lane={event.lane?.slug ?? "community"}
+      role="img"
+    >
+      <span className="public-calendar-event__fallback-label">
+        {event.lane?.name ?? event.club.name}
+      </span>
+      <strong className="public-calendar-event__fallback-title">
+        {event.title}
+      </strong>
+    </div>
   );
 }
 

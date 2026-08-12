@@ -347,7 +347,7 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
   assert.match(cards, /alt=\{event\.artwork\.altText \?\? ""\}/u);
   assert.match(
     calendar,
-    /<img[\s\S]*?alt=""[\s\S]*?<strong>\{event\.title\}<\/strong>/u,
+    /<EventPosterImage[\s\S]*?alt=""[\s\S]*?<strong>\{event\.title\}<\/strong>/u,
     "agenda artwork may stay decorative because the same button exposes the event title",
   );
   assert.match(
