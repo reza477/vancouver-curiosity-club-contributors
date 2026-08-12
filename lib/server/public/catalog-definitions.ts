@@ -138,7 +138,7 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
     page("events", "Events", [
       section("intro", "intro", 10, {
         heading: "Events",
-        text: "Browse the genuinely published gatherings on the calendar.",
+        text: "Find your next gathering on the calendar.",
       }),
     ]),
     page("clubs", "Clubs", [

@@ -15,7 +15,7 @@ export function ClubEventList({
   return (
     <section className="club-event-list" aria-labelledby={id}>
       <header>
-        <p className="section-kicker">From the published calendar</p>
+        <p className="section-kicker">Club events</p>
         <h2 id={id}>{heading}</h2>
       </header>
       {events.length > 0 ? (

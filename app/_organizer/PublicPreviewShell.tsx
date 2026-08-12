@@ -321,7 +321,7 @@ async function PreviewEntityBody({
       >
         {!communityPage || !hasCommunityLinksBlock(communityPage) ? (
           <CommunityDestinations
-            heading="Confirmed community destinations"
+            heading="Find the club on Meetup"
             links={catalog.communityLinks}
           />
         ) : null}

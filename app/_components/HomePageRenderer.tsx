@@ -87,7 +87,7 @@ export function HomePageRenderer({
         ) : (
           <div className="public-empty-state">
             <p className="section-kicker">Upcoming gatherings</p>
-            <h3>No upcoming event is published yet.</h3>
+            <h3>No upcoming event yet.</h3>
             <p>Check the complete events page for the latest public listings.</p>
             <Link href="/events" prefetch={false}>
               Open events
@@ -236,7 +236,7 @@ export function HomePageRenderer({
         <div>
           <p className="section-kicker">Come to the next one</p>
           <h2 id="home-closing-title">Follow the question that catches you.</h2>
-          <p>Choose a published gathering and take the next small step.</p>
+          <p>Choose a gathering and take the next small step.</p>
         </div>
         <div className="home-invitation__actions">
           <Link

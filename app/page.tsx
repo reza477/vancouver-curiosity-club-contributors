@@ -35,8 +35,8 @@ export default async function HomePage() {
           <p className="section-kicker">Vancouver Curiosity Club</p>
           <h1 id="home-state">The public site is not available yet.</h1>
           <p>
-            Published events and club information will appear here when the
-            public catalog is ready.
+            Events and club information will appear here when the website is
+            ready.
           </p>
           <Link href="/events" prefetch={false}>
             See upcoming gatherings

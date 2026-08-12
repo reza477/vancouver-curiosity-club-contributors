@@ -311,7 +311,7 @@ export async function EditorialPage({
       <PageMasthead
         deck={
           introduction?.content.text ??
-          "Published notes from Vancouver Curiosity Club."
+          "Stories and information from Vancouver Curiosity Club."
         }
         eyebrow={introduction?.content.eyebrow ?? "Field notes"}
         title={introduction?.content.heading ?? page.title}
@@ -504,8 +504,8 @@ export function EditorialUnavailable({
         <p className="section-kicker">Temporarily unavailable</p>
         <h1 id="service-title">{title} could not be prepared.</h1>
         <p>
-          The public content service did not return a complete result. No
-          substitute details are being shown.
+          This page is temporarily unavailable. No substitute details are
+          being shown.
         </p>
       </section>
     </main>
@@ -513,7 +513,7 @@ export function EditorialUnavailable({
 }
 
 export function CommunityDestinations({
-  heading = "Confirmed community destinations",
+  heading = "Find the club on Meetup",
   links,
 }: Readonly<{
   heading?: string;
@@ -525,7 +525,7 @@ export function CommunityDestinations({
       aria-labelledby="community-destinations-heading"
     >
       <div>
-        <p className="section-kicker">Official destinations</p>
+        <p className="section-kicker">Community links</p>
         <h2 id="community-destinations-heading">{heading}</h2>
       </div>
       {links.length > 0 ? (
@@ -547,7 +547,7 @@ export function CommunityDestinations({
         </ul>
       ) : (
         <p className="public-empty-note">
-          No confirmed public group destination is available here right now.
+          No group link is available here right now.
         </p>
       )}
     </section>
@@ -557,11 +557,10 @@ export function CommunityDestinations({
 export function CommunityDestinationsUnavailable() {
   return (
     <section className="community-destinations" aria-live="polite">
-      <p className="section-kicker">Official destinations</p>
+      <p className="section-kicker">Community links</p>
       <h2>Group links are temporarily unavailable.</h2>
       <p>
-        No substitute address is being shown. Please return when the public
-        catalog is available.
+        No substitute address is being shown. Please try again later.
       </p>
     </section>
   );
@@ -696,7 +695,7 @@ function PublicMediaBlock({
   media: ResponsiveMediaAssetDto | undefined;
 }>) {
   if (!content.assetId || !media) {
-    return <DynamicBlockUnavailable heading="Published artwork" />;
+    return <DynamicBlockUnavailable heading="Artwork" />;
   }
   const altText = media.altText ?? "";
   const caption = content.caption ?? media.caption;
@@ -798,7 +797,7 @@ function FeaturedClubsBlock({
           ))}
         </div>
       ) : (
-        <p>No published club matches this selection.</p>
+        <p>No club matches this selection.</p>
       )}
     </section>
   );
@@ -860,7 +859,7 @@ function FeaturedEventsBlock({
   upcomingEvents: readonly PublicEventCardDto[] | null;
 }>) {
   if (eventsBySlug === null || upcomingEvents === null) {
-    return <DynamicBlockUnavailable heading="Published events" />;
+    return <DynamicBlockUnavailable heading="Events" />;
   }
   const requested = content.eventSlugs ?? [];
   const events =
@@ -885,7 +884,7 @@ function FeaturedEventsBlock({
           ))}
         </div>
       ) : (
-        <p>No upcoming published event is available right now.</p>
+        <p>No upcoming event is listed right now.</p>
       )}
     </section>
   );

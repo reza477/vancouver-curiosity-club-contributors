@@ -4,6 +4,7 @@ import {
   runRequestMaintenance,
   shouldReconcilePhase7StarterCopy,
   shouldReconcileScheduledPublication,
+  shouldReconcileVisitorEventsCopy,
   shouldReconcileVisitorFeedbackCopy,
   shouldReconcileVisitorFormPageCopy,
   shouldReconcileVisitorPrivacyCopy,
@@ -25,7 +26,7 @@ test("synchronous request maintenance excludes Meetup refresh work", async (t) =
       publicationResult(),
     );
     assert.deepEqual(result, { kind: "continue" });
-    assert.deepEqual(trace, ["publication"]);
+    assert.deepEqual(trace, ["visitor-events", "publication"]);
     assert.equal(
       DATABASE_INVARIANT_FAST_PATH + PUBLICATION_NO_DUE,
       4,
@@ -42,7 +43,7 @@ test("synchronous request maintenance excludes Meetup refresh work", async (t) =
       kind: "redirect",
       source: "publication",
     });
-    assert.deepEqual(trace, ["publication"]);
+    assert.deepEqual(trace, ["visitor-events", "publication"]);
     assert.equal(
       DATABASE_INVARIANT_FAST_PATH + PUBLICATION_DUE_MAXIMUM,
       31,
@@ -62,7 +63,7 @@ test("synchronous request maintenance excludes Meetup refresh work", async (t) =
       kind: "unavailable",
       source: "publication",
     });
-    assert.deepEqual(trace, ["publication"]);
+    assert.deepEqual(trace, ["visitor-events", "publication"]);
   });
 });
 
@@ -132,6 +133,26 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
     shouldReconcileVisitorFeedbackCopy("POST", "/contact"),
     false,
   );
+  assert.equal(
+    shouldReconcileVisitorEventsCopy("GET", "/events"),
+    true,
+  );
+  assert.equal(
+    shouldReconcileVisitorEventsCopy("HEAD", "/events.rsc"),
+    true,
+  );
+  for (const [method, pathname] of [
+    ["POST", "/events"],
+    ["GET", "/"],
+    ["GET", "/events/example"],
+    ["GET", "/calendar"],
+    ["GET", "/events-more"],
+  ]) {
+    assert.equal(
+      shouldReconcileVisitorEventsCopy(method, pathname),
+      false,
+    );
+  }
   for (const pathname of ["/get-involved", "/host-an-event"]) {
     assert.equal(
       shouldReconcileVisitorFormPageCopy("GET", pathname),
@@ -414,6 +435,62 @@ test("Privacy runs the existing starter upgrade before its dedicated copy upgrad
   assert.deepEqual(contactTrace, ["starter-copy", "visitor-feedback"]);
 });
 
+test("Events copy reconciliation precedes scheduled publication on only the Events route", async () => {
+  const firstTrace = [];
+  const first = await runRequestMaintenance(
+    {},
+    { method: "GET", pathname: "/events" },
+    {
+      async reconcilePublication() {
+        firstTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileVisitorEvents() {
+        firstTrace.push("visitor-events");
+        return "processed";
+      },
+    },
+  );
+  assert.deepEqual(first, { kind: "redirect", source: "cms" });
+  assert.deepEqual(firstTrace, ["visitor-events"]);
+
+  const nextTrace = [];
+  const next = await runRequestMaintenance(
+    {},
+    { method: "HEAD", pathname: "/events.rsc" },
+    {
+      async reconcilePublication() {
+        nextTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileVisitorEvents() {
+        nextTrace.push("visitor-events");
+        return "ready";
+      },
+    },
+  );
+  assert.deepEqual(next, { kind: "continue" });
+  assert.deepEqual(nextTrace, ["visitor-events", "publication"]);
+
+  const detailTrace = [];
+  const detail = await runRequestMaintenance(
+    {},
+    { method: "GET", pathname: "/events/example" },
+    {
+      async reconcilePublication() {
+        detailTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileVisitorEvents() {
+        detailTrace.push("visitor-events");
+        return "processed";
+      },
+    },
+  );
+  assert.deepEqual(detail, { kind: "continue" });
+  assert.deepEqual(detailTrace, ["publication"]);
+});
+
 async function maintenance(
   trace,
   publication,
@@ -422,6 +499,10 @@ async function maintenance(
     {},
     { method: "GET", pathname: "/events" },
     {
+      async reconcileVisitorEvents() {
+        trace.push("visitor-events");
+        return "ready";
+      },
       async reconcilePublication() {
         trace.push("publication");
         return publication;

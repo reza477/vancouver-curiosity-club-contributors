@@ -195,7 +195,7 @@ export function PublicEventDetailRenderer({
                           href={event.publicOnlineUrl}
                           rel="noreferrer noopener"
                         >
-                          Open published online access details
+                          Open online access details
                         </a>
                       </span>
                     ) : null}

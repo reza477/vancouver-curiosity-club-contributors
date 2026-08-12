@@ -5,10 +5,12 @@ import {
 } from "../organizer/publication";
 import {
   reconcilePhase7StarterPageCopy,
+  reconcileVisitorEventsCopy,
   reconcileVisitorFeedbackCopy,
   reconcileVisitorFormPageCopy,
   reconcileVisitorPrivacyCopy,
   type Phase7StarterCopyReconciliationResult,
+  type VisitorEventsCopyReconciliationResult,
   type VisitorFeedbackCopyReconciliationResult,
   type VisitorFormPageCopyReconciliationResult,
   type VisitorPrivacyCopyReconciliationResult,
@@ -35,6 +37,9 @@ type RequestMaintenanceServices = Readonly<{
   reconcileVisitorFeedback?: (
     database: D1DatabaseLike,
   ) => Promise<VisitorFeedbackCopyReconciliationResult>;
+  reconcileVisitorEvents?: (
+    database: D1DatabaseLike,
+  ) => Promise<VisitorEventsCopyReconciliationResult>;
   reconcileVisitorFormPages?: (
     database: D1DatabaseLike,
   ) => Promise<VisitorFormPageCopyReconciliationResult>;
@@ -49,6 +54,8 @@ const DEFAULT_REQUEST_MAINTENANCE_SERVICES: RequestMaintenanceServices =
       reconcileDueOrganizerPublications(database, { limit: 1 }),
     reconcileStarterCopy: (database) =>
       reconcilePhase7StarterPageCopy(database),
+    reconcileVisitorEvents: (database) =>
+      reconcileVisitorEventsCopy(database),
     reconcileVisitorFeedback: (database) =>
       reconcileVisitorFeedbackCopy(database),
     reconcileVisitorFormPages: (database) =>
@@ -151,6 +158,26 @@ export async function runRequestMaintenance(
   }
 
   if (
+    shouldReconcileVisitorEventsCopy(
+      request.method,
+      request.pathname,
+    )
+  ) {
+    let reconciliation: VisitorEventsCopyReconciliationResult;
+    try {
+      reconciliation = await (
+        services.reconcileVisitorEvents ??
+        DEFAULT_REQUEST_MAINTENANCE_SERVICES.reconcileVisitorEvents!
+      )(database);
+    } catch {
+      return unavailable("cms");
+    }
+    if (reconciliation === "processed") {
+      return redirect("cms");
+    }
+  }
+
+  if (
     shouldReconcileScheduledPublication(
       request.method,
       request.pathname,
@@ -186,6 +213,14 @@ export function shouldReconcileVisitorFeedbackCopy(
 ): boolean {
   if (method !== "GET" && method !== "HEAD") return false;
   return requestRoutePathname(pathname) === "/contact";
+}
+
+export function shouldReconcileVisitorEventsCopy(
+  method: string,
+  pathname: string,
+): boolean {
+  if (method !== "GET" && method !== "HEAD") return false;
+  return requestRoutePathname(pathname) === "/events";
 }
 
 export function shouldReconcileVisitorFormPageCopy(

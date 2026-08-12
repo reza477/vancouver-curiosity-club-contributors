@@ -92,13 +92,13 @@ export function EventsPageRenderer({
         ) : null}
         {calendar.shiftedToUpcoming ? (
           <div className="calendar-notice" role="status">
-            Showing the nearest month with a published upcoming event. Choose
+            Showing the nearest month with an upcoming event. Choose
             Today to return to the current month.
           </div>
         ) : null}
         {calendar.hasMore ? (
           <div className="calendar-notice" role="status">
-            This month contains more published events than one calendar page
+            This month contains more events than one calendar page
             can safely load.
           </div>
         ) : null}

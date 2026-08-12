@@ -183,7 +183,7 @@ test("club cards distinguish a next event, an honest empty state, unavailable da
     assert.match(card, />Next gathering</u);
     assert.match(
       card,
-      /No upcoming gathering(?: is)? published(?: right now)?\./u,
+      /No upcoming gathering yet\./u,
     );
     assert.doesNotMatch(card, /coming soon|check back soon/iu);
   }

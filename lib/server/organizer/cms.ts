@@ -90,6 +90,11 @@ const VISITOR_FEEDBACK_COPY_MARKER_KEY =
   "visitor_feedback_copy_upgrade";
 const VISITOR_FEEDBACK_COPY_AUDIT_SOURCE =
   "visitor_feedback_copy_upgrade";
+const VISITOR_EVENTS_COPY_UPGRADE_VERSION = 1;
+const VISITOR_EVENTS_COPY_MARKER_KEY =
+  "visitor_events_copy_upgrade";
+const VISITOR_EVENTS_COPY_AUDIT_SOURCE =
+  "visitor_events_copy_upgrade";
 const VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION = 1;
 const VISITOR_FORM_PAGE_COPY_MARKER_KEY =
   "visitor_form_page_copy_upgrade";
@@ -146,6 +151,9 @@ export type VisitorPrivacyCopyReconciliationResult =
 export type VisitorFeedbackCopyReconciliationResult =
   | "processed"
   | "ready";
+export type VisitorEventsCopyReconciliationResult =
+  | "processed"
+  | "ready";
 export type VisitorFormPageCopyReconciliationResult =
   | "processed"
   | "ready";
@@ -172,6 +180,18 @@ type VisitorFeedbackCopyMarker = Readonly<{
     | "nonlegacy_copy_preserved"
     | "page_unavailable";
   version: typeof VISITOR_FEEDBACK_COPY_UPGRADE_VERSION;
+}>;
+type VisitorEventsCopyMarker = Readonly<{
+  completedAt: number;
+  contentHash: string | null;
+  outcome: "skipped" | "upgraded";
+  reason:
+    | "already_current"
+    | "legacy_copy_upgraded"
+    | "newer_draft_preserved"
+    | "nonlegacy_copy_preserved"
+    | "page_unavailable";
+  version: typeof VISITOR_EVENTS_COPY_UPGRADE_VERSION;
 }>;
 type VisitorFormPageCopyOutcome = Readonly<{
   contentHash: string | null;
@@ -248,6 +268,10 @@ const PREVIOUS_VISITOR_FEEDBACK_PAGE_CONTENT = Object.freeze({
   heading: "Send a private inquiry",
   text:
     "The Contact form stores your name, reply email, topic, and message in the private organizer inbox. It does not enroll you in marketing or send an email confirmation.",
+});
+const PREVIOUS_VISITOR_EVENTS_PAGE_CONTENT = Object.freeze({
+  heading: "Events",
+  text: "Browse the genuinely published gatherings on the calendar.",
 });
 const PREVIOUS_VISITOR_FORM_PAGE_CONTENT = Object.freeze({
   "get-involved": Object.freeze({
@@ -1979,6 +2003,228 @@ export async function reconcileVisitorFeedbackCopy(
     now,
   });
   return "processed";
+}
+
+/**
+ * One-time visitor-facing Events introduction publication upgrade.
+ *
+ * Only the exact previously shipped Events snapshot is eligible for automatic
+ * replacement. Owner drafts and every unknown/custom publication are
+ * preserved. Publication still runs through the normal CMS revision, receipt,
+ * projection, media, and audit protocol rather than mutating the public
+ * projection directly.
+ */
+export async function reconcileVisitorEventsCopy(
+  database: D1DatabaseLike,
+  nowUtcMs = Date.now(),
+): Promise<VisitorEventsCopyReconciliationResult> {
+  const now = parseTimestamp(nowUtcMs);
+  const markerEnvelope = await readVisitorEventsCopyMarker(database);
+  if (!markerEnvelope) return "ready";
+  if (markerEnvelope.marker) return "ready";
+
+  const targetSnapshot = currentVisitorEventsPageSnapshot();
+  const previousSnapshot = previousVisitorEventsPageSnapshot();
+  const [targetHash, previousHash] = await Promise.all([
+    contentHash(targetSnapshot),
+    contentHash(previousSnapshot),
+  ]);
+  const candidate = await readPhase7StarterCopyCandidate(
+    database,
+    markerEnvelope.organizationId,
+    "events",
+    targetHash,
+    VISITOR_EVENTS_COPY_AUDIT_SOURCE,
+  );
+  if (!candidate) throw serviceUnavailable();
+
+  let outcome: VisitorEventsCopyMarker["outcome"];
+  let reason: VisitorEventsCopyMarker["reason"];
+  let outcomeHash: string | null;
+  let notifyOwner = false;
+  if (
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftHash === targetHash &&
+    candidate.publishedHash === targetHash
+  ) {
+    outcome = "upgraded";
+    reason = "already_current";
+    outcomeHash = targetHash;
+  } else if (
+    isVisitorEventsLegacyPublication(candidate, previousHash) ||
+    isVisitorEventsUpgradeDraft(candidate, targetHash, previousHash)
+  ) {
+    await convergeVisitorEventsCopyUpgrade(database, {
+      candidate,
+      now,
+      previousHash,
+      targetHash,
+      targetSnapshot,
+    });
+    outcome = "upgraded";
+    reason = "legacy_copy_upgraded";
+    outcomeHash = targetHash;
+  } else if (
+    candidate.currentDraftRevisionId !== candidate.publishedRevisionId
+  ) {
+    outcome = "skipped";
+    reason = "newer_draft_preserved";
+    outcomeHash = candidate.publishedHash;
+    notifyOwner = true;
+  } else if (!candidate.entityKey || !candidate.workflowStatus) {
+    outcome = "skipped";
+    reason = "page_unavailable";
+    outcomeHash = null;
+  } else {
+    outcome = "skipped";
+    reason = "nonlegacy_copy_preserved";
+    outcomeHash = candidate.publishedHash;
+  }
+
+  await recordVisitorEventsCopyMarker(database, {
+    actor: candidate.actor,
+    entityKey: candidate.entityKey,
+    markerJson: markerEnvelope.markerJson,
+    marker: Object.freeze({
+      completedAt: now,
+      contentHash: outcomeHash,
+      outcome,
+      reason,
+      version: VISITOR_EVENTS_COPY_UPGRADE_VERSION,
+    }),
+    notifyOwner,
+    now,
+  });
+  return "processed";
+}
+
+function isVisitorEventsLegacyPublication(
+  candidate: Phase7StarterCopyCandidate,
+  previousHash: string,
+): boolean {
+  return (
+    candidate.entityKey !== null &&
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftRevisionId === candidate.publishedRevisionId &&
+    candidate.currentDraftHash === previousHash &&
+    candidate.publishedHash === previousHash
+  );
+}
+
+function isVisitorEventsUpgradeDraft(
+  candidate: Phase7StarterCopyCandidate,
+  targetHash: string,
+  previousHash: string,
+): boolean {
+  return (
+    candidate.entityKey !== null &&
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftRevisionId !== candidate.publishedRevisionId &&
+    candidate.currentDraftHash === targetHash &&
+    candidate.publishedHash === previousHash &&
+    candidate.currentDraftIsUpgrade
+  );
+}
+
+async function convergeVisitorEventsCopyUpgrade(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    candidate: Phase7StarterCopyCandidate;
+    now: number;
+    previousHash: string;
+    targetHash: string;
+    targetSnapshot: CmsPageSnapshot;
+  }>,
+): Promise<void> {
+  let candidate = input.candidate;
+  let synchronizedConflict: SafeApplicationError | null = null;
+
+  // The exact legacy state has only two valid transitions: an audit-owned
+  // target draft, then the matching published target. Re-reading after each
+  // CAS lets simultaneous visitor requests converge without sharing
+  // request-bound promises or swallowing a genuinely concurrent Owner edit.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (
+      candidate.workflowStatus === "published" &&
+      candidate.currentDraftRevisionId === candidate.publishedRevisionId &&
+      candidate.currentDraftHash === input.targetHash &&
+      candidate.publishedHash === input.targetHash
+    ) {
+      return;
+    }
+
+    const entityKey = candidate.entityKey;
+    if (!entityKey) {
+      if (synchronizedConflict) throw synchronizedConflict;
+      throw serviceUnavailable();
+    }
+
+    try {
+      if (
+        isVisitorEventsLegacyPublication(
+          candidate,
+          input.previousHash,
+        )
+      ) {
+        await saveRevision(database, candidate.actor, {
+          auditMetadata: {
+            source: VISITOR_EVENTS_COPY_AUDIT_SOURCE,
+            targetContentHash: input.targetHash,
+            upgradeVersion: VISITOR_EVENTS_COPY_UPGRADE_VERSION,
+          },
+          entityKey,
+          entityType: "page",
+          expectedContentVersion: candidate.contentVersion,
+          now: input.now,
+          restoredFromRevisionId: null,
+          snapshot: input.targetSnapshot,
+        });
+      } else if (
+        isVisitorEventsUpgradeDraft(
+          candidate,
+          input.targetHash,
+          input.previousHash,
+        )
+      ) {
+        await publishRevisionForActor(database, candidate.actor, {
+          auditMetadata: {
+            resumed: true,
+            source: VISITOR_EVENTS_COPY_AUDIT_SOURCE,
+            targetContentHash: input.targetHash,
+            upgradeVersion: VISITOR_EVENTS_COPY_UPGRADE_VERSION,
+          },
+          entityKey,
+          entityType: "page",
+          expectedContentVersion: candidate.contentVersion,
+          now: input.now,
+        });
+      } else {
+        if (synchronizedConflict) throw synchronizedConflict;
+        throw serviceUnavailable();
+      }
+    } catch (error) {
+      if (
+        !(error instanceof SafeApplicationError) ||
+        error.code !== "stale_edit"
+      ) {
+        throw error;
+      }
+      synchronizedConflict = error;
+    }
+
+    const refreshed = await readPhase7StarterCopyCandidate(
+      database,
+      candidate.actor.organizationId,
+      "events",
+      input.targetHash,
+      VISITOR_EVENTS_COPY_AUDIT_SOURCE,
+    );
+    if (!refreshed) throw serviceUnavailable();
+    candidate = refreshed;
+  }
+
+  if (synchronizedConflict) throw synchronizedConflict;
+  throw serviceUnavailable();
 }
 
 /**
@@ -7839,6 +8085,50 @@ function previousVisitorFeedbackPageSnapshot(): CmsPageSnapshot {
   });
 }
 
+function currentVisitorEventsPageSnapshot(): CmsPageSnapshot {
+  const definition = PUBLIC_CATALOG_PAGES.find(
+    (page) => page.slug === "events",
+  );
+  if (!definition) throw serviceUnavailable();
+  const blocks = definition.sections.map((section) => ({
+    config: section.content,
+    id: section.key,
+    type: section.type,
+  }));
+  const summary = firstStarterPageSummary(blocks) ?? definition.title;
+  return parsePageSnapshot({
+    blocks,
+    metaDescription: summary.slice(0, 160),
+    openGraphAssetId: null,
+    seoTitle: definition.title.slice(0, 60),
+    slug: "events",
+    title: definition.title,
+  });
+}
+
+function previousVisitorEventsPageSnapshot(): CmsPageSnapshot {
+  const definition = PUBLIC_CATALOG_PAGES.find(
+    (page) => page.slug === "events",
+  );
+  if (!definition) throw serviceUnavailable();
+  const blocks = [
+    {
+      config: PREVIOUS_VISITOR_EVENTS_PAGE_CONTENT,
+      id: "intro",
+      type: "intro",
+    },
+  ];
+  const summary = firstStarterPageSummary(blocks) ?? definition.title;
+  return parsePageSnapshot({
+    blocks,
+    metaDescription: summary.slice(0, 160),
+    openGraphAssetId: null,
+    seoTitle: definition.title.slice(0, 60),
+    slug: "events",
+    title: definition.title,
+  });
+}
+
 function previousVisitorFormPageSnapshot(
   slug: VisitorFormPageCopyPageSlug,
 ): CmsPageSnapshot {
@@ -8004,6 +8294,39 @@ async function readVisitorFeedbackCopyMarker(
   });
 }
 
+async function readVisitorEventsCopyMarker(
+  database: D1DatabaseLike,
+): Promise<Readonly<{
+  marker: VisitorEventsCopyMarker | null;
+  markerJson: string | null;
+  organizationId: string;
+}> | null> {
+  const row = await database
+    .prepare(
+      `SELECT organization.id AS organization_id,
+              marker.value_json AS marker_json
+       FROM organizations AS organization
+       LEFT JOIN site_settings AS marker
+         ON marker.organization_id = organization.id
+        AND marker.key = ?
+        AND marker.is_public = 0
+       WHERE organization.slug = ?
+       LIMIT 1`,
+    )
+    .bind(
+      VISITOR_EVENTS_COPY_MARKER_KEY,
+      PUBLIC_ORGANIZATION_SLUG,
+    )
+    .first<Record<string, unknown>>();
+  if (!row) return null;
+  const markerJson = optionalString(row.marker_json);
+  return Object.freeze({
+    marker: markerJson ? parseVisitorEventsCopyMarker(markerJson) : null,
+    markerJson,
+    organizationId: requiredString(row.organization_id),
+  });
+}
+
 async function readVisitorFormPageCopyMarker(
   database: D1DatabaseLike,
 ): Promise<Readonly<{
@@ -8085,6 +8408,57 @@ function parseVisitorFeedbackCopyMarker(
     outcome,
     reason,
     version: VISITOR_FEEDBACK_COPY_UPGRADE_VERSION,
+  });
+}
+
+function parseVisitorEventsCopyMarker(
+  value: string,
+): VisitorEventsCopyMarker {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(value);
+  } catch {
+    throw serviceUnavailable();
+  }
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    Array.isArray(raw) ||
+    Reflect.get(raw, "version") !==
+      VISITOR_EVENTS_COPY_UPGRADE_VERSION
+  ) {
+    throw serviceUnavailable();
+  }
+  const outcome = Reflect.get(raw, "outcome");
+  const reason = Reflect.get(raw, "reason");
+  const contentHashValue = Reflect.get(raw, "contentHash");
+  if (
+    (outcome !== "skipped" && outcome !== "upgraded") ||
+    !(
+      reason === "already_current" ||
+      reason === "legacy_copy_upgraded" ||
+      reason === "newer_draft_preserved" ||
+      reason === "nonlegacy_copy_preserved" ||
+      reason === "page_unavailable"
+    ) ||
+    !(
+      contentHashValue === null ||
+      (
+        typeof contentHashValue === "string" &&
+        /^[a-f0-9]{64}$/u.test(contentHashValue)
+      )
+    )
+  ) {
+    throw serviceUnavailable();
+  }
+  return Object.freeze({
+    completedAt: safeNonnegativeInteger(
+      Reflect.get(raw, "completedAt"),
+    ),
+    contentHash: contentHashValue,
+    outcome,
+    reason,
+    version: VISITOR_EVENTS_COPY_UPGRADE_VERSION,
   });
 }
 
@@ -8314,7 +8688,7 @@ function parsePhase7StarterCopyMarker(
 async function readPhase7StarterCopyCandidate(
   database: D1DatabaseLike,
   organizationId: string,
-  slug: Phase7StarterCopyPageSlug,
+  slug: Phase7StarterCopyPageSlug | "events",
   targetHash: string,
   auditSource: string,
 ): Promise<Phase7StarterCopyCandidate | null> {
@@ -8961,6 +9335,128 @@ async function recordVisitorFeedbackCopyMarker(
         canonicalJson({
           pageId: input.entityKey,
           pageSlug: "contact",
+        }),
+      )
+      .first<Record<string, unknown>>();
+    if (notificationRow?.exact !== 1) {
+      throw serviceUnavailable();
+    }
+  }
+}
+
+async function recordVisitorEventsCopyMarker(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    actor: AuthorizedMembership;
+    entityKey: string | null;
+    marker: VisitorEventsCopyMarker;
+    markerJson: string | null;
+    notifyOwner: boolean;
+    now: number;
+  }>,
+): Promise<void> {
+  const nextJson = canonicalJson(input.marker);
+  const markerId =
+    `visitor-events-copy-marker:${input.actor.organizationId}`;
+  const actorGuard = cmsActorGuard("owner");
+  const statements: D1PreparedStatementLike[] = [
+    database
+      .prepare(
+        `INSERT INTO site_settings (
+           id, organization_id, key, value_json, is_public,
+           updated_by_profile_id, created_at, updated_at
+         )
+         SELECT ?, ?, ?, ?, 0, ?, ?, ?
+         WHERE ${actorGuard.sql}
+         ON CONFLICT(organization_id, key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_by_profile_id = excluded.updated_by_profile_id,
+           updated_at = excluded.updated_at
+         WHERE site_settings.is_public = 0
+           AND site_settings.value_json IS ?`,
+      )
+      .bind(
+        markerId,
+        input.actor.organizationId,
+        VISITOR_EVENTS_COPY_MARKER_KEY,
+        nextJson,
+        input.actor.profileId,
+        input.now,
+        input.now,
+        ...actorGuard.bindings(input.actor),
+        input.markerJson,
+      ),
+  ];
+  if (input.notifyOwner && input.entityKey) {
+    statements.push(
+      prepareNotificationInsert(database, {
+        createdAt: input.now,
+        id:
+          `visitor-events-copy-skip:${input.actor.organizationId}`,
+        organizationId: input.actor.organizationId,
+        payload: {
+          pageId: input.entityKey,
+          pageSlug: "events",
+          type: "cms_starter_copy_skipped",
+        },
+        recipientProfileId: input.actor.profileId,
+      }),
+    );
+  }
+  try {
+    await database.batch(statements);
+  } catch {
+    // A synchronized identical request may have completed first.
+  }
+
+  const markerRow = await database
+    .prepare(
+      `SELECT value_json
+       FROM site_settings
+       WHERE organization_id = ?
+         AND key = ?
+         AND is_public = 0
+       LIMIT 1`,
+    )
+    .bind(
+      input.actor.organizationId,
+      VISITOR_EVENTS_COPY_MARKER_KEY,
+    )
+    .first<Record<string, unknown>>();
+  const persisted = markerRow
+    ? parseVisitorEventsCopyMarker(
+        requiredString(markerRow.value_json),
+      )
+    : null;
+  if (!persisted) {
+    throw serviceUnavailable();
+  }
+
+  // A synchronized request can win the compare-and-set with its own
+  // completion timestamp. Any valid terminal marker means the one-time work
+  // converged; requiring this caller's byte-identical marker would turn that
+  // successful race into a spurious 503.
+  if (persisted.reason === "newer_draft_preserved") {
+    if (!input.entityKey) throw serviceUnavailable();
+    const notificationRow = await database
+      .prepare(
+        `SELECT 1 AS exact
+         FROM notifications
+         WHERE id = ?
+           AND organization_id = ?
+           AND recipient_profile_id = ?
+           AND type = 'cms_starter_copy_skipped'
+           AND payload_json = ?
+           AND deleted_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(
+        `visitor-events-copy-skip:${input.actor.organizationId}`,
+        input.actor.organizationId,
+        input.actor.profileId,
+        canonicalJson({
+          pageId: input.entityKey,
+          pageSlug: "events",
         }),
       )
       .first<Record<string, unknown>>();

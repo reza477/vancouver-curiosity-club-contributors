@@ -118,8 +118,8 @@ export default async function AboutPage() {
 
       <section className="about-facts" aria-labelledby="about-facts-title">
         <div>
-          <p className="section-kicker">Published now</p>
-          <h2 id="about-facts-title">The community in the live catalog.</h2>
+          <p className="section-kicker">At a glance</p>
+          <h2 id="about-facts-title">The community at a glance.</h2>
         </div>
         <dl>
           <div>
@@ -131,7 +131,7 @@ export default async function AboutPage() {
             <dd>{publicClubs.length}</dd>
           </div>
           <div>
-            <dt>Upcoming published gatherings</dt>
+            <dt>Upcoming gatherings</dt>
             <dd>{about.upcomingEventCount}</dd>
           </div>
         </dl>
@@ -152,8 +152,8 @@ export default async function AboutPage() {
           </div>
         ) : (
           <div className="public-empty-state">
-            <h3>No upcoming gathering is published yet.</h3>
-            <p>The live events page will show new listings when they publish.</p>
+            <h3>No upcoming gathering is listed yet.</h3>
+            <p>The events page will show new gatherings when they are added.</p>
           </div>
         )}
       </section>
@@ -224,8 +224,8 @@ async function loadAboutData(): Promise<AboutDataState> {
 }
 
 function nextEventSliceLabel(count: number): string {
-  if (count === 3) return "The next three published gatherings";
-  if (count === 1) return "The next published gathering";
-  if (count === 0) return "No upcoming gathering is currently published";
-  return `The next ${count} published gatherings`;
+  if (count === 3) return "The next three gatherings";
+  if (count === 1) return "The next gathering";
+  if (count === 0) return "No upcoming gathering is listed";
+  return `The next ${count} gatherings`;
 }

@@ -58,7 +58,7 @@ export function ClubDetailRenderer({
       <PageMasthead
         deck={
           club.description ??
-          "A published Vancouver Curiosity Club program."
+          "A Vancouver Curiosity Club program."
         }
         eyebrow={club.lane.name}
         title={club.name}
@@ -147,11 +147,11 @@ export function ClubDetailRenderer({
           aria-labelledby="club-destination-heading"
         >
           <div>
-            <p className="section-kicker">Official destination</p>
+            <p className="section-kicker">Meetup group</p>
             <h2 id="club-destination-heading">Continue on Meetup</h2>
             <p>
-              Event RSVPs and group activity continue on this club&apos;s
-              confirmed public Meetup page.
+              Event RSVPs and group activity continue on this club&apos;s Meetup
+              page.
             </p>
           </div>
           <a
@@ -227,7 +227,7 @@ export function ClubDetailRenderer({
                   {program.description ? <p>{program.description}</p> : null}
                   <div className="club-directory__actions">
                     <Link href={`/clubs/${club.slug}/programs/${program.slug}`}>
-                      Read the Program note
+                      Explore program
                     </Link>
                   </div>
                 </article>
@@ -270,13 +270,13 @@ export function ClubDetailRenderer({
       {events.kind === "available" ? (
         <div className="club-detail__events">
           <ClubEventList
-            emptyCopy="No upcoming published events are available for this club."
+            emptyCopy="No upcoming events are listed for this club."
             events={events.upcoming.events}
             heading="Upcoming"
             id="club-upcoming"
           />
           <ClubEventList
-            emptyCopy="No past published events are available for this club."
+            emptyCopy="No past events are listed for this club."
             events={events.past.events}
             heading="Past"
             id="club-past"
@@ -284,10 +284,10 @@ export function ClubDetailRenderer({
         </div>
       ) : (
         <section className="public-service-state" aria-live="polite">
-          <p className="section-kicker">Published calendar</p>
+          <p className="section-kicker">Club calendar</p>
           <h2>Club events are temporarily unavailable.</h2>
           <p>
-            The club note remains available, but no substitute event facts are
+            The club page remains available, but no substitute event facts are
             being shown.
           </p>
         </section>

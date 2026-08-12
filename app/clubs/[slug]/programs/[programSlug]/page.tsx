@@ -52,7 +52,7 @@ export async function generateMetadata({
         description:
           program.metaDescription ??
           program.description ??
-          "A published recurring Program.",
+          "A recurring Program.",
         imageAlt: image ? (image.altText ?? "") : undefined,
         imageHeight: image?.variants.webp1600.height,
         imagePath:
@@ -92,7 +92,7 @@ export default async function ProgramDetailPage({
         />
         <section className="public-service-state" aria-live="polite">
           <p className="section-kicker">Temporarily unavailable</p>
-          <h1>The Program note could not be prepared.</h1>
+          <h1>The Program page could not be prepared.</h1>
           <p>No draft or substitute Program information is being shown.</p>
         </section>
       </main>

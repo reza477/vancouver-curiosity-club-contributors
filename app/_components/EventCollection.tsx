@@ -11,7 +11,7 @@ export function EventCollection({
   if (events.length === 0) {
     return (
       <section className="public-empty-state" aria-live="polite">
-        <p className="section-kicker">No published listings</p>
+        <p className="section-kicker">No listings yet</p>
         <h2>Nothing is being invented to fill the space.</h2>
         <p>{emptyMessage}</p>
       </section>

@@ -361,13 +361,13 @@ export function PublicMonthCalendar({
             <div className="public-calendar__day-empty">
               <p>
                 {complete
-                  ? "No published event is scheduled for this day."
+                  ? "No event is scheduled for this day."
                   : "No event is shown for this day in this bounded calendar view."}
               </p>
               <p>
                 {complete
                   ? "Dates with an event are marked with a dark dot."
-                  : "Some published events may not be shown in this month view."}
+                  : "Some events may not be shown in this month view."}
               </p>
             </div>
           )}

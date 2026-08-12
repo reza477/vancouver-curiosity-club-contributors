@@ -49,7 +49,7 @@ export function ProgramDetailRenderer({
         ]}
       />
       <PageMasthead
-        deck={program.description ?? "A published recurring Program."}
+        deck={program.description ?? "A recurring Program."}
         eyebrow={`${program.parentClub.name} · ${program.lane.name}`}
         title={program.name}
         tone={clubArtworkTone(program.lane.slug)}
@@ -184,13 +184,13 @@ export function ProgramDetailRenderer({
       {events.kind === "available" ? (
         <div className="club-detail__events">
           <ClubEventList
-            emptyCopy="No upcoming published events are available for this Program."
+            emptyCopy="No upcoming events are listed for this Program."
             events={events.upcoming.events}
             heading="Upcoming"
             id="program-upcoming"
           />
           <ClubEventList
-            emptyCopy="No past published events are available for this Program."
+            emptyCopy="No past events are listed for this Program."
             events={events.past.events}
             heading="Past"
             id="program-past"
@@ -198,7 +198,7 @@ export function ProgramDetailRenderer({
         </div>
       ) : (
         <section className="public-service-state" aria-live="polite">
-          <p className="section-kicker">Published calendar</p>
+          <p className="section-kicker">Program calendar</p>
           <h2>Program events are temporarily unavailable.</h2>
           <p>No substitute event facts are being shown.</p>
         </section>

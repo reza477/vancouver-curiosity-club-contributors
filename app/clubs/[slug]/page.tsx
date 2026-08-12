@@ -50,7 +50,7 @@ export async function generateMetadata({
         description:
           club.metaDescription ??
           club.description ??
-          "A published Vancouver Curiosity Club program.",
+          "A Vancouver Curiosity Club program.",
         imageAlt: image ? (image.altText ?? "") : undefined,
         imageHeight: image?.variants.webp1600.height,
         imagePath:
@@ -87,7 +87,7 @@ export default async function ClubDetailPage({ params }: ClubPageProps) {
         />
         <section className="public-service-state" aria-live="polite">
           <p className="section-kicker">Temporarily unavailable</p>
-          <h1>The club note could not be prepared.</h1>
+          <h1>The club page could not be prepared.</h1>
           <p>No draft or substitute club information is being shown.</p>
         </section>
       </main>

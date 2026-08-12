@@ -96,7 +96,7 @@ export function ClubsRouteBody({
         />
       ) : (
         <section className="public-service-state" aria-live="polite">
-          <p className="section-kicker">Published clubs</p>
+          <p className="section-kicker">Clubs</p>
           <h2>Club pages are temporarily unavailable.</h2>
           <p>No draft or substitute program information is being shown.</p>
         </section>

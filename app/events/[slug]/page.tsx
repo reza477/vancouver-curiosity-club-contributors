@@ -54,7 +54,7 @@ export async function generateMetadata({
     description:
       loaded.event.metaDescription ??
       loaded.event.summary ??
-      `Published event details from ${loaded.event.club.name}.`,
+      `Event details from ${loaded.event.club.name}.`,
     imageAlt: image?.altText,
     imageHeight: image?.height,
     imagePath:
@@ -106,7 +106,7 @@ export default async function EventDetailPage({
           <div className="section-heading">
             <div>
               <p className="section-kicker">Keep following the thread</p>
-              <h2 id="related-title">Related published events</h2>
+              <h2 id="related-title">Related events</h2>
             </div>
             <Link href="/events" prefetch={false}>
               All events

@@ -339,7 +339,8 @@ test("About is concise, reassuring, evidence-backed, and event-led", async () =>
     "What the community feels like",
     "Who it is for",
     "Your first event can be simple.",
-    "The community in the live catalog.",
+    "At a glance",
+    "The community at a glance.",
     "See what the club is doing next.",
   ]) {
     assert.ok(about.includes(phrase), phrase);

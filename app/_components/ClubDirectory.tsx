@@ -29,7 +29,7 @@ export function ClubDirectory({
   if (clubs.length === 0) {
     return (
       <section className="public-empty-state" aria-labelledby="clubs-empty">
-        <p className="section-kicker">Published clubs</p>
+        <p className="section-kicker">Clubs</p>
         <h2 id="clubs-empty">No public club pages are available yet.</h2>
         <p>Draft programs are not displayed.</p>
       </section>
@@ -42,7 +42,7 @@ export function ClubDirectory({
       aria-labelledby="clubs-heading"
     >
       <header>
-        <p className="section-kicker">Published clubs</p>
+        <p className="section-kicker">Clubs</p>
         <h2 id="clubs-heading">Find the room that fits your curiosity.</h2>
       </header>
       <div className="club-directory__list">
@@ -211,7 +211,7 @@ function ClubNextEvent({
           </time>
         </>
       ) : (
-        <p>No upcoming gathering published.</p>
+        <p>No upcoming gathering yet.</p>
       )}
     </div>
   );

@@ -28,7 +28,7 @@ export default async function NotFound() {
         <h1 id="not-found-title">This trail ends here.</h1>
         <p>
           The address may have changed, or the page may not be publicly
-          available. The published calendar and club notes are still nearby.
+          available. The event calendar and club pages are still nearby.
         </p>
         <div className="error-actions">
           <Link href="/events" prefetch={false}>
@@ -58,8 +58,8 @@ function PublicServiceFailure({
         </p>
         <h1 id="service-failure-title">
           {isEvents
-            ? "The published event calendar could not be read."
-            : "The public catalog could not be read."}
+            ? "The event calendar could not be prepared."
+            : "This part of the website could not be prepared."}
         </h1>
         <p>
           No event, person, legal detail, or community fact is being guessed.

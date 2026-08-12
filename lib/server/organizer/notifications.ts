@@ -101,7 +101,12 @@ export type SafeNotificationPayload =
     }>
   | Readonly<{
       pageId: string;
-      pageSlug: "contact" | "get-involved" | "host-an-event" | "privacy";
+      pageSlug:
+        | "contact"
+        | "events"
+        | "get-involved"
+        | "host-an-event"
+        | "privacy";
       type: "cms_starter_copy_skipped";
     }>;
 
@@ -659,7 +664,13 @@ export function normalizeNotificationPayload(
       pageId: parseIdentifier(payload.pageId, "pageId"),
       pageSlug: parseEnum(
         payload.pageSlug,
-        ["contact", "get-involved", "host-an-event", "privacy"] as const,
+        [
+          "contact",
+          "events",
+          "get-involved",
+          "host-an-event",
+          "privacy",
+        ] as const,
         "pageSlug",
       ),
     });

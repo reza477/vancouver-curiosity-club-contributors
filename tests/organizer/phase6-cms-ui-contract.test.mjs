@@ -356,7 +356,7 @@ test("published shell and editorial metadata use live media readiness and truthf
   );
   assert.match(
     clubRenderer,
-    /className="club-directory__actions"[\s\S]*Read the Program note/u,
+    /className="club-directory__actions"[\s\S]*Explore program/u,
     "Program-card actions must retain the shared responsive grid placement",
   );
   assert.match(css, /border-top:[^;]*var\(--club-theme/u);
