@@ -5,7 +5,9 @@ import {
 } from "../organizer/publication";
 import {
   reconcilePhase7StarterPageCopy,
+  reconcileVisitorPrivacyCopy,
   type Phase7StarterCopyReconciliationResult,
+  type VisitorPrivacyCopyReconciliationResult,
 } from "../organizer/cms";
 
 export type RequestMaintenanceResult =
@@ -26,6 +28,9 @@ type RequestMaintenanceServices = Readonly<{
   reconcileStarterCopy?: (
     database: D1DatabaseLike,
   ) => Promise<Phase7StarterCopyReconciliationResult>;
+  reconcileVisitorPrivacy?: (
+    database: D1DatabaseLike,
+  ) => Promise<VisitorPrivacyCopyReconciliationResult>;
 }>;
 
 const DEFAULT_REQUEST_MAINTENANCE_SERVICES: RequestMaintenanceServices =
@@ -34,6 +39,8 @@ const DEFAULT_REQUEST_MAINTENANCE_SERVICES: RequestMaintenanceServices =
       reconcileDueOrganizerPublications(database, { limit: 1 }),
     reconcileStarterCopy: (database) =>
       reconcilePhase7StarterPageCopy(database),
+    reconcileVisitorPrivacy: (database) =>
+      reconcileVisitorPrivacyCopy(database),
   });
 
 const CONTINUE = Object.freeze({
@@ -60,6 +67,26 @@ export async function runRequestMaintenance(
       reconciliation = await (
         services.reconcileStarterCopy ??
         DEFAULT_REQUEST_MAINTENANCE_SERVICES.reconcileStarterCopy!
+      )(database);
+    } catch {
+      return unavailable("cms");
+    }
+    if (reconciliation === "processed") {
+      return redirect("cms");
+    }
+  }
+
+  if (
+    shouldReconcileVisitorPrivacyCopy(
+      request.method,
+      request.pathname,
+    )
+  ) {
+    let reconciliation: VisitorPrivacyCopyReconciliationResult;
+    try {
+      reconciliation = await (
+        services.reconcileVisitorPrivacy ??
+        DEFAULT_REQUEST_MAINTENANCE_SERVICES.reconcileVisitorPrivacy!
       )(database);
     } catch {
       return unavailable("cms");
@@ -97,6 +124,14 @@ export async function runRequestMaintenance(
   }
 
   return CONTINUE;
+}
+
+export function shouldReconcileVisitorPrivacyCopy(
+  method: string,
+  pathname: string,
+): boolean {
+  if (method !== "GET" && method !== "HEAD") return false;
+  return requestRoutePathname(pathname) === "/privacy";
 }
 
 export function shouldReconcilePhase7StarterCopy(

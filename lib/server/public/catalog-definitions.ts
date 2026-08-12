@@ -213,11 +213,10 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
     page("privacy", "Privacy", [
       section("intro", "intro", 10, {
         heading: "Privacy, in plain language",
-        text: "Public pages and the four public forms can be used without an attendee account. Form submissions are stored in the private organizer inbox for authorized organizers to review.",
+        text: "You can browse public pages and send a form without creating an attendee account. We collect only the information you choose to send and use it to review your request and reply.",
         paragraphs: [
-          "The site is hosted with ChatGPT Sites and uses Sites-managed D1 for structured data and R2 for approved files.",
-          "Organizer access uses Sign in with ChatGPT, which can provide name and email identity to the private organizer portal. Public visitors do not need to sign in.",
-          "This starter notice needs legal review before a public launch.",
+          "Form submissions are stored in a private organizer inbox. Access is restricted to authorized Vancouver Curiosity Club organizers, and the information is not used to enroll you in marketing.",
+          "Event RSVP and ticket buttons may open Meetup or another external service. Information you enter there is handled by that service under its own privacy practices; Vancouver Curiosity Club does not collect or receive your RSVP through this website.",
         ],
       }),
     ]),

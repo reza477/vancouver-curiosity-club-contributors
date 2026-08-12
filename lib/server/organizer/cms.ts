@@ -80,6 +80,11 @@ const CMS_REVISION_LIMIT = 100;
 const PHASE7_STARTER_COPY_UPGRADE_VERSION = 1;
 const PHASE7_STARTER_COPY_MARKER_KEY =
   "phase7_starter_copy_upgrade";
+const VISITOR_PRIVACY_COPY_UPGRADE_VERSION = 1;
+const VISITOR_PRIVACY_COPY_MARKER_KEY =
+  "visitor_privacy_copy_upgrade";
+const VISITOR_PRIVACY_COPY_AUDIT_SOURCE =
+  "visitor_privacy_copy_upgrade";
 const PHASE7_STARTER_COPY_PAGE_SLUGS = Object.freeze([
   "contact",
   "get-involved",
@@ -119,6 +124,21 @@ type Phase7StarterCopyCandidate = Readonly<{
 export type Phase7StarterCopyReconciliationResult =
   | "processed"
   | "ready";
+export type VisitorPrivacyCopyReconciliationResult =
+  | "processed"
+  | "ready";
+type VisitorPrivacyCopyMarker = Readonly<{
+  completedAt: number;
+  contentHash: string | null;
+  outcome: "skipped" | "upgraded";
+  reason:
+    | "already_current"
+    | "legacy_copy_upgraded"
+    | "newer_draft_preserved"
+    | "nonlegacy_copy_preserved"
+    | "page_unavailable";
+  version: typeof VISITOR_PRIVACY_COPY_UPGRADE_VERSION;
+}>;
 const LEGACY_PHASE7_STARTER_PAGE_CONTENT = Object.freeze({
   contact: Object.freeze({
     heading: "Find us on Meetup",
@@ -163,6 +183,16 @@ const LEGACY_PHASE7_STARTER_PAGE_CONTENT = Object.freeze({
     }>
   >
 >);
+const PREVIOUS_VISITOR_PRIVACY_PAGE_CONTENT = Object.freeze({
+  heading: "Privacy, in plain language",
+  paragraphs: Object.freeze([
+    "The site is hosted with ChatGPT Sites and uses Sites-managed D1 for structured data and R2 for approved files.",
+    "Organizer access uses Sign in with ChatGPT, which can provide name and email identity to the private organizer portal. Public visitors do not need to sign in.",
+    "This starter notice needs legal review before a public launch.",
+  ]),
+  text:
+    "Public pages and the four public forms can be used without an attendee account. Form submissions are stored in the private organizer inbox for authorized organizers to review.",
+});
 const PUBLIC_LEGAL_SETTING_KEY = "public_legal_status";
 const PUBLIC_IDENTITY_SETTING_KEY = "public_identity";
 const REQUIRED_SYSTEM_PAGE_SLUGS = new Set([
@@ -1469,6 +1499,7 @@ export async function reconcilePhase7StarterPageCopy(
     markerEnvelope.organizationId,
     slug,
     targetHash,
+    "phase7_starter_copy_upgrade",
   );
   if (!candidate) throw serviceUnavailable();
 
@@ -1589,6 +1620,142 @@ export async function reconcilePhase7StarterPageCopy(
     notifyOwner,
     now,
     outcome,
+  });
+  return "processed";
+}
+
+/**
+ * One-time visitor-facing Privacy publication upgrade.
+ *
+ * Only the exact previously shipped public Privacy snapshot is eligible for
+ * automatic replacement. Owner drafts and every unknown/custom publication
+ * are preserved. Publication still runs through the normal CMS revision,
+ * receipt, projection, media, and audit protocol rather than mutating the
+ * public projection directly.
+ */
+export async function reconcileVisitorPrivacyCopy(
+  database: D1DatabaseLike,
+  nowUtcMs = Date.now(),
+): Promise<VisitorPrivacyCopyReconciliationResult> {
+  const now = parseTimestamp(nowUtcMs);
+  const markerEnvelope = await readVisitorPrivacyCopyMarker(database);
+  if (!markerEnvelope) return "ready";
+  if (markerEnvelope.marker) return "ready";
+
+  const targetSnapshot = phase7StarterPageSnapshot("privacy", false);
+  const previousSnapshot = previousVisitorPrivacyPageSnapshot();
+  const [targetHash, previousHash] = await Promise.all([
+    contentHash(targetSnapshot),
+    contentHash(previousSnapshot),
+  ]);
+  const candidate = await readPhase7StarterCopyCandidate(
+    database,
+    markerEnvelope.organizationId,
+    "privacy",
+    targetHash,
+    VISITOR_PRIVACY_COPY_AUDIT_SOURCE,
+  );
+  if (!candidate) throw serviceUnavailable();
+
+  let outcome: VisitorPrivacyCopyMarker["outcome"];
+  let reason: VisitorPrivacyCopyMarker["reason"];
+  let outcomeHash: string | null;
+  let notifyOwner = false;
+  if (
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftHash === targetHash &&
+    candidate.publishedHash === targetHash
+  ) {
+    outcome = "upgraded";
+    reason = "already_current";
+    outcomeHash = targetHash;
+  } else if (
+    candidate.entityKey &&
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftRevisionId === candidate.publishedRevisionId &&
+    candidate.currentDraftHash === previousHash &&
+    candidate.publishedHash === previousHash
+  ) {
+    const draftVersion = await saveRevision(database, candidate.actor, {
+      auditMetadata: {
+        source: VISITOR_PRIVACY_COPY_AUDIT_SOURCE,
+        targetContentHash: targetHash,
+        upgradeVersion: VISITOR_PRIVACY_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: candidate.contentVersion,
+      now,
+      restoredFromRevisionId: null,
+      snapshot: targetSnapshot,
+    });
+    await publishRevisionForActor(database, candidate.actor, {
+      auditMetadata: {
+        source: VISITOR_PRIVACY_COPY_AUDIT_SOURCE,
+        targetContentHash: targetHash,
+        upgradeVersion: VISITOR_PRIVACY_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: draftVersion,
+      now,
+    });
+    outcome = "upgraded";
+    reason = "legacy_copy_upgraded";
+    outcomeHash = targetHash;
+  } else if (
+    candidate.entityKey &&
+    candidate.workflowStatus === "published" &&
+    candidate.currentDraftRevisionId !== candidate.publishedRevisionId &&
+    candidate.currentDraftHash === targetHash &&
+    candidate.publishedHash === previousHash &&
+    candidate.currentDraftIsUpgrade
+  ) {
+    await publishRevisionForActor(database, candidate.actor, {
+      auditMetadata: {
+        resumed: true,
+        source: VISITOR_PRIVACY_COPY_AUDIT_SOURCE,
+        targetContentHash: targetHash,
+        upgradeVersion: VISITOR_PRIVACY_COPY_UPGRADE_VERSION,
+      },
+      entityKey: candidate.entityKey,
+      entityType: "page",
+      expectedContentVersion: candidate.contentVersion,
+      now,
+    });
+    outcome = "upgraded";
+    reason = "legacy_copy_upgraded";
+    outcomeHash = targetHash;
+  } else if (
+    candidate.currentDraftRevisionId !== candidate.publishedRevisionId
+  ) {
+    outcome = "skipped";
+    reason = "newer_draft_preserved";
+    outcomeHash = candidate.publishedHash;
+    notifyOwner = true;
+  } else if (!candidate.entityKey || !candidate.workflowStatus) {
+    outcome = "skipped";
+    reason = "page_unavailable";
+    outcomeHash = null;
+  } else {
+    outcome = "skipped";
+    reason = "nonlegacy_copy_preserved";
+    outcomeHash = candidate.publishedHash;
+  }
+
+  await recordVisitorPrivacyCopyMarker(database, {
+    actor: candidate.actor,
+    entityKey: candidate.entityKey,
+    markerJson: markerEnvelope.markerJson,
+    marker: Object.freeze({
+      completedAt: now,
+      contentHash: outcomeHash,
+      outcome,
+      reason,
+      version: VISITOR_PRIVACY_COPY_UPGRADE_VERSION,
+    }),
+    notifyOwner,
+    now,
   });
   return "processed";
 }
@@ -7234,6 +7401,30 @@ function phase7StarterPageSnapshot(
   });
 }
 
+function previousVisitorPrivacyPageSnapshot(): CmsPageSnapshot {
+  const definition = PUBLIC_CATALOG_PAGES.find(
+    (page) => page.slug === "privacy",
+  );
+  if (!definition) throw serviceUnavailable();
+  const blocks = [
+    {
+      config: PREVIOUS_VISITOR_PRIVACY_PAGE_CONTENT,
+      id: "intro",
+      type: "intro",
+    },
+  ];
+  const summary =
+    firstStarterPageSummary(blocks) ?? definition.title;
+  return parsePageSnapshot({
+    blocks,
+    metaDescription: summary.slice(0, 160),
+    openGraphAssetId: null,
+    seoTitle: definition.title.slice(0, 60),
+    slug: "privacy",
+    title: definition.title,
+  });
+}
+
 function phase7LegacyStarterSections(
   definition: PublicCatalogPageDefinition,
   slug: Phase7StarterCopyPageSlug,
@@ -7305,6 +7496,90 @@ async function readPhase7StarterCopyMarker(
     marker: markerJson ? parsePhase7StarterCopyMarker(markerJson) : null,
     markerJson,
     organizationId: requiredString(row.organization_id),
+  });
+}
+
+async function readVisitorPrivacyCopyMarker(
+  database: D1DatabaseLike,
+): Promise<Readonly<{
+  marker: VisitorPrivacyCopyMarker | null;
+  markerJson: string | null;
+  organizationId: string;
+}> | null> {
+  const row = await database
+    .prepare(
+      `SELECT organization.id AS organization_id,
+              marker.value_json AS marker_json
+       FROM organizations AS organization
+       LEFT JOIN site_settings AS marker
+         ON marker.organization_id = organization.id
+        AND marker.key = ?
+        AND marker.is_public = 0
+       WHERE organization.slug = ?
+       LIMIT 1`,
+    )
+    .bind(
+      VISITOR_PRIVACY_COPY_MARKER_KEY,
+      PUBLIC_ORGANIZATION_SLUG,
+    )
+    .first<Record<string, unknown>>();
+  if (!row) return null;
+  const markerJson = optionalString(row.marker_json);
+  return Object.freeze({
+    marker: markerJson ? parseVisitorPrivacyCopyMarker(markerJson) : null,
+    markerJson,
+    organizationId: requiredString(row.organization_id),
+  });
+}
+
+function parseVisitorPrivacyCopyMarker(
+  value: string,
+): VisitorPrivacyCopyMarker {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(value);
+  } catch {
+    throw serviceUnavailable();
+  }
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    Array.isArray(raw) ||
+    Reflect.get(raw, "version") !==
+      VISITOR_PRIVACY_COPY_UPGRADE_VERSION
+  ) {
+    throw serviceUnavailable();
+  }
+  const outcome = Reflect.get(raw, "outcome");
+  const reason = Reflect.get(raw, "reason");
+  const contentHashValue = Reflect.get(raw, "contentHash");
+  if (
+    (outcome !== "skipped" && outcome !== "upgraded") ||
+    !(
+      reason === "already_current" ||
+      reason === "legacy_copy_upgraded" ||
+      reason === "newer_draft_preserved" ||
+      reason === "nonlegacy_copy_preserved" ||
+      reason === "page_unavailable"
+    ) ||
+    !(
+      contentHashValue === null ||
+      (
+        typeof contentHashValue === "string" &&
+        /^[a-f0-9]{64}$/u.test(contentHashValue)
+      )
+    )
+  ) {
+    throw serviceUnavailable();
+  }
+  return Object.freeze({
+    completedAt: safeNonnegativeInteger(
+      Reflect.get(raw, "completedAt"),
+    ),
+    contentHash: contentHashValue,
+    outcome,
+    reason,
+    version: VISITOR_PRIVACY_COPY_UPGRADE_VERSION,
   });
 }
 
@@ -7400,6 +7675,7 @@ async function readPhase7StarterCopyCandidate(
   organizationId: string,
   slug: Phase7StarterCopyPageSlug,
   targetHash: string,
+  auditSource: string,
 ): Promise<Phase7StarterCopyCandidate | null> {
   const row = await database
     .prepare(
@@ -7429,7 +7705,7 @@ async function readPhase7StarterCopyCandidate(
                   AND json_extract(
                         audit.metadata_json,
                         '$.source'
-                      ) = 'phase7_starter_copy_upgrade'
+                      ) = ?
                   AND json_extract(
                         audit.metadata_json,
                         '$.targetContentHash'
@@ -7468,6 +7744,7 @@ async function readPhase7StarterCopyCandidate(
        LIMIT 1`,
     )
     .bind(
+      auditSource,
       targetHash,
       CMS_ADOPTION_VERSION,
       slug,
@@ -7651,6 +7928,128 @@ async function recordPhase7StarterCopyOutcome(
     notificationRow?.exact !== 1
   ) {
     throw serviceUnavailable();
+  }
+}
+
+async function recordVisitorPrivacyCopyMarker(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    actor: AuthorizedMembership;
+    entityKey: string | null;
+    marker: VisitorPrivacyCopyMarker;
+    markerJson: string | null;
+    notifyOwner: boolean;
+    now: number;
+  }>,
+): Promise<void> {
+  const nextJson = canonicalJson(input.marker);
+  const markerId =
+    `visitor-privacy-copy-marker:${input.actor.organizationId}`;
+  const actorGuard = cmsActorGuard("owner");
+  const statements: D1PreparedStatementLike[] = [
+    database
+      .prepare(
+        `INSERT INTO site_settings (
+           id, organization_id, key, value_json, is_public,
+           updated_by_profile_id, created_at, updated_at
+         )
+         SELECT ?, ?, ?, ?, 0, ?, ?, ?
+         WHERE ${actorGuard.sql}
+         ON CONFLICT(organization_id, key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_by_profile_id = excluded.updated_by_profile_id,
+           updated_at = excluded.updated_at
+         WHERE site_settings.is_public = 0
+           AND site_settings.value_json IS ?`,
+      )
+      .bind(
+        markerId,
+        input.actor.organizationId,
+        VISITOR_PRIVACY_COPY_MARKER_KEY,
+        nextJson,
+        input.actor.profileId,
+        input.now,
+        input.now,
+        ...actorGuard.bindings(input.actor),
+        input.markerJson,
+      ),
+  ];
+  if (input.notifyOwner && input.entityKey) {
+    statements.push(
+      prepareNotificationInsert(database, {
+        createdAt: input.now,
+        id:
+          `visitor-privacy-copy-skip:${input.actor.organizationId}`,
+        organizationId: input.actor.organizationId,
+        payload: {
+          pageId: input.entityKey,
+          pageSlug: "privacy",
+          type: "cms_starter_copy_skipped",
+        },
+        recipientProfileId: input.actor.profileId,
+      }),
+    );
+  }
+  try {
+    await database.batch(statements);
+  } catch {
+    // A synchronized identical request may have completed first.
+  }
+
+  const markerRow = await database
+    .prepare(
+      `SELECT value_json
+       FROM site_settings
+       WHERE organization_id = ?
+         AND key = ?
+         AND is_public = 0
+       LIMIT 1`,
+    )
+    .bind(
+      input.actor.organizationId,
+      VISITOR_PRIVACY_COPY_MARKER_KEY,
+    )
+    .first<Record<string, unknown>>();
+  const persisted = markerRow
+    ? parseVisitorPrivacyCopyMarker(
+        requiredString(markerRow.value_json),
+      )
+    : null;
+  if (!persisted) {
+    throw serviceUnavailable();
+  }
+
+  // A synchronized request can win the compare-and-set with its own
+  // completion timestamp. Any valid terminal marker means the one-time work
+  // converged; requiring this caller's byte-identical marker would turn that
+  // successful race into a spurious 503.
+  if (persisted.reason === "newer_draft_preserved") {
+    if (!input.entityKey) throw serviceUnavailable();
+    const notificationRow = await database
+      .prepare(
+        `SELECT 1 AS exact
+         FROM notifications
+         WHERE id = ?
+           AND organization_id = ?
+           AND recipient_profile_id = ?
+           AND type = 'cms_starter_copy_skipped'
+           AND payload_json = ?
+           AND deleted_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(
+        `visitor-privacy-copy-skip:${input.actor.organizationId}`,
+        input.actor.organizationId,
+        input.actor.profileId,
+        canonicalJson({
+          pageId: input.entityKey,
+          pageSlug: "privacy",
+        }),
+      )
+      .first<Record<string, unknown>>();
+    if (notificationRow?.exact !== 1) {
+      throw serviceUnavailable();
+    }
   }
 }
 

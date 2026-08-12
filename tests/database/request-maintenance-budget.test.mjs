@@ -4,6 +4,7 @@ import {
   runRequestMaintenance,
   shouldReconcilePhase7StarterCopy,
   shouldReconcileScheduledPublication,
+  shouldReconcileVisitorPrivacyCopy,
 } from "../../lib/server/database/request-maintenance.ts";
 import {
   ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM,
@@ -113,6 +114,22 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
     shouldReconcilePhase7StarterCopy("GET", "/contact.rsc"),
     true,
   );
+  assert.equal(
+    shouldReconcileVisitorPrivacyCopy("GET", "/privacy"),
+    true,
+  );
+  assert.equal(
+    shouldReconcileVisitorPrivacyCopy("HEAD", "/privacy.rsc"),
+    true,
+  );
+  assert.equal(
+    shouldReconcileVisitorPrivacyCopy("GET", "/contact"),
+    false,
+  );
+  assert.equal(
+    shouldReconcileVisitorPrivacyCopy("POST", "/privacy"),
+    false,
+  );
 });
 
 test("one starter-copy outcome redirects before ordinary public work", async () => {
@@ -133,6 +150,76 @@ test("one starter-copy outcome redirects before ordinary public work", async () 
   );
   assert.deepEqual(result, { kind: "redirect", source: "cms" });
   assert.deepEqual(trace, ["starter-copy"]);
+});
+
+test("Privacy runs the existing starter upgrade before its dedicated copy upgrade", async () => {
+  const firstTrace = [];
+  const first = await runRequestMaintenance(
+    {},
+    { method: "GET", pathname: "/privacy" },
+    {
+      async reconcilePublication() {
+        firstTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileStarterCopy() {
+        firstTrace.push("starter-copy");
+        return "processed";
+      },
+      async reconcileVisitorPrivacy() {
+        firstTrace.push("visitor-privacy");
+        return "processed";
+      },
+    },
+  );
+  assert.deepEqual(first, { kind: "redirect", source: "cms" });
+  assert.deepEqual(firstTrace, ["starter-copy"]);
+
+  const nextTrace = [];
+  const next = await runRequestMaintenance(
+    {},
+    { method: "HEAD", pathname: "/privacy.rsc" },
+    {
+      async reconcilePublication() {
+        nextTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileStarterCopy() {
+        nextTrace.push("starter-copy");
+        return "ready";
+      },
+      async reconcileVisitorPrivacy() {
+        nextTrace.push("visitor-privacy");
+        return "processed";
+      },
+    },
+  );
+  assert.deepEqual(next, { kind: "redirect", source: "cms" });
+  assert.deepEqual(nextTrace, ["starter-copy", "visitor-privacy"]);
+
+  const contactTrace = [];
+  assert.deepEqual(
+    await runRequestMaintenance(
+      {},
+      { method: "GET", pathname: "/contact" },
+      {
+        async reconcilePublication() {
+          contactTrace.push("publication");
+          return publicationResult();
+        },
+        async reconcileStarterCopy() {
+          contactTrace.push("starter-copy");
+          return "ready";
+        },
+        async reconcileVisitorPrivacy() {
+          contactTrace.push("visitor-privacy");
+          return "processed";
+        },
+      },
+    ),
+    { kind: "continue" },
+  );
+  assert.deepEqual(contactTrace, ["starter-copy"]);
 });
 
 async function maintenance(

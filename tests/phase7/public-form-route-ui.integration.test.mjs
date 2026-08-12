@@ -117,8 +117,10 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
   );
   assert.match(pageCopy["host-an-event"], /Host an Event form/u);
   assert.match(pageCopy["host-an-event"], /does not create or publish/u);
-  assert.match(pageCopy.privacy, /four public forms/u);
-  assert.match(pageCopy.privacy, /Public visitors do not need to sign in/u);
+  assert.match(pageCopy.privacy, /send a form without creating an attendee account/u);
+  assert.match(pageCopy.privacy, /collect only the information you choose to send/u);
+  assert.match(pageCopy.privacy, /private organizer inbox/u);
+  assert.match(pageCopy.privacy, /Meetup or another external service/u);
   assert.doesNotMatch(
     Object.values(pageCopy).join("\n"),
     /No public intake form|tools are not open yet|No public contact form|no enabled public submission form/iu,
@@ -1239,7 +1241,7 @@ test(
     }
     assert.match(
       privacyText,
-      /stored in the private organizer inbox\./u,
+      /stored in a private organizer inbox\./u,
     );
     assert.match(
       privacyText,
@@ -1247,15 +1249,15 @@ test(
     );
     assert.match(
       privacyText,
-      /one random anonymous browser cookie for one year/u,
+      /random anonymous browser cookie for one year/u,
     );
     assert.match(
       privacyText,
-      /IP-address, browser user-agent, and accepted-language facts into private keyed rate-limit hashes/u,
+      /IP-address, browser user-agent, and accepted-language information into private keyed hashes/u,
     );
     assert.match(
       privacyText,
-      /raw network and browser facts are not stored/u,
+      /raw network and browser information is not stored/u,
     );
 
     const page = (slug, title) => ({
