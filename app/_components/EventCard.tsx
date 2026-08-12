@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
-import { responsiveImageSrcSet } from "@/lib/media/presentation";
+import {
+  discoveryArtworkCredit,
+  responsiveImageSrcSet,
+} from "@/lib/media/presentation";
 import {
   publicEventCapacityLabel,
   publicEventLocationParts,
@@ -19,6 +22,9 @@ export function EventCard({
   const schedule = formatEventSchedule(event);
   const locationParts = publicEventLocationParts(event);
   const capacity = publicEventCapacityLabel(event);
+  const artworkCredit = event.artwork
+    ? discoveryArtworkCredit(event.artwork.credit)
+    : null;
   const location =
     event.attendanceMode === "online"
       ? "Online"
@@ -79,7 +85,9 @@ export function EventCard({
               width={event.artwork.dimensions.large.width}
             />
           </div>
-          <figcaption>Artwork: {event.artwork.credit}</figcaption>
+          {artworkCredit ? (
+            <figcaption>Artwork: {artworkCredit}</figcaption>
+          ) : null}
         </figure>
       ) : (
         <EventArtworkFallback

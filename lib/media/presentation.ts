@@ -1,3 +1,10 @@
+export const REPEATED_MEETUP_EVENT_POSTER_CREDIT =
+  "Vancouver Curiosity Club event poster via Meetup";
+
+export function discoveryArtworkCredit(credit: string): string | null {
+  return credit === REPEATED_MEETUP_EVENT_POSTER_CREDIT ? null : credit;
+}
+
 export function focalPointPercent(value: number): number {
   if (!Number.isFinite(value)) return 50;
   return Math.min(100, Math.max(0, value / 100));

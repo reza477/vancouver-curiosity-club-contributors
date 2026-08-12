@@ -8,7 +8,10 @@ import {
 } from "react";
 import { AddToCalendar } from "./AddToCalendar";
 import { EventPosterImage } from "./EventPosterImage";
-import { responsiveImageSrcSet } from "@/lib/media/presentation";
+import {
+  discoveryArtworkCredit,
+  responsiveImageSrcSet,
+} from "@/lib/media/presentation";
 import {
   publicEventCapacityLabel,
   publicEventLocationParts,
@@ -474,6 +477,9 @@ function CalendarEventPreview({
 }>) {
   const locationParts = publicEventLocationParts(event);
   const capacity = publicEventCapacityLabel(event);
+  const artworkCredit = event.artwork
+    ? discoveryArtworkCredit(event.artwork.credit)
+    : null;
   const location =
     event.attendanceMode === "online"
       ? "Online"
@@ -522,7 +528,9 @@ function CalendarEventPreview({
             }}
             width={event.artwork.dimensions.medium.width}
           />
-          <figcaption>Artwork: {event.artwork.credit}</figcaption>
+          {artworkCredit ? (
+            <figcaption>Artwork: {artworkCredit}</figcaption>
+          ) : null}
         </figure>
       ) : (
         <CalendarEventArtworkFallback event={event} />

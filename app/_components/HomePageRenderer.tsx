@@ -4,7 +4,10 @@ import { OrganizerNote } from "@/app/_components/OrganizerNote";
 import type { CSSProperties } from "react";
 import { EventCard } from "./EventCard";
 import { StructuredData } from "./StructuredData";
-import { responsiveImageSrcSet } from "@/lib/media/presentation";
+import {
+  discoveryArtworkCredit,
+  responsiveImageSrcSet,
+} from "@/lib/media/presentation";
 import type {
   PublicCatalogDto,
   PublicClubDto,
@@ -291,6 +294,8 @@ function HomeHeroPoster({
     );
   }
 
+  const artworkCredit = discoveryArtworkCredit(event.artwork.credit);
+
   return (
     <figure
       className="home-hero__poster"
@@ -339,7 +344,7 @@ function HomeHeroPoster({
         <Link href={`/events/${event.slug}`} prefetch={false}>
           {event.title}
         </Link>
-        <span>Artwork: {event.artwork.credit}</span>
+        {artworkCredit ? <span>Artwork: {artworkCredit}</span> : null}
       </figcaption>
     </figure>
   );
