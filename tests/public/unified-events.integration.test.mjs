@@ -30,7 +30,10 @@ import {
   createOneEventIcsDownload,
 } from "../../lib/server/phase7/public-exports.ts";
 import { InputValidationError } from "../../lib/validation/index.ts";
-import { MEETUP_EVENT_ALIAS_URLS } from "../../lib/server/meetup/event-aliases.ts";
+import {
+  MEETUP_EVENT_ALIAS_URLS,
+  canonicalMeetupEventUrlForAlias,
+} from "../../lib/server/meetup/event-aliases.ts";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 import { countD1Statements } from "../auth/intercept-d1.mjs";
 
@@ -1102,6 +1105,237 @@ test("all exact cross-post aliases stay out of public projections while the cano
   }
   assert.ok(sitemap.includes("exact-alias-canonical"));
   assert.ok(sitemap.includes("wednesday-night-reset"));
+});
+
+test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gathering", async (t) => {
+  const database = await createFixture(t);
+  const crossPosts = [
+    {
+      aliasUrl:
+        "https://www.meetup.com/vancouver-meetup-group/events/315776403/",
+      canonicalUrl:
+        "https://www.meetup.com/vancouver-literature-and-film/events/315776148/",
+      endsAt: "2026-08-24T04:30:00.000Z",
+      eventId: "event_crosspost_mononoke",
+      eventNumber: "315776148",
+      slug: "canonical-princess-mononoke",
+      startsAt: "2026-08-24T02:00:00.000Z",
+      title:
+        "Princess Mononoke - can humans build without destroying something sacred?",
+    },
+    {
+      aliasUrl:
+        "https://www.meetup.com/vancouver-meetup-group/events/315511487/",
+      canonicalUrl:
+        "https://www.meetup.com/vancouver-literature-and-film/events/315510890/",
+      endsAt: "2026-08-24T07:00:00.000Z",
+      eventId: "event_crosspost_eyes_wide_shut",
+      eventNumber: "315510890",
+      slug: "canonical-eyes-wide-shut",
+      startsAt: "2026-08-24T04:45:00.000Z",
+      title:
+        "Eyes Wide Shut - marriage, desire, and rich-people nightmare rituals",
+    },
+    {
+      aliasUrl:
+        "https://www.meetup.com/vancouver-meetup-group/events/315777485/",
+      canonicalUrl:
+        "https://www.meetup.com/vancouver-literature-and-film/events/315777434/",
+      endsAt: "2026-08-31T04:30:00.000Z",
+      eventId: "event_crosspost_steve_jobs",
+      eventNumber: "315777434",
+      slug: "canonical-steve-jobs",
+      startsAt: "2026-08-31T02:00:00.000Z",
+      title: "Steve Jobs - film discussion",
+    },
+  ];
+
+  for (const event of crossPosts) {
+    assert.equal(
+      canonicalMeetupEventUrlForAlias(event.aliasUrl),
+      event.canonicalUrl,
+    );
+    await insertTimedEvent(
+      database,
+      timedEvent({
+        clubId: "club_literature",
+        endsAt: event.endsAt,
+        id: event.eventId,
+        slug: event.slug,
+        startsAt: event.startsAt,
+        title: event.title,
+      }),
+    );
+  }
+
+  database.exec(`
+    INSERT INTO sync_sources (
+      id, organization_id, club_id, source_type, source_url, enabled,
+      refresh_interval_minutes, last_attempt_at, last_success_at,
+      last_error_at, last_error_code, active_generation_id,
+      pending_generation_id, pending_snapshot_hash, pending_cursor,
+      created_by_profile_id, updated_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'source_crosspost_canonical', '${ORGANIZATION_ID}',
+      'club_literature', 'meetup_ics',
+      'https://www.meetup.com/vancouver-literature-and-film/events/ical/',
+      1, 15, 300, 300, NULL, NULL, 'generation_crosspost_canonical',
+      NULL, NULL, NULL, 'profile_owner', 'profile_owner', 300, 300
+    );
+    INSERT INTO meetup_sync_generations (
+      id, organization_id, sync_source_id, previous_generation_id,
+      snapshot_hash, expected_item_count, processed_item_count,
+      rejected_item_count, state, removed_count, created_at, updated_at,
+      published_at, failed_at
+    ) VALUES (
+      'generation_crosspost_canonical', '${ORGANIZATION_ID}',
+      'source_crosspost_canonical', NULL,
+      'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      3, 3, 0, 'published', 0, 300, 300, 300, NULL
+    );
+    UPDATE meetup_sync_generations
+    SET expected_item_count = expected_item_count + 3,
+        processed_item_count = processed_item_count + 3
+    WHERE id = 'generation_active';
+  `);
+
+  for (const [index, event] of crossPosts.entries()) {
+    const canonicalExternalId = `canonical-crosspost-${index + 1}`;
+    const aliasExternalId = `alias-crosspost-${index + 1}`;
+    await insertSnapshot(database, {
+      endsAt: event.endsAt,
+      eventId: event.eventId,
+      eventNumber: event.eventNumber,
+      eventUrl: event.canonicalUrl,
+      eventSlug: event.slug,
+      externalId: canonicalExternalId,
+      generationId: "generation_crosspost_canonical",
+      id: `snapshot_crosspost_canonical_${index + 1}`,
+      ordinal: index,
+      sourceId: "source_crosspost_canonical",
+      startsAt: event.startsAt,
+      status: "confirmed",
+      title: event.title,
+      updatedAt: 300,
+    });
+    await insertSnapshot(database, {
+      endsAt: event.endsAt,
+      eventId: event.eventId,
+      eventNumber: `alias-${index + 1}`,
+      eventUrl: event.aliasUrl,
+      eventSlug: event.slug,
+      externalId: aliasExternalId,
+      generationId: "generation_active",
+      id: `snapshot_crosspost_alias_${index + 1}`,
+      ordinal: index + 2,
+      startsAt: event.startsAt,
+      status: "confirmed",
+      title: `Hidden cross-post ${index + 1}`,
+      updatedAt: 300,
+    });
+    await database
+      .prepare(
+        `INSERT INTO external_source_links (
+           id, organization_id, entity_type, entity_id, source_type,
+           sync_source_id, external_id, external_url, source_fingerprint,
+           last_imported_at, created_at, updated_at
+         ) VALUES
+           (?, ?, 'event', ?, 'meetup_ics', ?, ?, ?, ?, 300, 300, 300),
+           (?, ?, 'event', ?, 'meetup_ics', ?, ?, ?, ?, 300, 300, 300)`,
+      )
+      .bind(
+        `link_crosspost_canonical_${index + 1}`,
+        ORGANIZATION_ID,
+        event.eventId,
+        "source_crosspost_canonical",
+        canonicalExternalId,
+        event.canonicalUrl,
+        `fingerprint-crosspost-canonical-${index + 1}`,
+        `link_crosspost_alias_${index + 1}`,
+        ORGANIZATION_ID,
+        event.eventId,
+        "source_synthetic",
+        aliasExternalId,
+        event.aliasUrl,
+        `fingerprint-crosspost-alias-${index + 1}`,
+      )
+      .run();
+  }
+
+  const [page, calendar, sitemap] = await Promise.all([
+    queryPublicEvents(database, upcomingInput()),
+    queryPublicCalendarMonth(database, {
+      fromDate: "2026-08-01",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+      toDate: "2026-08-31",
+    }),
+    listPublicEventSitemapSlugs(database, {
+      organizationId: ORGANIZATION_ID,
+    }),
+  ]);
+  const details = await Promise.all(
+    crossPosts.map((event) =>
+      getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: event.slug,
+      }),
+    ),
+  );
+  assert.equal(details.every(Boolean), true);
+  const structuredEvents = details.map((detail, index) =>
+    buildPublicEventJsonLd(
+      detail,
+      `https://site.synthetic.invalid/events/${crossPosts[index].slug}`,
+      "Vancouver Curiosity Club",
+    ),
+  );
+
+  for (const [index, event] of crossPosts.entries()) {
+    assert.equal(
+      page.events.filter((candidate) => candidate.slug === event.slug).length,
+      1,
+      `${event.title} must produce one public card`,
+    );
+    assert.equal(
+      calendar.events.filter((candidate) => candidate.slug === event.slug)
+        .length,
+      1,
+      `${event.title} must produce one calendar count`,
+    );
+    assert.equal(
+      sitemap.filter((slug) => slug === event.slug).length,
+      1,
+      `${event.title} must produce one detail route`,
+    );
+    assert.equal(details[index]?.rsvpUrl, event.canonicalUrl);
+    assert.deepEqual(
+      {
+        name: structuredEvents[index].name,
+        sameAs: structuredEvents[index].sameAs,
+        type: structuredEvents[index]["@type"],
+        url: structuredEvents[index].url,
+      },
+      {
+        name: event.title,
+        sameAs: event.canonicalUrl,
+        type: "Event",
+        url: `https://site.synthetic.invalid/events/${event.slug}`,
+      },
+      `${event.title} must produce one canonical structured-data record`,
+    );
+  }
+
+  const serialized = JSON.stringify({
+    calendar,
+    details,
+    page,
+    structuredEvents,
+  });
+  for (const event of crossPosts) {
+    assert.equal(serialized.includes(event.aliasUrl), false, event.aliasUrl);
+  }
 });
 
 test("public export projection is bounded, exact-materialization verified, and allowlisted", async (t) => {
