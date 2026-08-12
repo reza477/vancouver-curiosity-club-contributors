@@ -88,7 +88,7 @@ test("Home bounds peak D1 read concurrency at the catalog fan-out of five", asyn
   assert.deepEqual(result?.events, []);
   assert.match(
     homeSource,
-    /view:\s*"upcoming"[\s\S]*?page:\s*1[\s\S]*?pageSize:\s*3/u,
+    /view:\s*"upcoming"[\s\S]*?page:\s*1[\s\S]*?pageSize:\s*6/u,
   );
   assert.equal(statementCount, 7);
   assert.equal(

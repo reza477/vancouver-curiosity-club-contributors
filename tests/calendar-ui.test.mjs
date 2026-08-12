@@ -190,8 +190,7 @@ test("homepage leads with the club purpose and eight distinct sections", async (
     assert.ok(sectionIndex > priorSectionIndex, className);
     priorSectionIndex = sectionIndex;
   }
-  assert.match(homeRenderer, /events\.slice\(0, 3\)/u);
-  assert.match(homeData, /view:\s*"upcoming"[\s\S]*?pageSize:\s*3/u);
+  assert.match(homeData, /view:\s*"upcoming"[\s\S]*?pageSize:\s*6/u);
   assert.doesNotMatch(
     `${page}\n${homeRenderer}`,
     /PublicMonthCalendar|public-calendar__grid|calendar-view-switcher/u,

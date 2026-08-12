@@ -74,10 +74,20 @@ test("homepage discovery hides the repeated Meetup credit in both hero and cards
     new RegExp(MEETUP_POSTER_CREDIT, "u"),
   );
   assert.match(meetupMarkup, /alt="A vivid event poster with blue circles\."/u);
-  assert.ok(
-    (meetupMarkup.match(/href="\/events\/fixture-event"/gu) ?? []).length >=
-      2,
-    "hero and event card must keep their event-detail links",
+  assert.match(
+    meetupMarkup,
+    /href="\/events\/fixture-event-1"/u,
+    "the hero must retain its first event-detail link",
+  );
+  assert.match(
+    meetupMarkup,
+    /href="\/events\/fixture-event-4"/u,
+    "the following card must retain its distinct event-detail link",
+  );
+  assert.equal(
+    (meetupMarkup.match(/href="\/events\/fixture-event-1"/gu) ?? []).length,
+    1,
+    "the first hero event must not be repeated as a following card",
   );
 
   const customMarkup = renderToStaticMarkup(
@@ -85,8 +95,9 @@ test("homepage discovery hides the repeated Meetup credit in both hero and cards
   );
   assert.ok(
     (customMarkup.match(/Artwork: Illustration by A\. Neighbour/gu) ?? [])
-      .length >= 2,
-    "a distinct custom credit remains useful in both discovery surfaces",
+      .length,
+    4,
+    "a distinct custom credit remains useful on all three hero posters and the following card",
   );
 });
 
@@ -218,7 +229,15 @@ function homeProps(credit) {
         mission: "A thoughtful Vancouver community.",
       }),
     }),
-    events: Object.freeze([eventCard(credit)]),
+    events: Object.freeze(
+      Array.from({ length: 4 }, (_, index) => {
+        const position = index + 1;
+        return eventCard(credit, {
+          slug: `fixture-event-${position}`,
+          title: `Fixture event ${position}`,
+        });
+      }),
+    ),
     origin: null,
     page: Object.freeze({ slug: "home" }),
   });

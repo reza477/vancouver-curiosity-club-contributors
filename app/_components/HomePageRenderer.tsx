@@ -37,7 +37,8 @@ export function HomePageRenderer({
   previewMediaAssets?: readonly ResponsiveMediaAssetDto[];
   privatePreview?: boolean;
 }>) {
-  const upcomingEvents = events.slice(0, 3);
+  const heroEvents = events.slice(0, 3);
+  const upcomingEvents = events.slice(3, 6);
   const lanes = catalog.lanes.slice(0, 4);
   const clubs = selectHomepageClubs(catalog.clubs);
 
@@ -60,22 +61,24 @@ export function HomePageRenderer({
           </div>
         </div>
 
-        <div
-          className="home-hero__poster-collage"
-          aria-label="Posters for the next upcoming gatherings"
-          role="group"
-        >
-          {upcomingEvents.map((event, index) => (
-            <HomeHeroPoster event={event} index={index} key={event.slug} />
-          ))}
-        </div>
+        {heroEvents.length > 0 ? (
+          <div
+            className="home-hero__poster-collage"
+            aria-label="Posters for the next upcoming gatherings"
+            role="group"
+          >
+            {heroEvents.map((event, index) => (
+              <HomeHeroPoster event={event} index={index} key={event.slug} />
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="home-events" aria-labelledby="home-events-title">
         <div className="section-heading">
           <div>
             <p className="section-kicker">Coming up next</p>
-            <h2 id="home-events-title">Three ways to join in</h2>
+            <h2 id="home-events-title">More ways to join in</h2>
           </div>
           <Link href="/events" prefetch={false}>
             See all upcoming gatherings
@@ -83,9 +86,18 @@ export function HomePageRenderer({
         </div>
         {upcomingEvents.length > 0 ? (
           <div className="event-list">
-            {upcomingEvents.map((event, index) => (
-              <EventCard event={event} key={event.slug} priority={index === 0} />
+            {upcomingEvents.map((event) => (
+              <EventCard event={event} key={event.slug} />
             ))}
+          </div>
+        ) : heroEvents.length > 0 ? (
+          <div className="public-empty-state">
+            <p className="section-kicker">More gatherings</p>
+            <h3>Those are the next gatherings.</h3>
+            <p>See the complete events page as more dates are added.</p>
+            <Link href="/events" prefetch={false}>
+              Open events
+            </Link>
           </div>
         ) : (
           <div className="public-empty-state">
@@ -289,7 +301,11 @@ function HomeHeroPoster({
         data-poster-position={index + 1}
       >
         <p>{event.club.name}</p>
-        <h2>{event.title}</h2>
+        <h2>
+          <Link href={`/events/${event.slug}`} prefetch={false}>
+            {event.title}
+          </Link>
+        </h2>
       </article>
     );
   }

@@ -70,13 +70,12 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     /getRequestPublicPageContent\s*=\s*cache\([\s\S]*?getPublicPageContent\(database, slug\)/u,
   );
   assert.match(homeData, /queryPublicEventSlice\(database, \{/u);
-  assert.match(homeData, /pageSize:\s*3/u);
+  assert.match(homeData, /pageSize:\s*6/u);
   assert.match(homeRenderer, /Books, films, ideas, walks & creative nights in Vancouver/u);
   assert.match(homeRenderer, /Come curious\. Leave knowing people\./u);
   assert.match(homeRenderer, /See upcoming gatherings/u);
   assert.match(homeRenderer, /New here\? Start here/u);
   assert.match(homeRenderer, /home-hero__poster-collage/u);
-  assert.match(homeRenderer, /events\.slice\(0, 3\)/u);
   assert.doesNotMatch(homeRenderer, /FieldArtwork/u);
   assert.match(catalog, /A social calendar with a brain\./);
   assert.match(catalog, /Vancouver Curiosity Club/);
