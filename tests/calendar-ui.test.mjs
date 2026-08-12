@@ -320,8 +320,12 @@ test("the calendar switches to its named-event agenda at 768px", async () => {
 });
 
 test("About is concise, reassuring, evidence-backed, and event-led", async () => {
-  const [about, styles] = await Promise.all([
+  const [about, organizerNote, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL("app/_components/OrganizerNote.tsx", projectRoot),
+      "utf8",
+    ),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
@@ -335,12 +339,13 @@ test("About is concise, reassuring, evidence-backed, and event-led", async () =>
     "What the community feels like",
     "Who it is for",
     "Your first event can be simple.",
-    "A note from Reza",
     "The community in the live catalog.",
     "See what the club is doing next.",
   ]) {
     assert.ok(about.includes(phrase), phrase);
   }
+  assert.match(about, /<OrganizerNote headingId="about-founder-note-title" \/>/u);
+  assert.match(organizerNote, />A note from Reza</u);
   assert.match(about, /queryPublicEvents/u);
   assert.match(about, /pageSize:\s*3/u);
   assert.match(about, /upcomingEventCount:\s*eventPage\.totalCount/u);

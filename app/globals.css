@@ -6033,7 +6033,29 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   background: var(--paper-deep);
 }
 
-.home-proof li p {
+.home-organizer-note > div,
+.home-official-links {
+  max-width: 45rem;
+}
+
+.home-organizer-note .organizer-note__quote {
+  margin-top: 1.5rem;
+}
+
+.home-official-links h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.8rem, 3vw, 3rem);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.home-official-links > p:not(.section-kicker) {
+  color: var(--ink-soft);
+}
+
+.home-official-links li p {
   margin: 0 0 0.8rem;
   color: var(--ink-soft);
 }
@@ -6520,7 +6542,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   padding-left: 1.25rem;
 }
 
-.about-founder-note blockquote,
+.organizer-note__quote,
 .about-founder-note__quote {
   margin: 0;
   font-family: var(--display);

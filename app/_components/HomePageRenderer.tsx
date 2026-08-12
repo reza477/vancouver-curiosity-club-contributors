@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
+import { OrganizerNote } from "@/app/_components/OrganizerNote";
 import type { CSSProperties } from "react";
 import { EventCard } from "./EventCard";
 import { StructuredData } from "./StructuredData";
@@ -198,24 +199,33 @@ export function HomePageRenderer({
 
       <section
         className="home-proof home-community"
-        aria-labelledby="home-proof-title"
+        aria-labelledby="home-organizer-note-title"
       >
-        <div>
-          <p className="section-kicker">Community proof</p>
-          <h2 id="home-proof-title">The club beyond this homepage</h2>
-          <p>{catalog.site.mission}</p>
+        <div className="home-organizer-note">
+          <OrganizerNote headingId="home-organizer-note-title" />
         </div>
         {catalog.communityLinks.length > 0 ? (
-          <ul aria-label="Official Vancouver Curiosity Club destinations">
-            {catalog.communityLinks.map((link) => (
-              <li key={`${link.linkType}:${link.url}`}>
-                <a href={link.url} rel="noreferrer noopener">
-                  {link.label} <span aria-hidden="true">↗</span>
-                </a>
-                {link.description ? <p>{link.description}</p> : null}
-              </li>
-            ))}
-          </ul>
+          <div
+            className="home-official-links"
+            aria-labelledby="home-official-links-title"
+            role="navigation"
+          >
+            <p className="section-kicker">Official community links</p>
+            <h3 id="home-official-links-title">
+              Find the club beyond this website.
+            </h3>
+            <p>{catalog.site.mission}</p>
+            <ul aria-label="Official Vancouver Curiosity Club destinations">
+              {catalog.communityLinks.map((link) => (
+                <li key={`${link.linkType}:${link.url}`}>
+                  <a href={link.url} rel="noreferrer noopener">
+                    {link.label} <span aria-hidden="true">↗</span>
+                  </a>
+                  {link.description ? <p>{link.description}</p> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
       </section>
 

@@ -7,6 +7,7 @@ import {
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { EventCard } from "@/app/_components/EventCard";
+import { OrganizerNote } from "@/app/_components/OrganizerNote";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import {
@@ -112,18 +113,7 @@ export default async function AboutPage() {
         className="about-founder-note"
         aria-labelledby="about-founder-note-title"
       >
-        <div>
-          <p className="section-kicker">A note from Reza</p>
-          <h2 id="about-founder-note-title">Curiosity is enough to begin.</h2>
-        </div>
-        <blockquote>
-          <p>
-            “I want this to be a place where you can follow a real interest
-            without needing to impress anyone. Choose an event that pulls you
-            in, come as you are, and we’ll take it from there.”
-          </p>
-          <cite>Reza</cite>
-        </blockquote>
+        <OrganizerNote headingId="about-founder-note-title" />
       </section>
 
       <section className="about-facts" aria-labelledby="about-facts-title">
