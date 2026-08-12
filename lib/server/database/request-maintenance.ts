@@ -5,8 +5,10 @@ import {
 } from "../organizer/publication";
 import {
   reconcilePhase7StarterPageCopy,
+  reconcileVisitorFeedbackCopy,
   reconcileVisitorPrivacyCopy,
   type Phase7StarterCopyReconciliationResult,
+  type VisitorFeedbackCopyReconciliationResult,
   type VisitorPrivacyCopyReconciliationResult,
 } from "../organizer/cms";
 
@@ -28,6 +30,9 @@ type RequestMaintenanceServices = Readonly<{
   reconcileStarterCopy?: (
     database: D1DatabaseLike,
   ) => Promise<Phase7StarterCopyReconciliationResult>;
+  reconcileVisitorFeedback?: (
+    database: D1DatabaseLike,
+  ) => Promise<VisitorFeedbackCopyReconciliationResult>;
   reconcileVisitorPrivacy?: (
     database: D1DatabaseLike,
   ) => Promise<VisitorPrivacyCopyReconciliationResult>;
@@ -39,6 +44,8 @@ const DEFAULT_REQUEST_MAINTENANCE_SERVICES: RequestMaintenanceServices =
       reconcileDueOrganizerPublications(database, { limit: 1 }),
     reconcileStarterCopy: (database) =>
       reconcilePhase7StarterPageCopy(database),
+    reconcileVisitorFeedback: (database) =>
+      reconcileVisitorFeedbackCopy(database),
     reconcileVisitorPrivacy: (database) =>
       reconcileVisitorPrivacyCopy(database),
   });
@@ -67,6 +74,26 @@ export async function runRequestMaintenance(
       reconciliation = await (
         services.reconcileStarterCopy ??
         DEFAULT_REQUEST_MAINTENANCE_SERVICES.reconcileStarterCopy!
+      )(database);
+    } catch {
+      return unavailable("cms");
+    }
+    if (reconciliation === "processed") {
+      return redirect("cms");
+    }
+  }
+
+  if (
+    shouldReconcileVisitorFeedbackCopy(
+      request.method,
+      request.pathname,
+    )
+  ) {
+    let reconciliation: VisitorFeedbackCopyReconciliationResult;
+    try {
+      reconciliation = await (
+        services.reconcileVisitorFeedback ??
+        DEFAULT_REQUEST_MAINTENANCE_SERVICES.reconcileVisitorFeedback!
       )(database);
     } catch {
       return unavailable("cms");
@@ -124,6 +151,14 @@ export async function runRequestMaintenance(
   }
 
   return CONTINUE;
+}
+
+export function shouldReconcileVisitorFeedbackCopy(
+  method: string,
+  pathname: string,
+): boolean {
+  if (method !== "GET" && method !== "HEAD") return false;
+  return requestRoutePathname(pathname) === "/contact";
 }
 
 export function shouldReconcileVisitorPrivacyCopy(

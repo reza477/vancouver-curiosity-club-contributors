@@ -690,7 +690,7 @@ test("detail response fails closed when organizer assignment or membership chang
   const data = await fixture();
   t.after(() => data.database.close());
   const organizerProfileId = "phase7-organizer-profile";
-  data.database
+  await data.database
     .prepare(
       `INSERT INTO profiles (
          id, siwc_subject, normalized_email, display_name,
@@ -706,7 +706,7 @@ test("detail response fails closed when organizer assignment or membership chang
       data.now,
     )
     .run();
-  data.database
+  await data.database
     .prepare(
       `INSERT INTO organization_memberships (
          id, organization_id, profile_id, normalized_email, role, status,

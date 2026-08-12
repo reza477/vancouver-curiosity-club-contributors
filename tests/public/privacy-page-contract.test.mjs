@@ -40,8 +40,8 @@ test("the rendered Privacy notice explains the site's real data boundaries", () 
 
   assert.match(
     text,
-    /Contact[^.]*name[^.]*reply email[^.]*topic[^.]*message/iu,
-    "visitors must be told what the Contact form collects",
+    /Feedback[^.]*name[^.]*reply email[^.]*topic[^.]*message/iu,
+    "visitors must be told what the Feedback form collects",
   );
   assert.match(
     text,

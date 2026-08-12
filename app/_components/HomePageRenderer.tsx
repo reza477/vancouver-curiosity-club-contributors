@@ -236,6 +236,7 @@ export function HomePageRenderer({
           >
             See upcoming gatherings
           </Link>
+          <Link href="/get-involved">Get involved</Link>
         </div>
       </section>
 

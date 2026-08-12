@@ -1855,7 +1855,7 @@ function adoptedNavigationItems(
     ["/community", "Community"],
     ["/about", "About"],
     ["/get-involved", "Get Involved"],
-    ["/contact", "Contact"],
+    ["/contact", "Feedback"],
     ["/conduct", "Code of Conduct"],
     ["/accessibility", "Accessibility"],
     ["/privacy", "Privacy"],

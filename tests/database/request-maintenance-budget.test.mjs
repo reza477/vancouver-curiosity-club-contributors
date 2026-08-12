@@ -4,6 +4,7 @@ import {
   runRequestMaintenance,
   shouldReconcilePhase7StarterCopy,
   shouldReconcileScheduledPublication,
+  shouldReconcileVisitorFeedbackCopy,
   shouldReconcileVisitorPrivacyCopy,
 } from "../../lib/server/database/request-maintenance.ts";
 import {
@@ -115,6 +116,22 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
     true,
   );
   assert.equal(
+    shouldReconcileVisitorFeedbackCopy("GET", "/contact"),
+    true,
+  );
+  assert.equal(
+    shouldReconcileVisitorFeedbackCopy("HEAD", "/contact.rsc"),
+    true,
+  );
+  assert.equal(
+    shouldReconcileVisitorFeedbackCopy("GET", "/privacy"),
+    false,
+  );
+  assert.equal(
+    shouldReconcileVisitorFeedbackCopy("POST", "/contact"),
+    false,
+  );
+  assert.equal(
     shouldReconcileVisitorPrivacyCopy("GET", "/privacy"),
     true,
   );
@@ -150,6 +167,80 @@ test("one starter-copy outcome redirects before ordinary public work", async () 
   );
   assert.deepEqual(result, { kind: "redirect", source: "cms" });
   assert.deepEqual(trace, ["starter-copy"]);
+});
+
+test("Feedback runs the existing starter upgrade before its dedicated copy upgrade", async () => {
+  const firstTrace = [];
+  const first = await runRequestMaintenance(
+    {},
+    { method: "GET", pathname: "/contact" },
+    {
+      async reconcilePublication() {
+        firstTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileStarterCopy() {
+        firstTrace.push("starter-copy");
+        return "processed";
+      },
+      async reconcileVisitorFeedback() {
+        firstTrace.push("visitor-feedback");
+        return "processed";
+      },
+    },
+  );
+  assert.deepEqual(first, { kind: "redirect", source: "cms" });
+  assert.deepEqual(firstTrace, ["starter-copy"]);
+
+  const nextTrace = [];
+  const next = await runRequestMaintenance(
+    {},
+    { method: "HEAD", pathname: "/contact.rsc" },
+    {
+      async reconcilePublication() {
+        nextTrace.push("publication");
+        return publicationResult();
+      },
+      async reconcileStarterCopy() {
+        nextTrace.push("starter-copy");
+        return "ready";
+      },
+      async reconcileVisitorFeedback() {
+        nextTrace.push("visitor-feedback");
+        return "processed";
+      },
+    },
+  );
+  assert.deepEqual(next, { kind: "redirect", source: "cms" });
+  assert.deepEqual(nextTrace, ["starter-copy", "visitor-feedback"]);
+
+  const privacyTrace = [];
+  assert.deepEqual(
+    await runRequestMaintenance(
+      {},
+      { method: "GET", pathname: "/privacy" },
+      {
+        async reconcilePublication() {
+          privacyTrace.push("publication");
+          return publicationResult();
+        },
+        async reconcileStarterCopy() {
+          privacyTrace.push("starter-copy");
+          return "ready";
+        },
+        async reconcileVisitorFeedback() {
+          privacyTrace.push("visitor-feedback");
+          return "processed";
+        },
+        async reconcileVisitorPrivacy() {
+          privacyTrace.push("visitor-privacy");
+          return "ready";
+        },
+      },
+    ),
+    { kind: "continue" },
+  );
+  assert.deepEqual(privacyTrace, ["starter-copy", "visitor-privacy"]);
 });
 
 test("Privacy runs the existing starter upgrade before its dedicated copy upgrade", async () => {
@@ -211,6 +302,10 @@ test("Privacy runs the existing starter upgrade before its dedicated copy upgrad
           contactTrace.push("starter-copy");
           return "ready";
         },
+        async reconcileVisitorFeedback() {
+          contactTrace.push("visitor-feedback");
+          return "ready";
+        },
         async reconcileVisitorPrivacy() {
           contactTrace.push("visitor-privacy");
           return "processed";
@@ -219,7 +314,7 @@ test("Privacy runs the existing starter upgrade before its dedicated copy upgrad
     ),
     { kind: "continue" },
   );
-  assert.deepEqual(contactTrace, ["starter-copy"]);
+  assert.deepEqual(contactTrace, ["starter-copy", "visitor-feedback"]);
 });
 
 async function maintenance(

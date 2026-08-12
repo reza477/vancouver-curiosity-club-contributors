@@ -132,7 +132,7 @@ test("legacy starter pages upgrade one per maintenance request through exact CMS
   assert.deepEqual(
     await runRequestMaintenance(ready.database, {
       method: "GET",
-      pathname: "/contact",
+      pathname: "/get-involved",
     }),
     { kind: "continue" },
   );

@@ -108,8 +108,9 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
       ]),
   );
 
-  assert.match(pageCopy.contact, /private organizer inbox/u);
-  assert.match(pageCopy.contact, /send an email confirmation/u);
+  assert.match(pageCopy.contact, /Feedback form/u);
+  assert.match(pageCopy.contact, /privately to the organizers/u);
+  assert.match(pageCopy.contact, /review and reply/u);
   assert.match(pageCopy["get-involved"], /Volunteer/u);
   assert.match(
     pageCopy["get-involved"],
@@ -1229,7 +1230,7 @@ test(
     );
     const privacyText = visibleText(privacyHtml);
     for (const exactEnumeration of [
-      "Contact collects a name, reply email, topic, and message.",
+      "The Feedback form collects a name, reply email, topic, and message.",
       "Volunteer collects a name, reply email, one to five interest areas, how the visitor would like to help, and optional availability or relevant context.",
       "Host an Event collects a name, reply email, proposed event title or topic, short event idea, format, and optional preferred club or program and timing.",
       "Venue or Community Partnership collects a contact name, reply email, organization or venue name, partnership type, message, and an optional HTTPS website.",
@@ -1390,7 +1391,7 @@ test(
     assert.match(formSource, /data-form-key=\{formKey\}/u);
     assert.match(formSource, /Send this to the organizers/u);
     for (const label of [
-      "Send message",
+      "Send feedback",
       "Send volunteer interest",
       "Send event idea",
       "Send partnership idea",

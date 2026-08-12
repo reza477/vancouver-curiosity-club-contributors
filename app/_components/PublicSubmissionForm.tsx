@@ -173,7 +173,8 @@ export function PublicSubmissionForm({
     setInstanceRequest((current) => current + 1);
   }
 
-  const title = publicFormLabel(formKey);
+  const title =
+    formKey === "contact" ? "Feedback" : publicFormLabel(formKey);
   return (
     <section
       className="public-submission"
@@ -501,7 +502,7 @@ export function PublicSubmissionForm({
 function submitButtonLabel(formKey: PublicFormKey): string {
   switch (formKey) {
     case "contact":
-      return "Send message";
+      return "Send feedback";
     case "volunteer":
       return "Send volunteer interest";
     case "host_event":

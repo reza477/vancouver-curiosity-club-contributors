@@ -184,10 +184,10 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         ],
       }),
     ]),
-    page("contact", "Contact", [
+    page("contact", "Feedback", [
       section("intro", "intro", 10, {
-        heading: "Send a private inquiry",
-        text: "The Contact form stores your name, reply email, topic, and message in the private organizer inbox. It does not enroll you in marketing or send an email confirmation.",
+        heading: "Share feedback or ask a question",
+        text: "The Feedback form sends your comments or questions privately to the organizers so they can review and reply.",
       }),
     ]),
     page("conduct", "Code of Conduct", [

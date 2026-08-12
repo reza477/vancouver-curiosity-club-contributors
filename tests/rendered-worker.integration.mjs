@@ -847,6 +847,71 @@ test("public form routes render a safe pre-hydration state", async () => {
   );
 });
 
+test("Feedback is consistent while contact and Host routes remain canonical", async () => {
+  const feedbackResponse = await fetchPath("/contact");
+  assert.equal(feedbackResponse.status, 200);
+  const feedbackHtml = await feedbackResponse.text();
+  assert.match(
+    feedbackHtml,
+    /rel="canonical" href="https:\/\/preview\.example\/contact"/u,
+  );
+  assert.match(
+    feedbackHtml,
+    /<title>Feedback[^<]*Vancouver Curiosity Club<\/title>/u,
+  );
+  assert.match(
+    feedbackHtml,
+    /<meta(?=[^>]*\bname="description")(?=[^>]*\bcontent="[^"]*[Ff]eedback[^"]*")[^>]*>/u,
+  );
+  assert.match(
+    feedbackHtml,
+    /<meta(?=[^>]*\bproperty="og:title")(?=[^>]*\bcontent="Feedback[^"]*")[^>]*>/u,
+  );
+  assert.match(
+    feedbackHtml,
+    /<meta(?=[^>]*\bproperty="og:description")(?=[^>]*\bcontent="[^"]*[Ff]eedback[^"]*")[^>]*>/u,
+  );
+  assert.match(
+    feedbackHtml,
+    /<meta(?=[^>]*\bname="twitter:title")(?=[^>]*\bcontent="Feedback[^"]*")[^>]*>/u,
+  );
+  assert.match(
+    feedbackHtml,
+    /<meta(?=[^>]*\bname="twitter:description")(?=[^>]*\bcontent="[^"]*[Ff]eedback[^"]*")[^>]*>/u,
+  );
+  assert.match(
+    feedbackHtml,
+    /aria-label="Breadcrumb"[\s\S]*?aria-current="page">Feedback<\/span>/u,
+  );
+  assert.match(feedbackHtml, /<h1[^>]*>[^<]*[Ff]eedback[^<]*<\/h1>/u);
+  assert.match(
+    feedbackHtml,
+    /<section(?=[^>]*data-form-key="contact")[^>]*>[\s\S]*?<h2[^>]*>Feedback<\/h2>/u,
+  );
+  assert.doesNotMatch(feedbackHtml, /Send a private inquiry/u);
+  assert.doesNotMatch(
+    feedbackHtml,
+    /<a[^>]*href="\/contact"[^>]*>Contact<\/a>/u,
+  );
+  assertNoPrivateSentinels(feedbackHtml);
+
+  const homeResponse = await fetchPath("/");
+  assert.equal(homeResponse.status, 200);
+  const homeHtml = await homeResponse.text();
+  assert.match(
+    homeHtml,
+    /class="home-invitation__actions"[\s\S]*?<a[^>]*href="\/get-involved"[^>]*>Get involved<\/a>/u,
+  );
+
+  const getInvolvedResponse = await fetchPath("/get-involved");
+  assert.equal(getInvolvedResponse.status, 200);
+  const getInvolvedHtml = await getInvolvedResponse.text();
+  assert.match(
+    getInvolvedHtml,
+    /<a(?=[^>]*data-contribution-path="host")(?=[^>]*href="\/host-an-event")[^>]*>[\s\S]*?<strong>Host an event<\/strong>/u,
+  );
+});
+
 test("the retired Community destination redirects to Contribute", async () => {
   const response = await fetchPath("/community");
   assert.equal(response.status, 200);

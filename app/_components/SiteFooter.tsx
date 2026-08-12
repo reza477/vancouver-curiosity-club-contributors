@@ -113,7 +113,7 @@ function normalizedFooterNavigation(
     { href: "/clubs", label: "Clubs" },
     { href: "/about", label: "About" },
     { href: "/get-involved", label: "Get Involved" },
-    { href: "/contact", label: "Contact" },
+    { href: "/contact", label: "Feedback" },
   ] as const;
   const fallbackPolicies = [
     { href: "/conduct", label: "Code of Conduct" },
@@ -131,10 +131,14 @@ function normalizedFooterNavigation(
   const explore: PublicNavigationItemDto[] = [];
   const policies: PublicNavigationItemDto[] = [];
   for (const sourceItem of source) {
-    const item =
+    const normalizedItem =
       sourceItem.href === "/calendar"
         ? { ...sourceItem, href: "/events", label: "Events" }
         : sourceItem;
+    const item =
+      normalizedItem.href === "/contact"
+        ? { ...normalizedItem, label: "Feedback" }
+        : normalizedItem;
     if (
       item.href === "/organizer" ||
       item.href === "/community" ||

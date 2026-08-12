@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return buildEditorialMetadata({
-    fallbackTitle: "Contact",
+    fallbackTitle: "Feedback",
     path: route,
     route,
     slug,
@@ -25,7 +25,7 @@ export default async function ContactPage() {
   const loaded = await loadEditorialPage(slug, route);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "unavailable") {
-    return <EditorialUnavailable title="Contact" />;
+    return <EditorialUnavailable title="Feedback" />;
   }
 
   return (
