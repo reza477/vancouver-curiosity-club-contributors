@@ -10,6 +10,10 @@ import { AddToCalendar } from "./AddToCalendar";
 import { EventPosterImage } from "./EventPosterImage";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import {
+  publicEventCapacityLabel,
+  publicEventLocationParts,
+} from "@/lib/public-event-facts";
+import {
   eventOccursOnCalendarDate,
   formatPublicCalendarDate,
   formatPublicCalendarEventTime,
@@ -468,6 +472,8 @@ function CalendarEventPreview({
   event: PublicEventCardDto;
   siteOrigin: string | null;
 }>) {
+  const locationParts = publicEventLocationParts(event);
+  const capacity = publicEventCapacityLabel(event);
   const location =
     event.attendanceMode === "online"
       ? "Online"
@@ -531,9 +537,19 @@ function CalendarEventPreview({
             {event.title}
           </Link>
         </h4>
-        {event.venue?.address ? (
+        {locationParts.length > 1 ? (
           <p className="public-calendar-event__location">
-            {event.venue.address}
+            {locationParts.slice(1).join(" · ")}
+          </p>
+        ) : null}
+        {capacity ? (
+          <p className="public-calendar-event__registration">
+            Capacity {capacity}
+          </p>
+        ) : null}
+        {event.arrivalInstructions ? (
+          <p className="public-calendar-event__arrival">
+            Arrival: {event.arrivalInstructions}
           </p>
         ) : null}
         {event.summary ? <p>{event.summary}</p> : null}

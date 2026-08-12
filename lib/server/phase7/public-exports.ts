@@ -23,6 +23,7 @@ import {
   validationIssue,
 } from "../../validation";
 import { SafeApplicationError } from "../../validation/server-observability";
+import { publicEventLocationLabel } from "../../public-event-facts";
 import {
   buildCsv,
   buildIcalendar,
@@ -193,8 +194,14 @@ export async function createFilteredPublicCsvDownload(
       schedule.timeZone,
       event.attendanceMode,
       publicVenueLabel(event),
+      event.venue?.floor ?? null,
+      event.venue?.room ?? null,
+      event.arrivalInstructions,
+      event.capacity,
+      event.waitlistAvailable,
       event.availabilityState,
       event.costText,
+      event.agePolicyText,
       event.rsvpUrl,
       event.isCancelled ? "cancelled" : event.status,
     ];
@@ -215,8 +222,14 @@ export async function createFilteredPublicCsvDownload(
         "timezone",
         "attendance_mode",
         "public_venue",
+        "floor",
+        "room",
+        "arrival_instructions",
+        "capacity",
+        "waitlist_available",
         "availability",
         "cost",
+        "age_policy",
         "public_rsvp_url",
         "status",
       ],
@@ -353,10 +366,7 @@ async function toCalendarComponent(
 }
 
 function publicVenueLabel(event: PublicEventExportDto): string | null {
-  if (!event.venue) return null;
-  return [event.venue.name, event.venue.address]
-    .filter((value): value is string => Boolean(value))
-    .join(" — ");
+  return publicEventLocationLabel(event, " — ");
 }
 
 function publicScheduleFields(

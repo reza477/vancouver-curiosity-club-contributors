@@ -85,6 +85,13 @@
       "when": 1786494324755,
       "tag": "0019_meetup_event_lanes",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1786498488031,
+      "tag": "0020_meetup_public_event_facts",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import type { PublicEventCardDto } from "./server/public/events";
+import { publicEventLocationLabel } from "./public-event-facts";
 
 const CALENDAR_MONTH_PATTERN = /^(\d{4})-(\d{2})$/u;
 const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/u;
@@ -214,9 +215,7 @@ export function googleCalendarEventUrl(
     canonicalUrl ? `Event details: ${canonicalUrl}` : null,
   ].filter((value): value is string => Boolean(value));
   if (details.length > 0) parameters.set("details", details.join("\n\n"));
-  const location = event.venue
-    ? [event.venue.name, event.venue.address].filter(Boolean).join(", ")
-    : null;
+  const location = publicEventLocationLabel(event);
   if (location) parameters.set("location", location);
   if (event.schedule.kind === "timed") {
     parameters.set("ctz", event.schedule.timeZone);

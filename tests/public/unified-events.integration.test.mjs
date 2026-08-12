@@ -636,10 +636,15 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
   );
   assert.ok(manual);
   assert.deepEqual(Object.keys(manual).sort(), [
+    "agePolicyText",
+    "arrivalInstructions",
     "artwork",
     "attendanceMode",
+    "availabilityState",
+    "capacity",
     "category",
     "club",
+    "costText",
     "isCancelled",
     "lane",
     "program",
@@ -651,11 +656,17 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "summary",
     "title",
     "venue",
+    "waitlistAvailable",
   ]);
   assert.equal(manual.artwork, null);
   assert.equal(manual.rsvpMode, null);
   assert.deepEqual(Object.keys(manual.club).sort(), ["name", "slug"]);
-  assert.deepEqual(Object.keys(manual.venue).sort(), ["address", "name"]);
+  assert.deepEqual(Object.keys(manual.venue).sort(), [
+    "address",
+    "floor",
+    "name",
+    "room",
+  ]);
   assert.equal(manual.attendanceMode, "in-person");
   assert.deepEqual(manual.club, {
     name: "Vancouver Curiosity Club",
@@ -669,7 +680,9 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
   });
   assert.deepEqual(manual.venue, {
     address: "100 Public Test Street",
+    floor: null,
     name: "Public Reading Room",
+    room: null,
   });
   const withheldLocation = page.events.find(
     (event) => event.slug === "published-event-with-withheld-location",
@@ -684,6 +697,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
   });
   assert.ok(detail);
   assert.deepEqual(Object.keys(detail).sort(), [
+    "agePolicyText",
     "arrivalInstructions",
     "artwork",
     "attendanceMode",
@@ -713,6 +727,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "title",
     "venue",
     "verifiedAccessibilityNotes",
+    "waitlistAvailable",
     "weatherNote",
     "whatToBring",
   ]);
@@ -826,7 +841,9 @@ test("owner venue selection atomically overrides or suppresses synchronized Meet
   );
   assert.deepEqual(event?.venue, {
     address: null,
+    floor: null,
     name: "Owner Public Venue",
+    room: null,
   });
   assert.equal(JSON.stringify(event).includes("900 Source Address"), false);
 
@@ -851,7 +868,9 @@ test("owner venue selection atomically overrides or suppresses synchronized Meet
   );
   assert.deepEqual(event?.venue, {
     address: "900 Source Address",
+    floor: null,
     name: "Meetup Source Venue",
+    room: null,
   });
   assert.equal(event?.attendanceMode, "in-person");
 
@@ -1105,6 +1124,101 @@ test("all exact cross-post aliases stay out of public projections while the cano
   }
   assert.ok(sitemap.includes("exact-alias-canonical"));
   assert.ok(sitemap.includes("wednesday-night-reset"));
+
+  await t.test(
+    "Wednesday Night Reset keeps its structured room and capacity through public projections",
+    async () => {
+      const card = page.events.find(
+        (event) => event.slug === "wednesday-night-reset",
+      );
+      const detail = await getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: "wednesday-night-reset",
+      });
+      const exportRecord = exports.find(
+        (record) => record.event.slug === "wednesday-night-reset",
+      );
+      assert.ok(card);
+      assert.ok(detail);
+      assert.ok(exportRecord);
+      assert.deepEqual(
+        {
+          card: {
+            availabilityState: card.availabilityState,
+            capacity: card.capacity,
+            floor: card.venue?.floor,
+            room: card.venue?.room,
+            waitlistAvailable: card.waitlistAvailable,
+          },
+          detail: {
+            arrivalInstructions: detail.arrivalInstructions,
+            availabilityState: detail.availabilityState,
+            capacity: detail.capacity,
+            floor: detail.venue?.floor,
+            room: detail.venue?.room,
+            waitlistAvailable: detail.waitlistAvailable,
+          },
+          export: {
+            availabilityState: exportRecord.event.availabilityState,
+            capacity: exportRecord.event.capacity,
+            floor: exportRecord.event.venue?.floor,
+            room: exportRecord.event.venue?.room,
+            waitlistAvailable: exportRecord.event.waitlistAvailable,
+          },
+        },
+        {
+          card: {
+            availabilityState: null,
+            capacity: 12,
+            floor: "Level 4",
+            room: "Room 492 South",
+            waitlistAvailable: true,
+          },
+          detail: {
+            arrivalInstructions: "Please arrive on time so we can begin together.",
+            availabilityState: null,
+            capacity: 12,
+            floor: "Level 4",
+            room: "Room 492 South",
+            waitlistAvailable: true,
+          },
+          export: {
+            availabilityState: null,
+            capacity: 12,
+            floor: "Level 4",
+            room: "Room 492 South",
+            waitlistAvailable: true,
+          },
+        },
+      );
+    },
+  );
+
+  await t.test(
+    "Wednesday Night Reset includes its room in the one-event ICS location",
+    async () => {
+      database.exec(
+        `UPDATE organizations
+         SET slug = 'vancouver-curiosity-and-education-society'
+         WHERE id = '${ORGANIZATION_ID}'`,
+      );
+      const download = await createOneEventIcsDownload(database, {
+        generatedAt: NOW_UTC_MS,
+        origin: "https://site.synthetic.invalid",
+        slug: "wednesday-night-reset",
+      });
+      assert.ok(download);
+      const unfolded = download.body.replaceAll("\r\n ", "");
+      assert.match(
+        unfolded,
+        /LOCATION:Vancouver Central Library[^\r\n]*350 West Georgia Street\\, Vancouver\\, BC[^\r\n]*Level 4[^\r\n]*Room 492 South\r\n/u,
+      );
+      assert.doesNotMatch(
+        unfolded.match(/LOCATION:[^\r\n]*\r\n/u)?.[0] ?? "",
+        /Please arrive on time/u,
+      );
+    },
+  );
 });
 
 test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gathering", async (t) => {
@@ -1349,8 +1463,11 @@ test("public export projection is bounded, exact-materialization verified, and a
   );
   assert.ok(manual);
   assert.deepEqual(Object.keys(manual.event).sort(), [
+    "agePolicyText",
+    "arrivalInstructions",
     "attendanceMode",
     "availabilityState",
+    "capacity",
     "category",
     "club",
     "costText",
@@ -1365,6 +1482,7 @@ test("public export projection is bounded, exact-materialization verified, and a
     "summary",
     "title",
     "venue",
+    "waitlistAvailable",
   ]);
   const record = await getPublicEventExportRecordBySlug(database, {
     organizationId: ORGANIZATION_ID,
@@ -2923,7 +3041,9 @@ test("canonical organizer events publish from allowlisted sidecars only", async 
   assert.equal(card.attendanceMode, "hybrid");
   assert.deepEqual(card.venue, {
     address: "100 Approved Public Street",
+    floor: null,
     name: "Approved Public Room",
+    room: null,
   });
 
   const detail = await getPublicEventBySlug(database, {

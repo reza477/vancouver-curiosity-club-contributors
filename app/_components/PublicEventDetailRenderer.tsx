@@ -11,6 +11,10 @@ import {
   type CuratedMeetupDescriptionInline,
 } from "@/lib/meetup-event-enrichment";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
+import {
+  publicEventCapacityLabel,
+  publicEventLocationParts,
+} from "@/lib/public-event-facts";
 import type { PublicEventDetailDto } from "@/lib/server/public/events";
 
 export function PublicEventDetailRenderer({
@@ -25,6 +29,8 @@ export function PublicEventDetailRenderer({
   showShareControls?: boolean;
 }>) {
   const schedule = formatEventSchedule(event);
+  const locationParts = publicEventLocationParts(event);
+  const capacity = publicEventCapacityLabel(event);
 
   return (
     <>
@@ -144,8 +150,11 @@ export function PublicEventDetailRenderer({
                     {event.venue ? (
                       <>
                         {event.venue.name}
-                        {event.venue.address ? (
-                          <span>{event.venue.address}</span>
+                        {locationParts.slice(1).map((part) => (
+                          <span key={part}>{part}</span>
+                        ))}
+                        {event.arrivalInstructions ? (
+                          <span>{event.arrivalInstructions}</span>
                         ) : null}
                         {event.externalMapUrl ? (
                           <span>
@@ -200,10 +209,16 @@ export function PublicEventDetailRenderer({
                     <dd>{event.costText}</dd>
                   </div>
                 ) : null}
-                {event.capacity ? (
+                {capacity ? (
                   <div>
                     <dt>Capacity</dt>
-                    <dd>{event.capacity.toLocaleString("en-CA")}</dd>
+                    <dd>{capacity}</dd>
+                  </div>
+                ) : null}
+                {event.agePolicyText ? (
+                  <div>
+                    <dt>Age</dt>
+                    <dd>{event.agePolicyText}</dd>
                   </div>
                 ) : null}
               </dl>
@@ -302,9 +317,6 @@ export function PublicEventDetailRenderer({
           ) : null}
           {event.whatToBring ? (
             <PublicNote heading="What to bring" text={event.whatToBring} />
-          ) : null}
-          {event.arrivalInstructions ? (
-            <PublicNote heading="Arrival" text={event.arrivalInstructions} />
           ) : null}
           {event.weatherNote ? (
             <PublicNote heading="Weather note" text={event.weatherNote} />

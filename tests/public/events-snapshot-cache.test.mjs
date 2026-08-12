@@ -203,7 +203,7 @@ test("a valid edge snapshot bypasses D1 and is returned without a rewrite", asyn
   const edge = seededEdgeCache(
     JSON.stringify(
       emptySnapshotEnvelope(cacheKey, {
-        events: [publicEventCard()],
+        events: [publicEventCard(), publicEventCardWithoutVenueDetails()],
       }),
     ),
   );
@@ -217,7 +217,7 @@ test("a valid edge snapshot bypasses D1 and is returned without a rewrite", asyn
     { edgeCache: edge.cache },
   );
 
-  assert.equal(loaded.calendar.events.length, 1);
+  assert.equal(loaded.calendar.events.length, 2);
   assert.equal(loaded.calendar.events[0].slug, "cached-public-event");
   assert.equal(loaded.calendar.events[0].title, "Cached public event");
   assert.deepEqual(
@@ -234,6 +234,27 @@ test("a valid edge snapshot bypasses D1 and is returned without a rewrite", asyn
     loaded.calendar.events[0].venue?.address?.length,
     544,
     "the cache preserves a curated Meetup address with city and state",
+  );
+  assert.deepEqual(
+    {
+      floor: loaded.calendar.events[0].venue?.floor,
+      room: loaded.calendar.events[0].venue?.room,
+    },
+    { floor: "Level 4", room: "Room 492 South" },
+    "the cache preserves optional structured floor and room facts",
+  );
+  assert.deepEqual(
+    Object.keys(loaded.calendar.events[1].venue ?? {}).sort(),
+    ["address", "floor", "name", "room"],
+    "the cache preserves the stable nullable venue shape",
+  );
+  assert.deepEqual(
+    {
+      floor: loaded.calendar.events[1].venue?.floor,
+      room: loaded.calendar.events[1].venue?.room,
+    },
+    { floor: null, room: null },
+    "a venue without structured details keeps explicit null facts",
   );
   assert.doesNotMatch(JSON.stringify(loaded), /private|sentinel/iu);
   assert.equal(
@@ -470,7 +491,7 @@ function emptySnapshotEnvelope(cacheKey, options = {}) {
     cacheKey,
     data: emptySnapshotPayload(options),
     expiresAtUtcMs: NOW_UTC_MS + TEN_MINUTES_MS,
-    schemaVersion: 2,
+    schemaVersion: 3,
   };
 }
 
@@ -485,6 +506,8 @@ function privateEventCard() {
 
 function publicEventCard() {
   return {
+    agePolicyText: null,
+    arrivalInstructions: null,
     attendanceMode: "in-person",
     artwork: {
       altText: "A horizontal event poster",
@@ -503,7 +526,10 @@ function publicEventCard() {
       url: "/event-posters/cache-test.jpeg",
     },
     category: null,
+    availabilityState: null,
+    capacity: null,
     club: { name: "Cache Test Club", slug: "cache-test-club" },
+    costText: null,
     isCancelled: false,
     lane: null,
     program: null,
@@ -521,7 +547,24 @@ function publicEventCard() {
     title: "Cached public event",
     venue: {
       address: "A".repeat(544),
+      floor: "Level 4",
       name: "V".repeat(250),
+      room: "Room 492 South",
+    },
+    waitlistAvailable: null,
+  };
+}
+
+function publicEventCardWithoutVenueDetails() {
+  return {
+    ...publicEventCard(),
+    slug: "cached-public-event-without-venue-details",
+    title: "Cached public event without venue details",
+    venue: {
+      address: "100 Public Street",
+      floor: null,
+      name: "Public room",
+      room: null,
     },
   };
 }

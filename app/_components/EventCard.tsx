@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
+import {
+  publicEventCapacityLabel,
+  publicEventLocationParts,
+} from "@/lib/public-event-facts";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 
 export function EventCard({
@@ -13,6 +17,8 @@ export function EventCard({
   priority?: boolean;
 }>) {
   const schedule = formatEventSchedule(event);
+  const locationParts = publicEventLocationParts(event);
+  const capacity = publicEventCapacityLabel(event);
   const location =
     event.attendanceMode === "online"
       ? "Online"
@@ -122,11 +128,37 @@ export function EventCard({
             <dt>Where</dt>
             <dd>
               <span>{location}</span>
-              {event.attendanceMode !== "online" && event.venue?.address ? (
-                <span>{event.venue.address}</span>
-              ) : null}
+              {event.attendanceMode !== "online"
+                ? locationParts.slice(1).map((part) => (
+                    <span key={part}>{part}</span>
+                  ))
+                : null}
             </dd>
           </div>
+          {event.arrivalInstructions ? (
+            <div>
+              <dt>Arrival</dt>
+              <dd>{event.arrivalInstructions}</dd>
+            </div>
+          ) : null}
+          {capacity ? (
+            <div>
+              <dt>Capacity</dt>
+              <dd>{capacity}</dd>
+            </div>
+          ) : null}
+          {event.costText ? (
+            <div>
+              <dt>Cost</dt>
+              <dd>{event.costText}</dd>
+            </div>
+          ) : null}
+          {event.agePolicyText ? (
+            <div>
+              <dt>Age</dt>
+              <dd>{event.agePolicyText}</dd>
+            </div>
+          ) : null}
         </dl>
       </div>
       <Link

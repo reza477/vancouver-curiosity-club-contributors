@@ -13,6 +13,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import { extractMeetupPublicEventFacts } from "../lib/meetup-public-event-facts.js";
 
 const DEFAULT_WORKSPACE_ROOT = process.cwd();
 
@@ -273,6 +274,9 @@ export async function refreshCuratedMeetupEnrichment({
       const { blocks: descriptionBlocks, plainText: description } =
         publicDescription;
       const venue = normalizePublicVenue(event.venue);
+      const publicEventFacts = extractMeetupPublicEventFacts(description, {
+        hasPublicVenue: venue !== null,
+      });
       const summary = normalizePublicSafeSingleLine(
         deriveSummary(description),
         "event summary",
@@ -281,6 +285,7 @@ export async function refreshCuratedMeetupEnrichment({
       );
       manifestEvents.push(
         Object.freeze({
+          ...publicEventFacts,
           description,
           descriptionBlocks,
           eventId,
@@ -298,7 +303,7 @@ export async function refreshCuratedMeetupEnrichment({
     );
     await writeFile(
       stagingManifestPath,
-      `${JSON.stringify({ schemaVersion: 2, events: manifestEvents }, null, 2)}\n`,
+      `${JSON.stringify({ schemaVersion: 3, events: manifestEvents }, null, 2)}\n`,
       "utf8",
     );
     await publishStagedGeneration({

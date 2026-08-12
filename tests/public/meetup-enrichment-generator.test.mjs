@@ -189,7 +189,7 @@ test("a fully validated generation publishes staged outputs and then removes onl
     const manifestText = await readFile(manifestPath, "utf8");
     assert.equal(manifestText.endsWith("\n"), true);
     const manifest = JSON.parse(manifestText);
-    assert.equal(manifest.schemaVersion, 2);
+    assert.equal(manifest.schemaVersion, 3);
     assert.equal(manifest.events.length, 1);
     assert.equal(manifest.events[0].eventId, TEST_EVENT_ID);
     assert.equal(manifest.events[0].eventUrl, TEST_EVENT_URL);

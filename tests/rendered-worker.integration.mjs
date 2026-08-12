@@ -306,6 +306,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0017_bright_captain_america.sql",
     "0018_public_event_calendar_snapshots.sql",
     "0019_meetup_event_lanes.sql",
+    "0020_meetup_public_event_facts.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -344,6 +345,32 @@ test("the packaged migration contract installs and enforces the exact runtime gu
   }
 
   const database = await runtime.getD1Database("DB");
+  const meetupPublicContentColumns = await database
+    .prepare(
+      `SELECT name
+       FROM pragma_table_info('meetup_event_snapshot_public_contents')
+       WHERE name IN (
+         'public_floor', 'public_room', 'capacity', 'cost_text',
+         'age_policy_text', 'waitlist_available', 'availability_state',
+         'arrival_instructions'
+       )
+       ORDER BY name`,
+    )
+    .all();
+  assert.deepEqual(
+    meetupPublicContentColumns.results.map((row) => row.name),
+    [
+      "age_policy_text",
+      "arrival_instructions",
+      "availability_state",
+      "capacity",
+      "cost_text",
+      "public_floor",
+      "public_room",
+      "waitlist_available",
+    ],
+    "the packaged 0020 migration must install every Meetup public-fact column",
+  );
   const marker = await database
     .prepare(
       `SELECT version, trigger_fingerprint

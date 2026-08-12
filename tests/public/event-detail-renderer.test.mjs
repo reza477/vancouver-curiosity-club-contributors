@@ -47,6 +47,28 @@ const TORONTO_EVENT = Object.freeze({
   whatToBring: null,
 });
 
+function wednesdayResetEvent() {
+  return Object.freeze({
+    ...TORONTO_EVENT,
+    arrivalInstructions: "Please arrive on time so we can begin together.",
+    attendanceMode: "in-person",
+    availabilityState: null,
+    capacity: 12,
+    club: Object.freeze({
+      name: "Vancouver Curiosity Club",
+      slug: "vancouver-curiosity-club",
+    }),
+    title: "Wednesday Night Reset",
+    venue: Object.freeze({
+      address: "350 West Georgia Street, Vancouver, BC",
+      floor: "Level 4",
+      name: "Vancouver Central Library",
+      room: "Room 492 South",
+    }),
+    waitlistAvailable: true,
+  });
+}
+
 function renderImportedMeetupDescription(eventId) {
   const imported = CURATED_MEETUP_EVENT_ENRICHMENTS[eventId];
   assert.ok(imported, `Missing curated Meetup event ${eventId}`);
@@ -290,6 +312,40 @@ test("event cards lead with a poster and expose verified associations and locati
   assert.match(markup, /Vancouver Public Library/u);
   assert.match(markup, /350 W Georgia Street, Vancouver/u);
   assert.doesNotMatch(markup, /Location undecided/u);
+});
+
+test("Wednesday Night Reset surfaces its room and waitlist capacity on event cards", () => {
+  const cardMarkup = renderToStaticMarkup(
+    createElement(EventCard, { compact: true, event: wednesdayResetEvent() }),
+  );
+  assert.match(cardMarkup, /Level 4/u);
+  assert.match(cardMarkup, /Room 492 South/u);
+  assert.match(
+    cardMarkup.replace(/<[^>]+>/gu, " "),
+    /12\s+\+\s+waitlist/iu,
+  );
+});
+
+test("Wednesday Night Reset surfaces its room and waitlist capacity in essentials", () => {
+  const detailMarkup = renderToStaticMarkup(
+    createElement(PublicEventDetailRenderer, {
+      canonicalUrl: "https://preview.example/events/wednesday-night-reset",
+      event: wednesdayResetEvent(),
+      showCalendarDownload: true,
+      showShareControls: false,
+    }),
+  );
+  const essentials = detailMarkup.match(
+    /<section class="event-detail__facts"[\s\S]*?<\/section>/u,
+  )?.[0];
+  assert.ok(essentials, "the essentials section must render");
+  assert.match(essentials, /Level 4/u);
+  assert.match(essentials, /Room 492 South/u);
+  assert.match(
+    essentials.replace(/<[^>]+>/gu, " "),
+    /Capacity\s+12\s+\+\s+waitlist/iu,
+    "capacity and waitlist status must appear as one useful essential fact",
+  );
 });
 
 test("event leads keep RSVP and lane-specific poster fallback near the title", () => {

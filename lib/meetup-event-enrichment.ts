@@ -1,4 +1,9 @@
 import generatedManifest from "./meetup-event-enrichment.generated.json";
+import {
+  extractMeetupPublicEventFacts,
+  validateMeetupPublicEventFactsCandidate,
+} from "./meetup-public-event-facts.js";
+import type { MeetupPublicEventFacts } from "./meetup-public-event-facts.js";
 
 const ALLOWED_MEETUP_GROUP_SLUGS = Object.freeze([
   "vancouver-fantasy-scifi-meetup-group",
@@ -73,7 +78,7 @@ export type CuratedMeetupEventEnrichment = Readonly<{
     name: string;
     state: string | null;
   }> | null;
-}>;
+}> & MeetupPublicEventFacts;
 
 export type CuratedMeetupDescriptionInline =
   | Readonly<{ text: string; type: "strong" | "text" }>
@@ -100,7 +105,7 @@ export type CuratedMeetupPosterVariant = Readonly<{
   width: number;
 }>;
 
-if (generatedManifest.schemaVersion !== 2) {
+if (generatedManifest.schemaVersion !== 3) {
   throw new Error("Unsupported curated Meetup enrichment schema.");
 }
 
@@ -253,8 +258,15 @@ export function validateCuratedMeetupEventCandidate(
     ? null
     : validateCuratedMeetupPoster(candidate.eventId, candidate.poster);
   const venue = normalizePublicVenue(candidate.venue);
+  const publicEventFacts = validateMeetupPublicEventFactsCandidate(
+    candidate,
+    extractMeetupPublicEventFacts(description, {
+      hasPublicVenue: venue !== null,
+    }),
+  );
   return Object.freeze({
     ...candidate,
+    ...publicEventFacts,
     description,
     descriptionBlocks,
     groupSlug: candidate.groupSlug as AllowedMeetupGroupSlug,

@@ -251,7 +251,9 @@ test("a public Meetup event card uses its curated poster before category fallbac
   assert.match(card.summary ?? "", /Friendship is one of those words/u);
   assert.deepEqual(card.venue, {
     address: "350 West Georgia Street, Vancouver, BC",
+    floor: "8th floor",
     name: "Vancouver Central Library",
+    room: null,
   });
   assert.doesNotMatch(
     JSON.stringify(card),
@@ -559,8 +561,105 @@ test("verified Meetup content fills only missing public fields", () => {
   assert.equal(ownerAuthored.summary, "Owner-authored public summary.");
   assert.deepEqual(ownerAuthored.venue, {
     address: "Owner-authored public address",
+    floor: null,
     name: "Owner-authored public venue",
+    room: null,
   });
+});
+
+function wednesdayResetProjectionRow() {
+  return {
+    all_day_end_date_exclusive: null,
+    all_day_start_date: null,
+    arrival_instructions: null,
+    artwork_usage_count: 0,
+    attendance_mode: "in_person",
+    availability_state: null,
+    capacity: null,
+    category_color_token: null,
+    category_name: null,
+    category_slug: null,
+    club_name: "Vancouver Curiosity Club",
+    club_slug: "vancouver-curiosity-club",
+    description: null,
+    ends_at_utc: Date.parse("2026-08-13T03:00:00.000Z"),
+    event_status: "confirmed",
+    lane_name: "Reset & Make",
+    lane_slug: "reset-and-make",
+    organizer_names_json: "[]",
+    program_name: null,
+    program_slug: null,
+    public_slug_count: 1,
+    rsvp_mode: "meetup",
+    rsvp_url:
+      "https://www.meetup.com/vancouver-meetup-group/events/316010049/",
+    slug: "wednesday-night-reset",
+    starts_at_utc: Date.parse("2026-08-13T01:00:00.000Z"),
+    summary: null,
+    time_kind: "timed",
+    timezone: "America/Vancouver",
+    title: "Wednesday Night Reset",
+    venue_public_address: null,
+    venue_public_name: null,
+  };
+}
+
+test("Wednesday Night Reset enrichment stores its verified room and waitlist capacity", () => {
+  const eventUrl =
+    "https://www.meetup.com/vancouver-meetup-group/events/316010049/";
+  const enrichment = curatedMeetupEventForEventUrl(eventUrl);
+  assert.ok(enrichment);
+  assert.deepEqual(
+    {
+      arrivalInstructions: enrichment.arrivalInstructions,
+      availabilityState: enrichment.availabilityState,
+      capacity: enrichment.capacity,
+      floor: enrichment.publicFloor,
+      room: enrichment.publicRoom,
+      waitlistAvailable: enrichment.waitlistAvailable,
+    },
+    {
+      arrivalInstructions: "Please arrive on time so we can begin together.",
+      availabilityState: null,
+      capacity: 12,
+      floor: "Level 4",
+      room: "Room 492 South",
+      waitlistAvailable: true,
+    },
+  );
+});
+
+test("Wednesday Night Reset structured facts survive card and detail projections", () => {
+  const row = wednesdayResetProjectionRow();
+  const card = toPublicEventCardDto(row);
+  const detail = toPublicEventDetailDto(row);
+
+  for (const [surface, event] of [
+    ["card", card],
+    ["detail", detail],
+  ]) {
+    assert.deepEqual(
+      {
+        availabilityState: event.availabilityState,
+        capacity: event.capacity,
+        floor: event.venue?.floor,
+        room: event.venue?.room,
+        waitlistAvailable: event.waitlistAvailable,
+      },
+      {
+        availabilityState: null,
+        capacity: 12,
+        floor: "Level 4",
+        room: "Room 492 South",
+        waitlistAvailable: true,
+      },
+      `${surface} projection lost the verified Meetup arrival facts`,
+    );
+  }
+  assert.equal(
+    detail.arrivalInstructions,
+    "Please arrive on time so we can begin together.",
+  );
 });
 
 test("the generated enrichment manifest is bounded and public safe", () => {
@@ -579,11 +678,14 @@ test("the generated enrichment manifest is bounded and public safe", () => {
     for (const value of [
       event.summary,
       event.description,
+      event.arrivalInstructions,
       event.poster?.altText,
       event.poster?.credit,
       event.venue?.name,
       event.venue?.address,
       event.venue?.city,
+      event.venue?.floor,
+      event.venue?.room,
       event.venue?.state,
     ].filter(Boolean)) {
       assert.doesNotMatch(
@@ -671,13 +773,15 @@ test("every exact enrichment survives the public card and detail projections", (
       card.venue,
       event.venue === null
         ? null
-        : {
+          : {
             address: [
               event.venue.address,
               event.venue.city,
               event.venue.state,
             ].filter(Boolean).join(", ") || null,
+            floor: event.publicFloor,
             name: event.venue.name,
+            room: event.publicRoom,
           },
       event.eventId,
     );
@@ -747,15 +851,22 @@ test("curated description links fail closed at the runtime boundary", () => {
 });
 
 test("hidden or absent Meetup venues remain null while a public name may stand alone", () => {
-  const baseline = CURATED_MEETUP_EVENT_ENRICHMENTS["315772533"];
+  const baseline = CURATED_MEETUP_EVENT_ENRICHMENTS["315508432"];
   assert.ok(baseline);
   assert.equal(
-    validateCuratedMeetupEventCandidate({ ...baseline, venue: null }).venue,
+    validateCuratedMeetupEventCandidate({
+      ...baseline,
+      publicFloor: null,
+      publicRoom: null,
+      venue: null,
+    }).venue,
     null,
   );
   assert.equal(
     validateCuratedMeetupEventCandidate({
       ...baseline,
+      publicFloor: null,
+      publicRoom: null,
       venue: {
         address: "https://must-not-be-read.invalid/hidden",
         city: null,
@@ -768,6 +879,8 @@ test("hidden or absent Meetup venues remain null while a public name may stand a
   assert.deepEqual(
     validateCuratedMeetupEventCandidate({
       ...baseline,
+      publicFloor: null,
+      publicRoom: null,
       venue: {
         address: null,
         city: null,

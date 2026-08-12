@@ -28,7 +28,7 @@ import { writeSafeLog } from "@/lib/validation/server-observability";
 
 export const PUBLIC_EVENTS_SNAPSHOT_TTL_MS = 10 * 60 * 1_000;
 export const PUBLIC_EVENTS_SNAPSHOT_MAX_BYTES = 1_000_000;
-const PUBLIC_EVENTS_SNAPSHOT_SCHEMA_VERSION = 2;
+const PUBLIC_EVENTS_SNAPSHOT_SCHEMA_VERSION = 3;
 const PUBLIC_EVENTS_MAX_CALENDAR_EVENTS = 96;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const MONTH_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])$/u;
@@ -428,10 +428,15 @@ function parseEventCard(value: unknown, index: number): PublicEventCardDto {
   assertOnlyKeys(
     event,
     [
+      "agePolicyText",
+      "arrivalInstructions",
       "attendanceMode",
       "artwork",
+      "availabilityState",
+      "capacity",
       "category",
       "club",
+      "costText",
       "isCancelled",
       "lane",
       "program",
@@ -443,6 +448,7 @@ function parseEventCard(value: unknown, index: number): PublicEventCardDto {
       "summary",
       "title",
       "venue",
+      "waitlistAvailable",
     ],
     path,
   );
@@ -480,18 +486,46 @@ function parseEventCard(value: unknown, index: number): PublicEventCardDto {
     throw new Error("The cached event status is inconsistent.");
   }
   return Object.freeze({
+    agePolicyText: parseOptionalBoundedString(event.agePolicyText, {
+      path: `${path}.agePolicyText`,
+      maxLength: 500,
+    }),
+    arrivalInstructions: parseOptionalBoundedString(
+      event.arrivalInstructions,
+      { path: `${path}.arrivalInstructions`, maxLength: 4_000 },
+    ),
     attendanceMode: parseEnum(
       event.attendanceMode,
       PUBLIC_EVENT_ATTENDANCE_MODES,
       `${path}.attendanceMode`,
     ),
     artwork: parseArtwork(event.artwork, `${path}.artwork`),
+    availabilityState:
+      event.availabilityState === null
+        ? null
+        : parseEnum(
+            event.availabilityState,
+            ["full", "open", "waitlist"] as const,
+            `${path}.availabilityState`,
+          ),
+    capacity:
+      event.capacity === null
+        ? null
+        : parseFiniteInteger(event.capacity, {
+            path: `${path}.capacity`,
+            minimum: 1,
+            maximum: 1_000_000,
+          }),
     category: parseNamedEntity(
       event.category,
       `${path}.category`,
       true,
     ),
     club,
+    costText: parseOptionalBoundedString(event.costText, {
+      path: `${path}.costText`,
+      maxLength: 500,
+    }),
     isCancelled: event.isCancelled,
     lane: parseNamedEntity(event.lane, `${path}.lane`, false),
     program: parseNamedEntity(event.program, `${path}.program`, false),
@@ -509,6 +543,10 @@ function parseEventCard(value: unknown, index: number): PublicEventCardDto {
       maxLength: 200,
     }),
     venue: parseVenue(event.venue, `${path}.venue`),
+    waitlistAvailable: parseOptionalBoolean(
+      event.waitlistAvailable,
+      `${path}.waitlistAvailable`,
+    ),
   });
 }
 
@@ -565,17 +603,35 @@ function parseVenue(
 ): PublicEventCardDto["venue"] {
   if (value === null) return null;
   const venue = parseObject(value, path);
-  assertOnlyKeys(venue, ["address", "name"], path);
+  assertOnlyKeys(venue, ["address", "floor", "name", "room"], path);
+  const floor = parseOptionalBoundedString(venue.floor, {
+    path: `${path}.floor`,
+    maxLength: 120,
+  });
+  const room = parseOptionalBoundedString(venue.room, {
+    path: `${path}.room`,
+    maxLength: 160,
+  });
   return Object.freeze({
     address: parseOptionalBoundedString(venue.address, {
       path: `${path}.address`,
       maxLength: 544,
     }),
+    floor,
     name: parseBoundedString(venue.name, {
       path: `${path}.name`,
       maxLength: 250,
     }),
+    room,
   });
+}
+
+function parseOptionalBoolean(value: unknown, path: string): boolean | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "boolean") {
+    throw new Error(`The cached value at ${path} is invalid.`);
+  }
+  return value;
 }
 
 function parseSchedule(

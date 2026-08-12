@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import {
+  applyD1MigrationBatches,
   MAX_D1_MIGRATION_BATCH_STATEMENTS_WITH_LEDGER,
   MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
   migrationStatementBatches,
 } from "../../scripts/d1-migration-batches.mjs";
+import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
 
 const MIGRATION_DIRECTORY = join(process.cwd(), "drizzle");
 const EXPECTED_MIGRATIONS = Object.freeze([
@@ -23,6 +26,7 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0017_bright_captain_america.sql",
   "0018_public_event_calendar_snapshots.sql",
   "0019_meetup_event_lanes.sql",
+  "0020_meetup_public_event_facts.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
   checks: 246,
@@ -52,6 +56,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0017_snapshot.json",
       "0018_snapshot.json",
       "0019_snapshot.json",
+      "0020_snapshot.json",
       "_journal.json",
     ],
     "the normalized chain must include every public-content and Events snapshot migration",
@@ -75,6 +80,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 17, tag: "0017_bright_captain_america" },
       { idx: 18, tag: "0018_public_event_calendar_snapshots" },
       { idx: 19, tag: "0019_meetup_event_lanes" },
+      { idx: 20, tag: "0020_meetup_public_event_facts" },
     ],
   );
   assert.deepEqual(
@@ -91,6 +97,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0017",
       "0018",
       "0019",
+      "0020",
     ].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
@@ -104,14 +111,27 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200],
+    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200, 200],
     "migration snapshots must match the cumulative packaged index state",
   );
 
   for (const file of EXPECTED_MIGRATIONS) {
     const sql = migrationSql(file);
     assert.doesNotMatch(sql, /\bCREATE\s+TRIGGER\b/iu, file);
-    assert.doesNotMatch(sql, /\bALTER\s+TABLE\b/iu, file);
+    if (file === "0020_meetup_public_event_facts.sql") {
+      const factsFragments = productionFragments(sql);
+      assert.equal(factsFragments.length, 8);
+      assert.ok(
+        factsFragments.every((fragment) =>
+          /\bALTER\s+TABLE\s+`meetup_event_snapshot_public_contents`\s+ADD\s+`(?:public_floor|public_room|capacity|cost_text|age_policy_text|waitlist_available|availability_state|arrival_instructions)`/iu.test(
+            fragment,
+          ),
+        ),
+        "0020 may only add the eight bounded Meetup public-fact columns",
+      );
+    } else {
+      assert.doesNotMatch(sql, /\bALTER\s+TABLE\b/iu, file);
+    }
     assert.doesNotMatch(sql, /\bPRAGMA\b/iu, file);
     assert.doesNotMatch(sql, /\bRENAME\s+TO\b/iu, file);
     const fragments = productionFragments(sql);
@@ -202,8 +222,13 @@ test("the Meetup lane backfill is narrow, accurate, and idempotent", () => {
   const database = new DatabaseSync(":memory:");
   try {
     database.exec("PRAGMA foreign_keys = ON");
-    const migrationsBeforeLaneBackfill = EXPECTED_MIGRATIONS.slice(0, -1)
-      .flatMap((file) => productionFragments(migrationSql(file)));
+    const laneMigrationIndex = EXPECTED_MIGRATIONS.indexOf(
+      "0019_meetup_event_lanes.sql",
+    );
+    const migrationsBeforeLaneBackfill = EXPECTED_MIGRATIONS.slice(
+      0,
+      laneMigrationIndex,
+    ).flatMap((file) => productionFragments(migrationSql(file)));
     applyProductionFragments(database, migrationsBeforeLaneBackfill);
     seedMeetupLaneBackfillCases(database);
 
@@ -240,9 +265,103 @@ test("the Meetup lane backfill is narrow, accurate, and idempotent", () => {
   }
 });
 
+test("the Meetup public-facts migration is applied once through the ledger runner", async () => {
+  const factsMigration = "0020_meetup_public_event_facts.sql";
+  const factsMigrationIndex = EXPECTED_MIGRATIONS.indexOf(factsMigration);
+  const schemaBeforeFacts = EXPECTED_MIGRATIONS.slice(
+    0,
+    factsMigrationIndex,
+  )
+    .map((file) => migrationSql(file))
+    .join("\n");
+  const database = new SqliteD1TestDatabase(schemaBeforeFacts);
+  const sql = migrationSql(factsMigration);
+  const sha256 = createHash("sha256").update(sql).digest("hex");
+
+  try {
+    database.exec(`
+      CREATE TABLE _phase1_migrations (
+        name TEXT PRIMARY KEY NOT NULL,
+        sha256 TEXT NOT NULL,
+        applied_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+      );
+    `);
+
+    async function applyOnce() {
+      const existing = await database
+        .prepare(
+          "SELECT sha256 FROM _phase1_migrations WHERE name = ? LIMIT 1",
+        )
+        .bind(factsMigration)
+        .first();
+      if (existing) {
+        assert.equal(existing.sha256, sha256);
+        return Object.freeze({ applied: false, application: null });
+      }
+      const application = await applyD1MigrationBatches({
+        database,
+        statements: productionFragments(sql),
+        finalStatement: database
+          .prepare(
+            "INSERT INTO _phase1_migrations (name, sha256) VALUES (?, ?)",
+          )
+          .bind(factsMigration, sha256),
+        failureMessage: `D1 rejected ${factsMigration}.`,
+      });
+      return Object.freeze({ applied: true, application });
+    }
+
+    const firstRun = await applyOnce();
+    assert.equal(firstRun.applied, true);
+    assert.deepEqual(firstRun.application, {
+      batchStatementCounts: [9],
+      migrationStatementCount: 8,
+    });
+
+    const expectedColumns = [
+      "public_floor",
+      "public_room",
+      "capacity",
+      "cost_text",
+      "age_policy_text",
+      "waitlist_available",
+      "availability_state",
+      "arrival_instructions",
+    ];
+    const columns = (
+      await database
+        .prepare(
+          'PRAGMA table_info("meetup_event_snapshot_public_contents")',
+        )
+        .all()
+    ).results.map((row) => row.name);
+    for (const column of expectedColumns) {
+      assert.ok(columns.includes(column), `${column} must be installed`);
+    }
+
+    const secondRun = await applyOnce();
+    assert.deepEqual(secondRun, { applied: false, application: null });
+    assert.equal(
+      await database
+        .prepare(
+          "SELECT count(*) AS count FROM _phase1_migrations WHERE name = ?",
+        )
+        .bind(factsMigration)
+        .first("count"),
+      1,
+      "the ledger must keep exactly one successful application",
+    );
+  } finally {
+    database.close();
+  }
+});
+
 test("every normalized partial migration prefix can be retried safely", () => {
   const reset = productionFragments(migrationSql(EXPECTED_MIGRATIONS[0]));
-  const baseline = EXPECTED_MIGRATIONS.slice(1).flatMap((file) =>
+  const ledgerAtomicFacts = productionFragments(
+    migrationSql("0020_meetup_public_event_facts.sql"),
+  );
+  const baseline = EXPECTED_MIGRATIONS.slice(1, -1).flatMap((file) =>
     productionFragments(migrationSql(file)),
   );
 
@@ -254,6 +373,7 @@ test("every normalized partial migration prefix can be retried safely", () => {
       applyProductionFragments(database, reset.slice(0, cut));
       applyProductionFragments(database, reset);
       applyProductionFragments(database, baseline);
+      applyProductionFragments(database, ledgerAtomicFacts);
       assertDatabaseSignature(database, EXPECTED_SIGNATURE);
       assert.equal(
         database
@@ -275,6 +395,7 @@ test("every normalized partial migration prefix can be retried safely", () => {
       applyProductionFragments(database, reset);
       applyProductionFragments(database, baseline.slice(0, cut));
       applyProductionFragments(database, baseline);
+      applyProductionFragments(database, ledgerAtomicFacts);
       assertDatabaseSignature(database, EXPECTED_SIGNATURE);
     } finally {
       database.close();

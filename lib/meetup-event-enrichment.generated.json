@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "events": [
     {
       "description": "🧙‍♂️🕷️ Lord of the Rings Session #5 - Frodo, Sam, Gollum, and the burden getting uglier\n\nBook-club discussion - The Two Towers, Book IV.\n\nShort summary\n\nLast session stayed with the war side of The Two Towers. This one goes back to the smaller, lonelier, more spiritually dangerous road. Frodo. Sam. Gollum. Hunger. Swamps. Stairs. Trust. Pity. Exhaustion. The Ring getting heavier in a way that is not just physical. This is the part of Tolkien where the adventure gets less grand and more intimate. No armies to hide behind. No heroic speeches to make the burden noble. Just three figures moving through a poisoned landscape, and the uncomfortable question of what mercy costs when the person you pity might still betray you.\n\nReading for this session\n\nThe Two Towers - Book IV\n\nFrom The Taming of Sméagol through The Choices of Master Samwise.\n\nA few questions already sitting in my head\n\n• “Is Gollum pitiable, dangerous, funny, tragic, or all of those at once?”\n• “Does Frodo trust Gollum, use him, pity him, or need him?”\n• “What makes Sam’s loyalty beautiful, and where does it become limited?”\n• “Why does this section feel so much lonelier than the war chapters?”\n• “What does Tolkien understand about addiction, burden, and divided selves?”\n• “By the end, who understands the Ring best?”\n\nHow the evening will go\n\nWe’ll start with one question: “What image from this section stayed with you?” Then I’ll do a quick map reset and we’ll stay close to the scenes and choices. Not lore-flexing. Not pronunciation Olympics. Not book-report voice. A real Tolkien room.\n\nWhen and where\n\n🗓️ Date: Sunday, August 9th, 2026 🕒 Time: 3:00 - 5:00 PM 📍 Location: Vancouver Central Library 350 W Georgia St, Vancouver, BC 9th floor, left of the elevators when you exit. Cap: 12 + waitlist Small room on purpose so the Fellowship does not become a crowd scene.\n\nWeekend RSVP policy\n\nOur weekend events regularly have waitlists of 20 or more people. If you can no longer attend, please update your RSVP by Thursday evening. This gives someone on the waitlist enough time to make plans and take the available spot. Members who remain marked as attending and miss two events without cancelling may be removed from the group. Emergencies happen; if something unavoidable comes up, please message the organizer. Keeping your RSVP accurate helps limited seats go to people who can actually attend.",
@@ -9907,6 +9907,14 @@
         }
       ],
       "eventId": "316010049",
+      "agePolicyText": null,
+      "arrivalInstructions": "Please arrive on time so we can begin together.",
+      "availabilityState": null,
+      "capacity": 12,
+      "costText": null,
+      "publicFloor": "Level 4",
+      "publicRoom": "Room 492 South",
+      "waitlistAvailable": true,
       "eventUrl": "https://www.meetup.com/vancouver-meetup-group/events/316010049/",
       "groupSlug": "vancouver-meetup-group",
       "poster": {

@@ -44,7 +44,7 @@ import {
 } from "../organizer/conflict-domain";
 
 const SOURCE_TYPE = "meetup_ics";
-const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v3";
+const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v4";
 /**
  * The mutable `events` row is only the stable content/relationship anchor for
  * a Meetup record. Source-native planning state is owned by the immutable
@@ -2633,10 +2633,12 @@ function stageEventPublicContentStatements(
          `INSERT INTO meetup_event_snapshot_public_contents (
            snapshot_id, public_summary, public_description,
            public_description_blocks_json, public_venue_name,
-           public_venue_address, poster_source_url, poster_alt_text,
-           poster_credit, created_at, updated_at
+           public_venue_address, public_floor, public_room, capacity,
+           cost_text, age_policy_text, waitlist_available,
+           availability_state, arrival_instructions, poster_source_url,
+           poster_alt_text, poster_credit, created_at, updated_at
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          FROM sync_sources AS source
          JOIN meetup_sync_generations AS generation
            ON generation.id = source.pending_generation_id
@@ -2661,6 +2663,14 @@ function stageEventPublicContentStatements(
              excluded.public_description_blocks_json,
            public_venue_name = excluded.public_venue_name,
            public_venue_address = excluded.public_venue_address,
+           public_floor = excluded.public_floor,
+           public_room = excluded.public_room,
+           capacity = excluded.capacity,
+           cost_text = excluded.cost_text,
+           age_policy_text = excluded.age_policy_text,
+           waitlist_available = excluded.waitlist_available,
+           availability_state = excluded.availability_state,
+           arrival_instructions = excluded.arrival_instructions,
            poster_source_url = excluded.poster_source_url,
            poster_alt_text = excluded.poster_alt_text,
            poster_credit = excluded.poster_credit,
@@ -2673,6 +2683,16 @@ function stageEventPublicContentStatements(
         JSON.stringify(content.descriptionBlocks),
         content.venue?.name ?? null,
         content.venue?.address ?? null,
+        content.publicFloor,
+        content.publicRoom,
+        content.capacity,
+        content.costText,
+        content.agePolicyText,
+        content.waitlistAvailable === null
+          ? null
+          : Number(content.waitlistAvailable),
+        content.availabilityState,
+        content.arrivalInstructions,
         content.poster?.sourceUrl ?? null,
         content.poster?.altText ?? null,
         content.poster?.credit ?? null,
@@ -2705,12 +2725,18 @@ function stageExistingSnapshotPublicContentStatement(
       `INSERT INTO meetup_event_snapshot_public_contents (
          snapshot_id, public_summary, public_description,
          public_description_blocks_json, public_venue_name,
-         public_venue_address, poster_source_url, poster_alt_text,
-         poster_credit, created_at, updated_at
+         public_venue_address, public_floor, public_room, capacity,
+         cost_text, age_policy_text, waitlist_available,
+         availability_state, arrival_instructions, poster_source_url,
+         poster_alt_text, poster_credit, created_at, updated_at
        )
        SELECT ?, content.public_summary, content.public_description,
               content.public_description_blocks_json,
               content.public_venue_name, content.public_venue_address,
+              content.public_floor, content.public_room, content.capacity,
+              content.cost_text, content.age_policy_text,
+              content.waitlist_available, content.availability_state,
+              content.arrival_instructions,
               content.poster_source_url, content.poster_alt_text,
               content.poster_credit, ?, ?
        FROM sync_sources AS source
@@ -2734,6 +2760,14 @@ function stageExistingSnapshotPublicContentStatement(
            excluded.public_description_blocks_json,
          public_venue_name = excluded.public_venue_name,
          public_venue_address = excluded.public_venue_address,
+         public_floor = excluded.public_floor,
+         public_room = excluded.public_room,
+         capacity = excluded.capacity,
+         cost_text = excluded.cost_text,
+         age_policy_text = excluded.age_policy_text,
+         waitlist_available = excluded.waitlist_available,
+         availability_state = excluded.availability_state,
+         arrival_instructions = excluded.arrival_instructions,
          poster_source_url = excluded.poster_source_url,
          poster_alt_text = excluded.poster_alt_text,
          poster_credit = excluded.poster_credit,

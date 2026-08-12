@@ -1,5 +1,6 @@
 import { parseIanaTimeZone } from "../../time";
 import { isRecord } from "../../validation";
+import { extractMeetupPublicEventFacts } from "../../meetup-public-event-facts.js";
 import { MeetupSyncError } from "./errors";
 import type {
   ParsedMeetupCalendar,
@@ -307,7 +308,12 @@ function parseApolloEvent(input: Readonly<{
   const publicDescription = normalizePublicDescription(event.description);
   const venue = readVenue(input.apolloState, event.venue);
   const poster = readPoster(input.apolloState, event.featuredEventPhoto, title);
+  const publicEventFacts = extractMeetupPublicEventFacts(
+    publicDescription.plainText,
+    { hasPublicVenue: venue !== null },
+  );
   const publicContent: ParsedMeetupPublicContent = Object.freeze({
+    ...publicEventFacts,
     description: publicDescription.plainText,
     descriptionBlocks: publicDescription.blocks,
     poster,

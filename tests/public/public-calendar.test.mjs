@@ -47,6 +47,23 @@ function timedEvent(overrides = {}) {
   });
 }
 
+function wednesdayResetEvent() {
+  return timedEvent({
+    arrivalInstructions: "Please arrive on time so we can begin together.",
+    availabilityState: null,
+    capacity: 12,
+    slug: "wednesday-night-reset",
+    title: "Wednesday Night Reset",
+    venue: Object.freeze({
+      address: "350 West Georgia Street, Vancouver, BC",
+      floor: "Level 4",
+      name: "Vancouver Central Library",
+      room: "Room 492 South",
+    }),
+    waitlistAvailable: true,
+  });
+}
+
 function allDayEvent(overrides = {}) {
   return Object.freeze({
     attendanceMode: "location-undecided",
@@ -231,6 +248,50 @@ test("Google Calendar links preserve exact timed and all-day schedules", () => {
     "20260707/20260709",
   );
   assert.equal(allDay.searchParams.get("ctz"), null);
+});
+
+test("Wednesday Night Reset keeps its room in the Google add-to-calendar location", () => {
+  const event = wednesdayResetEvent();
+  const googleUrl = new URL(
+    googleCalendarEventUrl(
+      event,
+      "https://club.example/events/wednesday-night-reset",
+    ),
+  );
+  assert.match(
+    googleUrl.searchParams.get("location") ?? "",
+    /Vancouver Central Library[\s\S]*350 West Georgia Street, Vancouver, BC[\s\S]*Level 4, Room 492 South/u,
+  );
+  assert.doesNotMatch(
+    googleUrl.searchParams.get("location") ?? "",
+    /Please arrive on time/u,
+  );
+});
+
+test("Wednesday Night Reset keeps its room and capacity in selected-day calendar facts", () => {
+  const event = wednesdayResetEvent();
+  const markup = renderToStaticMarkup(
+    createElement(PublicMonthCalendar, {
+      complete: true,
+      events: Object.freeze([event]),
+      maxMonth: "2027-07",
+      minMonth: "2025-07",
+      month: "2026-07",
+      nowUtcMs: Date.parse("2026-07-05T07:00:00.000Z"),
+      siteOrigin: "https://club.example",
+      todayDate: "2026-07-05",
+    }),
+  );
+  const selectedDay = markup.match(
+    /<aside class="public-calendar__day-panel"[\s\S]*?<\/aside>/u,
+  )?.[0];
+  assert.ok(selectedDay, "the selected-day panel must render");
+  assert.match(selectedDay, /Level 4/u);
+  assert.match(selectedDay, /Room 492 South/u);
+  assert.match(
+    selectedDay.replace(/<[^>]+>/gu, " "),
+    /12\s+\+\s+waitlist/iu,
+  );
 });
 
 test("month calendar renders an accessible date grid, calendar actions, approved artwork, and a lane text fallback", () => {

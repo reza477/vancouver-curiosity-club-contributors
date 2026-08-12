@@ -54,8 +54,10 @@ export function buildPublicEventJsonLd(
         : undefined,
     eventAttendanceMode: attendanceMode,
     location: eventLocation(event),
+    maximumAttendeeCapacity: event.capacity ?? undefined,
     organizer: organizers.length > 0 ? organizers : undefined,
     sameAs: event.rsvpUrl ?? undefined,
+    typicalAgeRange: event.agePolicyText ?? undefined,
   };
 }
 
@@ -68,7 +70,16 @@ function eventLocation(
   const place = event.venue
     ? {
         "@type": "Place",
-        name: event.venue.name,
+        name: [
+          event.venue.name,
+          event.venue.floor,
+          event.venue.room,
+          event.venue.floor || event.venue.room
+            ? null
+            : event.arrivalInstructions,
+        ]
+          .filter(Boolean)
+          .join(", "),
         address: event.venue.address ?? undefined,
       }
     : undefined;

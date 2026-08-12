@@ -949,8 +949,12 @@ export type PublicEventArtworkDto = Readonly<{
 }>;
 
 export type PublicEventCardDto = Readonly<{
+  agePolicyText: string | null;
+  arrivalInstructions: string | null;
   attendanceMode: PublicEventAttendanceMode;
   artwork: PublicEventArtworkDto | null;
+  availabilityState: "full" | "open" | "waitlist" | null;
+  capacity: number | null;
   category: Readonly<{
     colorToken: string | null;
     name: string;
@@ -960,6 +964,7 @@ export type PublicEventCardDto = Readonly<{
     name: string;
     slug: string;
   }>;
+  costText: string | null;
   isCancelled: boolean;
   lane: Readonly<{
     name: string;
@@ -978,16 +983,15 @@ export type PublicEventCardDto = Readonly<{
   title: string;
   venue: Readonly<{
     address: string | null;
+    floor: string | null;
     name: string;
+    room: string | null;
   }> | null;
+  waitlistAvailable: boolean | null;
 }>;
 
 export type PublicEventDetailDto = PublicEventCardDto &
   Readonly<{
-    arrivalInstructions: string | null;
-    availabilityState: "full" | "open" | "waitlist" | null;
-    capacity: number | null;
-    costText: string | null;
     description: string | null;
     descriptionBlocks: readonly CuratedMeetupDescriptionBlock[] | null;
     externalMapUrl: string | null;
@@ -1029,10 +1033,13 @@ export type QueryPublicEventExportsInput = Omit<
   }>;
 
 export type PublicEventExportDto = Readonly<{
+  agePolicyText: string | null;
+  arrivalInstructions: string | null;
   attendanceMode: PublicEventAttendanceMode;
   availabilityState: "full" | "open" | "waitlist" | null;
   category: PublicEventCardDto["category"];
   club: PublicEventCardDto["club"];
+  capacity: number | null;
   costText: string | null;
   description: string | null;
   isCancelled: boolean;
@@ -1045,6 +1052,7 @@ export type PublicEventExportDto = Readonly<{
   summary: string | null;
   title: string;
   venue: PublicEventCardDto["venue"];
+  waitlistAvailable: boolean | null;
 }>;
 
 export type PublicEventExportRecord = Readonly<{
@@ -2684,6 +2692,14 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            NULL AS source_public_description_blocks_json,
            NULL AS source_public_venue_name,
            NULL AS source_public_venue_address,
+           NULL AS source_public_floor,
+           NULL AS source_public_room,
+           NULL AS source_capacity,
+           NULL AS source_cost_text,
+           NULL AS source_age_policy_text,
+           NULL AS source_waitlist_available,
+           NULL AS source_availability_state,
+           NULL AS source_arrival_instructions,
            NULL AS source_poster_source_url,
            NULL AS source_poster_alt_text,
            NULL AS source_poster_credit
@@ -2731,6 +2747,14 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
              AS source_public_description_blocks_json,
            snapshot_content.public_venue_name AS source_public_venue_name,
            snapshot_content.public_venue_address AS source_public_venue_address,
+           snapshot_content.public_floor AS source_public_floor,
+           snapshot_content.public_room AS source_public_room,
+           snapshot_content.capacity AS source_capacity,
+           snapshot_content.cost_text AS source_cost_text,
+           snapshot_content.age_policy_text AS source_age_policy_text,
+           snapshot_content.waitlist_available AS source_waitlist_available,
+           snapshot_content.availability_state AS source_availability_state,
+           snapshot_content.arrival_instructions AS source_arrival_instructions,
            snapshot_content.poster_source_url AS source_poster_source_url,
            snapshot_content.poster_alt_text AS source_poster_alt_text,
            snapshot_content.poster_credit AS source_poster_credit
@@ -2854,16 +2878,28 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
              THEN venue.public_address
              ELSE NULL
            END AS venue_public_address,
+           CASE
+             WHEN event.venue_id IS NULL
+             THEN candidate.source_public_floor
+             ELSE NULL
+           END AS venue_public_floor,
+           CASE
+             WHEN event.venue_id IS NULL
+             THEN candidate.source_public_room
+             ELSE NULL
+           END AS venue_public_room,
            '[]' AS organizer_names_json,
            NULL AS public_access_note,
            NULL AS public_online_url,
            NULL AS external_map_url,
-           NULL AS cost_text,
-           NULL AS capacity,
-           NULL AS availability_state,
+           candidate.source_cost_text AS cost_text,
+           candidate.source_capacity AS capacity,
+           candidate.source_age_policy_text AS age_policy_text,
+           candidate.source_waitlist_available AS waitlist_available,
+           candidate.source_availability_state AS availability_state,
            NULL AS preparation_information,
            NULL AS what_to_bring,
-           NULL AS arrival_instructions,
+           candidate.source_arrival_instructions AS arrival_instructions,
            NULL AS weather_note,
            NULL AS verified_accessibility_notes,
            NULL AS artwork_asset_id,
@@ -2992,12 +3028,16 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            category.color_token AS category_color_token,
            public_detail.public_location_name AS venue_public_name,
            public_detail.public_address AS venue_public_address,
+           NULL AS venue_public_floor,
+           NULL AS venue_public_room,
            '[]' AS organizer_names_json,
            public_detail.public_access_note AS public_access_note,
            public_detail.public_online_url AS public_online_url,
            public_detail.external_map_url AS external_map_url,
            public_detail.cost_text AS cost_text,
            public_detail.capacity AS capacity,
+           NULL AS age_policy_text,
+           NULL AS waitlist_available,
            public_detail.availability_state AS availability_state,
            public_detail.preparation_information AS preparation_information,
            public_detail.what_to_bring AS what_to_bring,
@@ -3246,6 +3286,14 @@ const PUBLIC_EVENT_CARD_COLUMNS_SQL = `
   public_event.category_color_token AS category_color_token,
   public_event.venue_public_name AS venue_public_name,
   public_event.venue_public_address AS venue_public_address,
+  public_event.venue_public_floor AS venue_public_floor,
+  public_event.venue_public_room AS venue_public_room,
+  public_event.capacity AS capacity,
+  public_event.cost_text AS cost_text,
+  public_event.age_policy_text AS age_policy_text,
+  public_event.waitlist_available AS waitlist_available,
+  public_event.availability_state AS availability_state,
+  public_event.arrival_instructions AS arrival_instructions,
   public_event.artwork_asset_id AS artwork_asset_id,
   public_event.artwork_alt_text AS artwork_alt_text,
   public_event.artwork_credit AS artwork_credit,
@@ -3293,8 +3341,14 @@ const PUBLIC_EVENT_EXPORT_COLUMNS_SQL = `
   public_event.category_color_token AS category_color_token,
   public_event.venue_public_name AS venue_public_name,
   public_event.venue_public_address AS venue_public_address,
+  public_event.venue_public_floor AS venue_public_floor,
+  public_event.venue_public_room AS venue_public_room,
+  public_event.capacity AS capacity,
   public_event.cost_text AS cost_text,
+  public_event.age_policy_text AS age_policy_text,
+  public_event.waitlist_available AS waitlist_available,
   public_event.availability_state AS availability_state,
+  public_event.arrival_instructions AS arrival_instructions,
   public_event.event_id AS artwork_event_id,
   public_event.public_slug_count AS public_slug_count
 `;
@@ -3711,12 +3765,8 @@ const PUBLIC_EVENT_DETAIL_COLUMNS_SQL = `
   public_event.public_access_note AS public_access_note,
   public_event.public_online_url AS public_online_url,
   public_event.external_map_url AS external_map_url,
-  public_event.cost_text AS cost_text,
-  public_event.capacity AS capacity,
-  public_event.availability_state AS availability_state,
   public_event.preparation_information AS preparation_information,
   public_event.what_to_bring AS what_to_bring,
-  public_event.arrival_instructions AS arrival_instructions,
   public_event.weather_note AS weather_note,
   public_event.verified_accessibility_notes AS verified_accessibility_notes
 `;
@@ -3780,6 +3830,8 @@ export const AUTHORIZED_ORGANIZER_EVENT_PUBLIC_PREVIEW_SQL = `
            category.color_token AS category_color_token,
            public_detail.public_location_name AS venue_public_name,
            public_detail.public_address AS venue_public_address,
+           NULL AS venue_public_floor,
+           NULL AS venue_public_room,
            1 AS public_slug_count,
            '[]' AS organizer_names_json,
            public_detail.public_access_note AS public_access_note,
@@ -3787,6 +3839,8 @@ export const AUTHORIZED_ORGANIZER_EVENT_PUBLIC_PREVIEW_SQL = `
            public_detail.external_map_url AS external_map_url,
            public_detail.cost_text AS cost_text,
            public_detail.capacity AS capacity,
+           NULL AS age_policy_text,
+           NULL AS waitlist_available,
            public_detail.availability_state AS availability_state,
            public_detail.preparation_information AS preparation_information,
            public_detail.what_to_bring AS what_to_bring,
@@ -5416,9 +5470,24 @@ export function toPublicEventCardDto(
     approvedArtwork === null && curatedMeetupPoster === null
       ? synchronizedMeetupPosterDto(row, rsvpUrl)
       : null;
-  const resolvedVenue =
-    venue ?? curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null);
+  const resolvedVenue = withPublicEventVenueFacts(
+    mergePublicEventVenue(
+      venue,
+      curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
+    ),
+    row,
+    curatedMeetupEvent,
+  );
   return Object.freeze({
+    agePolicyText: publicEventAgePolicyText(row, curatedMeetupEvent),
+    arrivalInstructions: publicEventArrivalInstructions(
+      row,
+      curatedMeetupEvent,
+    ),
+    availabilityState: publicEventAvailabilityState(
+      row,
+      curatedMeetupEvent,
+    ),
     artwork:
       approvedArtwork ??
       (curatedMeetupPoster
@@ -5448,6 +5517,8 @@ export function toPublicEventCardDto(
             url: curatedMeetupPoster.localPath,
           })
         : synchronizedMeetupPoster),
+    capacity: publicEventCapacity(row, curatedMeetupEvent),
+    costText: publicEventCostText(row, curatedMeetupEvent),
     slug: parseIdentifier(row.slug, "event.slug"),
     title: parseBoundedString(row.title, {
       path: "event.title",
@@ -5483,6 +5554,10 @@ export function toPublicEventCardDto(
     lane: publicLane(row),
     category,
     venue: resolvedVenue,
+    waitlistAvailable: publicEventWaitlistAvailable(
+      row,
+      curatedMeetupEvent,
+    ),
   });
 }
 
@@ -5619,23 +5694,29 @@ function toPublicEventExportDto(
     return invalidProjection();
   }
   const curatedMeetupEvent = curatedMeetupEventForEventUrl(rsvpUrl);
-  const venue =
-    publicVenue(row) ??
-    curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null);
+  const venue = withPublicEventVenueFacts(
+    mergePublicEventVenue(
+      publicVenue(row),
+      curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
+    ),
+    row,
+    curatedMeetupEvent,
+  );
   return Object.freeze({
+    agePolicyText: publicEventAgePolicyText(row, curatedMeetupEvent),
+    arrivalInstructions: publicEventArrivalInstructions(
+      row,
+      curatedMeetupEvent,
+    ),
     attendanceMode: publicAttendanceModeWithVenue(
       publicAttendanceMode(row.attendance_mode),
       venue,
     ),
-    availabilityState:
-      row.availability_state === null ||
-      row.availability_state === undefined
-        ? null
-        : parseEnum(
-            row.availability_state,
-            ["open", "full", "waitlist"] as const,
-            "event.availabilityState",
-          ),
+    availabilityState: publicEventAvailabilityState(
+      row,
+      curatedMeetupEvent,
+    ),
+    capacity: publicEventCapacity(row, curatedMeetupEvent),
     category: publicCategory(row),
     club: Object.freeze({
       slug: parseIdentifier(row.club_slug, "event.club.slug"),
@@ -5644,7 +5725,7 @@ function toPublicEventExportDto(
         maxLength: 160,
       }),
     }),
-    costText: optionalPublicText(row.cost_text, "event.costText", 500),
+    costText: publicEventCostText(row, curatedMeetupEvent),
     description:
       parseOptionalBoundedString(row.description, {
         path: "event.description",
@@ -5672,6 +5753,10 @@ function toPublicEventExportDto(
       maxLength: 200,
     }),
     venue,
+    waitlistAvailable: publicEventWaitlistAvailable(
+      row,
+      curatedMeetupEvent,
+    ),
   });
 }
 
@@ -5740,24 +5825,6 @@ export function toPublicEventDetailDto(
       row.external_map_url,
       "event.externalMapUrl",
     ),
-    costText: optionalPublicText(row.cost_text, "event.costText", 500),
-    capacity:
-      row.capacity === null || row.capacity === undefined
-        ? null
-        : parseFiniteInteger(row.capacity, {
-            path: "event.capacity",
-            minimum: 1,
-            maximum: 1_000_000,
-          }),
-    availabilityState:
-      row.availability_state === null ||
-      row.availability_state === undefined
-        ? null
-        : parseEnum(
-            row.availability_state,
-            ["open", "full", "waitlist"] as const,
-            "event.availabilityState",
-          ),
     preparationInformation: optionalPublicText(
       row.preparation_information,
       "event.preparationInformation",
@@ -5766,11 +5833,6 @@ export function toPublicEventDetailDto(
     whatToBring: optionalPublicText(
       row.what_to_bring,
       "event.whatToBring",
-      4_000,
-    ),
-    arrivalInstructions: optionalPublicText(
-      row.arrival_instructions,
-      "event.arrivalInstructions",
       4_000,
     ),
     weatherNote: optionalPublicText(
@@ -5823,7 +5885,141 @@ function curatedMeetupVenueDto(
   );
   return Object.freeze({
     address: addressParts.length > 0 ? addressParts.join(", ") : null,
+    floor: null,
     name: venue.name,
+    room: null,
+  });
+}
+
+function publicEventArrivalInstructions(
+  row: Record<string, unknown>,
+  curated: CuratedMeetupEventEnrichment | null,
+): string | null {
+  const explicit = optionalPublicText(
+    row.arrival_instructions,
+    "event.arrivalInstructions",
+    4_000,
+  );
+  if (explicit !== null) return explicit;
+  const rowVenueName = parseOptionalBoundedString(row.venue_public_name, {
+    path: "event.venue.name",
+    maxLength: 250,
+  });
+  return rowVenueName === null || rowVenueName === curated?.venue?.name
+    ? curated?.arrivalInstructions ?? null
+    : null;
+}
+
+function publicEventAgePolicyText(
+  row: Record<string, unknown>,
+  curated: CuratedMeetupEventEnrichment | null,
+): string | null {
+  return (
+    optionalPublicText(row.age_policy_text, "event.agePolicyText", 500) ??
+    curated?.agePolicyText ??
+    null
+  );
+}
+
+function publicEventAvailabilityState(
+  row: Record<string, unknown>,
+  curated: CuratedMeetupEventEnrichment | null,
+): PublicEventCardDto["availabilityState"] {
+  if (row.availability_state !== null && row.availability_state !== undefined) {
+    return parseEnum(
+      row.availability_state,
+      ["open", "full", "waitlist"] as const,
+      "event.availabilityState",
+    );
+  }
+  return (
+    curated?.availabilityState ?? null
+  );
+}
+
+function publicEventCapacity(
+  row: Record<string, unknown>,
+  curated: CuratedMeetupEventEnrichment | null,
+): number | null {
+  if (row.capacity !== null && row.capacity !== undefined) {
+    return parseFiniteInteger(row.capacity, {
+      path: "event.capacity",
+      minimum: 1,
+      maximum: 1_000_000,
+    });
+  }
+  return curated?.capacity ?? null;
+}
+
+function publicEventCostText(
+  row: Record<string, unknown>,
+  curated: CuratedMeetupEventEnrichment | null,
+): string | null {
+  return (
+    optionalPublicText(row.cost_text, "event.costText", 500) ??
+    curated?.costText ??
+    null
+  );
+}
+
+function publicEventWaitlistAvailable(
+  row: Record<string, unknown>,
+  curated: CuratedMeetupEventEnrichment | null,
+): boolean | null {
+  if (row.waitlist_available !== null && row.waitlist_available !== undefined) {
+    if (row.waitlist_available === true || row.waitlist_available === 1) {
+      return true;
+    }
+    if (row.waitlist_available === false || row.waitlist_available === 0) {
+      return false;
+    }
+    return invalidProjection();
+  }
+  return (
+    curated?.waitlistAvailable ?? null
+  );
+}
+
+function mergePublicEventVenue(
+  primary: PublicEventCardDto["venue"],
+  fallback: PublicEventCardDto["venue"],
+): PublicEventCardDto["venue"] {
+  if (primary === null) return fallback;
+  if (fallback === null || primary.name !== fallback.name) return primary;
+  return Object.freeze({
+    ...primary,
+    floor: primary.floor ?? fallback.floor,
+    room: primary.room ?? fallback.room,
+  });
+}
+
+function withPublicEventVenueFacts(
+  venue: PublicEventCardDto["venue"],
+  row: Record<string, unknown>,
+  curated: CuratedMeetupEventEnrichment | null,
+): PublicEventCardDto["venue"] {
+  if (venue === null) return null;
+  const curatedVenueMatches = curated?.venue?.name === venue.name;
+  const floor =
+    parseOptionalBoundedString(row.venue_public_floor, {
+      path: "event.venue.floor",
+      maxLength: 120,
+    }) ??
+    (curatedVenueMatches ? curated.publicFloor : null) ??
+    venue.floor ??
+    null;
+  const room =
+    parseOptionalBoundedString(row.venue_public_room, {
+      path: "event.venue.room",
+      maxLength: 160,
+    }) ??
+    (curatedVenueMatches ? curated.publicRoom : null) ??
+    venue.room ??
+    null;
+  return Object.freeze({
+    ...venue,
+    floor,
+    room,
   });
 }
 
@@ -6222,13 +6418,22 @@ function publicVenue(
     path: "event.venue.name",
     maxLength: 250,
   });
-  return name
-    ? Object.freeze({
-        name,
-        address: parseOptionalBoundedString(row.venue_public_address, {
-          path: "event.venue.address",
-          maxLength: 500,
-        }),
-      })
-    : null;
+  if (name === null) return null;
+  const floor = parseOptionalBoundedString(row.venue_public_floor, {
+    path: "event.venue.floor",
+    maxLength: 120,
+  });
+  const room = parseOptionalBoundedString(row.venue_public_room, {
+    path: "event.venue.room",
+    maxLength: 160,
+  });
+  return Object.freeze({
+    name,
+    address: parseOptionalBoundedString(row.venue_public_address, {
+      path: "event.venue.address",
+      maxLength: 544,
+    }),
+    floor,
+    room,
+  });
 }

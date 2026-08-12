@@ -11,6 +11,7 @@ import {
 } from "../../validation";
 import { MeetupSyncError } from "./errors";
 import { parseOfficialMeetupEventUrl } from "./url";
+import type { MeetupPublicEventFacts } from "../../meetup-public-event-facts.js";
 
 export const MAX_MEETUP_ICS_BYTES = 2_000_000;
 export const MAX_MEETUP_ICS_EVENTS = 500;
@@ -69,7 +70,7 @@ export type ParsedMeetupPublicContent = Readonly<{
     address: string | null;
     name: string;
   }> | null;
-}>;
+}> & MeetupPublicEventFacts;
 
 export type ParsedMeetupEvent = Readonly<{
   componentIndex: number;
