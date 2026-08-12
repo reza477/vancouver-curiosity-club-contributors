@@ -14,6 +14,7 @@ import {
   listPublicEventCategoryOptions,
   listPublicEventSitemapSlugs,
   listRelatedPublicEvents,
+  listNextPublicEventsByClub,
   queryPublicCalendarMonth,
   queryPublicEvents,
   queryPublicCalendarLandingBundle,
@@ -2112,6 +2113,20 @@ test("public event final identity checks suppress club edits racing every multi-
       },
     },
     {
+      label: "grouped next event by Club",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listNextPublicEventsByClub(database, {
+            clubSlugs: ["vancouver-curiosity-club"],
+            nowUtcMs: NOW_UTC_MS,
+            organizationId: ORGANIZATION_ID,
+            todayDate: TODAY_DATE,
+          })
+        ).some((event) => event.slug === slug);
+      },
+    },
+    {
       label: "related",
       mutateAfterRead: 1,
       async read(database) {
@@ -2214,6 +2229,20 @@ test("a coherent Club republish racing a multi-read surface drops only the stale
         return [...result.selected, ...result.defaultUpcoming].some(
           (event) => event.slug === slug,
         );
+      },
+    },
+    {
+      label: "grouped next event by Club",
+      mutateAfterRead: 1,
+      async read(database) {
+        return (
+          await listNextPublicEventsByClub(database, {
+            clubSlugs: ["vancouver-curiosity-club"],
+            nowUtcMs: NOW_UTC_MS,
+            organizationId: ORGANIZATION_ID,
+            todayDate: TODAY_DATE,
+          })
+        ).some((event) => event.slug === slug);
       },
     },
     {
@@ -2852,6 +2881,93 @@ test("combines validated filters and provides bounded stable pagination", async 
       }),
       InputValidationError,
       JSON.stringify(invalid),
+    );
+  }
+});
+
+test("reads one deterministic upcoming event per requested public Club without N+1 queries", async (t) => {
+  const database = await createFixture(t);
+  await insertTimedEvent(
+    database,
+    timedEvent({
+      id: "event_manual_upcoming_tie",
+      title: "Aardvark Tie Gathering",
+      slug: "aardvark-tie-gathering",
+      clubId: "club_vcc",
+      startsAt: "2026-08-02T02:00:00.000Z",
+      endsAt: "2026-08-02T04:00:00.000Z",
+    }),
+  );
+
+  const groupedStatements = countD1Statements(database);
+  const grouped = await listNextPublicEventsByClub(
+    groupedStatements.database,
+    {
+      clubSlugs: [
+        "vancouver-literature-and-film",
+        "vancouver-curiosity-club",
+        "vancouver-literature-and-film",
+        "off-radar-eats",
+      ],
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+    },
+  );
+  assert.deepEqual(
+    grouped.map((event) => event.slug),
+    ["tentative-online-reading", "aardvark-tie-gathering"],
+  );
+  assert.deepEqual(
+    grouped.map((event) => event.club.slug),
+    ["vancouver-literature-and-film", "vancouver-curiosity-club"],
+  );
+  assert.equal(groupedStatements.count(), 3);
+
+  const singleStatements = countD1Statements(database);
+  assert.deepEqual(
+    (
+      await listNextPublicEventsByClub(singleStatements.database, {
+        clubSlugs: ["vancouver-curiosity-club"],
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      })
+    ).map((event) => event.slug),
+    ["aardvark-tie-gathering"],
+  );
+  assert.equal(
+    singleStatements.count(),
+    groupedStatements.count(),
+    "the statement budget must stay constant as requested Clubs are added",
+  );
+
+  const emptyStatements = countD1Statements(database);
+  assert.deepEqual(
+    await listNextPublicEventsByClub(emptyStatements.database, {
+      clubSlugs: [],
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+    }),
+    [],
+  );
+  assert.equal(emptyStatements.count(), 0);
+
+  for (const clubSlugs of [
+    "vancouver-curiosity-club",
+    ["not a slug"],
+    Array.from({ length: 13 }, (_, index) => `club-${index + 1}`),
+  ]) {
+    await assert.rejects(
+      listNextPublicEventsByClub(database, {
+        clubSlugs,
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      }),
+      InputValidationError,
+      JSON.stringify(clubSlugs),
     );
   }
 });

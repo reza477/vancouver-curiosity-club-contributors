@@ -15,6 +15,7 @@ import {
   listPublishedEventSelections,
   listPublicEventCategoryOptions,
   listPublicEventSitemapEntries,
+  listNextPublicEventsByClub,
   listRelatedPublicEvents,
   listUpcomingPublicEvents,
   listUpcomingPublicMeetupEvents,
@@ -150,6 +151,15 @@ test("public event statements compile and execute through real Miniflare D1", as
     pageSize: 12,
     view: "upcoming",
   });
+  assert.deepEqual(
+    await listNextPublicEventsByClub(database, {
+      clubSlugs: ["missing-club"],
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+    }),
+    [],
+  );
   assert.deepEqual(
     await queryPublicCalendarMonth(database, {
       fromDate: "2026-08-01",

@@ -1024,6 +1024,13 @@ export type QueryPublicEventsInput = Readonly<{
   view?: unknown;
 }>;
 
+export type ListNextPublicEventsByClubInput = Readonly<{
+  clubSlugs: readonly unknown[];
+  nowUtcMs: unknown;
+  organizationId: unknown;
+  todayDate: unknown;
+}>;
+
 export type QueryPublicEventExportsInput = Omit<
   QueryPublicEventsInput,
   "page" | "pageSize"
@@ -4334,6 +4341,80 @@ export async function queryPublicEventSlice(
   });
 }
 
+const MAX_NEXT_PUBLIC_EVENT_CLUBS = 12;
+
+/**
+ * Reads the nearest upcoming published event for each requested public Club.
+ *
+ * The requested slugs are normalized and deduplicated before one unified
+ * projection is ranked by Club. Selected rows still pass the same enrichment
+ * and current-publication revalidation boundary as every other public card
+ * surface, so this directory-oriented read cannot turn into an N+1 query or
+ * expose a stale projection.
+ */
+export async function listNextPublicEventsByClub(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: ListNextPublicEventsByClubInput,
+): Promise<readonly PublicEventCardDto[]> {
+  const parsed = parsePublicEventQuery({
+    nowUtcMs: input.nowUtcMs,
+    organizationId: input.organizationId,
+    page: 1,
+    pageSize: MAX_NEXT_PUBLIC_EVENT_CLUBS,
+    todayDate: input.todayDate,
+    view: "upcoming",
+  });
+  const clubSlugs = parseNextPublicEventClubSlugs(input.clubSlugs);
+  if (clubSlugs.length === 0) return Object.freeze([]);
+
+  const filter = buildPublicEventFilter(parsed);
+  const result = await database
+    .prepare(
+      `${UNIFIED_PUBLIC_EVENT_CTE_SQL},
+       requested_club AS (
+         SELECT CAST(key AS INTEGER) AS requested_order,
+                CAST(value AS TEXT) AS club_slug
+         FROM json_each(?)
+       ),
+       ranked_club_event AS (
+         SELECT public_event.*,
+                requested_club.requested_order,
+                row_number() OVER (
+                  PARTITION BY public_event.club_slug
+                  ORDER BY ${publicEventOrderExpression("upcoming")}
+                ) AS club_event_ordinal
+         FROM public_events AS public_event
+         JOIN requested_club
+           ON requested_club.club_slug = public_event.club_slug
+         WHERE ${filter.sql}
+       )
+       SELECT ${PUBLIC_EVENT_CARD_COLUMNS_SQL},
+              public_event.requested_order
+       FROM ranked_club_event AS public_event
+       WHERE public_event.club_event_ordinal = 1
+       ORDER BY public_event.requested_order`,
+    )
+    .bind(
+      parsed.organizationId,
+      parsed.organizationId,
+      parsed.organizationId,
+      JSON.stringify(clubSlugs),
+      ...filter.bindings,
+    )
+    .all<Record<string, unknown>>();
+  assertSuccessfulResult(result);
+  const rows = result.results ?? [];
+  for (const row of rows) assertSinglePublicSlug(row);
+  const enrichedRows = await enrichPublicEventRows(
+    database,
+    parsed.organizationId,
+    rows,
+  );
+  return Object.freeze(
+    enrichedRows.map((row) => toPublicEventCardDto(row)),
+  );
+}
+
 const PUBLIC_CALENDAR_MONTH_EVENT_LIMIT = 96;
 
 /**
@@ -6260,6 +6341,37 @@ function optionalIdentifier(value: unknown, path: string): string | null {
   return value === undefined || value === null || value === ""
     ? null
     : parseIdentifier(value, path);
+}
+
+function parseNextPublicEventClubSlugs(
+  value: unknown,
+): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > MAX_NEXT_PUBLIC_EVENT_CLUBS
+  ) {
+    throw validationIssue(
+      "clubSlugs",
+      "invalid_length",
+      `At most ${MAX_NEXT_PUBLIC_EVENT_CLUBS} public Club slugs may be requested.`,
+    );
+  }
+  const seen = new Set<string>();
+  const slugs: string[] = [];
+  for (const [index, candidate] of value.entries()) {
+    const slug = parseIdentifier(candidate, `clubSlugs.${index}`);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(slug)) {
+      throw validationIssue(
+        `clubSlugs.${index}`,
+        "invalid_identifier",
+        "Expected a normalized public Club slug.",
+      );
+    }
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    slugs.push(slug);
+  }
+  return Object.freeze(slugs);
 }
 
 function parseQueryInteger(

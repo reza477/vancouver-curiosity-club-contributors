@@ -2440,6 +2440,151 @@ main,
   font-weight: 750;
 }
 
+.club-directory--clubs {
+  padding-top: clamp(1.75rem, 4vw, 3.5rem);
+}
+
+.club-directory--clubs > header {
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+}
+
+.club-directory--clubs .club-directory__card {
+  grid-template-columns: 3rem minmax(17rem, 0.8fr) minmax(24rem, 1.2fr);
+  grid-auto-rows: min-content;
+  min-width: 0;
+  padding: clamp(1.75rem, 4vw, 3.5rem) 0;
+}
+
+.club-directory--clubs .club-directory__number {
+  grid-row: 1 / 7;
+}
+
+.club-directory--clubs .club-directory__lane {
+  color: var(--ink-soft);
+}
+
+.club-directory--clubs .club-directory__artwork {
+  grid-column: 3;
+  grid-row: 1 / 6;
+  align-self: start;
+}
+
+.club-directory--clubs .club-directory__artwork picture {
+  display: block;
+  overflow: hidden;
+  border-radius: 0.8rem;
+  background: var(--paper-deep);
+}
+
+.club-directory--clubs .club-directory__artwork img {
+  transition: transform 240ms ease;
+}
+
+.club-directory--clubs .club-directory__card:hover .club-directory__artwork img,
+.club-directory--clubs .club-directory__card:focus-within .club-directory__artwork img {
+  transform: scale(1.012);
+}
+
+.club-directory__artwork-fallback {
+  position: relative;
+  display: grid;
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 0.8rem;
+  background:
+    radial-gradient(circle at 28% 30%, var(--coral) 0 9%, transparent 10%),
+    radial-gradient(circle at 70% 65%, var(--amber) 0 13%, transparent 14%),
+    linear-gradient(135deg, var(--paper-deep), var(--teal));
+}
+
+.club-directory__artwork-fallback span {
+  position: absolute;
+  width: 22%;
+  aspect-ratio: 1;
+  border: 0.2rem solid var(--ink);
+  border-radius: 50%;
+}
+
+.club-directory__artwork-fallback span:nth-child(1) {
+  transform: translate(-78%, 28%);
+}
+
+.club-directory__artwork-fallback span:nth-child(2) {
+  transform: translate(0, -45%);
+}
+
+.club-directory__artwork-fallback span:nth-child(3) {
+  transform: translate(78%, 28%);
+}
+
+.club-directory__promise,
+.club-directory__next {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.club-directory__promise {
+  padding-top: 0.75rem;
+}
+
+.club-directory__promise > p,
+.club-directory__next > p {
+  margin: 0;
+}
+
+.club-directory--clubs .club-directory__promise > p:last-child {
+  margin-top: 0.45rem;
+  color: var(--ink);
+  font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+  font-weight: 650;
+  line-height: 1.38;
+}
+
+.club-directory__next {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border-left: 0.25rem solid var(--club-theme, var(--forest));
+  background: var(--paper-deep);
+}
+
+.club-directory__next > :not(.section-kicker) {
+  margin-top: 0.4rem;
+}
+
+.club-directory__next-title a {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.club-directory__next time {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.club-directory--clubs .club-directory__actions {
+  grid-column: 2;
+  padding-top: 1.25rem;
+}
+
+.club-directory--clubs .club-directory__primary-action {
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--forest);
+  border-radius: 999px;
+  background: var(--forest);
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.club-directory--clubs .club-directory__primary-action:hover,
+.club-directory--clubs .club-directory__primary-action:focus-visible {
+  background: var(--cobalt);
+  color: var(--paper);
+}
+
 .club-detail__destination {
   background: var(--paper-deep);
 }
@@ -2526,6 +2671,10 @@ main,
     grid-template-columns: 2.2rem minmax(0, 1fr);
   }
 
+  .club-directory--clubs .club-directory__card {
+    grid-template-columns: 2.2rem minmax(0, 1fr);
+  }
+
   .club-directory__number {
     grid-row: 1 / 6;
   }
@@ -2534,6 +2683,8 @@ main,
   .club-directory__card h3,
   .club-directory__artwork,
   .club-directory__card > p:not(.club-directory__number, .club-directory__lane),
+  .club-directory__promise,
+  .club-directory__next,
   .club-directory__actions {
     grid-column: 2;
     grid-row: auto;
@@ -2545,6 +2696,11 @@ main,
 }
 
 @media (max-width: 38rem) {
+  .club-directory--clubs {
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
   .editorial-section,
   .club-event-list {
     padding: 2rem 1.25rem;
@@ -6860,6 +7016,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   .event-card,
   .home-hero__poster,
   .club-directory__card,
+  .club-directory__artwork img,
   .event-card__artwork img,
   .event-detail__artwork img,
   .home-hero__poster img {

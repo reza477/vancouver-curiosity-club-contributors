@@ -9,7 +9,9 @@ import type {
   PublicCommunityLinkDto,
   PublicPageDto,
 } from "@/lib/server/public/catalog";
+import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
+import type { ClubDirectoryNextEventsState } from "./ClubDirectory";
 
 type EditorialRoutePreviewProps = Readonly<{
   children?: ReactNode;
@@ -21,18 +23,27 @@ type EditorialRoutePreviewProps = Readonly<{
 export function ClubsRouteBody({
   clubs,
   mediaById,
+  nextEventsByClubSlug = new Map(),
+  nextEventsState = "omitted",
   page,
   ...preview
 }: EditorialRoutePreviewProps &
   Readonly<{
     clubs: readonly PublicClubDto[] | null;
     mediaById: ReadonlyMap<string, ResponsiveMediaAssetDto>;
+    nextEventsByClubSlug?: ReadonlyMap<string, PublicEventCardDto>;
+    nextEventsState?: ClubDirectoryNextEventsState;
     page: PublicPageDto;
   }>) {
   return (
     <EditorialPage page={page} tone="think" {...preview}>
       {clubs ? (
-        <ClubDirectory clubs={clubs} mediaById={mediaById} />
+        <ClubDirectory
+          clubs={clubs}
+          mediaById={mediaById}
+          nextEventsByClubSlug={nextEventsByClubSlug}
+          nextEventsState={nextEventsState}
+        />
       ) : (
         <section className="public-service-state" aria-live="polite">
           <p className="section-kicker">Published clubs</p>
