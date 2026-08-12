@@ -41,10 +41,13 @@ const POSTER_PATH_PATTERN =
 const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
   new Set([
     "docs.google.com",
+    "cambridgecognition.com",
+    "deepcovekayak.com",
     "drive.google.com",
     "m.youtube.com",
     "maps.app.goo.gl",
     "reifelsanctuary.calendarspots.com",
+    "summercinema.ca",
     "vancouver.ca",
     "viff.org",
     "www.focusfeatures.com",
@@ -552,11 +555,17 @@ function parsePublicDescriptionBlocks(
     }
 
     const strongHeading = /^\*\*([^*].*?)\*\*$/u.exec(line);
+    const malformedStrongHeading = /^\*\*([^*].*?:)\*$/u.exec(line);
     const markdownHeading = /^(#{1,6})\s+(.+)$/u.exec(line);
-    if (strongHeading || markdownHeading) {
+    if (strongHeading || malformedStrongHeading || markdownHeading) {
       flushParagraph();
       flushList();
-      const headingText = strongHeading?.[1] ?? markdownHeading?.[2] ?? "";
+      const headingText = normalizeDescriptionHeadingText(
+        strongHeading?.[1] ??
+          malformedStrongHeading?.[1] ??
+          markdownHeading?.[2] ??
+          "",
+      );
       const sourceLevel = markdownHeading?.[1]?.length ?? 2;
       pushBlock(
         Object.freeze({
@@ -768,15 +777,23 @@ function isGenericDescriptionLinkText(input: string): boolean {
 function normalizeDescriptionInlineText(input: string): string {
   return input
     .normalize("NFKC")
-    .replace(/\\([*_[\]`|])/gu, "$1")
+    .replace(/\\([!-/:-@\[-`{-~])/gu, "$1")
     .replace(/\s+/gu, " ");
+}
+
+function normalizeDescriptionHeadingText(input: string): string {
+  const text = normalizeDescriptionInlineText(input).trim();
+  const redundantStrong = /^\*\*\s*([^*].*?)\s*\*\*$/u.exec(text);
+  return redundantStrong?.[1]?.trim() ?? text;
 }
 
 function normalizePublicDescriptionLink(input: string): string | null {
   if (input.length > MAX_DESCRIPTION_LINK_LENGTH) return null;
   let parsed: URL;
   try {
-    parsed = new URL(input);
+    parsed = new URL(
+      input.normalize("NFKC").replace(/\\([!-/:-@\[-`{-~])/gu, "$1"),
+    );
   } catch {
     return null;
   }

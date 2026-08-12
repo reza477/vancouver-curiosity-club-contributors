@@ -23,10 +23,13 @@ const MAX_DESCRIPTION_LINK_LENGTH = 2_048;
 const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
   new Set([
     "docs.google.com",
+    "cambridgecognition.com",
+    "deepcovekayak.com",
     "drive.google.com",
     "m.youtube.com",
     "maps.app.goo.gl",
     "reifelsanctuary.calendarspots.com",
+    "summercinema.ca",
     "vancouver.ca",
     "viff.org",
     "www.focusfeatures.com",
@@ -174,20 +177,32 @@ export function validateMeetupDescriptionBlocks(
  */
 export function meetupDescriptionBlocksForDisplay(
   blocks: readonly CuratedMeetupDescriptionBlock[],
+  eventUrl: string | null = null,
 ): readonly CuratedMeetupDescriptionBlock[] {
   const normalized = blocks.map((block) => {
+    const restoredHref = legacyExternalResourceHref(eventUrl, block);
     if ("items" in block) {
       return Object.freeze({
         items: Object.freeze(
-          block.items.map((item) =>
-            Object.freeze(normalizeDescriptionCallToActionInlines(item)),
+          block.items.map((item, itemIndex) =>
+            Object.freeze(
+              normalizeLegacyDescriptionInlines(
+                normalizeDescriptionCallToActionInlines(item),
+                false,
+                itemIndex === 0 ? restoredHref : null,
+              ),
+            ),
           ),
         ),
         type: block.type,
       });
     }
     const content = Object.freeze(
-      normalizeDescriptionCallToActionInlines(block.content),
+      normalizeLegacyDescriptionInlines(
+        normalizeDescriptionCallToActionInlines(block.content),
+        block.type === "heading",
+        restoredHref,
+      ),
     );
     return block.type === "heading"
       ? Object.freeze({ content, level: block.level, type: block.type })
@@ -221,6 +236,76 @@ export function meetupDescriptionBlocksForDisplay(
     merged.push(block);
   }
   return Object.freeze(merged);
+}
+
+const LEGACY_PADDLEBOARDING_EVENT_URL =
+  "https://www.meetup.com/vancouver-meetup-group/events/316069135/";
+const PADDLEBOARDING_LESSON_URL =
+  "https://deepcovekayak.com/lesson/intro-to-sup/";
+const LEGACY_AUTISM_EVENT_URL =
+  "https://www.meetup.com/vancouver-meetup-group/events/315969091/";
+const AUTISM_SOURCE_URL =
+  "https://cambridgecognition.com/autism-spectrum-disorder/";
+const LEGACY_SUMMER_CINEMA_EVENT_URL =
+  "https://www.meetup.com/vancouver-meetup-group/events/316069183/";
+const SUMMER_CINEMA_URL = "https://summercinema.ca/";
+
+function legacyExternalResourceHref(
+  eventUrl: string | null,
+  block: CuratedMeetupDescriptionBlock,
+): string | null {
+  const isStandalonePlaceholder =
+    block.type === "paragraph" &&
+    block.content.length === 1 &&
+    block.content[0]?.type === "text" &&
+    block.content[0].text === "External resource";
+  if (isStandalonePlaceholder) {
+    if (eventUrl === LEGACY_PADDLEBOARDING_EVENT_URL) {
+      return PADDLEBOARDING_LESSON_URL;
+    }
+    if (eventUrl === LEGACY_SUMMER_CINEMA_EVENT_URL) {
+      return SUMMER_CINEMA_URL;
+    }
+  }
+  const isAutismSourcePlaceholder =
+    eventUrl === LEGACY_AUTISM_EVENT_URL &&
+    block.type === "unordered-list" &&
+    block.items.length === 1 &&
+    block.items[0]?.length === 1 &&
+    block.items[0][0]?.type === "text" &&
+    block.items[0][0].text === "External resource";
+  return isAutismSourcePlaceholder ? AUTISM_SOURCE_URL : null;
+}
+
+function normalizeLegacyDescriptionInlines(
+  inlines: readonly CuratedMeetupDescriptionInline[],
+  heading: boolean,
+  restoredHref: string | null,
+): readonly CuratedMeetupDescriptionInline[] {
+  return inlines.map((inline) => {
+    if (
+      restoredHref !== null &&
+      inline.type === "text" &&
+      inline.text === "External resource"
+    ) {
+      const displayHost = new URL(restoredHref).hostname.replace(/^www\./u, "");
+      return Object.freeze({
+        href: restoredHref,
+        text: `Open ${displayHost}`,
+        type: "link" as const,
+      });
+    }
+    let text = inline.text
+      .normalize("NFKC")
+      .replace(/\\([!-/:-@\[-`{-~])/gu, "$1")
+      .replace(/^\*\*([^*].*?:)\*$/u, "$1")
+      .replace(/\*\(\*([^*]+)\)\*/gu, "($1)");
+    if (heading) {
+      const redundantStrong = /^\*\*\s*([^*].*?)\s*\*\*$/u.exec(text);
+      text = redundantStrong?.[1]?.trim() ?? text;
+    }
+    return text === inline.text ? inline : Object.freeze({ ...inline, text });
+  });
 }
 
 export function validateCuratedMeetupEventCandidate(

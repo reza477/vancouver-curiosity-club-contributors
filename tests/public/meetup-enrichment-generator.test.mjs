@@ -343,6 +343,50 @@ Reading Magnifica Humanitas - my summary of it:
   }
 });
 
+test("the Banking import removes visible Markdown residue while preserving heading semantics", () => {
+  const result = normalizePublicDescription(`Short Summary
+This is designed for those with little to no knowledge of Canadian banking and investing.
+
+**\\*\\* IMPORTANT \\*\\***
+
+This is not a product or service and does not involve any sales, cost, or subscription.
+
+The session is designed to take \\~30 minutes, but I encourage questions during the presentation.`);
+
+  assert.deepEqual(result.blocks[1], {
+    content: [{ text: "IMPORTANT", type: "text" }],
+    level: 3,
+    type: "heading",
+  });
+  assert.match(result.plainText, /The session is designed to take ~30 minutes/u);
+  assert.doesNotMatch(result.plainText, /\*\*\s*IMPORTANT\s*\*\*|\\~30 minutes/u);
+});
+
+test("the paddleboarding import retains its vetted lesson link instead of an orphan label", () => {
+  const result = normalizePublicDescription(`Finding Your People: Last-Minute Paddleboarding at Deep Cove 🏄
+A little last minute! A friend and I are heading to Deep Cove for a beginner paddleboarding lesson.
+
+If SUP has been on your summer list, come learn with us! If you’re interested in the BOGO offer, post here and coordinate with others.
+
+https://deepcovekayak.com/lesson/intro-to-sup/
+
+Already know how to paddleboard? Rent a board and join us on the water.`);
+
+  assert.deepEqual(result.blocks[2], {
+    content: [
+      {
+        href: "https://deepcovekayak.com/lesson/intro-to-sup/",
+        text: "Open deepcovekayak.com",
+        type: "link",
+      },
+    ],
+    type: "paragraph",
+  });
+  assert.match(result.plainText, /Open deepcovekayak\.com/u);
+  assert.match(result.plainText, /Already know how to paddleboard\?/u);
+  assert.doesNotMatch(result.plainText, /External resource/u);
+});
+
 test("a validation failure discards staged files and leaves published files untouched", async () => {
   await withTemporaryWorkspace(async (workspaceRoot) => {
     const posterDirectory = path.join(

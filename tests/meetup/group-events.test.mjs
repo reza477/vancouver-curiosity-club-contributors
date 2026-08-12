@@ -193,6 +193,146 @@ test("keeps unsafe description markup and links out of public content", () => {
   ]);
 });
 
+test("normalizes the exact Banking Markdown residue in automatic group-page imports", () => {
+  const state = createApolloState();
+  state[EVENT_REF].description = `Short Summary
+This is designed for those with little to no knowledge of Canadian banking and investing.
+
+**\\*\\* IMPORTANT \\*\\***
+
+This is not a product or service and does not involve any sales, cost, or subscription.
+
+The session is designed to take \\~30 minutes, but I encourage questions during the presentation.`;
+
+  const parsed = parseMeetupGroupEventsPage(createHtml(state), GROUP_SLUG);
+  const publicContent = parsed.events[0].publicContent;
+  assert.deepEqual(publicContent.descriptionBlocks[1], {
+    content: [{ text: "IMPORTANT", type: "text" }],
+    level: 3,
+    type: "heading",
+  });
+  assert.match(publicContent.description, /The session is designed to take ~30 minutes/u);
+  assert.doesNotMatch(
+    publicContent.description,
+    /\*\*\s*IMPORTANT\s*\*\*|\\~30 minutes/u,
+  );
+});
+
+test("retains the exact paddleboarding lesson link in automatic group-page imports", () => {
+  const state = createApolloState();
+  state[EVENT_REF].description = `Finding Your People: Last-Minute Paddleboarding at Deep Cove 🏄
+A little last minute! A friend and I are heading to Deep Cove for a beginner paddleboarding lesson.
+
+If SUP has been on your summer list, come learn with us! If you’re interested in the BOGO offer, post here and coordinate with others.
+
+https://deepcovekayak.com/lesson/intro-to-sup/
+
+Already know how to paddleboard? Rent a board and join us on the water.`;
+
+  const parsed = parseMeetupGroupEventsPage(createHtml(state), GROUP_SLUG);
+  const publicContent = parsed.events[0].publicContent;
+  assert.deepEqual(publicContent.descriptionBlocks[2], {
+    content: [
+      {
+        href: "https://deepcovekayak.com/lesson/intro-to-sup/",
+        text: "Open deepcovekayak.com",
+        type: "link",
+      },
+    ],
+    type: "paragraph",
+  });
+  assert.match(publicContent.description, /Open deepcovekayak\.com/u);
+  assert.doesNotMatch(publicContent.description, /External resource/u);
+});
+
+test("normalizes the remaining live escaped punctuation and vetted source links", () => {
+  const autismState = createApolloState();
+  autismState[EVENT_REF].description = `Summary:
+Welcome to the general introduction study series: Autism!
+
+\\- https://cambridgecognition\\.com/autism\\-spectrum\\-disorder/
+
+**Please ensure to listen to the two lectures below prior to the meetup:*
+
+**90\\| Autism: The Big Picture – A Conversation With Sir Simon Baron\\-Cohen**`;
+  const autism = parseMeetupGroupEventsPage(
+    createHtml(autismState),
+    GROUP_SLUG,
+  ).events[0].publicContent;
+  const autismSourceBlock = autism.descriptionBlocks.find(
+    (block) => "items" in block,
+  );
+  assert.deepEqual(autismSourceBlock, {
+    items: [
+      [
+        {
+          href: "https://cambridgecognition.com/autism-spectrum-disorder/",
+          text: "Open cambridgecognition.com",
+          type: "link",
+        },
+      ],
+    ],
+    type: "unordered-list",
+  });
+  assert.match(
+    autism.description,
+    /Please ensure to listen to the two lectures below prior to the meetup:/u,
+  );
+  assert.match(autism.description, /90\| Autism:.*Simon Baron-Cohen/u);
+  assert.doesNotMatch(autism.description, /External resource|\\[-.|]|\*\*Please/u);
+
+  const cinemaState = createApolloState();
+  cinemaState[EVENT_REF].description = `The Notebook under the stars is an outdoor cultural outing.
+
+Official Evo Summer Cinema details:
+https://summercinema.ca/
+
+Free general admission — first come, first served.`;
+  const cinema = parseMeetupGroupEventsPage(
+    createHtml(cinemaState),
+    GROUP_SLUG,
+  ).events[0].publicContent;
+  assert.deepEqual(cinema.descriptionBlocks[1], {
+    content: [
+      {
+        href: "https://summercinema.ca/",
+        text: "Official Evo Summer Cinema details",
+        type: "link",
+      },
+    ],
+    type: "paragraph",
+  });
+  assert.doesNotMatch(cinema.description, /External resource/u);
+});
+
+test("new public-description hosts remain exact and fail closed", () => {
+  for (const unsafeUrl of [
+    "http://deepcovekayak.com/lesson/intro-to-sup/",
+    "https://user@deepcovekayak.com/lesson/intro-to-sup/",
+    "https://deepcovekayak.com:444/lesson/intro-to-sup/",
+    "https://deepcovekayak.com.attacker.invalid/lesson/intro-to-sup/",
+    "https://deepcovekayak.com/lesson/intro-to-sup/?offer=private",
+  ]) {
+    const state = createApolloState();
+    state[EVENT_REF].description =
+      `A public paddleboarding description with enough detail.\n\n${unsafeUrl}`;
+    try {
+      const content = parseMeetupGroupEventsPage(
+        createHtml(state),
+        GROUP_SLUG,
+      ).events[0].publicContent;
+      assert.doesNotMatch(
+        JSON.stringify(content.descriptionBlocks),
+        /"type":"link"/u,
+        unsafeUrl,
+      );
+    } catch (error) {
+      assert.equal(error instanceof MeetupSyncError, true, unsafeUrl);
+      assert.equal(error.code, "calendar_invalid", unsafeUrl);
+    }
+  }
+});
+
 test("fetches the one canonical group page with bounded no-store semantics", async () => {
   const html = createHtml(createApolloState());
   let observedUrl = null;

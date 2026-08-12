@@ -247,7 +247,10 @@ export function PublicEventDetailRenderer({
           <p className="section-kicker">Field note</p>
           <h2 id="about-title">About this event</h2>
           {event.descriptionBlocks ? (
-            <PublicRichDescription blocks={event.descriptionBlocks} />
+            <PublicRichDescription
+              blocks={event.descriptionBlocks}
+              eventUrl={event.rsvpUrl}
+            />
           ) : event.description ? (
             event.description
               .split(/\n{2,}/u)
@@ -349,10 +352,12 @@ export function PublicEventDetailRenderer({
 
 function PublicRichDescription({
   blocks,
+  eventUrl,
 }: Readonly<{
   blocks: NonNullable<PublicEventDetailDto["descriptionBlocks"]>;
+  eventUrl: string | null;
 }>) {
-  const displayBlocks = meetupDescriptionBlocksForDisplay(blocks);
+  const displayBlocks = meetupDescriptionBlocksForDisplay(blocks, eventUrl);
   return (
     <div className="event-detail__rich-description">
       {displayBlocks.map((block, blockIndex) => {

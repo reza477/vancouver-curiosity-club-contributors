@@ -8,7 +8,10 @@ import {
   formatEventSchedule,
 } from "../../app/_components/EventCard.tsx";
 import { PublicEventDetailRenderer } from "../../app/_components/PublicEventDetailRenderer.tsx";
-import { CURATED_MEETUP_EVENT_ENRICHMENTS } from "../../lib/meetup-event-enrichment.ts";
+import {
+  CURATED_MEETUP_EVENT_ENRICHMENTS,
+  meetupDescriptionBlocksForDisplay,
+} from "../../lib/meetup-event-enrichment.ts";
 
 const projectRoot = new URL("../../", import.meta.url);
 
@@ -262,6 +265,144 @@ test("affected Meetup imports keep structure and attach every source link to its
       /<span>Reading Magnifica Humanitas - my summary of it\s*:?\s*<\/span>/u,
     );
   });
+});
+
+test("the published Banking import renders a clean heading and human-readable duration", () => {
+  const markup = renderImportedMeetupDescription("315936856");
+
+  assert.match(markup, /<h3><span>IMPORTANT<\/span><\/h3>/u);
+  assert.match(markup, /The session is designed to take ~30 minutes/u);
+  assert.doesNotMatch(markup, /\*\*\s*IMPORTANT\s*\*\*|\\~30 minutes/u);
+});
+
+test("the published paddleboarding snapshot restores its vetted lesson link", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PublicEventDetailRenderer, {
+      canonicalUrl: "https://preview.example/events/paddleboarding",
+      event: Object.freeze({
+        ...TORONTO_EVENT,
+        description: "External resource",
+        descriptionBlocks: Object.freeze([
+          Object.freeze({
+            content: Object.freeze([
+              Object.freeze({ text: "External resource", type: "text" }),
+            ]),
+            type: "paragraph",
+          }),
+        ]),
+        rsvpMode: "meetup",
+        rsvpUrl:
+          "https://www.meetup.com/vancouver-meetup-group/events/316069135/",
+        title: "Finding Your People: Last-Minute Paddleboarding at Deep Cove",
+      }),
+      showCalendarDownload: false,
+      showShareControls: false,
+    }),
+  );
+
+  assert.match(
+    markup,
+    /<a href="https:\/\/deepcovekayak\.com\/lesson\/intro-to-sup\/" rel="noreferrer noopener">Open deepcovekayak\.com<\/a>/u,
+  );
+  assert.doesNotMatch(markup, /<span>External resource<\/span>/u);
+});
+
+test("the paddleboarding compatibility repair is exact, narrow, and idempotent", () => {
+  const eventUrl =
+    "https://www.meetup.com/vancouver-meetup-group/events/316069135/";
+  const standalone = Object.freeze([
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({ text: "External resource", type: "text" }),
+      ]),
+      type: "paragraph",
+    }),
+  ]);
+  const repaired = meetupDescriptionBlocksForDisplay(standalone, eventUrl);
+  assert.equal(repaired[0].content[0].type, "link");
+  assert.deepEqual(
+    meetupDescriptionBlocksForDisplay(repaired, eventUrl),
+    repaired,
+  );
+  assert.deepEqual(
+    meetupDescriptionBlocksForDisplay(
+      standalone,
+      "https://www.meetup.com/vancouver-meetup-group/events/316069136/",
+    ),
+    standalone,
+  );
+
+  const mixed = Object.freeze([
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({ text: "External resource", type: "text" }),
+        Object.freeze({ text: " remains contextual.", type: "text" }),
+      ]),
+      type: "paragraph",
+    }),
+  ]);
+  assert.deepEqual(
+    meetupDescriptionBlocksForDisplay(mixed, eventUrl),
+    mixed,
+  );
+});
+
+test("legacy Autism and summer-cinema placeholders regain only their vetted links", () => {
+  const autismBlocks = Object.freeze([
+    Object.freeze({
+      items: Object.freeze([
+        Object.freeze([
+          Object.freeze({ text: "External resource", type: "text" }),
+        ]),
+      ]),
+      type: "unordered-list",
+    }),
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({
+          text: "90| Autism: The Big Picture – A Conversation With Sir Simon Baron\\-Cohen",
+          type: "text",
+        }),
+      ]),
+      level: 3,
+      type: "heading",
+    }),
+  ]);
+  const autism = meetupDescriptionBlocksForDisplay(
+    autismBlocks,
+    "https://www.meetup.com/vancouver-meetup-group/events/315969091/",
+  );
+  assert.deepEqual(autism[0].items[0][0], {
+    href: "https://cambridgecognition.com/autism-spectrum-disorder/",
+    text: "Open cambridgecognition.com",
+    type: "link",
+  });
+  assert.equal(autism[1].content[0].text.includes("Baron-Cohen"), true);
+
+  const cinemaBlocks = Object.freeze([
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({ text: "External resource", type: "text" }),
+      ]),
+      type: "paragraph",
+    }),
+  ]);
+  const cinema = meetupDescriptionBlocksForDisplay(
+    cinemaBlocks,
+    "https://www.meetup.com/vancouver-meetup-group/events/316069183/",
+  );
+  assert.deepEqual(cinema[0].content[0], {
+    href: "https://summercinema.ca/",
+    text: "Open summercinema.ca",
+    type: "link",
+  });
+  assert.deepEqual(
+    meetupDescriptionBlocksForDisplay(
+      cinemaBlocks,
+      "https://www.meetup.com/vancouver-meetup-group/events/316069184/",
+    ),
+    cinemaBlocks,
+  );
 });
 
 test("event cards lead with a poster and expose verified associations and location facts", () => {
