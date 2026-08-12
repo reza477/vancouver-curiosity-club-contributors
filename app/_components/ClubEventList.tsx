@@ -31,7 +31,9 @@ export function ClubEventList({
                     {event.title}
                   </Link>
                 </h3>
-                {event.summary ? <p>{event.summary}</p> : null}
+                {event.summary ? (
+                  <p className="event-discovery-summary">{event.summary}</p>
+                ) : null}
                 <div className="club-event-list__facts">
                   {event.status === "tentative" ? (
                     <span>Tentative</span>

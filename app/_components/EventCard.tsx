@@ -126,7 +126,9 @@ export function EventCard({
             {event.title}
           </Link>
         </h3>
-        {event.summary && !compact ? <p>{event.summary}</p> : null}
+        {event.summary && !compact ? (
+          <p className="event-discovery-summary">{event.summary}</p>
+        ) : null}
         <dl className="event-card__facts">
           <div>
             <dt>When</dt>

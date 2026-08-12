@@ -560,7 +560,9 @@ function CalendarEventPreview({
             Arrival: {event.arrivalInstructions}
           </p>
         ) : null}
-        {event.summary ? <p>{event.summary}</p> : null}
+        {event.summary ? (
+          <p className="event-discovery-summary">{event.summary}</p>
+        ) : null}
         <div className="public-calendar-event__actions">
           <Link href={`/events/${event.slug}`} prefetch={false}>
             Event details

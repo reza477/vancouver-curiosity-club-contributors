@@ -3033,6 +3033,17 @@ main,
   color: var(--ink-soft);
 }
 
+.event-discovery-summary {
+  display: -webkit-box;
+  max-height: 4.5em;
+  overflow: hidden;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
 .event-card__facts {
   display: flex;
   flex-wrap: wrap;
@@ -7004,8 +7015,11 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
     font-size: clamp(1.45rem, 7vw, 2rem);
   }
 
-  .event-card__body > p {
-    display: none;
+  .event-discovery-summary {
+    display: -webkit-box;
+    max-height: 3em;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   .event-card__meta {
