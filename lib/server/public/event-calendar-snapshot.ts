@@ -19,6 +19,7 @@ import {
 import type { PublicEventsPageData } from "@/lib/server/public/events-page";
 import { parseOfficialMeetupEventUrl } from "@/lib/server/meetup/url";
 import { resolvePublicCalendarMonth } from "@/lib/public-calendar";
+import { parsePublicEventLaneSlug } from "@/lib/public-event-lanes";
 import {
   isValidIanaTimeZone,
   parseCalendarDate,
@@ -27,7 +28,7 @@ import { writeSafeLog } from "@/lib/validation/server-observability";
 
 export const PUBLIC_EVENTS_SNAPSHOT_TTL_MS = 10 * 60 * 1_000;
 export const PUBLIC_EVENTS_SNAPSHOT_MAX_BYTES = 1_000_000;
-const PUBLIC_EVENTS_SNAPSHOT_SCHEMA_VERSION = 1;
+const PUBLIC_EVENTS_SNAPSHOT_SCHEMA_VERSION = 2;
 const PUBLIC_EVENTS_MAX_CALENDAR_EVENTS = 96;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const MONTH_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])$/u;
@@ -45,6 +46,7 @@ export type PublicEventsSnapshotEdgeCache = Readonly<{
 
 export type PublicEventsSnapshotContext = Readonly<{
   cacheOrigin?: string | null;
+  laneSlug?: unknown;
   nowUtcMs: number;
   organizationId: string;
   rawMonth: unknown;
@@ -115,6 +117,7 @@ export function publicEventsSnapshotCacheKey(
       maxLength: 64,
     },
   );
+  const laneSlug = parsePublicEventLaneSlug(context.laneSlug);
   return JSON.stringify([
     PUBLIC_EVENTS_SNAPSHOT_SCHEMA_VERSION,
     sourceRevision,
@@ -123,6 +126,7 @@ export function publicEventsSnapshotCacheKey(
     context.rawMonth === undefined ? "landing" : "month",
     resolvedMonth.month,
     resolvedMonth.invalid ? "invalid" : "valid",
+    laneSlug ?? "all",
   ]);
 }
 

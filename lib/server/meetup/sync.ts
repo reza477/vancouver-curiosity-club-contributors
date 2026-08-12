@@ -35,6 +35,7 @@ import {
   meetupEventAliasForUrl,
 } from "./event-aliases";
 import { assertMeetupProgramClubMapping } from "./clubs";
+import { classifyMeetupEventLane } from "./event-lane-classifier";
 import {
   externalReservationSemanticFingerprint,
   externalReservationStateFingerprint,
@@ -1629,7 +1630,8 @@ function insertEventStatement(
     return database
       .prepare(
         `INSERT INTO events (
-           id, organization_id, club_id, primary_organizer_profile_id,
+           id, organization_id, club_id, event_lane_id,
+           primary_organizer_profile_id,
            title, slug, summary, description, status, visibility, time_kind,
            starts_at_utc, ends_at_utc, timezone, all_day_start_date,
            all_day_end_date_exclusive, buffer_before_minutes,
@@ -1638,7 +1640,14 @@ function insertEventStatement(
            private_meeting_details, published_at, created_by_profile_id,
            updated_by_profile_id, created_at, updated_at, deleted_at
          ) VALUES (
-           ?, ?, ?, NULL, ?, ?, NULL, NULL, ?, 'public', 'timed',
+           ?, ?, ?, (
+             SELECT lane.id
+             FROM event_lanes AS lane
+             WHERE lane.organization_id = ?
+               AND lane.slug = ?
+               AND lane.deleted_at IS NULL
+             LIMIT 1
+           ), NULL, ?, ?, NULL, NULL, ?, 'public', 'timed',
            ?, ?, ?, NULL, NULL, 0, 0, '[]', 1, 'unreviewed', NULL,
            NULL, NULL, ?, ?, ?, ?, ?, NULL
          )`,
@@ -1647,6 +1656,8 @@ function insertEventStatement(
         input.eventId,
         input.organizationId,
         input.clubId,
+        input.organizationId,
+        classifyMeetupEventLane(input.event),
         input.event.title,
         slug,
         SOURCE_CANONICAL_EVENT_STATUS,
@@ -1663,7 +1674,8 @@ function insertEventStatement(
   return database
     .prepare(
       `INSERT INTO events (
-         id, organization_id, club_id, primary_organizer_profile_id,
+         id, organization_id, club_id, event_lane_id,
+         primary_organizer_profile_id,
          title, slug, summary, description, status, visibility, time_kind,
          starts_at_utc, ends_at_utc, timezone, all_day_start_date,
          all_day_end_date_exclusive, buffer_before_minutes,
@@ -1672,7 +1684,14 @@ function insertEventStatement(
          private_meeting_details, published_at, created_by_profile_id,
          updated_by_profile_id, created_at, updated_at, deleted_at
        ) VALUES (
-         ?, ?, ?, NULL, ?, ?, NULL, NULL, ?, 'public', 'all_day',
+         ?, ?, ?, (
+           SELECT lane.id
+           FROM event_lanes AS lane
+           WHERE lane.organization_id = ?
+             AND lane.slug = ?
+             AND lane.deleted_at IS NULL
+           LIMIT 1
+         ), NULL, ?, ?, NULL, NULL, ?, 'public', 'all_day',
          NULL, NULL, ?, ?, ?, 0, 0, '[]', 1, 'unreviewed', NULL,
          NULL, NULL, ?, ?, ?, ?, ?, NULL
        )`,
@@ -1681,6 +1700,8 @@ function insertEventStatement(
       input.eventId,
       input.organizationId,
       input.clubId,
+      input.organizationId,
+      classifyMeetupEventLane(input.event),
       input.event.title,
       slug,
       SOURCE_CANONICAL_EVENT_STATUS,
@@ -1713,6 +1734,17 @@ function updateEventStatement(
       .prepare(
         `UPDATE events
          SET club_id = ?,
+             event_lane_id = COALESCE(
+               event_lane_id,
+               (
+                 SELECT lane.id
+                 FROM event_lanes AS lane
+                 WHERE lane.organization_id = ?
+                   AND lane.slug = ?
+                   AND lane.deleted_at IS NULL
+                 LIMIT 1
+               )
+             ),
              title = ?,
              status = ?,
              time_kind = 'timed',
@@ -1739,6 +1771,8 @@ function updateEventStatement(
       )
       .bind(
         input.clubId,
+        input.organizationId,
+        classifyMeetupEventLane(input.event),
         input.event.title,
         SOURCE_CANONICAL_EVENT_STATUS,
         input.event.schedule.startsAtUtcMs,
@@ -1757,6 +1791,17 @@ function updateEventStatement(
     .prepare(
       `UPDATE events
        SET club_id = ?,
+           event_lane_id = COALESCE(
+             event_lane_id,
+             (
+               SELECT lane.id
+               FROM event_lanes AS lane
+               WHERE lane.organization_id = ?
+                 AND lane.slug = ?
+                 AND lane.deleted_at IS NULL
+               LIMIT 1
+             )
+           ),
            title = ?,
            status = ?,
            time_kind = 'all_day',
@@ -1783,6 +1828,8 @@ function updateEventStatement(
     )
     .bind(
       input.clubId,
+      input.organizationId,
+      classifyMeetupEventLane(input.event),
       input.event.title,
       SOURCE_CANONICAL_EVENT_STATUS,
       input.event.schedule.timeZone,

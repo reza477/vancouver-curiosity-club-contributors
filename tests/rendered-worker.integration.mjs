@@ -305,6 +305,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0016_phase7_import_export_forms.sql",
     "0017_bright_captain_america.sql",
     "0018_public_event_calendar_snapshots.sql",
+    "0019_meetup_event_lanes.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -913,10 +914,15 @@ test("a cancelled event detail renders only published facts and accurate structu
   assertNoPrivateSentinels(html);
 });
 
-test("Calendar permanently redirects to Events and preserves the month", async () => {
+test("Calendar permanently redirects to Events and preserves the month and lane", async () => {
   for (const [sourcePath, destinationPath] of [
     ["/calendar", "/events"],
     ["/calendar?month=2026-07", "/events?month=2026-07"],
+    [
+      "/calendar?month=2026-07&lane=reset-and-make",
+      "/events?month=2026-07&lane=reset-and-make",
+    ],
+    ["/calendar?lane=bogus", "/events"],
   ]) {
     const response = await fetchPath(sourcePath, { redirect: "manual" });
     assert.equal(response.status, 308, sourcePath);

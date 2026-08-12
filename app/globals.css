@@ -5899,6 +5899,51 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   padding-bottom: clamp(2rem, 4vw, 3rem);
 }
 
+.events-page__lane-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  padding: clamp(1rem, 2vw, 1.5rem)
+    max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right))
+    clamp(1.25rem, 2.5vw, 2rem)
+    max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  border-block: 1px solid var(--line);
+  background: var(--paper-deep);
+}
+
+.events-page__lane-filters > span {
+  margin-right: 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.events-page__lane-filters a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.events-page__lane-filters a:hover,
+.events-page__lane-filters a:focus-visible,
+.events-page__lane-filters a[aria-current="page"] {
+  background: var(--forest);
+  color: var(--paper);
+}
+
+.events-page__lane-filters a[aria-current="page"] {
+  box-shadow: inset 0 0 0 0.15rem var(--paper);
+}
+
 .event-filters {
   padding-top: clamp(2.5rem, 5vw, 4.5rem);
   padding-bottom: clamp(2.5rem, 5vw, 4.5rem);

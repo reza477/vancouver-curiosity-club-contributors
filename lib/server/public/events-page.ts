@@ -5,6 +5,7 @@ import {
   resolvePublicCalendarLandingMonth,
   resolvePublicCalendarMonth,
 } from "@/lib/public-calendar";
+import { parsePublicEventLaneSlug } from "@/lib/public-event-lanes";
 import type { D1DatabaseLike } from "@/lib/server/auth";
 import {
   queryPublicCalendarLandingBundle,
@@ -24,6 +25,7 @@ type PublicEventsPageDatabase = Pick<D1DatabaseLike, "prepare"> &
 
 export type LoadPublicEventsPageDataInput = Readonly<{
   cacheOrigin?: string | null;
+  laneSlug?: unknown;
   nowUtcMs: number;
   organizationId: string;
   rawMonth: unknown;
@@ -46,12 +48,17 @@ export async function loadPublicEventsPageData(
   input: LoadPublicEventsPageDataInput,
   snapshotServices: PublicEventsSnapshotServices = {},
 ): Promise<PublicEventsPageData> {
+  const normalizedInput = Object.freeze({
+    ...input,
+    laneSlug: parsePublicEventLaneSlug(input.laneSlug),
+  });
   const snapshotContext = {
-    cacheOrigin: input.cacheOrigin,
-    nowUtcMs: input.nowUtcMs,
-    organizationId: input.organizationId,
-    rawMonth: input.rawMonth,
-    todayDate: input.todayDate,
+    cacheOrigin: normalizedInput.cacheOrigin,
+    laneSlug: normalizedInput.laneSlug,
+    nowUtcMs: normalizedInput.nowUtcMs,
+    organizationId: normalizedInput.organizationId,
+    rawMonth: normalizedInput.rawMonth,
+    todayDate: normalizedInput.todayDate,
   };
   const cached = await readPublicEventsSnapshot(
     database,
@@ -60,7 +67,10 @@ export async function loadPublicEventsPageData(
   );
   if (cached) return cached;
 
-  const loaded = await loadPublicEventsPageDataUncached(database, input);
+  const loaded = await loadPublicEventsPageDataUncached(
+    database,
+    normalizedInput,
+  );
   await writePublicEventsSnapshot(
     database,
     snapshotContext,
@@ -115,6 +125,7 @@ async function loadBundledEventsCalendar(
   const bundled = await queryPublicCalendarLandingBundle(database, {
     calendar: {
       fromDate: initialBounds.startDate,
+      laneSlug: input.laneSlug,
       nowUtcMs: input.nowUtcMs,
       organizationId: input.organizationId,
       todayDate: input.todayDate,
@@ -145,6 +156,7 @@ async function loadBundledEventsCalendar(
         const shiftedBounds = publicCalendarMonthBounds(landingMonth.month);
         loadedMonth = await queryPublicCalendarMonth(database, {
           fromDate: shiftedBounds.startDate,
+          laneSlug: input.laneSlug,
           nowUtcMs: input.nowUtcMs,
           organizationId: input.organizationId,
           todayDate: input.todayDate,
@@ -182,6 +194,7 @@ async function loadIndependentEventsCalendar(
   );
   const initialMonth = await queryPublicCalendarMonth(database, {
     fromDate: initialBounds.startDate,
+    laneSlug: input.laneSlug,
     nowUtcMs: input.nowUtcMs,
     organizationId: input.organizationId,
     todayDate: input.todayDate,
@@ -206,6 +219,7 @@ async function loadIndependentEventsCalendar(
   try {
     const landingPage = await queryPublicEventSlice(database, {
       nowUtcMs: input.nowUtcMs,
+      laneSlug: input.laneSlug,
       organizationId: input.organizationId,
       page: 1,
       pageSize: 1,
@@ -233,6 +247,7 @@ async function loadIndependentEventsCalendar(
     const shiftedBounds = publicCalendarMonthBounds(landingMonth.month);
     const shiftedMonth = await queryPublicCalendarMonth(database, {
       fromDate: shiftedBounds.startDate,
+      laneSlug: input.laneSlug,
       nowUtcMs: input.nowUtcMs,
       organizationId: input.organizationId,
       todayDate: input.todayDate,

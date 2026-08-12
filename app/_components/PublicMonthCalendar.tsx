@@ -19,6 +19,7 @@ import {
   publicEventCalendarStartDate,
 } from "@/lib/public-calendar";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
+import type { PublicEventLaneSlug } from "@/lib/public-event-lanes";
 
 const WEEKDAYS = [
   "Sunday",
@@ -35,6 +36,7 @@ export function PublicMonthCalendar({
   complete,
   events,
   headingLevel = 1,
+  laneSlug = null,
   maxMonth,
   minMonth,
   month,
@@ -46,6 +48,7 @@ export function PublicMonthCalendar({
   complete: boolean;
   events: readonly PublicEventCardDto[];
   headingLevel?: 1 | 2;
+  laneSlug?: PublicEventLaneSlug | null;
   maxMonth: string;
   minMonth: string;
   month: string;
@@ -155,7 +158,7 @@ export function PublicMonthCalendar({
         <nav aria-label="Calendar months">
           {previousMonth ? (
             <Link
-              href={calendarHref(previousMonth, calendarRoute)}
+              href={calendarHref(previousMonth, calendarRoute, laneSlug)}
               prefetch={false}
             >
               Previous month
@@ -164,14 +167,18 @@ export function PublicMonthCalendar({
             <span aria-hidden="true" />
           )}
           <Link
-            href={calendarHref(todayDate.slice(0, 7), calendarRoute)}
+            href={calendarHref(
+              todayDate.slice(0, 7),
+              calendarRoute,
+              laneSlug,
+            )}
             prefetch={false}
           >
             Today
           </Link>
           {nextMonth ? (
             <Link
-              href={calendarHref(nextMonth, calendarRoute)}
+              href={calendarHref(nextMonth, calendarRoute, laneSlug)}
               prefetch={false}
             >
               Next month
@@ -561,9 +568,16 @@ function publicEventStatusLabel(
   return "Confirmed";
 }
 
-function calendarHref(month: string, route: string): string {
+function calendarHref(
+  month: string,
+  route: string,
+  laneSlug: PublicEventLaneSlug | null,
+): string {
   const separator = route.includes("?") ? "&" : "?";
-  return `${route}${separator}month=${encodeURIComponent(month)}`;
+  const laneQuery = laneSlug
+    ? `&lane=${encodeURIComponent(laneSlug)}`
+    : "";
+  return `${route}${separator}month=${encodeURIComponent(month)}${laneQuery}`;
 }
 
 function shiftMonthForHref(month: string, delta: number): string {

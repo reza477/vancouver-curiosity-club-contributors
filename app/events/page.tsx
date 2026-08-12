@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { resolvePublicEventLaneSelection } from "@/lib/server/public/event-lane-filter";
 import { EventsPageRenderer } from "@/app/_components/EventsPageRenderer";
 import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
@@ -48,6 +49,7 @@ export default async function EventsPage({
   searchParams,
 }: Readonly<{ searchParams: PageSearchParams }>) {
   const raw = await searchParams;
+  const laneSelection = resolvePublicEventLaneSelection(raw.lane);
   const nowUtcMs = readServerUtcMs();
   const todayDate = vancouverCalendarDate(nowUtcMs);
   const origin = await getTrustedRequestOrigin();
@@ -77,6 +79,7 @@ export default async function EventsPage({
         cacheOrigin: origin?.origin ?? null,
         organizationId: organization.id,
         nowUtcMs,
+        laneSlug: laneSelection.activeLaneSlug,
         rawMonth: raw.month,
         todayDate,
       });
@@ -98,6 +101,8 @@ export default async function EventsPage({
     <EventsPageRenderer
       calendar={calendar}
       calendarAvailable={calendarAvailable}
+      activeLaneSlug={laneSelection.activeLaneSlug}
+      invalidLane={laneSelection.invalid}
       nowUtcMs={nowUtcMs}
       pageContent={pageContent}
       siteOrigin={origin?.origin ?? null}

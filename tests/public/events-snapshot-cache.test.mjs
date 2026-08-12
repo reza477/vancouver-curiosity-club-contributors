@@ -118,6 +118,10 @@ test("snapshot keys separate build, organization, normalized month, Vancouver da
     loaderInput({ rawMonth: "2026-09", sourceRevision: SOURCE_REVISION }),
     loaderInput({ todayDate: "2026-08-12", sourceRevision: SOURCE_REVISION }),
     loaderInput({ rawMonth: undefined, sourceRevision: SOURCE_REVISION }),
+    loaderInput({
+      laneSlug: "reset-and-make",
+      sourceRevision: SOURCE_REVISION,
+    }),
   ];
   const keys = keyContexts.map(publicEventsSnapshotCacheKey);
   assert.equal(
@@ -137,6 +141,7 @@ test("snapshot keys separate build, organization, normalized month, Vancouver da
     loaderInput({ rawMonth: "2026-09" }),
     loaderInput({ todayDate: "2026-08-12" }),
     loaderInput({ rawMonth: undefined }),
+    loaderInput({ laneSlug: "reset-and-make" }),
   ];
 
   for (const input of distinctRequests) {
@@ -465,7 +470,7 @@ function emptySnapshotEnvelope(cacheKey, options = {}) {
     cacheKey,
     data: emptySnapshotPayload(options),
     expiresAtUtcMs: NOW_UTC_MS + TEN_MINUTES_MS,
-    schemaVersion: 1,
+    schemaVersion: 2,
   };
 }
 

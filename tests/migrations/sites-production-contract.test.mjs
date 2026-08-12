@@ -22,6 +22,7 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0016_phase7_import_export_forms.sql",
   "0017_bright_captain_america.sql",
   "0018_public_event_calendar_snapshots.sql",
+  "0019_meetup_event_lanes.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
   checks: 246,
@@ -50,6 +51,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0016_snapshot.json",
       "0017_snapshot.json",
       "0018_snapshot.json",
+      "0019_snapshot.json",
       "_journal.json",
     ],
     "the normalized chain must include every public-content and Events snapshot migration",
@@ -72,6 +74,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 16, tag: "0016_phase7_import_export_forms" },
       { idx: 17, tag: "0017_bright_captain_america" },
       { idx: 18, tag: "0018_public_event_calendar_snapshots" },
+      { idx: 19, tag: "0019_meetup_event_lanes" },
     ],
   );
   assert.deepEqual(
@@ -87,6 +90,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0016",
       "0017",
       "0018",
+      "0019",
     ].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
@@ -100,7 +104,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200],
+    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200],
     "migration snapshots must match the cumulative packaged index state",
   );
 
@@ -189,6 +193,48 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
     database.exec("PRAGMA foreign_keys = ON");
     applyProductionFragments(database, allProductionFragments());
     assertDatabaseSignature(database, EXPECTED_SIGNATURE);
+  } finally {
+    database.close();
+  }
+});
+
+test("the Meetup lane backfill is narrow, accurate, and idempotent", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    const migrationsBeforeLaneBackfill = EXPECTED_MIGRATIONS.slice(0, -1)
+      .flatMap((file) => productionFragments(migrationSql(file)));
+    applyProductionFragments(database, migrationsBeforeLaneBackfill);
+    seedMeetupLaneBackfillCases(database);
+
+    const [laneBackfill] = productionFragments(
+      migrationSql("0019_meetup_event_lanes.sql"),
+    );
+    assert.ok(laneBackfill, "the lane backfill must contain one statement");
+
+    const firstRun = database.prepare(laneBackfill).run();
+    assert.equal(
+      firstRun.changes,
+      4,
+      "only the four null-lane, active Meetup-linked events are backfilled",
+    );
+    const firstSnapshot = readMeetupLaneBackfillCases(database);
+    assert.deepEqual(firstSnapshot, [
+      { event_lane_id: null, id: "deleted-event" },
+      { event_lane_id: null, id: "deleted-link" },
+      { event_lane_id: "lane-eat", id: "explicit-lane" },
+      { event_lane_id: null, id: "manual-null" },
+      { event_lane_id: "lane-think", id: "meetup-eyes-wide-shut" },
+      { event_lane_id: "lane-eat", id: "meetup-latin-dance" },
+      { event_lane_id: "lane-reset", id: "meetup-meditation" },
+      { event_lane_id: "lane-explore", id: "meetup-paddleboarding" },
+      { event_lane_id: null, id: "non-meetup-link" },
+    ]);
+
+    const secondRun = database.prepare(laneBackfill).run();
+    assert.equal(secondRun.changes, 0, "replaying the backfill is a no-op");
+    assert.deepEqual(readMeetupLaneBackfillCases(database), firstSnapshot);
+    assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
   } finally {
     database.close();
   }
@@ -307,6 +353,120 @@ function allProductionFragments() {
 
 function applyProductionFragments(database, fragments) {
   for (const fragment of fragments) database.prepare(fragment).run();
+}
+
+function seedMeetupLaneBackfillCases(database) {
+  database.exec(`
+    INSERT INTO profiles (
+      id, siwc_subject, normalized_email, display_name, status,
+      created_at, updated_at
+    ) VALUES (
+      'lane-profile', 'email:lane-profile@example.com',
+      'lane-profile@example.com', 'Lane profile', 'active', 1, 1
+    );
+
+    INSERT INTO organizations (
+      id, name, slug, created_by_profile_id, created_at, updated_at
+    ) VALUES (
+      'lane-org', 'Lane organization', 'lane-organization',
+      'lane-profile', 1, 1
+    );
+
+    INSERT INTO clubs (
+      id, organization_id, name, slug, created_by_profile_id,
+      created_at, updated_at
+    ) VALUES (
+      'lane-club', 'lane-org', 'Lane club', 'lane-club',
+      'lane-profile', 1, 1
+    );
+
+    INSERT INTO event_lanes (
+      id, organization_id, name, slug, sort_order,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES
+      ('lane-think', 'lane-org', 'Think', 'think', 10, 'lane-profile', 1, 1),
+      ('lane-reset', 'lane-org', 'Reset & Make', 'reset-and-make', 20, 'lane-profile', 1, 1),
+      ('lane-explore', 'lane-org', 'Explore', 'explore', 30, 'lane-profile', 1, 1),
+      ('lane-eat', 'lane-org', 'Eat & Play', 'eat-and-play', 40, 'lane-profile', 1, 1);
+
+    INSERT INTO events (
+      id, organization_id, club_id, event_lane_id, title, slug,
+      status, visibility, time_kind, starts_at_utc, ends_at_utc,
+      timezone, organizer_scope_json, schedule_version,
+      schedule_review_state, created_by_profile_id,
+      updated_by_profile_id, created_at, updated_at, deleted_at
+    ) VALUES
+      ('meetup-meditation', 'lane-org', 'lane-club', NULL,
+       'Meditation + Journaling Circle', 'meetup-meditation',
+       'confirmed', 'public', 'timed', 100, 200, 'America/Vancouver',
+       '[]', 1, 'unreviewed', 'lane-profile', 'lane-profile', 1, 1, NULL),
+      ('meetup-paddleboarding', 'lane-org', 'lane-club', NULL,
+       'Last-Minute Paddleboarding at Deep Cove', 'meetup-paddleboarding',
+       'confirmed', 'public', 'timed', 300, 400, 'America/Vancouver',
+       '[]', 1, 'unreviewed', 'lane-profile', 'lane-profile', 1, 1, NULL),
+      ('meetup-latin-dance', 'lane-org', 'lane-club', NULL,
+       'Mangos Latin Dance Night', 'meetup-latin-dance',
+       'confirmed', 'public', 'timed', 500, 600, 'America/Vancouver',
+       '[]', 1, 'unreviewed', 'lane-profile', 'lane-profile', 1, 1, NULL),
+      ('meetup-eyes-wide-shut', 'lane-org', 'lane-club', NULL,
+       'Eyes Wide Shut - marriage, desire, and rich-people nightmare rituals',
+       'meetup-eyes-wide-shut', 'confirmed', 'public', 'timed', 700, 800,
+       'America/Vancouver', '[]', 1, 'unreviewed', 'lane-profile',
+       'lane-profile', 1, 1, NULL),
+      ('explicit-lane', 'lane-org', 'lane-club', 'lane-eat',
+       'Meditation + Journaling Circle', 'explicit-lane',
+       'confirmed', 'public', 'timed', 900, 1000, 'America/Vancouver',
+       '[]', 1, 'unreviewed', 'lane-profile', 'lane-profile', 1, 1, NULL),
+      ('manual-null', 'lane-org', 'lane-club', NULL,
+       'Meditation + Journaling Circle', 'manual-null',
+       'confirmed', 'public', 'timed', 1100, 1200, 'America/Vancouver',
+       '[]', 1, 'unreviewed', 'lane-profile', 'lane-profile', 1, 1, NULL),
+      ('non-meetup-link', 'lane-org', 'lane-club', NULL,
+       'Meditation + Journaling Circle', 'non-meetup-link',
+       'confirmed', 'public', 'timed', 1300, 1400, 'America/Vancouver',
+       '[]', 1, 'unreviewed', 'lane-profile', 'lane-profile', 1, 1, NULL),
+      ('deleted-link', 'lane-org', 'lane-club', NULL,
+       'Meditation + Journaling Circle', 'deleted-link',
+       'confirmed', 'public', 'timed', 1500, 1600, 'America/Vancouver',
+       '[]', 1, 'unreviewed', 'lane-profile', 'lane-profile', 1, 1, NULL),
+      ('deleted-event', 'lane-org', 'lane-club', NULL,
+       'Meditation + Journaling Circle', 'deleted-event',
+       'confirmed', 'public', 'timed', 1700, 1800, 'America/Vancouver',
+       '[]', 1, 'unreviewed', 'lane-profile', 'lane-profile', 1, 1, 2);
+
+    INSERT INTO external_source_links (
+      id, organization_id, entity_type, entity_id, source_type,
+      sync_source_id, external_id, created_at, updated_at, deleted_at
+    ) VALUES
+      ('link-meditation', 'lane-org', 'event', 'meetup-meditation',
+       'meetup_ics', 'lane-source', 'meditation', 1, 1, NULL),
+      ('link-paddleboarding', 'lane-org', 'event', 'meetup-paddleboarding',
+       'meetup_ics', 'lane-source', 'paddleboarding', 1, 1, NULL),
+      ('link-latin-dance', 'lane-org', 'event', 'meetup-latin-dance',
+       'meetup_ics', 'lane-source', 'latin-dance', 1, 1, NULL),
+      ('link-eyes-wide-shut', 'lane-org', 'event', 'meetup-eyes-wide-shut',
+       'meetup_ics', 'lane-source', 'eyes-wide-shut', 1, 1, NULL),
+      ('link-explicit', 'lane-org', 'event', 'explicit-lane',
+       'meetup_ics', 'lane-source', 'explicit', 1, 1, NULL),
+      ('link-non-meetup', 'lane-org', 'event', 'non-meetup-link',
+       'csv_import', NULL, 'non-meetup', 1, 1, NULL),
+      ('link-deleted', 'lane-org', 'event', 'deleted-link',
+       'meetup_ics', 'lane-source', 'deleted-link', 1, 1, 2),
+      ('link-deleted-event', 'lane-org', 'event', 'deleted-event',
+       'meetup_ics', 'lane-source', 'deleted-event', 1, 1, NULL);
+  `);
+}
+
+function readMeetupLaneBackfillCases(database) {
+  return database
+    .prepare(
+      `SELECT id, event_lane_id
+       FROM events
+       WHERE organization_id = 'lane-org'
+       ORDER BY id`,
+    )
+    .all()
+    .map((row) => ({ ...row }));
 }
 
 function seedRepresentativeFailedVersionSevenState(database) {

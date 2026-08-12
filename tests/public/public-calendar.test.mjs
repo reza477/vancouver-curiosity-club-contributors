@@ -606,7 +606,7 @@ test("page mastheads retain semantic copy without repeated abstract artwork", ()
   assert.doesNotMatch(markup, /field-artwork/u);
 });
 
-test("the public calendar route preserves month while forwarding to combined Events", async () => {
+test("the public calendar route preserves month and lane while forwarding to combined Events", async () => {
   const route = await readFile(
     new URL("app/calendar/route.ts", projectRoot),
     "utf8",
@@ -618,6 +618,12 @@ test("the public calendar route preserves month while forwarding to combined Eve
   assert.match(
     route,
     /destination\.searchParams\.set\(["']month["'], month\)/u,
+  );
+  assert.match(route, /source\.searchParams\.getAll\(["']lane["']\)/u);
+  assert.match(route, /parsePublicEventLaneSlug/u);
+  assert.match(
+    route,
+    /destination\.searchParams\.set\(["']lane["'], laneSlug\)/u,
   );
   assert.match(route, /Response\.redirect\(destination, 308\)/u);
   assert.doesNotMatch(route, /<PublicMonthCalendar|calendar-view-switcher/u);

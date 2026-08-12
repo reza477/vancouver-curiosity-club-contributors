@@ -4951,3 +4951,46 @@ function injectBeforeMatchingQuery(
     },
   };
 }
+
+test("the Events snapshot cache and full calendar honor a valid lane filter", async (t) => {
+  const database = await createFixture(t);
+  const { loadPublicEventsPageData } = await import(
+    "../../lib/server/public/events-page.ts"
+  );
+  const baseInput = {
+    cacheOrigin: null,
+    nowUtcMs: NOW_UTC_MS,
+    organizationId: ORGANIZATION_ID,
+    rawMonth: "2026-08",
+    todayDate: TODAY_DATE,
+  };
+
+  const unfiltered = await loadPublicEventsPageData(database, baseInput);
+  assert.ok(
+    unfiltered.calendar.events.some(
+      (event) => event.lane?.slug === "think",
+    ),
+    "the fixture must prove that All includes a different lane",
+  );
+
+  const filtered = await loadPublicEventsPageData(database, {
+    ...baseInput,
+    laneSlug: "explore",
+    nowUtcMs: NOW_UTC_MS + 1_000,
+  });
+  assert.ok(filtered.calendar.events.length > 0);
+  assert.equal(
+    filtered.calendar.events.some(
+      (event) => event.slug === "tentative-online-reading",
+    ),
+    true,
+  );
+  assert.equal(
+    filtered.calendar.events.every(
+      (event) => event.lane?.slug === "explore",
+    ),
+    true,
+    "a lane-specific snapshot must not reuse the unfiltered cached calendar",
+  );
+  assert.equal(filtered.calendar.hasMore, false);
+});

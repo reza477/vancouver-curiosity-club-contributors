@@ -1074,6 +1074,7 @@ export type PublicEventSliceDto = Readonly<{
 
 export type QueryPublicCalendarMonthInput = Readonly<{
   fromDate: unknown;
+  laneSlug?: unknown;
   nowUtcMs: unknown;
   organizationId: unknown;
   todayDate: unknown;
@@ -4293,6 +4294,7 @@ export async function queryPublicCalendarLandingBundle(
 ): Promise<PublicCalendarLandingBundleDto> {
   const calendar = parsePublicCalendarMonthQuery(input.calendar);
   const landing = parsePublicEventQuery({
+    laneSlug: calendar.laneSlug,
     nowUtcMs: calendar.nowUtcMs,
     organizationId: calendar.organizationId,
     page: 1,
@@ -5954,16 +5956,15 @@ function buildPublicEventFilter(
 function buildPublicCalendarMonthFilter(
   input: ParsedPublicCalendarMonthQuery,
 ): Readonly<{ bindings: readonly D1Value[]; sql: string }> {
-  return Object.freeze({
-    bindings: Object.freeze([
-      input.nowUtcMs,
-      input.todayDate,
-      input.fromUtcMs,
-      input.fromDate,
-      input.toUtcMsExclusive,
-      input.toDateExclusive,
-    ]),
-    sql: `(
+  const bindings: D1Value[] = [
+    input.nowUtcMs,
+    input.todayDate,
+    input.fromUtcMs,
+    input.fromDate,
+    input.toUtcMsExclusive,
+    input.toDateExclusive,
+  ];
+  const clauses = [`(
       public_event.event_status IN ('confirmed', 'tentative')
       OR (
         public_event.event_status = 'completed'
@@ -5998,7 +5999,11 @@ function buildPublicCalendarMonthFilter(
         public_event.time_kind = 'all_day'
         AND public_event.all_day_start_date < ?
       )
-    )`,
+    )`];
+  addEqualityFilter(clauses, bindings, "lane_slug", input.laneSlug);
+  return Object.freeze({
+    bindings: Object.freeze(bindings),
+    sql: clauses.join("\nAND "),
   });
 }
 

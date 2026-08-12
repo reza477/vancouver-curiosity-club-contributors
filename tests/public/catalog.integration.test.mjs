@@ -125,6 +125,7 @@ function loadGeneratedMigrations() {
       "0016_phase7_import_export_forms.sql",
       "0017_bright_captain_america.sql",
       "0018_public_event_calendar_snapshots.sql",
+      "0019_meetup_event_lanes.sql",
     ],
     "the normalized Sites-compatible migration chain must be authoritative",
   );

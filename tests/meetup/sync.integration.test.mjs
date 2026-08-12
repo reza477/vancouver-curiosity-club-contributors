@@ -11,7 +11,10 @@ import {
   refreshMeetupCalendarSourceIfDue,
 } from "../../lib/server/meetup/index.ts";
 import { ensureDatabaseInvariants } from "../../lib/server/database/invariants.ts";
-import { listUpcomingPublicEvents } from "../../lib/server/public/events.ts";
+import {
+  listUpcomingPublicEvents,
+  queryPublicEvents,
+} from "../../lib/server/public/events.ts";
 import { normalizeAllDayConflictInterval } from "../../lib/server/organizer/conflict-domain.ts";
 import {
   MEETUP_EVENT_ALIASES,
@@ -508,6 +511,100 @@ async function refresh(
     ...extra,
   });
 }
+
+test("Meetup activity lanes persist into the public event projection", async (t) => {
+  const database = createDatabase({ clubs: ["club_a"] });
+  t.after(() => database.close());
+  database.exec(`
+    INSERT INTO event_lanes (
+      id, organization_id, name, slug, description, sort_order,
+      created_by_profile_id, created_at, updated_at
+    ) VALUES
+      (
+        'lane_reset', '${ORGANIZATION_ID}', 'Reset & Make',
+        'reset-and-make', 'A reflective fixture lane.', 20,
+        'profile_owner', 1, 1
+      ),
+      (
+        'lane_explore', '${ORGANIZATION_ID}', 'Explore', 'explore',
+        'An outdoor fixture lane.', 30, 'profile_owner', 1, 1
+      ),
+      (
+        'lane_play', '${ORGANIZATION_ID}', 'Eat & Play', 'eat-and-play',
+        'A social fixture lane.', 40, 'profile_owner', 1, 1
+      );
+  `);
+  await configure(database, "club_a", FEED_A, 1_000);
+  const refreshed = await refresh(
+    database,
+    "club_a",
+    sequenceFetcher([
+      calendar(
+        meetupEvent({
+          end: "20280813T030000Z",
+          eventId: "lane-reset-event",
+          start: "20280813T010000Z",
+          title: "Contemplative Meditation + Journaling Circle",
+          uid: "lane-reset-event@meetup.com",
+        }),
+        meetupEvent({
+          end: "20280814T030000Z",
+          eventId: "lane-play-event",
+          start: "20280814T010000Z",
+          title: "Mangos Latin Dance Night",
+          uid: "lane-play-event@meetup.com",
+        }),
+      ),
+    ]),
+    2_000,
+  );
+  assert.equal(refreshed.outcome, "completed");
+
+  const persisted = await database
+    .prepare(
+      `SELECT event.title, lane.slug AS lane_slug
+       FROM events AS event
+       JOIN event_lanes AS lane
+         ON lane.id = event.event_lane_id
+        AND lane.organization_id = event.organization_id
+       WHERE event.organization_id = ?
+         AND event.title IN (?, ?)
+       ORDER BY event.title`,
+    )
+    .bind(
+      ORGANIZATION_ID,
+      "Contemplative Meditation + Journaling Circle",
+      "Mangos Latin Dance Night",
+    )
+    .all();
+  assert.deepEqual(
+    persisted.results.map((row) => [row.title, row.lane_slug]),
+    [
+      ["Contemplative Meditation + Journaling Circle", "reset-and-make"],
+      ["Mangos Latin Dance Night", "eat-and-play"],
+    ],
+  );
+
+  const publicPage = await queryPublicEvents(database, {
+    nowUtcMs: Date.parse("2028-08-01T12:00:00.000Z"),
+    organizationId: ORGANIZATION_ID,
+    page: 1,
+    pageSize: 12,
+    todayDate: "2028-08-01",
+    view: "upcoming",
+  });
+  const publicLanes = new Map(
+    publicPage.events.map((event) => [event.title, event.lane?.slug]),
+  );
+  assert.equal(
+    publicLanes.get("Contemplative Meditation + Journaling Circle"),
+    "reset-and-make",
+  );
+  assert.equal(
+    publicLanes.get("Mangos Latin Dance Night"),
+    "eat-and-play",
+  );
+});
 
 async function runDueMeetupRefresh(
   database,

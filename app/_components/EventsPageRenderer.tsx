@@ -1,17 +1,24 @@
+import Link from "next/link";
 import { PublicMonthCalendar } from "./PublicMonthCalendar";
+import type { PublicEventLaneSlug } from "@/lib/public-event-lanes";
+import { PUBLIC_CATALOG_LANES } from "@/lib/server/public/catalog-definitions";
 import type { PublicPageDto } from "@/lib/server/public/catalog";
 import type { PublicMonthCalendarData } from "@/lib/server/public/month-calendar";
 
 export function EventsPageRenderer({
+  activeLaneSlug = null,
   calendar,
   calendarAvailable = true,
+  invalidLane = false,
   nowUtcMs,
   pageContent,
   siteOrigin,
   todayDate,
 }: Readonly<{
+  activeLaneSlug?: PublicEventLaneSlug | null;
   calendar: PublicMonthCalendarData;
   calendarAvailable?: boolean;
+  invalidLane?: boolean;
   nowUtcMs: number;
   pageContent: PublicPageDto | null;
   siteOrigin: string | null;
@@ -40,7 +47,37 @@ export function EventsPageRenderer({
         </p>
       </header>
 
+      <nav
+        aria-label="Filter events by activity lane"
+        className="events-page__lane-filters"
+      >
+        <span>Show</span>
+        <Link
+          aria-current={activeLaneSlug === null ? "page" : undefined}
+          href={eventsLaneHref(null)}
+          prefetch={false}
+        >
+          All
+        </Link>
+        {PUBLIC_CATALOG_LANES.map((lane) => (
+          <Link
+            aria-current={activeLaneSlug === lane.slug ? "page" : undefined}
+            data-event-lane={lane.slug}
+            href={eventsLaneHref(lane.slug as PublicEventLaneSlug)}
+            key={lane.slug}
+            prefetch={false}
+          >
+            {lane.name}
+          </Link>
+        ))}
+      </nav>
+
       <div className="events-page__calendar public-calendar-page">
+        {invalidLane ? (
+          <div className="calendar-notice" role="alert">
+            That activity filter is not available. Showing all events.
+          </div>
+        ) : null}
         {!calendarAvailable ? (
           <div className="calendar-notice" role="status">
             Calendar dates are temporarily unavailable. Please try again in a
@@ -70,7 +107,8 @@ export function EventsPageRenderer({
           complete={!calendar.hasMore}
           events={calendar.events}
           headingLevel={2}
-          key={calendar.resolvedMonth.month}
+          key={`${calendar.resolvedMonth.month}:${activeLaneSlug ?? "all"}`}
+          laneSlug={activeLaneSlug}
           maxMonth={calendar.resolvedMonth.maxMonth}
           minMonth={calendar.resolvedMonth.minMonth}
           month={calendar.resolvedMonth.month}
@@ -81,4 +119,12 @@ export function EventsPageRenderer({
       </div>
     </main>
   );
+}
+
+function eventsLaneHref(
+  laneSlug: PublicEventLaneSlug | null,
+): string {
+  return laneSlug
+    ? `/events?lane=${encodeURIComponent(laneSlug)}`
+    : "/events";
 }
