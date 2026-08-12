@@ -161,7 +161,7 @@ export function HomePageRenderer({
                 href={`/events?lane=${encodeURIComponent(lane.slug)}`}
                 prefetch={false}
               >
-                Explore {lane.name}
+                See {lane.name} events
               </Link>
             </article>
           ))}
