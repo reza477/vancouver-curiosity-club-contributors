@@ -3465,8 +3465,19 @@ main,
 
 .public-calendar__day-events {
   display: grid;
+  max-block-size: 65vh;
+  max-block-size: 65svh;
   gap: 1.25rem;
   margin-top: 1.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-inline-end: 0.35rem;
+  scrollbar-gutter: stable;
+}
+
+.public-calendar__day-events:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 0.2rem;
 }
 
 .public-calendar-event {
@@ -5433,8 +5444,24 @@ body[data-surface="public"] {
   }
 
   .public-calendar__mobile-agenda-more {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
     margin: 0.85rem 0 0;
+    padding: 0.55rem 0.85rem;
+    border: 1px solid var(--ink);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
     font-size: 0.88rem;
+    font-weight: 800;
+  }
+
+  .public-calendar__mobile-agenda-more:hover,
+  .public-calendar__mobile-agenda-more:focus-visible {
+    background: var(--forest);
+    color: var(--paper);
   }
 
   .public-calendar__day-panel {

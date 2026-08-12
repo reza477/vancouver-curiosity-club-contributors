@@ -387,7 +387,7 @@ test("an empty today opens the nearest event instead of an empty first impressio
   );
 });
 
-test("the phone agenda renders every upcoming event and excludes past events", async () => {
+test("the phone agenda initially shows seven upcoming events and exposes the rest on request", async () => {
   const pastEvents = Object.freeze([
     timedEvent({
       schedule: Object.freeze({
@@ -444,9 +444,10 @@ test("the phone agenda renders every upcoming event and excludes past events", a
 
   assert.ok(agendaMarkup, "the phone agenda must render when events are upcoming");
   assert.equal(
-    (agendaMarkup.match(/<button/gu) ?? []).length,
-    upcomingEvents.length,
-    "the phone agenda must not cap the number of upcoming events",
+    (agendaMarkup.match(/<button[^>]*aria-controls="public-calendar-day-panel"/gu) ?? [])
+      .length,
+    7,
+    "the initial phone agenda must stay short enough to scan",
   );
   for (const event of pastEvents) {
     assert.ok(
@@ -454,10 +455,16 @@ test("the phone agenda renders every upcoming event and excludes past events", a
       `${event.title} must not appear in the phone agenda`,
     );
   }
-  for (const event of upcomingEvents) {
+  for (const event of upcomingEvents.slice(0, 7)) {
     assert.ok(
       agendaMarkup.includes(`<strong>${event.title}</strong>`),
-      `${event.title} must remain discoverable in the phone agenda`,
+      `${event.title} must appear in the initial phone agenda`,
+    );
+  }
+  for (const event of upcomingEvents.slice(7)) {
+    assert.ok(
+      !agendaMarkup.includes(`<strong>${event.title}</strong>`),
+      `${event.title} must wait behind the agenda disclosure`,
     );
   }
   const nextThreeOffsets = upcomingEvents.slice(0, 3).map((event) =>
@@ -471,6 +478,38 @@ test("the phone agenda renders every upcoming event and excludes past events", a
     "the next three event names must render in chronological order",
   );
 
+  const disclosureTag = agendaMarkup.match(
+    /<button(?=[^>]*class="public-calendar__mobile-agenda-more")(?=[^>]*aria-controls="([^"]+)")(?=[^>]*aria-expanded="false")[^>]*>/u,
+  );
+  assert.ok(
+    disclosureTag,
+    "the remaining upcoming events need an accessible collapsed disclosure",
+  );
+  assert.ok(
+    agendaMarkup.includes(`id="${disclosureTag[1]}"`),
+    "the agenda disclosure must control the named agenda list",
+  );
+  assert.match(
+    agendaMarkup,
+    /class="public-calendar__mobile-agenda-more"[^>]*>[\s\S]*?Show 6 more[\s\S]*?<\/button>/u,
+    "the disclosure must tell visitors how many events remain",
+  );
+
+  const calendarSource = await readFile(
+    new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
+    "utf8",
+  );
+  assert.match(
+    calendarSource,
+    /mobileAgendaExpanded\s*\?\s*mobileAgendaEvents\s*:\s*mobileAgendaEvents\.slice\(0,\s*MOBILE_AGENDA_INITIAL_LIMIT\)/u,
+    "expanding the agenda must reveal the complete upcoming-event set",
+  );
+  assert.match(
+    calendarSource,
+    /onClick=\{\(\)\s*=>\s*setMobileAgendaExpanded\(\(expanded\)\s*=>\s*!expanded\)\}/u,
+    "the disclosure must support both expansion and collapse",
+  );
+
   const styles = await readFile(
     new URL("app/globals.css", projectRoot),
     "utf8",
@@ -482,6 +521,67 @@ test("the phone agenda renders every upcoming event and excludes past events", a
   assert.ok(
     Number(phoneVisibilityRule[1]) * 16 >= 390,
     "the named-event agenda must be visible at a 390px viewport",
+  );
+});
+
+test("a busy selected day remains complete inside a bounded keyboard-reachable event region", async () => {
+  const busyEvents = Object.freeze(
+    Array.from({ length: 8 }, (_, index) => {
+      const eventNumber = String(index + 1).padStart(2, "0");
+      return timedEvent({
+        slug: `busy-day-gathering-${eventNumber}`,
+        title: `Busy day gathering ${eventNumber}`,
+      });
+    }),
+  );
+  const markup = renderToStaticMarkup(
+    createElement(PublicMonthCalendar, {
+      complete: true,
+      events: busyEvents,
+      maxMonth: "2027-07",
+      minMonth: "2025-07",
+      month: "2026-07",
+      nowUtcMs: Date.parse("2026-07-05T07:00:00.000Z"),
+      siteOrigin: "https://club.example",
+      todayDate: "2026-07-05",
+    }),
+  );
+  const dayEventsTag = markup.match(
+    /<div[^>]*class="public-calendar__day-events"[^>]*>/u,
+  )?.[0];
+
+  assert.ok(dayEventsTag, "the selected-day event region must render");
+  assert.match(
+    dayEventsTag,
+    /(?:aria-label|aria-labelledby)="[^"]+"/u,
+    "the selected-day scroll region needs an accessible name",
+  );
+  assert.match(
+    dayEventsTag,
+    /role="region"/u,
+    "the selected-day scroll region must expose its accessible name",
+  );
+  assert.match(
+    dayEventsTag,
+    /tabindex="0"/u,
+    "keyboard visitors must be able to reach the selected-day scroll region",
+  );
+  for (const event of busyEvents) {
+    assert.match(
+      markup,
+      new RegExp(`>${event.title}<\\/a>`, "u"),
+      `${event.title} must remain available inside the bounded panel`,
+    );
+  }
+
+  const styles = await readFile(
+    new URL("app/globals.css", projectRoot),
+    "utf8",
+  );
+  assert.match(
+    styles,
+    /\.public-calendar__day-events\s*\{[^}]*(?:max-block-size|max-height):\s*[^;]+;[^}]*overflow-y:\s*auto;/u,
+    "busy selected days must scroll internally instead of stretching the full Events page",
   );
 });
 

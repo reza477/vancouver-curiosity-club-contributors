@@ -31,6 +31,8 @@ const WEEKDAYS = [
   "Saturday",
 ] as const;
 
+const MOBILE_AGENDA_INITIAL_LIMIT = 7;
+
 export function PublicMonthCalendar({
   calendarRoute = "/events",
   complete,
@@ -94,7 +96,13 @@ export function PublicMonthCalendar({
         (todayDate.startsWith(`${month}-`) ? todayDate : `${month}-01`);
   const [activeDate, setActiveDate] = useState(initialDate);
   const [focusDate, setFocusDate] = useState(initialDate);
+  const [mobileAgendaExpanded, setMobileAgendaExpanded] = useState(false);
   const activeEvents = eventsByDate.get(activeDate) ?? [];
+  const visibleMobileAgendaEvents = mobileAgendaExpanded
+    ? mobileAgendaEvents
+    : mobileAgendaEvents.slice(0, MOBILE_AGENDA_INITIAL_LIMIT);
+  const hiddenMobileAgendaCount =
+    mobileAgendaEvents.length - visibleMobileAgendaEvents.length;
   const previousMonth =
     month > minMonth ? shiftMonthForHref(month, -1) : null;
   const nextMonth =
@@ -331,7 +339,12 @@ export function PublicMonthCalendar({
             </h3>
           </div>
           {activeEvents.length > 0 ? (
-            <div className="public-calendar__day-events">
+            <div
+              aria-label={`Events on ${formatPublicCalendarDate(activeDate)}`}
+              className="public-calendar__day-events"
+              role="region"
+              tabIndex={0}
+            >
               {activeEvents.map((event) => (
                 <CalendarEventPreview
                   event={event}
@@ -376,8 +389,11 @@ export function PublicMonthCalendar({
                 See what is coming up
               </h2>
             </div>
-            <div className="public-calendar__mobile-agenda-list">
-              {mobileAgendaEvents.map((event) => {
+            <div
+              className="public-calendar__mobile-agenda-list"
+              id="public-calendar-mobile-agenda-list"
+            >
+              {visibleMobileAgendaEvents.map((event) => {
                 const eventDate = publicEventCalendarStartDate(event);
                 return (
                   <button
@@ -425,6 +441,19 @@ export function PublicMonthCalendar({
                 );
               })}
             </div>
+            {mobileAgendaEvents.length > MOBILE_AGENDA_INITIAL_LIMIT ? (
+              <button
+                aria-controls="public-calendar-mobile-agenda-list"
+                aria-expanded={mobileAgendaExpanded}
+                className="public-calendar__mobile-agenda-more"
+                onClick={() => setMobileAgendaExpanded((expanded) => !expanded)}
+                type="button"
+              >
+                {mobileAgendaExpanded
+                  ? "Show fewer"
+                  : `Show ${hiddenMobileAgendaCount} more`}
+              </button>
+            ) : null}
           </section>
         ) : null}
       </div>

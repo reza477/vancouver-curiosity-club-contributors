@@ -169,7 +169,7 @@ test("the full calendar exposes event names in its mobile agenda", async () => {
   assert.match(calendar, /className="public-calendar__mobile-agenda"/u);
   assert.match(
     calendar,
-    /mobileAgendaEvents\.map\(\(event\)[\s\S]*?<strong>\{event\.title\}<\/strong>/u,
+    /className="public-calendar__mobile-agenda"[\s\S]*?<strong>\{event\.title\}<\/strong>/u,
     "mobile visitors must see event names without tapping calendar dots",
   );
   assert.match(
