@@ -7,7 +7,14 @@ updates:
       day: monday
       time: "09:00"
       timezone: America/Vancouver
-    open-pull-requests-limit: 5
+    # Security updates remain enabled in repository settings. Disable routine
+    # version-update PRs so compatibility-sensitive upgrades stay intentional.
+    open-pull-requests-limit: 0
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
     labels:
       - dependencies
     commit-message:
@@ -17,7 +24,12 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
     labels:
       - dependencies
     commit-message:

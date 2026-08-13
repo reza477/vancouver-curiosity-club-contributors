@@ -126,6 +126,14 @@ test("continuous integration and dependency maintenance cover the release gates"
   assert.match(dependabot, /package-ecosystem: npm/u);
   assert.match(dependabot, /package-ecosystem: github-actions/u);
   assert.match(dependabot, /interval: weekly/u);
+  assert.equal(
+    (dependabot.match(/open-pull-requests-limit: 0/gu) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (dependabot.match(/applies-to: security-updates/gu) ?? []).length,
+    2,
+  );
 });
 
 function source(path) {
