@@ -89,7 +89,7 @@ test("Phase 9 ledger preserves local evidence and records the exact private depl
   }
   assert.match(
     readme,
-    /https:\/\/vancouver-curiosity-club\.reza5777\.chatgpt\.site/u,
+    /https:\/\/vancouvercuriosityclub\.com/u,
   );
   assert.match(readme, /docs\/architecture\//u);
   assert.match(readme, /BUILD_STATUS\.md/u);

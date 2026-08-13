@@ -18,7 +18,7 @@ test("repository publishes a concise, safe, professional project surface", () =>
   assert.match(readme, /## Contributing and security/u);
   assert.match(
     readme,
-    /https:\/\/vancouver-curiosity-club\.reza5777\.chatgpt\.site/u,
+    /https:\/\/vancouvercuriosityclub\.com/u,
   );
   assert.doesNotMatch(readme, /appg(?:dep|prj|ver)_/u);
   assert.doesNotMatch(readme, /Sites version \d+/u);

@@ -43,7 +43,7 @@ body:
     id: url
     attributes:
       label: Page URL
-      placeholder: https://vancouver-curiosity-club.reza5777.chatgpt.site/…
+      placeholder: https://vancouvercuriosityclub.com/…
   - type: input
     id: environment
     attributes:

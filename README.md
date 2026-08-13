@@ -1,13 +1,13 @@
 # Vancouver Curiosity Club
 
 [![Continuous integration](https://github.com/reza477/vancouver-curiosity-club/actions/workflows/ci.yml/badge.svg)](https://github.com/reza477/vancouver-curiosity-club/actions/workflows/ci.yml)
-[![Live site](https://img.shields.io/badge/live-vancouver--curiosity--club-5b35d5)](https://vancouver-curiosity-club.reza5777.chatgpt.site)
+[![Live site](https://img.shields.io/badge/live-vancouver--curiosity--club-5b35d5)](https://vancouvercuriosityclub.com)
 
 ![Vancouver Curiosity Club social preview](public/og.png)
 
 A calendar-first community website for finding thoughtful, creative, and social gatherings in Vancouver.
 
-**Live website:** [vancouver-curiosity-club.reza5777.chatgpt.site](https://vancouver-curiosity-club.reza5777.chatgpt.site)
+**Live website:** [vancouvercuriosityclub.com](https://vancouvercuriosityclub.com)
 
 ## Product highlights
 
