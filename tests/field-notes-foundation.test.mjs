@@ -260,10 +260,16 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(`${page}\n${homeRenderer}`, /SkeletonPreview|codex-preview/);
 
+  const previewEntries = await readdir(
+    new URL("app/_sites-preview", projectRoot),
+  ).catch((error) => {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  });
   assert.deepEqual(
-    await readdir(new URL("app/_sites-preview", projectRoot)),
+    previewEntries,
     [],
-    "the disposable starter preview directory must remain empty",
+    "the disposable starter preview directory must remain absent or empty",
   );
 });
 
