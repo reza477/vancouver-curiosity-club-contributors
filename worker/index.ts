@@ -13,6 +13,10 @@ import {
   normalizeEncodedRequestPathname,
   safeRequestPathname,
 } from "../lib/request-pathname";
+import {
+  canonicalPublicRedirectTarget,
+  trustedPublicRequestOrigin,
+} from "../lib/public-domain";
 
 interface Env {
   ASSETS: Fetcher;
@@ -267,6 +271,23 @@ const worker = {
     const requestPathname = safeRequestPathname(normalizedPathname);
     const canonicalUrl = new URL(url);
     canonicalUrl.pathname = normalizedPathname;
+    const publicDomainRedirect = canonicalPublicRedirectTarget(
+      canonicalUrl,
+    );
+    if (publicDomainRedirect) {
+      return secureResponse(
+        request,
+        new Response(null, {
+          headers: {
+            "Cache-Control": "public, max-age=3600",
+            Location: publicDomainRedirect.toString(),
+          },
+          status: 308,
+        }),
+        policy,
+        normalizedPathname,
+      );
+    }
     const invitationCapture = captureInvitationToken(
       request,
       canonicalUrl,
@@ -379,7 +400,7 @@ const worker = {
       request,
       policy,
       nonce,
-      url.origin,
+      trustedPublicRequestOrigin(url),
       requestPathname,
     );
     const response = await handler.fetch(securedRequest, env, ctx);

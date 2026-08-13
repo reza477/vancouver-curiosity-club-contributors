@@ -51,9 +51,13 @@ export default defineConfig(async ({ command }) => {
     define: {
       __VCC_SOURCE_REVISION__: JSON.stringify(sourceRevision),
     },
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    server: {
+      allowedHosts: ["terminal.local"],
+      host: "0.0.0.0",
+      ...(isCodexSeatbeltSandbox
+        ? { watch: { useFsEvents: false, usePolling: true } }
+        : {}),
+    },
     plugins: [
       vinext(),
       sites(),

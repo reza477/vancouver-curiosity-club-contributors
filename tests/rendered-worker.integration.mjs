@@ -152,6 +152,74 @@ async function fetchPath(path, init) {
   });
 }
 
+test("production aliases redirect to the canonical .com before route work", async () => {
+  const path = "/events/a-curious-night?lane=think&page=2";
+  for (const sourceOrigin of [
+    "https://www.vancouvercuriosityclub.com",
+    "https://vancouvercuriosityclub.ca",
+    "https://www.vancouvercuriosityclub.ca",
+    "https://vancouver-curiosity-club.reza5777.chatgpt.site",
+  ]) {
+    const response = await runtime.dispatchFetch(new URL(path, sourceOrigin), {
+      redirect: "manual",
+    });
+    assert.equal(response.status, 308, sourceOrigin);
+    assert.equal(
+      response.headers.get("location"),
+      `https://vancouvercuriosityclub.com${path}`,
+      sourceOrigin,
+    );
+  }
+
+  const mutationResponse = await runtime.dispatchFetch(
+    new URL("/contact", "https://www.vancouvercuriosityclub.com"),
+    {
+      body: "message=stale-form",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST",
+      redirect: "manual",
+    },
+  );
+  assert.equal(mutationResponse.status, 308);
+  assert.equal(
+    mutationResponse.headers.get("location"),
+    "https://vancouvercuriosityclub.com/contact",
+  );
+
+  const canonicalResponse = await runtime.dispatchFetch(
+    new URL("/", "https://vancouvercuriosityclub.com"),
+  );
+  assert.equal(canonicalResponse.status, 200);
+  const html = await canonicalResponse.text();
+  assert.match(
+    html,
+    /rel="canonical" href="https:\/\/vancouvercuriosityclub\.com\/"/iu,
+  );
+  assert.match(
+    html,
+    /property="og:url" content="https:\/\/vancouvercuriosityclub\.com\/"/iu,
+  );
+  assert.match(html, /"url":"https:\/\/vancouvercuriosityclub\.com\/"/u);
+
+  const robotsResponse = await runtime.dispatchFetch(
+    new URL("/robots.txt", "https://vancouvercuriosityclub.com"),
+  );
+  assert.equal(robotsResponse.status, 200);
+  assert.match(
+    await robotsResponse.text(),
+    /Sitemap: https:\/\/vancouvercuriosityclub\.com\/sitemap\.xml/u,
+  );
+
+  const sitemapResponse = await runtime.dispatchFetch(
+    new URL("/sitemap.xml", "https://vancouvercuriosityclub.com"),
+  );
+  assert.equal(sitemapResponse.status, 200);
+  assert.match(
+    await sitemapResponse.text(),
+    /<loc>https:\/\/vancouvercuriosityclub\.com\//u,
+  );
+});
+
 async function clearPublicEventsSnapshotCache() {
   const database = await runtime.getD1Database("DB");
   const snapshots = await database
