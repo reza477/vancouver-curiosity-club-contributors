@@ -56,7 +56,8 @@ test("repository publishes a concise, safe, professional project surface", () =>
   }
 
   assert.match(source("LICENSE"), /All rights reserved/u);
-  assert.match(source("SECURITY.md"), /private vulnerability reporting/u);
+  assert.match(source("SECURITY.md"), /minimal private callback request/u);
+  assert.match(source("SECURITY.md"), /Do not include\s+exploit details/u);
   assert.match(development, /## First 15 minutes/u);
   assert.match(development, /## Architecture at a glance/u);
   assert.match(development, /## Safe change workflow/u);
@@ -83,7 +84,8 @@ test("repository publishes a concise, safe, professional project surface", () =>
   assert.match(readme, /github\.com\/reza477\/vancouver-curiosity-club/u);
   assert.match(development, /github\.com\/reza477\/vancouver-curiosity-club\.git/u);
   assert.match(codeowners, /^\* @reza477$/mu);
-  assert.match(issueConfig, /github\.com\/reza477\/vancouver-curiosity-club\/security\/advisories\/new/u);
+  assert.match(issueConfig, /https:\/\/vancouvercuriosityclub\.com\/contact/u);
+  assert.doesNotMatch(issueConfig, /security\/advisories/u);
   assert.match(packageJson.bugs.url, /github\.com\/reza477\/vancouver-curiosity-club\/issues/u);
 
   for (const ledger of [

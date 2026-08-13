@@ -4,7 +4,14 @@
 
 Do not disclose a suspected vulnerability in a public issue, discussion, pull request, or community channel.
 
-Use GitHub's private vulnerability reporting or private security advisory flow for this repository. Include:
+Send a minimal private callback request through the website's
+[Contact form](https://vancouvercuriosityclub.com/contact). State that it is a
+security report and provide a safe way for the owner to reply. Do not include
+exploit details, credentials, personal information, or private records in the
+form. Share technical details only after the owner establishes a suitable
+private channel.
+
+When the private channel is established, include:
 
 - the affected route or component;
 - clear reproduction steps;
