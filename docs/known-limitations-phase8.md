@@ -1,5 +1,9 @@
 # Phase 8 known limitations and authorized cuts
 
+> **Historical Phase 8 snapshot.** Production has changed since this file was
+> written. Use [DEVELOPMENT.md](../DEVELOPMENT.md) for current maintenance
+> boundaries and re-verify any host, domain, version, or pending claim below.
+
 ## Verification and hosting limits
 
 - Phase 8 hardening used local synthetic `.invalid` identities and data.

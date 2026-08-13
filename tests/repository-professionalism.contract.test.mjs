@@ -8,6 +8,9 @@ test("repository publishes a concise, safe, professional project surface", () =>
   const readme = source("README.md");
   const packageJson = JSON.parse(source("package.json"));
   const gitignore = source(".gitignore");
+  const development = source("DEVELOPMENT.md");
+  const codeowners = source(".github/CODEOWNERS");
+  const issueConfig = source(".github/ISSUE_TEMPLATE/config.yml");
 
   assert.match(readme, /^# Vancouver Curiosity Club$/mu);
   assert.match(readme, /public\/og\.png/u);
@@ -16,6 +19,7 @@ test("repository publishes a concise, safe, professional project surface", () =>
   assert.match(readme, /## Quality checks/u);
   assert.match(readme, /## Project structure/u);
   assert.match(readme, /## Contributing and security/u);
+  assert.match(readme, /DEVELOPMENT\.md/u);
   assert.match(
     readme,
     /https:\/\/vancouvercuriosityclub\.com/u,
@@ -37,6 +41,8 @@ test("repository publishes a concise, safe, professional project surface", () =>
     "CONTRIBUTING.md",
     "SECURITY.md",
     "CODE_OF_CONDUCT.md",
+    "DEVELOPMENT.md",
+    "examples/README.md",
     ".editorconfig",
     ".gitattributes",
     ".nvmrc",
@@ -51,6 +57,47 @@ test("repository publishes a concise, safe, professional project surface", () =>
 
   assert.match(source("LICENSE"), /All rights reserved/u);
   assert.match(source("SECURITY.md"), /private vulnerability reporting/u);
+  assert.match(development, /## First 15 minutes/u);
+  assert.match(development, /## Architecture at a glance/u);
+  assert.match(development, /## Safe change workflow/u);
+  assert.match(development, /## Production release boundary/u);
+  assert.match(development, /12-15 minutes/u);
+  assert.match(development, /does \*\*not\*\* deploy\s+production/u);
+  assert.match(development, /db:apply:preview/u);
+  assert.doesNotMatch(
+    readme,
+    /npm(?:\.cmd)? run db:apply:local/u,
+    "README must migrate the Vite development database",
+  );
+  assert.match(readme, /normally `http:\/\/localhost:5173`/u);
+  assert.match(readme, /dirty Git working tree/u);
+  assert.match(development, /no reusable synthetic dev seed/u);
+  assert.match(development, /Event data flow/u);
+  assert.match(development, /0008.*0020/u);
+  assert.match(source("examples/README.md"), /not production/u);
+  assert.doesNotMatch(development, /appg(?:dep|prj|ver)_/u);
+  assert.match(development, /private repository/u);
+  assert.match(development, /visibility must remain\s+private/u);
+  assert.match(development, /Sites project identifier/u);
+  assert.match(readme, /Sites project identifier/u);
+  assert.match(readme, /github\.com\/reza477\/vancouver-curiosity-club/u);
+  assert.match(development, /github\.com\/reza477\/vancouver-curiosity-club\.git/u);
+  assert.match(codeowners, /^\* @reza477$/mu);
+  assert.match(issueConfig, /github\.com\/reza477\/vancouver-curiosity-club\/security\/advisories\/new/u);
+  assert.match(packageJson.bugs.url, /github\.com\/reza477\/vancouver-curiosity-club\/issues/u);
+
+  for (const ledger of [
+    "BUILD_STATUS.md",
+    "OWNER_INPUTS.md",
+    "docs/known-limitations-phase8.md",
+    "MASTER_BUILD_SPEC.md",
+    "docs/owner-guide-phase8.md",
+    "docs/organizer-guide-phase8.md",
+    "docs/phase8-local-testing.md",
+  ]) {
+    assert.match(source(ledger), /Historical/u, ledger);
+    assert.match(source(ledger), /DEVELOPMENT\.md/u, ledger);
+  }
 });
 
 test("continuous integration and dependency maintenance cover the release gates", () => {
@@ -63,6 +110,7 @@ test("continuous integration and dependency maintenance cover the release gates"
   assert.match(workflow, /node-version-file: \.nvmrc/u);
   for (const command of [
     "npm ci",
+    "npm audit --omit=dev",
     "npm run typecheck",
     "npm run lint",
     "npm run build",

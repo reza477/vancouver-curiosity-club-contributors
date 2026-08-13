@@ -1,5 +1,9 @@
 # Organizer guide — Phase 8 hardening
 
+> **Historical Phase 8 guide.** Start with
+> [DEVELOPMENT.md](../DEVELOPMENT.md) and verify current production state before
+> relying on a version, hostname, or pending item below.
+
 Phase 8 preserves the Phase 7 organizer workflows while making access and
 state changes fail closed.
 

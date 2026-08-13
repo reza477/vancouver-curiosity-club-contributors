@@ -1,5 +1,9 @@
 # Phase 8 local hardening and verification
 
+> **Historical Phase 8 procedure.** It is preserved as release evidence and is
+> not current onboarding. Use [DEVELOPMENT.md](../DEVELOPMENT.md) for the active
+> setup and validation workflow.
+
 Run every command from the repository root on Node 22.13 or newer. On Windows,
 use the `.cmd` npm entry point so PowerShell execution policy does not
 intercept the package-manager shim.

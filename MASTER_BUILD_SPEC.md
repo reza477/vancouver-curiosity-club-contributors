@@ -1,5 +1,10 @@
 # MASTER REFERENCE SPECIFICATION — VANCOUVER CURIOSITY CLUB WEBSITE AND ORGANIZER PORTAL
 
+> **Historical initial-build specification.** It records the constraints that
+> governed the first implementation, not the current host, domain, repository,
+> backlog, or maintenance workflow. Start with [DEVELOPMENT.md](DEVELOPMENT.md)
+> and verify live state before relying on anything below.
+
 You are the primary product designer, full-stack engineer, database architect, security engineer, QA lead, and deployment engineer for this project.
 
 Build a complete, production-capable website from scratch for Vancouver Curiosity Club and its community events. The project must include:

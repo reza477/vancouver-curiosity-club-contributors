@@ -1,5 +1,10 @@
 # Vancouver Curiosity Club — Build Status
 
+> **Historical audit ledger.** This file preserves phase-by-phase evidence and
+> old deployment snapshots. It is not the current onboarding guide or backlog.
+> Start with [DEVELOPMENT.md](DEVELOPMENT.md) and verify live state before using
+> any version number, URL, limitation, or pending item below.
+
 Last updated: 2026-08-06 (America/Vancouver)
 
 ## Active phase and release state

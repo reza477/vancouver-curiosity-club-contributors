@@ -1,5 +1,10 @@
 # Vancouver Curiosity Club — Owner Inputs
 
+> **Historical decision ledger.** Some entries below have been resolved or
+> superseded. Do not treat this file as a current issue list. Start with
+> [DEVELOPMENT.md](DEVELOPMENT.md), then confirm content, rights, or product
+> decisions with the owner before acting on an older entry.
+
 No value below may be guessed, inferred, or replaced with sample production
 data.
 

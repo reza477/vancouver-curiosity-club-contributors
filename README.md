@@ -42,27 +42,36 @@ A calendar-first community website for finding thoughtful, creative, and social 
 ### Setup
 
 ```powershell
-npm.cmd ci
-npm.cmd run db:apply:local
-npm.cmd run dev
+npm ci
+npm run db:apply:preview
+npm run dev
 ```
 
-The local site is available at `http://localhost:3000`.
+Vite prints the local URL when it starts (normally `http://localhost:5173`).
+On Windows PowerShell, use `npm.cmd` in place of `npm` if execution policy
+blocks `npm.ps1`. Start with [DEVELOPMENT.md](DEVELOPMENT.md) for architecture,
+safe change workflow, test selection, and release boundaries.
 
 Copy `.env.example` to an ignored local environment file only when organizer bootstrap settings are needed. Never commit credentials, local D1 files, generated output, or production exports.
 
 ## Quality checks
 
 ```powershell
-npm.cmd run typecheck
-npm.cmd run lint
-npm.cmd run build
-npm.cmd test
-npm.cmd run test:rendered
+npm run typecheck
+npm run lint
+npm audit --omit=dev
+npm test
 git diff --check
 ```
 
 The full test suite is intentionally serialized because its Worker and D1 integration coverage uses isolated Miniflare runtimes.
+Production builds intentionally refuse a dirty Git working tree. After the
+exact reviewed source is committed, run:
+
+```powershell
+npm run build
+npm run test:rendered
+```
 
 ## Project structure
 
@@ -80,16 +89,17 @@ worker/              Cloudflare Worker entry point and response hardening
 
 ## Documentation
 
+- [Developer handoff and architecture](DEVELOPMENT.md)
 - [Architecture decisions](docs/architecture/)
 - [Owner guides](docs/owner-guide-phase8.md)
 - [Organizer guides](docs/organizer-guide-phase8.md)
-- [Local verification](docs/phase8-local-testing.md)
-- [Historical build evidence](BUILD_STATUS.md)
-- [Owner facts still requiring confirmation](OWNER_INPUTS.md)
+- [Historical Phase 8 verification](docs/phase8-local-testing.md)
+- [Historical build evidence (not current onboarding)](BUILD_STATUS.md)
+- [Historical owner-input ledger](OWNER_INPUTS.md)
 
 ## Deployment
 
-The application is built and deployed through ChatGPT Sites. `.openai/hosting.json` contains logical resource bindings only; hosted credentials and runtime values are managed outside Git.
+The application is built and deployed through ChatGPT Sites. `.openai/hosting.json` contains the Sites project identifier and logical resource bindings, but no credentials or secrets; hosted credentials and runtime values are managed outside Git.
 
 Production releases are built from a clean, committed source revision. Database migrations remain additive and must be reviewed before deployment.
 

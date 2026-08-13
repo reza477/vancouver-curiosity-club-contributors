@@ -1,5 +1,9 @@
 # Owner guide — Phase 8 hardening
 
+> **Historical Phase 8 guide.** Start with
+> [DEVELOPMENT.md](../DEVELOPMENT.md) and verify current production state before
+> relying on a version, hostname, or pending item below.
+
 Phase 8 changed the safety and verification envelope around the completed
 Phase 1–7 product. Phase 9 first deployed that exact saved candidate as
 owner-only Sites version 14. The Owner later authorized the calendar-first
