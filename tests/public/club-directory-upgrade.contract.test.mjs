@@ -402,6 +402,76 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   );
 });
 
+test("the Clubs-index internal header keeps the first card well inside the desktop fold without changing shared directories", async () => {
+  const css = await source("app/globals.css");
+  const sharedDirectoryRule = cssRule(css, ".club-directory");
+  const sharedHeaderRule = cssRule(css, ".club-directory > header");
+  const sharedHeadingRule = cssRule(
+    css,
+    ".editorial-section h2,\n.community-destinations h2,\n.editorial-actions h2,\n.club-directory h2,\n.club-detail__destination h2,\n.club-event-list h2,\n.public-service-state h1,\n.public-service-state h2,\n.public-empty-state h2",
+  );
+  assert.match(
+    sharedDirectoryRule,
+    /padding:\s*clamp\(3rem,\s*7vw,\s*7rem\)/u,
+    "program and detail directories must retain their shared vertical rhythm",
+  );
+  assert.match(
+    sharedHeaderRule,
+    /grid-template-columns:\s*minmax\(12rem,\s*0\.7fr\)\s+minmax\(0,\s*1\.3fr\)/u,
+  );
+  assert.match(sharedHeaderRule, /margin-bottom:\s*2rem/u);
+  assert.match(sharedHeadingRule, /max-width:\s*15ch/u);
+  assert.match(
+    sharedHeadingRule,
+    /font-size:\s*clamp\(2rem,\s*4\.5vw,\s*4\.8rem\)/u,
+  );
+
+  const clubsRule = cssRule(css, ".club-directory--clubs");
+  const clubsHeaderRule = cssRule(css, ".club-directory--clubs > header");
+  const clubsHeadingRule = cssRule(
+    css,
+    ".club-directory--clubs > header h2",
+  );
+  assert.match(
+    clubsHeaderRule,
+    /grid-template-columns:\s*max-content\s+minmax\(0,\s*1fr\)/u,
+    "the desktop kicker and title must share one compact row",
+  );
+  assert.match(clubsHeaderRule, /align-items:\s*baseline/u);
+  assert.match(clubsHeadingRule, /max-width:\s*none/u);
+  assert.match(clubsHeadingRule, /margin:\s*0/u);
+
+  const conservativeHeaderHeightPx = 16 * (
+    maximumRem(propertyValue(clubsRule, "padding-top")) +
+    maximumRem(propertyValue(clubsHeaderRule, "margin-bottom")) +
+    maximumRem(propertyValue(clubsHeadingRule, "font-size")) *
+      Number(propertyValue(clubsHeadingRule, "line-height"))
+  );
+  assert.ok(
+    conservativeHeaderHeightPx <= 936 * 0.1,
+    `the Clubs-only header may consume at most 10% of a 936px desktop fold; got ${conservativeHeaderHeightPx}px`,
+  );
+
+  const tabletCss = mediaRule(css, "52rem");
+  assert.match(
+    cssRule(tabletCss, ".club-directory > header"),
+    /grid-template-columns:\s*1fr/u,
+    "the compact desktop row must stack safely before the 390px phone width",
+  );
+  const phoneClubCss = mediaRules(css, "38rem").find((rule) =>
+    rule.includes(".club-directory--clubs"),
+  );
+  assert.ok(phoneClubCss, "missing Clubs-scoped phone media query");
+  const phoneDirectoryRule = cssRule(phoneClubCss, ".club-directory--clubs");
+  assert.match(phoneDirectoryRule, /safe-area-inset-left/u);
+  assert.match(phoneDirectoryRule, /safe-area-inset-right/u);
+  assert.doesNotMatch(
+    `${clubsHeaderRule}\n${clubsHeadingRule}\n${phoneDirectoryRule}`,
+    /(?:min-)?width:\s*[4-9]\drem/u,
+    "the compact header must not introduce a fixed width that can overflow at 390px",
+  );
+});
+
 function clubFixtures() {
   return Object.freeze([
     clubFixture(
@@ -527,6 +597,22 @@ function cssRule(css, selector) {
   const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, "u"));
   assert.ok(match, `missing CSS rule: ${selector}`);
   return match[1];
+}
+
+function propertyValue(rule, property) {
+  const match = rule.match(
+    new RegExp(`(?:^|;)\\s*${escapeRegex(property)}\\s*:\\s*([^;]+)`, "u"),
+  );
+  assert.ok(match, `missing CSS property: ${property}`);
+  return match[1].trim();
+}
+
+function maximumRem(value) {
+  const remValues = [...value.matchAll(/([\d.]+)rem/gu)].map((match) =>
+    Number(match[1]),
+  );
+  assert.ok(remValues.length > 0, `missing rem length: ${value}`);
+  return Math.max(...remValues);
 }
 
 function mediaRule(css, width) {
