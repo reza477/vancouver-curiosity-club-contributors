@@ -38,3 +38,12 @@ export function publicEventCapacityLabel(
   const capacity = event.capacity.toLocaleString("en-CA");
   return event.waitlistAvailable ? `${capacity} + waitlist` : capacity;
 }
+
+export function publicEventAvailabilityLabel(
+  event: Pick<PublicEventCardDto, "availabilityState">,
+): string | null {
+  if (event.availabilityState === "full") return "Full";
+  if (event.availabilityState === "waitlist") return "Waitlist";
+  if (event.availabilityState === "open") return "Open";
+  return null;
+}

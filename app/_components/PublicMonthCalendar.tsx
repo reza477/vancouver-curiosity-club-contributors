@@ -13,6 +13,7 @@ import {
   responsiveImageSrcSet,
 } from "@/lib/media/presentation";
 import {
+  publicEventAvailabilityLabel,
   publicEventCapacityLabel,
   publicEventLocationParts,
 } from "@/lib/public-event-facts";
@@ -476,6 +477,7 @@ function CalendarEventPreview({
   siteOrigin: string | null;
 }>) {
   const locationParts = publicEventLocationParts(event);
+  const availability = publicEventAvailabilityLabel(event);
   const capacity = publicEventCapacityLabel(event);
   const artworkCredit = event.artwork
     ? discoveryArtworkCredit(event.artwork.credit)
@@ -550,9 +552,24 @@ function CalendarEventPreview({
             {locationParts.slice(1).join(" · ")}
           </p>
         ) : null}
+        {availability ? (
+          <p className="public-calendar-event__fact">
+            <strong>Availability:</strong> {availability}
+          </p>
+        ) : null}
+        {event.costText ? (
+          <p className="public-calendar-event__fact">
+            <strong>Cost:</strong> {event.costText}
+          </p>
+        ) : null}
         {capacity ? (
           <p className="public-calendar-event__registration">
             Capacity {capacity}
+          </p>
+        ) : null}
+        {event.agePolicyText ? (
+          <p className="public-calendar-event__fact">
+            <strong>Age:</strong> {event.agePolicyText}
           </p>
         ) : null}
         {event.arrivalInstructions ? (

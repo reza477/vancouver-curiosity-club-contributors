@@ -5,6 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PageMasthead } from "../../app/_components/PageMasthead.tsx";
 import { PublicMonthCalendar } from "../../app/_components/PublicMonthCalendar.tsx";
+import { publicEventAvailabilityLabel } from "../../lib/public-event-facts.ts";
 import {
   eventOccursOnCalendarDate,
   googleCalendarEventUrl,
@@ -49,9 +50,11 @@ function timedEvent(overrides = {}) {
 
 function wednesdayResetEvent() {
   return timedEvent({
+    agePolicyText: null,
     arrivalInstructions: "Please arrive on time so we can begin together.",
     availabilityState: null,
     capacity: 12,
+    costText: null,
     slug: "wednesday-night-reset",
     title: "Wednesday Night Reset",
     venue: Object.freeze({
@@ -204,6 +207,20 @@ test("month helpers return exact boundaries and a stable 42-day grid", () => {
   );
 });
 
+test("public availability labels preserve each structured state without inventing one", () => {
+  for (const [availabilityState, expected] of [
+    ["open", "Open"],
+    ["full", "Full"],
+    ["waitlist", "Waitlist"],
+    [null, null],
+  ]) {
+    assert.equal(
+      publicEventAvailabilityLabel({ availabilityState }),
+      expected,
+    );
+  }
+});
+
 test("timed and all-day events occupy every intended local calendar day", () => {
   const overnight = timedEvent();
   assert.equal(publicEventCalendarStartDate(overnight), "2026-07-05");
@@ -268,7 +285,7 @@ test("Wednesday Night Reset keeps its room in the Google add-to-calendar locatio
   );
 });
 
-test("Wednesday Night Reset keeps its room and capacity in selected-day calendar facts", () => {
+test("Wednesday Night Reset keeps only its verified logistics in selected-day calendar facts", () => {
   const event = wednesdayResetEvent();
   const markup = renderToStaticMarkup(
     createElement(PublicMonthCalendar, {
@@ -286,11 +303,99 @@ test("Wednesday Night Reset keeps its room and capacity in selected-day calendar
     /<aside class="public-calendar__day-panel"[\s\S]*?<\/aside>/u,
   )?.[0];
   assert.ok(selectedDay, "the selected-day panel must render");
-  assert.match(selectedDay, /Level 4/u);
-  assert.match(selectedDay, /Room 492 South/u);
+  const selectedDayText = selectedDay
+    .replace(/<[^>]+>/gu, " ")
+    .replace(/\s+/gu, " ");
+  assert.match(selectedDayText, /Level 4/u);
+  assert.match(selectedDayText, /Room 492 South/u);
   assert.match(
-    selectedDay.replace(/<[^>]+>/gu, " "),
+    selectedDayText,
     /12\s+\+\s+waitlist/iu,
+  );
+  assert.match(
+    selectedDayText,
+    /Arrival:\s*Please arrive on time so we can begin together\./u,
+  );
+  assert.doesNotMatch(selectedDayText, /Availability:|Cost:|Age:/u);
+});
+
+test("a synthetic selected-day event shows every supplied structured fact", () => {
+  const event = timedEvent({
+    agePolicyText: "19+",
+    arrivalInstructions: "Check in at the synthetic welcome desk.",
+    availabilityState: "waitlist",
+    capacity: 24,
+    costText: "Pay what you can",
+    slug: "synthetic-structured-logistics",
+    title: "Synthetic structured logistics fixture",
+    venue: Object.freeze({
+      address: "123 Example Street",
+      floor: "Level 2",
+      name: "Example Hall",
+      room: "Room 204",
+    }),
+    waitlistAvailable: true,
+  });
+  const markup = renderToStaticMarkup(
+    createElement(PublicMonthCalendar, {
+      complete: true,
+      events: Object.freeze([event]),
+      maxMonth: "2027-07",
+      minMonth: "2025-07",
+      month: "2026-07",
+      nowUtcMs: Date.parse("2026-07-05T07:00:00.000Z"),
+      siteOrigin: "https://club.example",
+      todayDate: "2026-07-05",
+    }),
+  );
+  const selectedDay = markup.match(
+    /<aside class="public-calendar__day-panel"[\s\S]*?<\/aside>/u,
+  )?.[0];
+  assert.ok(selectedDay, "the selected-day panel must render");
+  const selectedDayText = selectedDay
+    .replace(/<[^>]+>/gu, " ")
+    .replace(/\s+/gu, " ");
+  assert.match(selectedDayText, /Synthetic structured logistics fixture/u);
+  assert.match(selectedDayText, /Level 2/u);
+  assert.match(selectedDayText, /Room 204/u);
+  assert.match(selectedDayText, /Availability:\s*Waitlist/u);
+  assert.match(selectedDayText, /Cost:\s*Pay what you can/u);
+  assert.match(selectedDayText, /24\s+\+\s+waitlist/iu);
+  assert.match(selectedDayText, /Age:\s*19\+/u);
+  assert.match(
+    selectedDayText,
+    /Arrival:\s*Check in at the synthetic welcome desk\./u,
+  );
+});
+
+test("selected-day calendar facts omit absent values without inventing defaults", () => {
+  const event = timedEvent({
+    agePolicyText: null,
+    arrivalInstructions: null,
+    availabilityState: null,
+    capacity: null,
+    costText: null,
+    waitlistAvailable: false,
+  });
+  const markup = renderToStaticMarkup(
+    createElement(PublicMonthCalendar, {
+      complete: true,
+      events: Object.freeze([event]),
+      maxMonth: "2027-07",
+      minMonth: "2025-07",
+      month: "2026-07",
+      nowUtcMs: Date.parse("2026-07-05T07:00:00.000Z"),
+      siteOrigin: "https://club.example",
+      todayDate: "2026-07-05",
+    }),
+  );
+  const selectedDay = markup.match(
+    /<aside class="public-calendar__day-panel"[\s\S]*?<\/aside>/u,
+  )?.[0];
+  assert.ok(selectedDay, "the selected-day panel must render");
+  assert.doesNotMatch(
+    selectedDay.replace(/<[^>]+>/gu, " "),
+    /Availability:|Cost:|Capacity\s|Age:|Arrival:/u,
   );
 });
 
@@ -476,6 +581,16 @@ test("the phone agenda initially shows seven upcoming events and exposes the res
       const day = String(index + 11).padStart(2, "0");
       const eventNumber = String(index + 1).padStart(2, "0");
       return timedEvent({
+        ...(index === 0
+          ? {
+              agePolicyText: "19+",
+              arrivalInstructions: "Use the side entrance.",
+              availabilityState: "waitlist",
+              capacity: 12,
+              costText: "Free",
+              waitlistAvailable: true,
+            }
+          : {}),
         schedule: Object.freeze({
           endsAtUtc: `2026-07-${day}T21:00:00.000Z`,
           kind: "timed",
@@ -504,6 +619,11 @@ test("the phone agenda initially shows seven upcoming events and exposes the res
   )?.[0];
 
   assert.ok(agendaMarkup, "the phone agenda must render when events are upcoming");
+  assert.doesNotMatch(
+    agendaMarkup,
+    /Availability:|Cost:|Capacity\s|Age:|Arrival:/u,
+    "the phone agenda must stay compact when the selected event has structured facts",
+  );
   assert.equal(
     (agendaMarkup.match(/<button[^>]*aria-controls="public-calendar-day-panel"/gu) ?? [])
       .length,

@@ -12,6 +12,7 @@ import {
 } from "@/lib/meetup-event-enrichment";
 import { responsiveImageSrcSet } from "@/lib/media/presentation";
 import {
+  publicEventAvailabilityLabel,
   publicEventCapacityLabel,
   publicEventLocationParts,
 } from "@/lib/public-event-facts";
@@ -30,6 +31,7 @@ export function PublicEventDetailRenderer({
 }>) {
   const schedule = formatEventSchedule(event);
   const locationParts = publicEventLocationParts(event);
+  const availability = publicEventAvailabilityLabel(event);
   const capacity = publicEventCapacityLabel(event);
 
   return (
@@ -209,10 +211,10 @@ export function PublicEventDetailRenderer({
                     </dd>
                   </div>
                 ) : null}
-                {event.availabilityState ? (
+                {availability ? (
                   <div>
                     <dt>Availability</dt>
-                    <dd>{availabilityLabel(event.availabilityState)}</dd>
+                    <dd>{availability}</dd>
                   </div>
                 ) : null}
                 {event.costText ? (
@@ -425,12 +427,4 @@ function PublicNote({
         ))}
     </section>
   );
-}
-
-function availabilityLabel(
-  value: NonNullable<PublicEventDetailDto["availabilityState"]>,
-): string {
-  if (value === "full") return "Full";
-  if (value === "waitlist") return "Waitlist";
-  return "Open";
 }

@@ -3722,6 +3722,10 @@ main,
   color: var(--ink-soft);
 }
 
+.public-calendar-event__fact {
+  overflow-wrap: anywhere;
+}
+
 .public-calendar-event__location {
   font-weight: 750;
 }
