@@ -436,8 +436,8 @@ function assertCalendarRouteComposition() {
   );
   assert.match(
     workerSource,
-    /const maintenance = await runRequestMaintenance\([\s\S]*?if \(maintenance\.kind === "unavailable"\) \{[\s\S]*?return secureResponse\([\s\S]*?if \(maintenance\.kind === "redirect"\) \{[\s\S]*?return secureResponse\([\s\S]*?const response = await handler\.fetch/u,
-    "synchronous CMS/publication failures and redirects must return before route dispatch",
+    /await ensureDatabaseInvariants\(env\.DB\)[\s\S]*?const maintenance = await runRequestMaintenance\([\s\S]*?if \(maintenance\.kind === "unavailable"\) \{[\s\S]*?return secureResponse\([\s\S]*?if \(maintenance\.kind === "redirect"\) \{[\s\S]*?return secureResponse\([\s\S]*?await publicEventsResponseCacheContext\([\s\S]*?await readPublicEventsResponseCache\([\s\S]*?if \(cached\) \{[\s\S]*?return secureResponse\([\s\S]*?let response = await handler\.fetch/u,
+    "invariants and synchronous CMS/publication maintenance must precede response-cache lookup, and a cache hit must return before route dispatch",
   );
   assert.doesNotMatch(
     workerSource,

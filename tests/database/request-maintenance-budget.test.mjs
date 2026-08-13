@@ -14,7 +14,7 @@ import {
 } from "../../lib/server/organizer/publication.ts";
 
 const DATABASE_INVARIANT_FAST_PATH = 2;
-const PUBLICATION_NO_DUE = 2;
+const PUBLICATION_NO_DUE = 1;
 const PUBLICATION_DUE_MAXIMUM =
   ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM;
 
@@ -29,7 +29,7 @@ test("synchronous request maintenance excludes Meetup refresh work", async (t) =
     assert.deepEqual(trace, ["visitor-events", "publication"]);
     assert.equal(
       DATABASE_INVARIANT_FAST_PATH + PUBLICATION_NO_DUE,
-      4,
+      3,
     );
   });
 
@@ -46,7 +46,7 @@ test("synchronous request maintenance excludes Meetup refresh work", async (t) =
     assert.deepEqual(trace, ["visitor-events", "publication"]);
     assert.equal(
       DATABASE_INVARIANT_FAST_PATH + PUBLICATION_DUE_MAXIMUM,
-      31,
+      30,
     );
   });
 

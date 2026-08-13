@@ -64,10 +64,10 @@ export const ORGANIZER_PUBLICATION_RECONCILIATION_JOB_LIMIT = 1;
 
 /**
  * The hardest stabilized one-job reconciliation trace is the
- * Administrator-approved overlap path: 29 D1 statements in the service,
+ * Administrator-approved overlap path: 28 D1 statements in the service,
  * plus the separate two-statement invariant fast path at Worker dispatch.
  */
-export const ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM = 29;
+export const ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM = 28;
 
 export type OrganizerPublicationAction =
   (typeof ORGANIZER_PUBLICATION_ACTIONS)[number];
@@ -1153,29 +1153,43 @@ export async function reconcileDueOrganizerPublications(
           minimum: 1,
           maximum: ORGANIZER_PUBLICATION_RECONCILIATION_JOB_LIMIT,
         });
-  const now =
+  const requestedNow =
     options.now === undefined
-      ? await currentD1Time(database)
+      ? null
       : parseFiniteInteger(options.now, { path: "now", minimum: 0 });
   const result = await database
     .prepare(
-      `SELECT job.id, job.organization_id, job.organizer_event_id,
+      `WITH reconciliation_clock(now_utc) AS (
+         SELECT COALESCE(
+           ?,
+           CAST(unixepoch('subsec') * 1000 AS INTEGER)
+         )
+       )
+       SELECT job.id, job.organization_id, job.organizer_event_id,
               job.requested_publication_at_utc,
               job.bound_content_version, job.bound_schedule_version,
-              job.authorizing_profile_id
+              job.authorizing_profile_id,
+              clock.now_utc AS reconciliation_now_utc
        FROM organizer_event_publication_jobs AS job
+       CROSS JOIN reconciliation_clock AS clock
        WHERE job.state = 'pending'
-         AND job.requested_publication_at_utc <= ?
+         AND job.requested_publication_at_utc <= clock.now_utc
        ORDER BY job.requested_publication_at_utc, job.id
        LIMIT ?`,
     )
-    .bind(now, limit)
+    .bind(requestedNow, limit)
     .all<Record<string, unknown>>();
-  const jobs = (result.results ?? []).map(readDuePublicationJob);
+  const jobs = (result.results ?? []).map((row) =>
+    Object.freeze({
+      job: readDuePublicationJob(row),
+      now: requiredInteger(row.reconciliation_now_utc),
+    }),
+  );
   let executed = 0;
   let invalidated = 0;
   let transientFailures = 0;
-  for (const job of jobs) {
+  for (const candidate of jobs) {
+    const { job, now } = candidate;
     try {
       const originalActor = await readCurrentPublicationActorForJob(
         database,

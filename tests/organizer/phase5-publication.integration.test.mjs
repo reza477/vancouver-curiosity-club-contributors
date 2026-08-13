@@ -1250,7 +1250,6 @@ test("scheduled reconciliation stays within the D1 statement cap and processes a
     assert.equal(await ensureDatabaseInvariants(counter.binding), "ready");
     const reconciled = await reconcileDueOrganizerPublications(
       counter.binding,
-      { now: BASE_NOW },
     );
     assert.deepEqual(reconciled, {
       executed: 0,

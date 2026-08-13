@@ -1017,9 +1017,9 @@ test("whole Worker export and calendar routes retain exact D1 statement headroom
     const calendar = await runRoute({
       expected: {
         invariantStatements: 2,
-        maintenanceStatements: 2,
+        maintenanceStatements: 1,
         routeStatements: 6,
-        totalStatements: 10,
+        totalStatements: 9,
       },
       method: "GET",
       pathname: "/events/calendar.ics",
@@ -1031,9 +1031,9 @@ test("whole Worker export and calendar routes retain exact D1 statement headroom
     const oneEventCalendar = await runRoute({
       expected: {
         invariantStatements: 2,
-        maintenanceStatements: 2,
+        maintenanceStatements: 1,
         routeStatements: 6,
-        totalStatements: 10,
+        totalStatements: 9,
       },
       method: "GET",
       pathname: "/events/budget-public-event/calendar.ics",
@@ -1049,9 +1049,9 @@ test("whole Worker export and calendar routes retain exact D1 statement headroom
     const publicCsv = await runRoute({
       expected: {
         invariantStatements: 2,
-        maintenanceStatements: 2,
+        maintenanceStatements: 1,
         routeStatements: 3,
-        totalStatements: 7,
+        totalStatements: 6,
       },
       method: "GET",
       pathname: "/events/events.csv",

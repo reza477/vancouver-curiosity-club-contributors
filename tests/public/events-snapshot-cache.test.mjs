@@ -381,7 +381,7 @@ test("failed Events projections never create or poison a durable snapshot", asyn
   );
 });
 
-test("the Events cache remains DTO-only while responses stay dynamic, nonce-protected, and accessible", async () => {
+test("the durable Events cache remains DTO-only while the Worker safely accelerates public responses", async () => {
   const [page, loader, loading, worker, publicServerEntries] =
     await Promise.all([
       readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
@@ -438,7 +438,7 @@ test("the Events cache remains DTO-only while responses stay dynamic, nonce-prot
   assert.doesNotMatch(
     snapshotSource,
     /Reflect\.get\(globalThis, "caches"\)|\bcaches\.default\b/u,
-    "Sites does not expose a usable Cache API to this worker, so production must use the durable D1 snapshot without probing it on every request",
+    "the durable DTO module must remain independent of the Worker response cache",
   );
   assert.doesNotMatch(
     loader,
@@ -451,6 +451,9 @@ test("the Events cache remains DTO-only while responses stay dynamic, nonce-prot
   );
   assert.match(worker, /requestWithSecurityContext\(/u);
   assert.match(worker, /secureResponse\(/u);
+  assert.match(worker, /publicEventsResponseCacheContext\(/u);
+  assert.match(worker, /readPublicEventsResponseCache\(/u);
+  assert.match(worker, /writePublicEventsResponseCache\(/u);
 
   assert.match(loading, /aria-busy="true"/u);
   assert.match(loading, /aria-labelledby="events-loading-status"/u);
