@@ -2690,6 +2690,12 @@ main,
     grid-template-columns: 2.2rem minmax(0, 1fr);
   }
 
+  .club-directory--clubs .club-directory__artwork {
+    grid-column: 2;
+    grid-row: auto;
+    min-width: 0;
+  }
+
   .club-directory__number {
     grid-row: 1 / 6;
   }

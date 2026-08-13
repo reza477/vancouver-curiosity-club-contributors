@@ -374,6 +374,16 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
     /grid-template-columns:\s*3rem\s+minmax\(/u,
     "desktop layout changes must stay scoped to the Clubs directory",
   );
+  const desktopArtworkRule = cssRule(
+    css,
+    ".club-directory--clubs .club-directory__artwork",
+  );
+  assert.match(desktopArtworkRule, /grid-column:\s*3/u);
+  assert.match(
+    desktopArtworkRule,
+    /grid-row:\s*1\s*\/\s*6/u,
+    "desktop cards must retain the editorial side-by-side artwork treatment",
+  );
   const imageRule = cssRule(css, ".club-directory__artwork img");
   assert.match(imageRule, /width:\s*100%/u);
   assert.match(imageRule, /aspect-ratio:\s*16\s*\/\s*9/u);
@@ -382,6 +392,25 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   assert.match(
     cssRule(tabletCss, ".club-directory--clubs .club-directory__card"),
     /grid-template-columns:[^;]*minmax\(0,\s*1fr\)/u,
+  );
+  const stackedArtworkRule = cssRule(
+    tabletCss,
+    ".club-directory--clubs .club-directory__artwork",
+  );
+  assert.match(
+    stackedArtworkRule,
+    /grid-column:\s*2/u,
+    "phone-sized cards need an equally specific override so artwork cannot create an implicit third column and collapse the text",
+  );
+  assert.match(
+    stackedArtworkRule,
+    /grid-row:\s*auto/u,
+    "stacked artwork must follow the heading instead of spanning and overlapping the card copy",
+  );
+  assert.match(
+    stackedArtworkRule,
+    /min-width:\s*0/u,
+    "responsive artwork must be allowed to shrink inside the phone content column",
   );
   const phoneClubCss = mediaRules(css, "38rem").find((rule) =>
     rule.includes(".club-directory--clubs"),
