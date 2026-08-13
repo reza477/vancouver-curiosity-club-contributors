@@ -10,7 +10,6 @@ import {
 import type { FieldArtworkTone } from "@/app/_components/FieldArtwork";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import {
-  getPublicSiteContext,
   getPublicSlugRedirect,
   listPublicClubs,
   listPublicCommunityLinks,
@@ -148,46 +147,50 @@ export async function buildEditorialMetadata({
   route: string;
   slug: string;
 }>): Promise<Metadata> {
-  const loaded = await loadEditorialPage(slug, route);
+  const [loaded, support, origin] = await Promise.all([
+    loadEditorialPage(slug, route),
+    loadEditorialMetadataSupport(),
+    getTrustedRequestOrigin(),
+  ]);
   const page = loaded.kind === "available" ? loaded.page : null;
-  let site: Awaited<ReturnType<typeof getPublicSiteContext>> = null;
+  const site = support?.site ?? null;
   let socialMedia: ResponsiveMediaAssetDto | null = null;
-  if (page) {
+  if (page && support) {
     try {
-      const { database } = getRuntimeAuthConfiguration();
-      const organization = await getRequestPublicOrganization(database);
-      site = await getRequestPublicSiteContext(database);
       const assetIds = [
         page.openGraphAssetId,
         site?.openGraphAssetId ?? null,
       ].flatMap((assetId) => (assetId ? [assetId] : []));
-      if (organization && assetIds.length > 0) {
-        const resolvedMedia = await resolveMediaAssetsForRendering(database, {
-          organizationId: organization.id,
-          publicationScope: "published",
-          usages: [
-            ...(page.openGraphAssetId
-              ? [
-                  {
-                    assetId: page.openGraphAssetId,
-                    entityKey: page.slug,
-                    entityType: "page" as const,
-                    usageKind: "open_graph",
-                  },
-                ]
-              : []),
-            ...(site?.openGraphAssetId
-              ? [
-                  {
-                    assetId: site.openGraphAssetId,
-                    entityKey: organization.id,
-                    entityType: "site_og" as const,
-                    usageKind: "open_graph",
-                  },
-                ]
-              : []),
-          ],
-        });
+      if (support.organization && assetIds.length > 0) {
+        const resolvedMedia = await resolveMediaAssetsForRendering(
+          support.database,
+          {
+            organizationId: support.organization.id,
+            publicationScope: "published",
+            usages: [
+              ...(page.openGraphAssetId
+                ? [
+                    {
+                      assetId: page.openGraphAssetId,
+                      entityKey: page.slug,
+                      entityType: "page" as const,
+                      usageKind: "open_graph",
+                    },
+                  ]
+                : []),
+              ...(site?.openGraphAssetId
+                ? [
+                    {
+                      assetId: site.openGraphAssetId,
+                      entityKey: support.organization.id,
+                      entityType: "site_og" as const,
+                      usageKind: "open_graph",
+                    },
+                  ]
+                : []),
+            ],
+          },
+        );
         socialMedia =
           resolvedMedia.find(
             ({ assetId }) => assetId === page.openGraphAssetId,
@@ -209,7 +212,7 @@ export async function buildEditorialMetadata({
     absoluteTitle,
     description,
     fallbackTitle,
-    origin: await getTrustedRequestOrigin(),
+    origin,
     path,
     page,
     siteName: site?.brandName,
@@ -217,6 +220,19 @@ export async function buildEditorialMetadata({
     title,
     useShippedSocialFallback: usesShippedSocialArtwork(site),
   });
+}
+
+async function loadEditorialMetadataSupport() {
+  try {
+    const { database } = getRuntimeAuthConfiguration();
+    const [organization, site] = await Promise.all([
+      getRequestPublicOrganization(database),
+      getRequestPublicSiteContext(database),
+    ]);
+    return Object.freeze({ database, organization, site });
+  } catch {
+    return null;
+  }
 }
 
 export function buildEditorialMetadataFromResolved({

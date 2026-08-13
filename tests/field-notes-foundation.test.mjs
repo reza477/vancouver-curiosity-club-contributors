@@ -51,14 +51,18 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(homeRenderer, /<StructuredData/u);
   assert.doesNotMatch(page, /loadCommunityDestinations|sameAs/u);
   assert.match(homeData, /await getRequestPublicCatalog\(database\)/u);
-  assert.match(requestCache, /import \{ cache \} from "react";/u);
   assert.match(
     requestCache,
-    /getRequestPublicNavigation\s*=\s*cache\([\s\S]*?listPublicNavigation\(database\)/u,
+    /import \{ cacheForRequest \} from "vinext\/cache";/u,
+  );
+  assert.doesNotMatch(requestCache, /from "react"/u);
+  assert.match(
+    requestCache,
+    /function getRequestPublicNavigation\([\s\S]*?remember\([\s\S]*?listPublicNavigation\(database\)/u,
   );
   assert.match(
     requestCache,
-    /getRequestPublicCatalog\s*=\s*cache\([\s\S]*?getRequestPublicSiteContext\(database\)[\s\S]*?getRequestPublicLanes\(database\)[\s\S]*?getRequestPublicClubs\(database\)[\s\S]*?getRequestPublicCommunityLinks\(database\)[\s\S]*?getRequestPublicNavigation\(database\)/u,
+    /function getRequestPublicCatalog\([\s\S]*?getRequestPublicSiteContext\(database\)[\s\S]*?getRequestPublicLanes\(database\)[\s\S]*?getRequestPublicClubs\(database\)[\s\S]*?getRequestPublicCommunityLinks\(database\)[\s\S]*?getRequestPublicNavigation\(database\)/u,
   );
   assert.doesNotMatch(requestCache, /loadPublicCatalog/u);
   assert.match(
@@ -67,7 +71,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   );
   assert.match(
     requestCache,
-    /getRequestPublicPageContent\s*=\s*cache\([\s\S]*?getPublicPageContent\(database, slug\)/u,
+    /function getRequestPublicPageContent\([\s\S]*?remember\([\s\S]*?getPublicPageContent\(database, slug\)/u,
   );
   assert.match(homeData, /queryPublicEventSlice\(database, \{/u);
   assert.match(homeData, /pageSize:\s*6/u);

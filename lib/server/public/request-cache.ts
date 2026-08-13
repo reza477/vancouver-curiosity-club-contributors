@@ -1,4 +1,4 @@
-import { cache } from "react";
+import { cacheForRequest } from "vinext/cache";
 import type { D1DatabaseLike } from "../auth";
 import {
   getPublicPageContent,
@@ -13,56 +13,138 @@ import {
 
 type PublicDatabase = Pick<D1DatabaseLike, "prepare">;
 
+type PublicRequestCache = Readonly<{
+  catalog: Map<string, Promise<PublicCatalogDto | null>>;
+  clubs: Map<string, ReturnType<typeof listPublicClubs>>;
+  communityLinks: Map<string, ReturnType<typeof listPublicCommunityLinks>>;
+  lanes: Map<string, ReturnType<typeof listPublicLanes>>;
+  navigation: Map<string, ReturnType<typeof listPublicNavigation>>;
+  organization: Map<string, ReturnType<typeof resolvePublicOrganization>>;
+  pages: Map<string, ReturnType<typeof getPublicPageContent>>;
+  siteContext: Map<string, ReturnType<typeof getPublicSiteContext>>;
+}>;
+
+const requestDatabaseCaches = cacheForRequest(
+  () => new WeakMap<PublicDatabase, PublicRequestCache>(),
+);
+
+function requestDatabaseCache(database: PublicDatabase): PublicRequestCache {
+  const caches = requestDatabaseCaches();
+  const existing = caches.get(database);
+  if (existing) return existing;
+  const created = Object.freeze({
+    catalog: new Map<string, Promise<PublicCatalogDto | null>>(),
+    clubs: new Map<string, ReturnType<typeof listPublicClubs>>(),
+    communityLinks:
+      new Map<string, ReturnType<typeof listPublicCommunityLinks>>(),
+    lanes: new Map<string, ReturnType<typeof listPublicLanes>>(),
+    navigation: new Map<string, ReturnType<typeof listPublicNavigation>>(),
+    organization:
+      new Map<string, ReturnType<typeof resolvePublicOrganization>>(),
+    pages: new Map<string, ReturnType<typeof getPublicPageContent>>(),
+    siteContext:
+      new Map<string, ReturnType<typeof getPublicSiteContext>>(),
+  });
+  caches.set(database, created);
+  return created;
+}
+
+function remember<T>(
+  values: Map<string, Promise<T>>,
+  key: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  const existing = values.get(key);
+  if (existing) return existing;
+  const loaded = load();
+  values.set(key, loaded);
+  void loaded.catch(() => {
+    if (values.get(key) === loaded) values.delete(key);
+  });
+  return loaded;
+}
+
 /**
- * React request caches keep metadata, the public shell, and the active route
- * from repeating the same D1 reads during one render. They deliberately do
- * not persist between requests, so a newly published CMS revision is visible
- * on the next navigation without a manual cache purge.
+ * Vinext's unified request cache spans metadata resolution, its pre-render
+ * layout probe, RSC generation, and HTML rendering. Keeping the exact D1
+ * Promise for that one request prevents those phases from repeating the same
+ * public reads. A new request always receives a new WeakMap, so newly
+ * published CMS state remains visible without invalidation.
  */
-export const getRequestPublicOrganization = cache(
-  (database: PublicDatabase) => resolvePublicOrganization(database),
-);
+export function getRequestPublicOrganization(database: PublicDatabase) {
+  return remember(
+    requestDatabaseCache(database).organization,
+    "organization",
+    () => resolvePublicOrganization(database),
+  );
+}
 
-export const getRequestPublicSiteContext = cache(
-  (database: PublicDatabase) => getPublicSiteContext(database),
-);
+export function getRequestPublicSiteContext(database: PublicDatabase) {
+  return remember(
+    requestDatabaseCache(database).siteContext,
+    "site-context",
+    () => getPublicSiteContext(database),
+  );
+}
 
-export const getRequestPublicLanes = cache(
-  (database: PublicDatabase) => listPublicLanes(database),
-);
+export function getRequestPublicLanes(database: PublicDatabase) {
+  return remember(requestDatabaseCache(database).lanes, "lanes", () =>
+    listPublicLanes(database),
+  );
+}
 
-export const getRequestPublicClubs = cache(
-  (database: PublicDatabase) => listPublicClubs(database),
-);
+export function getRequestPublicClubs(database: PublicDatabase) {
+  return remember(requestDatabaseCache(database).clubs, "clubs", () =>
+    listPublicClubs(database),
+  );
+}
 
-export const getRequestPublicCommunityLinks = cache(
-  (database: PublicDatabase) => listPublicCommunityLinks(database),
-);
+export function getRequestPublicCommunityLinks(database: PublicDatabase) {
+  return remember(
+    requestDatabaseCache(database).communityLinks,
+    "community-links",
+    () => listPublicCommunityLinks(database),
+  );
+}
 
-export const getRequestPublicNavigation = cache(
-  (database: PublicDatabase) => listPublicNavigation(database),
-);
+export function getRequestPublicNavigation(database: PublicDatabase) {
+  return remember(
+    requestDatabaseCache(database).navigation,
+    "navigation",
+    () => listPublicNavigation(database),
+  );
+}
 
 // Home needs the complete catalog, while the shared shell needs only Site and
 // Navigation. Composing from the same leaf caches keeps both surfaces truthful
 // without making either one repeat the other's reads during a render.
-export const getRequestPublicCatalog = cache(
-  async (database: PublicDatabase): Promise<PublicCatalogDto | null> => {
-    const [site, lanes, clubs, communityLinks, navigation] =
-      await Promise.all([
-        getRequestPublicSiteContext(database),
-        getRequestPublicLanes(database),
-        getRequestPublicClubs(database),
-        getRequestPublicCommunityLinks(database),
-        getRequestPublicNavigation(database),
-      ]);
-    return site
-      ? Object.freeze({ clubs, communityLinks, lanes, navigation, site })
-      : null;
-  },
-);
+export function getRequestPublicCatalog(
+  database: PublicDatabase,
+): Promise<PublicCatalogDto | null> {
+  return remember(
+    requestDatabaseCache(database).catalog,
+    "catalog",
+    async () => {
+      const [site, lanes, clubs, communityLinks, navigation] =
+        await Promise.all([
+          getRequestPublicSiteContext(database),
+          getRequestPublicLanes(database),
+          getRequestPublicClubs(database),
+          getRequestPublicCommunityLinks(database),
+          getRequestPublicNavigation(database),
+        ]);
+      return site
+        ? Object.freeze({ clubs, communityLinks, lanes, navigation, site })
+        : null;
+    },
+  );
+}
 
-export const getRequestPublicPageContent = cache(
-  (database: PublicDatabase, slug: string) =>
+export function getRequestPublicPageContent(
+  database: PublicDatabase,
+  slug: string,
+) {
+  return remember(requestDatabaseCache(database).pages, slug, () =>
     getPublicPageContent(database, slug),
-);
+  );
+}
