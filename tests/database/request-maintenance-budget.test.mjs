@@ -17,6 +17,7 @@ const DATABASE_INVARIANT_FAST_PATH = 2;
 const PUBLICATION_NO_DUE = 1;
 const PUBLICATION_DUE_MAXIMUM =
   ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM;
+const EVENTS_COPY_COLD_MARKER_READ = 1;
 
 test("synchronous request maintenance excludes Meetup refresh work", async (t) => {
   await t.test("no due publication continues to the route within budget", async () => {
@@ -30,6 +31,13 @@ test("synchronous request maintenance excludes Meetup refresh work", async (t) =
     assert.equal(
       DATABASE_INVARIANT_FAST_PATH + PUBLICATION_NO_DUE,
       3,
+      "a warm isolate skips the already-validated Events copy marker",
+    );
+    assert.equal(
+      DATABASE_INVARIANT_FAST_PATH + EVENTS_COPY_COLD_MARKER_READ +
+        PUBLICATION_NO_DUE,
+      4,
+      "a cold isolate validates the terminal Events copy marker once",
     );
   });
 
@@ -47,6 +55,13 @@ test("synchronous request maintenance excludes Meetup refresh work", async (t) =
     assert.equal(
       DATABASE_INVARIANT_FAST_PATH + PUBLICATION_DUE_MAXIMUM,
       30,
+      "a warm isolate retains the due-publication maximum",
+    );
+    assert.equal(
+      DATABASE_INVARIANT_FAST_PATH + EVENTS_COPY_COLD_MARKER_READ +
+        PUBLICATION_DUE_MAXIMUM,
+      31,
+      "a cold isolate adds only the terminal Events copy marker read",
     );
   });
 

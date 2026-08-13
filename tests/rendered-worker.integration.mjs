@@ -28,9 +28,6 @@ import {
   ensurePublicFormProtectionKey,
 } from "../lib/server/phase7/public-form-protection.ts";
 import {
-  publicEventsResponseCacheContext,
-} from "../lib/server/public/events-response-cache.ts";
-import {
   submitPublicForm,
 } from "../lib/server/phase7/public-forms.ts";
 import {
@@ -44,7 +41,6 @@ import {
   productionMigrationFragments,
 } from "../scripts/d1-migration-batches.mjs";
 import { MAX_DATABASE_INVARIANT_READY_ATTEMPTS } from "./database/invariant-ready.mjs";
-import { readSourceRevision } from "../build/source-revision.ts";
 
 class CapturingLog extends Log {
   #messages = [];
@@ -116,7 +112,6 @@ const OWNER_AUTH_HEADERS = Object.freeze({
   "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
 });
 const INVITATION_TOKEN = "R".repeat(43);
-const SOURCE_REVISION = readSourceRevision();
 const PUBLIC_PATHS = [
   "/",
   "/events",
@@ -168,43 +163,16 @@ async function clearPublicEventsSnapshotCache() {
     .bind(ORGANIZATION_ID)
     .all();
   const cache = (await runtime.getCaches()).default;
-  const responseCachePaths = [
-    "/events",
-    "/events?month=2026-10",
-  ];
-  const responseCacheRequests = await Promise.all(
-    responseCachePaths.flatMap((path) =>
-      [null, "*/*", "text/html"].map(async (accept) => {
-        const request = new Request(
-          new URL(path, "https://preview.example"),
-          {
-            headers: accept === null ? undefined : { Accept: accept },
-          },
-        );
-        const context = await publicEventsResponseCacheContext(
-          request,
-          new URL(request.url).pathname,
-          cache,
-          SOURCE_REVISION,
-        );
-        assert.ok(context, `${path} must have an Events response-cache key`);
-        return context.cacheRequest;
-      }),
-    ),
-  );
   await Promise.all(
-    [
-      ...snapshots.results.map((row) => {
-        assert.equal(typeof row.cache_key, "string");
-        const url = new URL(
-          "/.__vcc-cache/public-events",
-          "https://preview.example",
-        );
-        url.searchParams.set("key", row.cache_key);
-        return cache.delete(url.toString());
-      }),
-      ...responseCacheRequests.map((request) => cache.delete(request.url)),
-    ],
+    snapshots.results.map((row) => {
+      assert.equal(typeof row.cache_key, "string");
+      const url = new URL(
+        "/.__vcc-cache/public-events",
+        "https://preview.example",
+      );
+      url.searchParams.set("key", row.cache_key);
+      return cache.delete(url.toString());
+    }),
   );
   await database
     .prepare(

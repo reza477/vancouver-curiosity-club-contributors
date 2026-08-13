@@ -4,15 +4,6 @@ import handler from "vinext/server/app-router-entry";
 import { ensureDatabaseInvariants } from "../lib/server/database/invariants";
 import { runRequestMaintenance } from "../lib/server/database/request-maintenance";
 import {
-  preparePublicEventsResponse,
-  PUBLIC_EVENTS_RESPONSE_NONCE_PLACEHOLDER,
-  publicEventsResponseCacheContext,
-  readPublicEventsResponseCache,
-  rehydratePublicEventsCachedResponse,
-  type PublicEventsResponseCache,
-  writePublicEventsResponseCache,
-} from "../lib/server/public/events-response-cache";
-import {
   clearInvitationTokenCookie,
   invitationTokenCookie,
   isInvitationToken,
@@ -384,67 +375,14 @@ const worker = {
       );
     }
 
-    const eventsResponseCache =
-      nonce === null
-        ? null
-        : await publicEventsResponseCacheContext(
-            request,
-            normalizedPathname,
-            typeof caches === "object"
-              ? (
-                  caches as unknown as Readonly<{
-                    default: PublicEventsResponseCache;
-                  }>
-                ).default
-              : null,
-          );
-    if (eventsResponseCache && nonce) {
-      const cached = await readPublicEventsResponseCache(eventsResponseCache);
-      if (cached) {
-        const rehydrated = await rehydratePublicEventsCachedResponse(
-          cached,
-          nonce,
-        );
-        return secureResponse(
-          request,
-          rehydrated,
-          policy,
-          normalizedPathname,
-        );
-      }
-    }
-
-    const renderNonce = eventsResponseCache
-      ? PUBLIC_EVENTS_RESPONSE_NONCE_PLACEHOLDER
-      : nonce;
-    const renderPolicy = eventsResponseCache
-      ? contentSecurityPolicy(url, renderNonce)
-      : policy;
-
     const securedRequest = requestWithSecurityContext(
       request,
-      renderPolicy,
-      renderNonce,
+      policy,
+      nonce,
       url.origin,
       requestPathname,
     );
-    let response = await handler.fetch(securedRequest, env, ctx);
-    if (eventsResponseCache && nonce) {
-      const prepared = await preparePublicEventsResponse(
-        response,
-        eventsResponseCache,
-        nonce,
-      );
-      response = prepared.response;
-      if (prepared.cacheResponse) {
-        ctx.waitUntil(
-          writePublicEventsResponseCache(
-            eventsResponseCache,
-            prepared.cacheResponse,
-          ),
-        );
-      }
-    }
+    const response = await handler.fetch(securedRequest, env, ctx);
     return secureResponse(
       request,
       response,

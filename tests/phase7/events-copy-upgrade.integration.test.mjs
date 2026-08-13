@@ -55,6 +55,16 @@ test("the exact previous Events publication upgrades through the guarded CMS pro
     counted.statementCount + 2 < 50,
     `Events copy maintenance used ${counted.statementCount + 2} statements`,
   );
+  const completedStatementCount = counted.statementCount;
+  assert.equal(
+    await reconcileVisitorEventsCopy(counted.database, NOW + 1),
+    "ready",
+  );
+  assert.equal(
+    counted.statementCount,
+    completedStatementCount,
+    "a successfully verified marker write must enable the zero-D1 warm path",
+  );
 
   const page = await getPublicPageContent(data.database, "events");
   assert.ok(page);
@@ -143,6 +153,79 @@ test("an already-current Events publication records once and becomes a read-only
     outcome: "upgraded",
     reason: "already_current",
     version: 1,
+  });
+});
+
+test("a valid terminal Events marker is read once per database object and then needs zero D1 work", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+
+  assert.equal(
+    await reconcileVisitorEventsCopy(data.database, NOW),
+    "processed",
+  );
+  const counted = countedDatabase(data.database);
+
+  assert.equal(
+    await reconcileVisitorEventsCopy(counted.database, NOW + 1),
+    "ready",
+  );
+  assert.equal(
+    counted.statementCount,
+    1,
+    "the first call through a new database object must validate its terminal marker",
+  );
+
+  assert.equal(
+    await reconcileVisitorEventsCopy(counted.database, NOW + 2),
+    "ready",
+  );
+  assert.equal(
+    counted.statementCount,
+    1,
+    "a validated terminal marker must make later calls perform zero new D1 work",
+  );
+});
+
+test("missing Events state is never memoized as terminal", async (t) => {
+  await t.test("the public organization does not exist", async (t) => {
+    const database = new SqliteD1TestDatabase(migrations());
+    t.after(() => database.close());
+    const counted = countedDatabase(database);
+
+    assert.equal(
+      await reconcileVisitorEventsCopy(counted.database, NOW),
+      "ready",
+    );
+    assert.equal(counted.statementCount, 1);
+    assert.equal(
+      await reconcileVisitorEventsCopy(counted.database, NOW + 1),
+      "ready",
+    );
+    assert.equal(
+      counted.statementCount,
+      2,
+      "a missing organization must be checked again instead of entering the terminal memo",
+    );
+  });
+
+  await t.test("the organization exists but its marker is missing", async () => {
+    const missing = missingEventsMarkerDatabase();
+
+    await assert.rejects(
+      reconcileVisitorEventsCopy(missing.database, NOW),
+      /Injected missing-marker continuation failure/u,
+    );
+    assert.equal(missing.markerReadCount, 1);
+    await assert.rejects(
+      reconcileVisitorEventsCopy(missing.database, NOW + 1),
+      /Injected missing-marker continuation failure/u,
+    );
+    assert.equal(
+      missing.markerReadCount,
+      2,
+      "an absent marker must remain retryable after downstream reconciliation fails",
+    );
   });
 });
 
@@ -340,9 +423,20 @@ test("a corrupt Events copy marker fails closed before publication work", async 
     )
     .run();
 
+  const counted = countedDatabase(data.database);
   await assert.rejects(
-    reconcileVisitorEventsCopy(data.database, NOW),
+    reconcileVisitorEventsCopy(counted.database, NOW),
     (error) => error?.code === "service_unavailable",
+  );
+  assert.equal(counted.statementCount, 1);
+  await assert.rejects(
+    reconcileVisitorEventsCopy(counted.database, NOW + 1),
+    (error) => error?.code === "service_unavailable",
+  );
+  assert.equal(
+    counted.statementCount,
+    2,
+    "a corrupt marker must fail closed on every call instead of entering the terminal memo",
   );
   const after = await pageWorkspace(data);
   assert.equal(after.entity.contentVersion, before.entity.contentVersion);
@@ -550,6 +644,37 @@ function countedDatabase(database) {
     },
     get statementCount() {
       return statementCount;
+    },
+  };
+}
+
+function missingEventsMarkerDatabase() {
+  let markerReadCount = 0;
+  return {
+    database: {
+      prepare(sql) {
+        if (!sql.includes("LEFT JOIN site_settings AS marker")) {
+          throw new Error("Injected missing-marker continuation failure");
+        }
+        return {
+          bind(markerKey, organizationSlug) {
+            assert.equal(markerKey, "visitor_events_copy_upgrade");
+            assert.equal(organizationSlug, ORGANIZATION_SLUG);
+            return {
+              async first() {
+                markerReadCount += 1;
+                return {
+                  marker_json: null,
+                  organization_id: "org-without-events-marker",
+                };
+              },
+            };
+          },
+        };
+      },
+    },
+    get markerReadCount() {
+      return markerReadCount;
     },
   };
 }

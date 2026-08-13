@@ -95,6 +95,11 @@ const VISITOR_EVENTS_COPY_MARKER_KEY =
   "visitor_events_copy_upgrade";
 const VISITOR_EVENTS_COPY_AUDIT_SOURCE =
   "visitor_events_copy_upgrade";
+// A D1 binding is stable for the life of a Worker isolate. Cache only a
+// terminal marker that was parsed or persisted successfully; missing and
+// corrupt state must keep taking the durable reconciliation path.
+const completedVisitorEventsCopyDatabases =
+  new WeakSet<D1DatabaseLike>();
 const VISITOR_FORM_PAGE_COPY_UPGRADE_VERSION = 1;
 const VISITOR_FORM_PAGE_COPY_MARKER_KEY =
   "visitor_form_page_copy_upgrade";
@@ -2019,9 +2024,14 @@ export async function reconcileVisitorEventsCopy(
   nowUtcMs = Date.now(),
 ): Promise<VisitorEventsCopyReconciliationResult> {
   const now = parseTimestamp(nowUtcMs);
+  if (completedVisitorEventsCopyDatabases.has(database)) return "ready";
+
   const markerEnvelope = await readVisitorEventsCopyMarker(database);
   if (!markerEnvelope) return "ready";
-  if (markerEnvelope.marker) return "ready";
+  if (markerEnvelope.marker) {
+    completedVisitorEventsCopyDatabases.add(database);
+    return "ready";
+  }
 
   const targetSnapshot = currentVisitorEventsPageSnapshot();
   const previousSnapshot = previousVisitorEventsPageSnapshot();
@@ -2095,6 +2105,7 @@ export async function reconcileVisitorEventsCopy(
     notifyOwner,
     now,
   });
+  completedVisitorEventsCopyDatabases.add(database);
   return "processed";
 }
 

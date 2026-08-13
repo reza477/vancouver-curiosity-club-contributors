@@ -381,7 +381,7 @@ test("failed Events projections never create or poison a durable snapshot", asyn
   );
 });
 
-test("the durable Events cache remains DTO-only while the Worker safely accelerates public responses", async () => {
+test("the durable Events cache remains DTO-only while responses stay dynamic and nonce-protected", async () => {
   const [page, loader, loading, worker, publicServerEntries] =
     await Promise.all([
       readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
@@ -438,7 +438,7 @@ test("the durable Events cache remains DTO-only while the Worker safely accelera
   assert.doesNotMatch(
     snapshotSource,
     /Reflect\.get\(globalThis, "caches"\)|\bcaches\.default\b/u,
-    "the durable DTO module must remain independent of the Worker response cache",
+    "the durable DTO module must not probe an unavailable response Cache API",
   );
   assert.doesNotMatch(
     loader,
@@ -451,9 +451,16 @@ test("the durable Events cache remains DTO-only while the Worker safely accelera
   );
   assert.match(worker, /requestWithSecurityContext\(/u);
   assert.match(worker, /secureResponse\(/u);
-  assert.match(worker, /publicEventsResponseCacheContext\(/u);
-  assert.match(worker, /readPublicEventsResponseCache\(/u);
-  assert.match(worker, /writePublicEventsResponseCache\(/u);
+  assert.doesNotMatch(
+    worker,
+    /\bcaches\.default\b|PublicEventsResponseCache|publicEventsResponseCacheContext|readPublicEventsResponseCache|writePublicEventsResponseCache|preparePublicEventsResponse|rehydratePublicEventsCachedResponse|PUBLIC_EVENTS_RESPONSE_NONCE_PLACEHOLDER/u,
+    "Sites rejects Cache API reads and writes, so the Worker must use the durable D1 DTO cache without per-request failed probes",
+  );
+  assert.match(
+    worker,
+    /requestWithSecurityContext\(\s*request,\s*policy,\s*nonce,/u,
+    "each render must use the request's fresh nonce and matching policy directly",
+  );
 
   assert.match(loading, /aria-busy="true"/u);
   assert.match(loading, /aria-labelledby="events-loading-status"/u);
