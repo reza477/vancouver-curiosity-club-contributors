@@ -82,7 +82,7 @@ test("the club directory owns exactly three distinct responsive illustration set
   );
 });
 
-test("three published clubs render distinct responsive art, prominent CMS promises, and de-emphasized lanes", async () => {
+test("three published clubs render distinct responsive art and prominent CMS promises without a redundant uniform lane", async () => {
   const clubs = clubFixtures();
   const markup = renderToStaticMarkup(
     createElement(ClubDirectory, {
@@ -104,8 +104,8 @@ test("three published clubs render distinct responsive art, prominent CMS promis
       new RegExp(`<p>${escapeRegex(club.description)}</p>`, "u"),
       `${club.name} must foreground its published CMS description verbatim`,
     );
-    assert.match(card, /class="club-directory__lane"/u);
-    assert.match(card, /<span class="sr-only">Activity lane: <\/span>Think<\/p>/u);
+    assert.doesNotMatch(card, /class="club-directory__lane"/u);
+    assert.doesNotMatch(card, /Activity lane:/u);
     assert.match(
       card,
       new RegExp(
@@ -121,6 +121,12 @@ test("three published clubs render distinct responsive art, prominent CMS promis
     assert.doesNotMatch(card, /https?:\/\/[^" ]+\.(?:jpe?g|png|webp)/iu);
   }
 
+  assert.equal(
+    (markup.match(/class="club-directory__lane"/gu) ?? []).length,
+    0,
+  );
+  assert.doesNotMatch(markup, /Activity lane:/u);
+
   const css = await source("app/globals.css");
   const promiseRule = cssRule(
     css,
@@ -134,6 +140,66 @@ test("three published clubs render distinct responsive art, prominent CMS promis
   ].join("\n");
   assert.match(laneRules, /font-size:\s*0\.75rem/u);
   assert.match(laneRules, /color:\s*var\(--ink-soft\)/u);
+});
+
+test("lane labels appear once for a single club and truthfully on every mixed-lane card", () => {
+  const uniformClubs = clubFixtures();
+  const singleClub = uniformClubs[0];
+  const singleMarkup = renderToStaticMarkup(
+    createElement(ClubDirectory, {
+      clubs: Object.freeze([singleClub]),
+      mediaById: new Map(),
+      nextEventsByClubSlug: new Map(),
+      nextEventsState: "available",
+    }),
+  );
+  const singleCards = clubCards(singleMarkup);
+  assert.equal(singleCards.length, 1);
+  assert.equal(
+    (singleMarkup.match(/class="club-directory__lane"/gu) ?? []).length,
+    1,
+  );
+  assert.match(
+    singleCards[0],
+    /<p class="club-directory__lane"><span class="sr-only">Activity lane: <\/span>Think<\/p>/u,
+  );
+
+  const mixedClubs = Object.freeze(
+    uniformClubs.map((club, index) =>
+      Object.freeze({
+        ...club,
+        lane: Object.freeze([
+          { name: "Think", slug: "think" },
+          { name: "Explore", slug: "explore" },
+          { name: "Reset & Make", slug: "reset-and-make" },
+        ][index]),
+      }),
+    ),
+  );
+  const mixedMarkup = renderToStaticMarkup(
+    createElement(ClubDirectory, {
+      clubs: mixedClubs,
+      mediaById: new Map(),
+      nextEventsByClubSlug: new Map(),
+      nextEventsState: "available",
+    }),
+  );
+  const mixedCards = clubCards(mixedMarkup);
+  assert.equal(mixedCards.length, 3);
+  assert.equal(
+    (mixedMarkup.match(/class="club-directory__lane"/gu) ?? []).length,
+    3,
+  );
+  for (const [index, club] of mixedClubs.entries()) {
+    assert.match(
+      mixedCards[index],
+      new RegExp(
+        `<p class="club-directory__lane"><span class="sr-only">Activity lane: <\\/span>${escapeRegex(htmlEscape(club.lane.name))}<\\/p>`,
+        "u",
+      ),
+      `${club.name} must expose its own ${club.lane.name} activity lane`,
+    );
+  }
 });
 
 test("published CMS media wins in thumbnail, cover, then owned-art order", () => {

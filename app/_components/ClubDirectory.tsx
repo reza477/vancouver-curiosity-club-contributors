@@ -36,6 +36,10 @@ export function ClubDirectory({
     );
   }
 
+  const showLaneLabels =
+    clubs.length === 1 ||
+    new Set(clubs.map((club) => club.lane.slug)).size > 1;
+
   return (
     <section
       className="club-directory club-directory--clubs"
@@ -65,10 +69,12 @@ export function ClubDirectory({
               <p className="club-directory__number" aria-hidden="true">
                 {String(index + 1).padStart(2, "0")}
               </p>
-              <p className="club-directory__lane">
-                <span className="sr-only">Activity lane: </span>
-                {club.lane.name}
-              </p>
+              {showLaneLabels ? (
+                <p className="club-directory__lane">
+                  <span className="sr-only">Activity lane: </span>
+                  {club.lane.name}
+                </p>
+              ) : null}
               <h3>
                 <Link href={`/clubs/${club.slug}`} prefetch={false}>
                   {club.name}
