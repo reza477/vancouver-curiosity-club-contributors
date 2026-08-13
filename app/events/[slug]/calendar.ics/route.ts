@@ -1,6 +1,7 @@
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { createOneEventIcsDownload } from "@/lib/server/phase7/public-exports";
 import { safeErrorResponse } from "@/lib/validation/server-observability";
+import { trustedPublicRequestOrigin } from "@/lib/public-domain";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export async function GET(
       getRuntimeAuthConfiguration().database,
       {
         generatedAt: Date.now(),
-        origin: new URL(request.url).origin,
+        origin: trustedPublicRequestOrigin(new URL(request.url)),
         slug,
       },
     );

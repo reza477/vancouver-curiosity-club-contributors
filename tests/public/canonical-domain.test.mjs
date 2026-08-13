@@ -6,13 +6,15 @@ import {
   trustedPublicRequestOrigin,
 } from "../../lib/public-domain.ts";
 
+const ALTERNATE_PUBLIC_ORIGINS = [
+  "https://www.vancouvercuriosityclub.com",
+  "https://vancouvercuriosityclub.ca",
+  "https://www.vancouvercuriosityclub.ca",
+  "https://vancouver-curiosity-club.reza5777.chatgpt.site",
+];
+
 test("alternate public hosts permanently redirect to the apex .com", () => {
-  for (const sourceOrigin of [
-    "https://www.vancouvercuriosityclub.com",
-    "https://vancouvercuriosityclub.ca",
-    "https://www.vancouvercuriosityclub.ca",
-    "https://vancouver-curiosity-club.reza5777.chatgpt.site",
-  ]) {
+  for (const sourceOrigin of ALTERNATE_PUBLIC_ORIGINS) {
     const source = new URL(
       "/events/a-curious-night?lane=think&page=2",
       sourceOrigin,
@@ -25,21 +27,38 @@ test("alternate public hosts permanently redirect to the apex .com", () => {
   }
 });
 
-test("canonical host stays put while alias mutations and ports canonicalize", () => {
+test("canonical host stays put while HTTP and nonstandard ports canonicalize", () => {
   const canonical = new URL(
     "/contact?topic=feedback",
     CANONICAL_PUBLIC_ORIGIN,
   );
   assert.equal(canonicalPublicRedirectTarget(canonical), null);
-  assert.equal(
-    canonicalPublicRedirectTarget(
-      new URL(
-        canonical.pathname,
-        "http://www.vancouvercuriosityclub.com:8080",
-      ),
-    )?.toString(),
-    "https://vancouvercuriosityclub.com/contact",
-  );
+
+  for (const [source, destination] of [
+    [
+      "http://vancouvercuriosityclub.com/events//%61/?x=%2F&empty=",
+      "https://vancouvercuriosityclub.com/events//%61/?x=%2F&empty=",
+    ],
+    [
+      "https://vancouvercuriosityclub.com:8443/contact?topic=feedback",
+      "https://vancouvercuriosityclub.com/contact?topic=feedback",
+    ],
+    [
+      "http://www.vancouvercuriosityclub.com:8080/contact?topic=feedback",
+      "https://vancouvercuriosityclub.com/contact?topic=feedback",
+    ],
+    [
+      "https://www.vancouvercuriosityclub.ca:8443/events/%61?x=%2F",
+      "https://vancouvercuriosityclub.com/events/%61?x=%2F",
+    ],
+  ]) {
+    const redirected = canonicalPublicRedirectTarget(new URL(source));
+    assert.equal(redirected?.toString(), destination, source);
+    assert.equal(canonicalPublicRedirectTarget(redirected), null, source);
+  }
+});
+
+test("only exact allowlisted hostnames redirect", () => {
   assert.equal(
     canonicalPublicRedirectTarget(
       new URL("https://www.vancouvercuriosityclub.com.evil.example/events"),
@@ -51,10 +70,7 @@ test("canonical host stays put while alias mutations and ports canonicalize", ()
 test("production metadata uses .com while local rendering remains usable", () => {
   for (const requestOrigin of [
     "https://vancouvercuriosityclub.com",
-    "https://www.vancouvercuriosityclub.com",
-    "https://vancouvercuriosityclub.ca",
-    "https://www.vancouvercuriosityclub.ca",
-    "https://vancouver-curiosity-club.reza5777.chatgpt.site",
+    ...ALTERNATE_PUBLIC_ORIGINS,
     "https://another-sites-dispatch-host.example.net",
   ]) {
     assert.equal(

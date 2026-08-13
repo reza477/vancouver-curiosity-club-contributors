@@ -1,6 +1,7 @@
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readPrivateCalendarSubscription } from "@/lib/server/phase7/calendar-subscriptions";
 import { safeErrorResponse } from "@/lib/validation/server-observability";
+import { trustedPublicRequestOrigin } from "@/lib/public-domain";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET(
       token,
       {
         generatedAt: Date.now(),
-        origin: new URL(request.url).origin,
+        origin: trustedPublicRequestOrigin(new URL(request.url)),
       },
     );
     return new Response(calendar, {

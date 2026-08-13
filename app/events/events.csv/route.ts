@@ -1,6 +1,7 @@
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { createFilteredPublicCsvDownload } from "@/lib/server/phase7/public-exports";
 import { safeErrorResponse } from "@/lib/validation/server-observability";
+import { trustedPublicRequestOrigin } from "@/lib/public-domain";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export async function GET(request: Request): Promise<Response> {
       getRuntimeAuthConfiguration().database,
       {
         generatedAt: Date.now(),
-        origin: url.origin,
+        origin: trustedPublicRequestOrigin(url),
         searchParams: url.searchParams,
       },
     );

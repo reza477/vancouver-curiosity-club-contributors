@@ -241,7 +241,7 @@ test("Google Calendar links preserve exact timed and all-day schedules", () => {
   const timed = new URL(
     googleCalendarEventUrl(
       timedEvent(),
-      "https://club.example/events/night-walk",
+      "https://vancouvercuriosityclub.com/events/night-walk",
     ),
   );
   assert.equal(timed.origin, "https://calendar.google.com");
@@ -256,7 +256,7 @@ test("Google Calendar links preserve exact timed and all-day schedules", () => {
   assert.equal(timed.searchParams.get("ctz"), "America/Vancouver");
   assert.match(
     timed.searchParams.get("details") ?? "",
-    /https:\/\/club\.example\/events\/night-walk/u,
+    /https:\/\/vancouvercuriosityclub\.com\/events\/night-walk/u,
   );
 
   const allDay = new URL(googleCalendarEventUrl(allDayEvent()));
@@ -894,7 +894,7 @@ test("the public calendar route preserves month and lane while forwarding to com
   );
 
   assert.match(route, /new URL\(request\.url\)/u);
-  assert.match(route, /new URL\(["']\/events["'], source\)/u);
+  assert.match(route, /trustedPublicRequestOrigin\(source\)/u);
   assert.match(route, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
     route,

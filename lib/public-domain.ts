@@ -28,7 +28,16 @@ function normalizedHostname(url: URL): string {
 export function canonicalPublicRedirectTarget(
   requestUrl: URL,
 ): URL | null {
-  if (!REDIRECT_SOURCE_HOSTNAMES.has(normalizedHostname(requestUrl))) {
+  const hostname = normalizedHostname(requestUrl);
+  const isCanonicalHostname = hostname === CANONICAL_PUBLIC_HOSTNAME;
+  const isCanonicalOrigin =
+    isCanonicalHostname &&
+    requestUrl.protocol === "https:" &&
+    requestUrl.port === "";
+  if (
+    !REDIRECT_SOURCE_HOSTNAMES.has(hostname) &&
+    (isCanonicalOrigin || !isCanonicalHostname)
+  ) {
     return null;
   }
 

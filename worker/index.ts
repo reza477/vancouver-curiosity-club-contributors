@@ -259,6 +259,21 @@ const worker = {
     const url = new URL(request.url);
     const nonce = isLocalRequest(url) ? null : createCspNonce();
     const policy = contentSecurityPolicy(url, nonce);
+    const publicDomainRedirect = canonicalPublicRedirectTarget(url);
+    if (publicDomainRedirect) {
+      return secureResponse(
+        request,
+        new Response(null, {
+          headers: {
+            "Cache-Control": "public, max-age=3600",
+            Location: publicDomainRedirect.toString(),
+          },
+          status: 308,
+        }),
+        policy,
+        url.pathname,
+      );
+    }
     const normalizedPathname = normalizeEncodedRequestPathname(url.pathname);
     if (normalizedPathname === null) {
       return secureResponse(
@@ -271,23 +286,6 @@ const worker = {
     const requestPathname = safeRequestPathname(normalizedPathname);
     const canonicalUrl = new URL(url);
     canonicalUrl.pathname = normalizedPathname;
-    const publicDomainRedirect = canonicalPublicRedirectTarget(
-      canonicalUrl,
-    );
-    if (publicDomainRedirect) {
-      return secureResponse(
-        request,
-        new Response(null, {
-          headers: {
-            "Cache-Control": "public, max-age=3600",
-            Location: publicDomainRedirect.toString(),
-          },
-          status: 308,
-        }),
-        policy,
-        normalizedPathname,
-      );
-    }
     const invitationCapture = captureInvitationToken(
       request,
       canonicalUrl,

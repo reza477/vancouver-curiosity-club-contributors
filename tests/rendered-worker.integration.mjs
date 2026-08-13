@@ -125,6 +125,12 @@ const PUBLIC_PATHS = [
   "/accessibility",
   "/privacy",
 ];
+const PRODUCTION_ALTERNATE_ORIGINS = [
+  "https://www.vancouvercuriosityclub.com",
+  "https://vancouvercuriosityclub.ca",
+  "https://www.vancouvercuriosityclub.ca",
+  "https://vancouver-curiosity-club.reza5777.chatgpt.site",
+];
 
 const serverRoot = resolve("dist/server");
 const moduleFiles = await collectJavaScriptModules(serverRoot);
@@ -152,42 +158,84 @@ async function fetchPath(path, init) {
   });
 }
 
-test("production aliases redirect to the canonical .com before route work", async () => {
-  const path = "/events/a-curious-night?lane=think&page=2";
-  for (const sourceOrigin of [
-    "https://www.vancouvercuriosityclub.com",
-    "https://vancouvercuriosityclub.ca",
-    "https://www.vancouvercuriosityclub.ca",
-    "https://vancouver-curiosity-club.reza5777.chatgpt.site",
-  ]) {
-    const response = await runtime.dispatchFetch(new URL(path, sourceOrigin), {
-      redirect: "manual",
-    });
-    assert.equal(response.status, 308, sourceOrigin);
-    assert.equal(
-      response.headers.get("location"),
-      `https://vancouvercuriosityclub.com${path}`,
-      sourceOrigin,
+test("production redirects preserve the raw path and run before database work", async () => {
+  const edgeOnlyRuntime = createBuiltRuntime(
+    new CapturingLog(LogLevel.WARN),
+    { includeDatabase: false },
+  );
+  try {
+    const path = "/events//%61/?lane=think&encoded=%2F&empty=";
+    for (const sourceOrigin of PRODUCTION_ALTERNATE_ORIGINS) {
+      const response = await edgeOnlyRuntime.dispatchFetch(
+        new URL(path, sourceOrigin),
+        { redirect: "manual" },
+      );
+      assert.equal(response.status, 308, sourceOrigin);
+      assert.equal(
+        response.headers.get("location"),
+        `https://vancouvercuriosityclub.com${path}`,
+        sourceOrigin,
+      );
+    }
+
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      const mutationPath = `/api/probe/${method.toLowerCase()}?keep=yes&encoded=%2F`;
+      const response = await edgeOnlyRuntime.dispatchFetch(
+        new URL(mutationPath, "https://www.vancouvercuriosityclub.com"),
+        {
+          body: `method=${method}`,
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method,
+          redirect: "manual",
+        },
+      );
+      assert.equal(response.status, 308, method);
+      assert.equal(
+        response.headers.get("location"),
+        `https://vancouvercuriosityclub.com${mutationPath}`,
+        method,
+      );
+    }
+
+    for (const [source, destination] of [
+      [
+        "http://vancouvercuriosityclub.com/events/a?x=1",
+        "https://vancouvercuriosityclub.com/events/a?x=1",
+      ],
+      [
+        "https://vancouvercuriosityclub.com:8443/events/a?x=1",
+        "https://vancouvercuriosityclub.com/events/a?x=1",
+      ],
+      [
+        "http://www.vancouvercuriosityclub.com:8080/events/a?x=1",
+        "https://vancouvercuriosityclub.com/events/a?x=1",
+      ],
+    ]) {
+      const response = await edgeOnlyRuntime.dispatchFetch(new URL(source), {
+        redirect: "manual",
+      });
+      assert.equal(response.status, 308, source);
+      assert.equal(response.headers.get("location"), destination, source);
+    }
+
+    const lookalikeResponse = await edgeOnlyRuntime.dispatchFetch(
+      new URL(
+        "/api/probe",
+        "https://www.vancouvercuriosityclub.com.evil.example",
+      ),
+      { redirect: "manual" },
     );
+    assert.notEqual(lookalikeResponse.status, 308);
+    assert.equal(lookalikeResponse.headers.get("location"), null);
+  } finally {
+    await edgeOnlyRuntime.dispose();
   }
+});
 
-  const mutationResponse = await runtime.dispatchFetch(
-    new URL("/contact", "https://www.vancouvercuriosityclub.com"),
-    {
-      body: "message=stale-form",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      method: "POST",
-      redirect: "manual",
-    },
-  );
-  assert.equal(mutationResponse.status, 308);
-  assert.equal(
-    mutationResponse.headers.get("location"),
-    "https://vancouvercuriosityclub.com/contact",
-  );
-
+test("production metadata, structured data, sharing, exports, robots, and sitemap use only .com", async () => {
+  const canonicalOrigin = "https://vancouvercuriosityclub.com";
   const canonicalResponse = await runtime.dispatchFetch(
-    new URL("/", "https://vancouvercuriosityclub.com"),
+    new URL("/", canonicalOrigin),
   );
   assert.equal(canonicalResponse.status, 200);
   const html = await canonicalResponse.text();
@@ -199,25 +247,104 @@ test("production aliases redirect to the canonical .com before route work", asyn
     html,
     /property="og:url" content="https:\/\/vancouvercuriosityclub\.com\/"/iu,
   );
-  assert.match(html, /"url":"https:\/\/vancouvercuriosityclub\.com\/"/u);
+  assert.match(
+    html,
+    /property="og:image" content="https:\/\/vancouvercuriosityclub\.com\/og\.png"/iu,
+  );
+  assert.match(
+    html,
+    /name="twitter:image" content="https:\/\/vancouvercuriosityclub\.com\/og\.png"/iu,
+  );
+  const organization = jsonLdDocuments(html).find(
+    (document) => document["@type"] === "Organization",
+  );
+  assert.equal(organization?.url, `${canonicalOrigin}/`);
+
+  const eventPath = "/events/rendered-cancelled-reading";
+  const eventResponse = await runtime.dispatchFetch(
+    new URL(eventPath, canonicalOrigin),
+  );
+  assert.equal(eventResponse.status, 200);
+  const eventHtml = await eventResponse.text();
+  assert.match(
+    eventHtml,
+    new RegExp(
+      `rel="canonical" href="${canonicalOrigin}${eventPath}"`,
+      "u",
+    ),
+  );
+  assert.match(
+    eventHtml,
+    new RegExp(
+      `property="og:url" content="${canonicalOrigin}${eventPath}"`,
+      "u",
+    ),
+  );
+  assert.match(
+    eventHtml,
+    /https%3A%2F%2Fvancouvercuriosityclub\.com%2Fevents%2Frendered-cancelled-reading/iu,
+  );
+  const eventDocuments = jsonLdDocuments(eventHtml);
+  const eventDocument = eventDocuments.find(
+    (document) => document["@type"] === "Event",
+  );
+  const breadcrumbs = eventDocuments.find(
+    (document) => document["@type"] === "BreadcrumbList",
+  );
+  assert.equal(eventDocument?.url, `${canonicalOrigin}${eventPath}`);
+  assert.ok(
+    eventDocument?.organizer.every(
+      (organizer) =>
+        !("url" in organizer) || organizer.url === `${canonicalOrigin}/`,
+    ),
+  );
+  assert.ok(
+    breadcrumbs?.itemListElement.every(({ item }) =>
+      item.startsWith(`${canonicalOrigin}/`),
+    ),
+  );
+
+  const calendarResponse = await runtime.dispatchFetch(
+    new URL(`${eventPath}/calendar.ics`, canonicalOrigin),
+  );
+  assert.equal(calendarResponse.status, 200);
+  const calendar = await calendarResponse.text();
+  assert.match(
+    calendar,
+    /URL:https:\/\/vancouvercuriosityclub\.com\/events\/rendered-cancelled-reading/u,
+  );
 
   const robotsResponse = await runtime.dispatchFetch(
-    new URL("/robots.txt", "https://vancouvercuriosityclub.com"),
+    new URL("/robots.txt", canonicalOrigin),
   );
   assert.equal(robotsResponse.status, 200);
+  const robots = await robotsResponse.text();
   assert.match(
-    await robotsResponse.text(),
+    robots,
     /Sitemap: https:\/\/vancouvercuriosityclub\.com\/sitemap\.xml/u,
   );
 
   const sitemapResponse = await runtime.dispatchFetch(
-    new URL("/sitemap.xml", "https://vancouvercuriosityclub.com"),
+    new URL("/sitemap.xml", canonicalOrigin),
   );
   assert.equal(sitemapResponse.status, 200);
-  assert.match(
-    await sitemapResponse.text(),
-    /<loc>https:\/\/vancouvercuriosityclub\.com\//u,
+  const sitemap = await sitemapResponse.text();
+  const sitemapLocations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/gu)].map(
+    (match) => match[1],
   );
+  assert.ok(sitemapLocations.length > 0);
+  assert.ok(
+    sitemapLocations.every((location) =>
+      location.startsWith(`${canonicalOrigin}/`),
+    ),
+  );
+
+  const canonicalOutput = [html, eventHtml, calendar, robots, sitemap].join(
+    "\n",
+  );
+  for (const alternateOrigin of PRODUCTION_ALTERNATE_ORIGINS) {
+    assert.equal(canonicalOutput.includes(alternateOrigin), false);
+  }
 });
 
 async function clearPublicEventsSnapshotCache() {
@@ -2868,7 +2995,10 @@ function robotsTokens(content) {
     .map((token) => token.trim());
 }
 
-function createBuiltRuntime(log = new Log(LogLevel.WARN)) {
+function createBuiltRuntime(
+  log = new Log(LogLevel.WARN),
+  { includeDatabase = true } = {},
+) {
   return new Miniflare({
     modules: [
       { path: entrypoint, type: "ESModule" },
@@ -2879,7 +3009,7 @@ function createBuiltRuntime(log = new Log(LogLevel.WARN)) {
     modulesRoot: serverRoot,
     compatibilityDate: "2026-05-15",
     compatibilityFlags: ["nodejs_compat"],
-    d1Databases: ["DB"],
+    ...(includeDatabase ? { d1Databases: ["DB"] } : {}),
     r2Buckets: ["MEDIA"],
     assets: {
       binding: "ASSETS",
