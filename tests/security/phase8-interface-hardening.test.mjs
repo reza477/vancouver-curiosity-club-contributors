@@ -197,15 +197,19 @@ test("Phase 7 export controls keep explicit useful touch targets", () => {
   );
 });
 
-test("public navigation avoids expensive Events prefetch while private routes stay opted out", () => {
+test("primary public navigation disables prefetch by default while private routes stay opted out", () => {
   const header = source("app", "_components", "SiteHeader.tsx");
   const footer = source("app", "_components", "SiteFooter.tsx");
   const preview = source("app", "_organizer", "PublicPreviewShell.tsx");
 
-  assert.match(header, /prefetchInternalLinks = true/u);
+  assert.match(header, /prefetchInternalLinks = false/u);
   assert.match(
     header,
     /prefetch=\{\s*prefetchInternalLinks && item\.href !== "\/events"\s*\}/u,
+  );
+  assert.match(
+    header,
+    /className="wordmark"[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
   );
   assert.match(header, /return Object\.freeze\(requiredNavigation\)/u);
   assert.doesNotMatch(

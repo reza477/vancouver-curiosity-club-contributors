@@ -103,7 +103,7 @@ test("public event discovery avoids automatic RSC fan-out and shows a pending st
     ]);
   assert.match(
     header,
-    /prefetchInternalLinks && item\.href !== "\/events"/u,
+    /prefetchInternalLinks = false[\s\S]*?prefetch=\{\s*prefetchInternalLinks && item\.href !== "\/events"\s*\}/u,
   );
   assert.match(
     footer,

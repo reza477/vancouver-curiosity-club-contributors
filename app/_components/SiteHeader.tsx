@@ -15,7 +15,7 @@ const requiredNavigation = [
 export function SiteHeader({
   brandName = "Vancouver Curiosity Club",
   logoAssetId = null,
-  prefetchInternalLinks = true,
+  prefetchInternalLinks = false,
   privateMedia = false,
 }: Readonly<{
   brandName?: string;
