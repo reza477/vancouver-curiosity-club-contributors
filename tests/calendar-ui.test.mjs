@@ -275,7 +275,8 @@ test("the public cultural identity is poster-led, lane-aware, and motion-safe", 
   assert.match(cards, /event-artwork-fallback/u);
   assert.doesNotMatch(cards, /import .*FieldArtwork/u);
   assert.doesNotMatch(masthead, /FieldArtwork/u);
-  assert.match(about, /className="about-events"/u);
+  assert.match(about, /className="about-closing"/u);
+  assert.doesNotMatch(about, /className="about-(?:facts|events)"/u);
   for (const path of ["volunteer", "host", "partner"]) {
     assert.match(
       contribute,
@@ -318,7 +319,7 @@ test("the calendar switches to its named-event agenda at 768px", async () => {
   );
 });
 
-test("About is concise, reassuring, evidence-backed, and event-led", async () => {
+test("About is concise, reassuring, and quick to navigate", async () => {
   const [about, organizerNote, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
     readFile(
@@ -331,25 +332,29 @@ test("About is concise, reassuring, evidence-backed, and event-led", async () =>
   assert.match(about, /<main className="about-page"/u);
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-founder-note"[\s\S]*?className="about-facts"[\s\S]*?className="about-events"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-founder-note"[\s\S]*?className="about-closing"/u,
   );
   for (const phrase of [
     "Curiosity is better in company.",
     "What the community feels like",
     "Who it is for",
     "Your first event can be simple.",
-    "At a glance",
-    "The community at a glance.",
-    "See what the club is doing next.",
+    "Follow the question that catches you.",
+    "See upcoming gatherings",
   ]) {
     assert.ok(about.includes(phrase), phrase);
   }
   assert.match(about, /<OrganizerNote headingId="about-founder-note-title" \/>/u);
   assert.match(organizerNote, />A note from Reza</u);
-  assert.match(about, /queryPublicEvents/u);
-  assert.match(about, /pageSize:\s*3/u);
-  assert.match(about, /upcomingEventCount:\s*eventPage\.totalCount/u);
-  assert.match(about, /<EventCard/u);
+  assert.match(about, /await\s+loadEditorialPage\(slug, route\)/u);
+  assert.doesNotMatch(
+    about,
+    /\bloadAboutData\b|\bloadPublicCatalog\b|\bqueryPublicEvents\b|\bEventCard\b|className="about-(?:facts|events)"/u,
+  );
+  assert.match(
+    about,
+    /href="\/events"\s+prefetch=\{false\}/u,
+  );
   assert.doesNotMatch(
     about,
     /FieldArtwork|PageMasthead|Meetup refresh|Last completed|sync failed/ui,

@@ -5921,8 +5921,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 .home-events,
 .lane-index,
 .home-clubs,
-.related-events,
-.about-events {
+.related-events {
   padding:
     clamp(3rem, 6vw, 6rem)
     max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right))
@@ -5937,7 +5936,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 .about-audience,
 .about-solo,
 .about-founder-note,
-.about-facts,
 .about-closing {
   gap: clamp(1.5rem, 5vw, 5rem);
   padding:
@@ -6501,8 +6499,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 .about-feel,
 .about-audience,
 .about-solo,
-.about-founder-note,
-.about-facts {
+.about-founder-note {
   display: grid;
   grid-template-columns: minmax(14rem, 0.8fr) minmax(0, 1.2fr);
   border-bottom: 1px solid var(--ink);
@@ -6529,48 +6526,10 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   line-height: 1.25;
 }
 
-.about-facts dl,
-.about-facts ul,
-.about-facts__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  margin: 0;
-  padding: 1px;
-  background: var(--ink);
-  list-style: none;
-}
-
-.about-facts dl > div,
-.about-facts li,
-.about-fact {
-  min-width: 0;
-  padding: clamp(1.25rem, 3vw, 2.5rem);
-  background: var(--paper);
-}
-
-.about-facts dd,
-.about-facts strong,
-.about-fact strong {
-  display: block;
-  margin: 0;
-  font-family: var(--display);
-  font-size: clamp(2.25rem, 4vw, 4rem);
-  font-weight: 400;
-}
-
 .about-closing {
   display: grid;
   grid-template-columns: minmax(14rem, 0.8fr) minmax(0, 1.2fr);
   border-bottom: 1px solid var(--ink);
-}
-
-.about-facts dt {
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
 }
 
 .event-card {
@@ -6778,7 +6737,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   .about-audience,
   .about-solo,
   .about-founder-note,
-  .about-facts,
   .about-closing {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -6819,7 +6777,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   .lane-index,
   .home-clubs,
   .related-events,
-  .about-events,
   .attending-note,
   .home-invitation,
   .home-community,
@@ -6828,7 +6785,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   .about-audience,
   .about-solo,
   .about-founder-note,
-  .about-facts,
   .about-closing,
   .events-page-masthead {
     padding-right: max(1rem, env(safe-area-inset-right));
@@ -6882,10 +6838,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
     font-size: clamp(2.25rem, 10vw, 3rem);
   }
 
-  .filter-grid,
-  .about-facts dl,
-  .about-facts ul,
-  .about-facts__grid {
+  .filter-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

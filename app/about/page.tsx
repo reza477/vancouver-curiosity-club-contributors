@@ -6,21 +6,7 @@ import {
   EditorialUnavailable,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
-import { EventCard } from "@/app/_components/EventCard";
 import { OrganizerNote } from "@/app/_components/OrganizerNote";
-import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
-import { readServerUtcMs } from "@/lib/server/clock";
-import {
-  loadPublicCatalog,
-  resolvePublicOrganization,
-  type PublicCatalogDto,
-} from "@/lib/server/public/catalog";
-import { vancouverCalendarDate } from "@/lib/server/public/date";
-import {
-  queryPublicEvents,
-  type PublicEventCardDto,
-} from "@/lib/server/public/events";
-import { writeSafeLog } from "@/lib/validation/server-observability";
 
 const route = "/about";
 const slug = "about";
@@ -42,14 +28,6 @@ export default async function AboutPage() {
   if (loaded.kind === "unavailable") {
     return <EditorialUnavailable title="About" />;
   }
-
-  const about = await loadAboutData();
-  if (about.kind === "unavailable") {
-    return <EditorialUnavailable title="About" />;
-  }
-
-  const publicClubs = about.catalog.clubs.filter((club) => !club.archived);
-  const eventSliceLabel = nextEventSliceLabel(about.events.length);
 
   return (
     <main className="about-page" data-page-slug={loaded.page.slug}>
@@ -116,48 +94,6 @@ export default async function AboutPage() {
         <OrganizerNote headingId="about-founder-note-title" />
       </section>
 
-      <section className="about-facts" aria-labelledby="about-facts-title">
-        <div>
-          <p className="section-kicker">At a glance</p>
-          <h2 id="about-facts-title">The community at a glance.</h2>
-        </div>
-        <dl>
-          <div>
-            <dt>Activity lanes</dt>
-            <dd>{about.catalog.lanes.length}</dd>
-          </div>
-          <div>
-            <dt>Public clubs</dt>
-            <dd>{publicClubs.length}</dd>
-          </div>
-          <div>
-            <dt>Upcoming gatherings</dt>
-            <dd>{about.upcomingEventCount}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section className="about-events" aria-labelledby="about-events-title">
-        <div className="section-heading">
-          <div>
-            <p className="section-kicker">{eventSliceLabel}</p>
-            <h2 id="about-events-title">See what the club is doing next.</h2>
-          </div>
-        </div>
-        {about.events.length > 0 ? (
-          <div className="event-list">
-            {about.events.map((event, index) => (
-              <EventCard event={event} key={event.slug} priority={index === 0} />
-            ))}
-          </div>
-        ) : (
-          <div className="public-empty-state">
-            <h3>No upcoming gathering is listed yet.</h3>
-            <p>The events page will show new gatherings when they are added.</p>
-          </div>
-        )}
-      </section>
-
       <section className="about-closing" aria-labelledby="about-closing-title">
         <div>
           <p className="section-kicker">Come to the next one</p>
@@ -169,63 +105,4 @@ export default async function AboutPage() {
       </section>
     </main>
   );
-}
-
-type AboutDataState =
-  | Readonly<{
-      catalog: PublicCatalogDto;
-      events: readonly PublicEventCardDto[];
-      kind: "available";
-      upcomingEventCount: number;
-    }>
-  | Readonly<{ kind: "unavailable" }>;
-
-async function loadAboutData(): Promise<AboutDataState> {
-  try {
-    const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
-    if (!organization) {
-      return Object.freeze({ kind: "unavailable" as const });
-    }
-
-    // loadPublicCatalog bounds its catalog fan-out. The event projection then
-    // runs after that batch, keeping the About route below D1's concurrency
-    // ceiling while every fact remains tied to the published catalog.
-    const catalog = await loadPublicCatalog(database);
-    if (!catalog) {
-      return Object.freeze({ kind: "unavailable" as const });
-    }
-
-    const nowUtcMs = readServerUtcMs();
-    const eventPage = await queryPublicEvents(database, {
-      organizationId: organization.id,
-      nowUtcMs,
-      todayDate: vancouverCalendarDate(nowUtcMs),
-      view: "upcoming",
-      page: 1,
-      pageSize: 3,
-    });
-
-    return Object.freeze({
-      catalog,
-      events: eventPage.events,
-      kind: "available" as const,
-      upcomingEventCount: eventPage.totalCount,
-    });
-  } catch {
-    writeSafeLog("error", "public_about_unavailable", {
-      code: "service_unavailable",
-      operation: "load_public_about",
-      route,
-      status: 503,
-    });
-    return Object.freeze({ kind: "unavailable" as const });
-  }
-}
-
-function nextEventSliceLabel(count: number): string {
-  if (count === 3) return "The next three gatherings";
-  if (count === 1) return "The next gathering";
-  if (count === 0) return "No upcoming gathering is listed";
-  return `The next ${count} gatherings`;
 }
