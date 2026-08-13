@@ -6,7 +6,6 @@ import {
   EditorialUnavailable,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
-import { OrganizerNote } from "@/app/_components/OrganizerNote";
 
 const route = "/about";
 const slug = "about";
@@ -85,13 +84,6 @@ export default async function AboutPage() {
           are. You do not need to know anyone already, bring a friend, or have
           the cleverest answer in the room.
         </p>
-      </section>
-
-      <section
-        className="about-founder-note"
-        aria-labelledby="about-founder-note-title"
-      >
-        <OrganizerNote headingId="about-founder-note-title" />
       </section>
 
       <section className="about-closing" aria-labelledby="about-closing-title">

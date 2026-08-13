@@ -320,19 +320,15 @@ test("the calendar switches to its named-event agenda at 768px", async () => {
 });
 
 test("About is concise, reassuring, and quick to navigate", async () => {
-  const [about, organizerNote, styles] = await Promise.all([
+  const [about, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
-    readFile(
-      new URL("app/_components/OrganizerNote.tsx", projectRoot),
-      "utf8",
-    ),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
   ]);
 
   assert.match(about, /<main className="about-page"/u);
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-founder-note"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-closing"/u,
   );
   for (const phrase of [
     "Curiosity is better in company.",
@@ -344,8 +340,11 @@ test("About is concise, reassuring, and quick to navigate", async () => {
   ]) {
     assert.ok(about.includes(phrase), phrase);
   }
-  assert.match(about, /<OrganizerNote headingId="about-founder-note-title" \/>/u);
-  assert.match(organizerNote, />A note from Reza</u);
+  assert.doesNotMatch(
+    about,
+    /\bOrganizerNote\b|about-founder-note(?:-title)?/u,
+    "the About page must not retain any part of the removed organizer-note block",
+  );
   assert.match(about, /await\s+loadEditorialPage\(slug, route\)/u);
   assert.doesNotMatch(
     about,
@@ -360,7 +359,6 @@ test("About is concise, reassuring, and quick to navigate", async () => {
     /FieldArtwork|PageMasthead|Meetup refresh|Last completed|sync failed/ui,
   );
   assert.match(styles, /\.about-feel,/u);
-  assert.match(styles, /\.about-founder-note/u);
 });
 
 test("Events leads with one full calendar and exposes no public diagnostics", async () => {

@@ -31,7 +31,7 @@ test("Home labels official community links honestly instead of calling links com
   );
 });
 
-test("Home and About share the exact authorized self-authored Reza note without adding a role claim", async () => {
+test("Home keeps the authorized self-authored Reza note while About omits it", async () => {
   const [home, about, note] = await Promise.all([
     source("app/_components/HomePageRenderer.tsx"),
     source("app/about/page.tsx"),
@@ -39,8 +39,13 @@ test("Home and About share the exact authorized self-authored Reza note without 
   ]);
 
   assert.match(home, /<OrganizerNote\b/u);
-  assert.match(about, /<OrganizerNote\b/u);
+  assert.doesNotMatch(
+    about,
+    /\bOrganizerNote\b|about-founder-note|A note from Reza|Curiosity is enough to begin|I want this to be a place|<cite>\s*Reza\s*<\/cite>/u,
+    "About must not retain the organizer-note component, heading, quote, or attribution",
+  );
   assert.match(note, />A note from Reza</u);
+  assert.match(note, />Curiosity is enough to begin\.</u);
   assert.match(note, /<blockquote\b/u);
   const quote = note.match(/<blockquote[^>]*>[\s\S]*?<p>([\s\S]*?)<\/p>/u)?.[1] ?? "";
   assert.equal(

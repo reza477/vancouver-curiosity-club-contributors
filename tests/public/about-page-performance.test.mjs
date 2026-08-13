@@ -15,13 +15,16 @@ test("About keeps its CMS gate without loading catalog or event projections", as
     /await\s+loadEditorialPage\(slug, route\)/u,
     "About must still fail closed against its published CMS page",
   );
-  assert.match(about, /<OrganizerNote headingId="about-founder-note-title" \/>/u);
+  assert.doesNotMatch(
+    about,
+    /\bOrganizerNote\b|about-founder-note(?:-title)?/u,
+    "About must not import, wrap, or render the removed organizer note",
+  );
   for (const className of [
     "about-hero",
     "about-feel",
     "about-audience",
     "about-solo",
-    "about-founder-note",
     "about-closing",
   ]) {
     assert.match(
@@ -30,6 +33,11 @@ test("About keeps its CMS gate without loading catalog or event projections", as
       `${className} must remain on the useful static About page`,
     );
   }
+  assert.match(
+    about,
+    /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-closing"/u,
+    "removing the organizer note must preserve the remaining About section order",
+  );
   assert.match(
     about,
     /<Link\s+className="primary-action"\s+href="\/events"\s+prefetch=\{false\}>[\s\S]*?See upcoming gatherings[\s\S]*?<\/Link>/u,

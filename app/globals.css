@@ -5941,7 +5941,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 .about-feel,
 .about-audience,
 .about-solo,
-.about-founder-note,
 .about-closing {
   gap: clamp(1.5rem, 5vw, 5rem);
   padding:
@@ -6504,15 +6503,13 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 
 .about-feel,
 .about-audience,
-.about-solo,
-.about-founder-note {
+.about-solo {
   display: grid;
   grid-template-columns: minmax(14rem, 0.8fr) minmax(0, 1.2fr);
   border-bottom: 1px solid var(--ink);
 }
 
-.about-audience,
-.about-founder-note {
+.about-audience {
   background: var(--paper-deep);
 }
 
@@ -6524,8 +6521,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   padding-left: 1.25rem;
 }
 
-.organizer-note__quote,
-.about-founder-note__quote {
+.organizer-note__quote {
   margin: 0;
   font-family: var(--display);
   font-size: clamp(1.5rem, 2.4vw, 2.35rem);
@@ -6742,7 +6738,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   .about-feel,
   .about-audience,
   .about-solo,
-  .about-founder-note,
   .about-closing {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -6790,7 +6785,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   .about-feel,
   .about-audience,
   .about-solo,
-  .about-founder-note,
   .about-closing,
   .events-page-masthead {
     padding-right: max(1rem, env(safe-area-inset-right));
