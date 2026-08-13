@@ -8,6 +8,7 @@ test("repository publishes a concise, safe, professional project surface", () =>
   const readme = source("README.md");
   const packageJson = JSON.parse(source("package.json"));
   const gitignore = source(".gitignore");
+  const nodeVersion = source(".nvmrc").trim();
   const development = source("DEVELOPMENT.md");
   const codeowners = source(".github/CODEOWNERS");
   const issueConfig = source(".github/ISSUE_TEMPLATE/config.yml");
@@ -30,6 +31,9 @@ test("repository publishes a concise, safe, professional project surface", () =>
 
   assert.equal(packageJson.private, true);
   assert.equal(packageJson.license, "UNLICENSED");
+  assert.equal(nodeVersion, "22.16.0");
+  assert.equal(packageJson.engines.node, ">=22.16.0");
+  assert.match(readme, /Node\.js 22\.16 or newer/u);
   assert.equal(
     packageJson.repository.url,
     "https://github.com/reza477/vancouver-curiosity-club.git",

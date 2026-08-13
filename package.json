@@ -13,7 +13,7 @@
     "url": "https://github.com/reza477/vancouver-curiosity-club/issues"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.16.0"
   },
   "scripts": {
     "dev": "vite",

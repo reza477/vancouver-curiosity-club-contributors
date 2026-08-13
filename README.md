@@ -36,7 +36,7 @@ A calendar-first community website for finding thoughtful, creative, and social 
 
 ### Prerequisites
 
-- Node.js 22.13 or newer
+- Node.js 22.16 or newer
 - npm
 
 ### Setup

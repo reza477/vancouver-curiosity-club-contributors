@@ -26,6 +26,11 @@ not control GitHub visibility.
 
 Install Git, Node.js matching [.nvmrc](.nvmrc), and npm. Then:
 
+Node 22.16.0 is the minimum because the integration harness uses the built-in
+SQLite statement metadata and synchronous module-hook APIs introduced in that
+release line. Earlier Node 22 versions can install and build the app but cannot
+run the complete test suite.
+
 ```bash
 git clone https://github.com/reza477/vancouver-curiosity-club.git
 cd vancouver-curiosity-club

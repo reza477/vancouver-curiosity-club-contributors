@@ -13,7 +13,7 @@ active backlog.
 ## Before you start
 
 1. Open an issue or discuss the change with a maintainer before substantial work.
-2. Use Node.js 22.13 or newer and install dependencies with `npm ci`.
+2. Use Node.js 22.16 or newer and install dependencies with `npm ci`.
 3. Create a focused branch from the current default branch.
 4. Never commit credentials, `.env` files, local databases, exports, submission data, or unapproved media.
 
