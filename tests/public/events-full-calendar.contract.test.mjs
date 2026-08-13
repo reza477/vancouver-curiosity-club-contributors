@@ -108,7 +108,10 @@ test("Calendar forwards its month query to the combined Events experience", asyn
   );
 
   assert.match(calendarRoute, /new URL\(request\.url\)/u);
-  assert.match(calendarRoute, /new URL\(["']\/events["'], source\)/u);
+  assert.match(
+    calendarRoute,
+    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+  );
   assert.match(
     calendarRoute,
     /source\.searchParams\.getAll\(["']month["']\)/u,

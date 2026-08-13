@@ -154,7 +154,10 @@ test("Events renders one full calendar while Calendar forwards into it", async (
   ]);
 
   assert.match(calendar, /new URL\(request\.url\)/u);
-  assert.match(calendar, /new URL\(["']\/events["'], source\)/u);
+  assert.match(
+    calendar,
+    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+  );
   assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
     calendar,

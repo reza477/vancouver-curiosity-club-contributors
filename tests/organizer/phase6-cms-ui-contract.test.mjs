@@ -254,7 +254,10 @@ test("public routes keep one combined Events renderer and private previews keep 
   assert.doesNotMatch(eventsRoute, /eventListValues|values\.state|values\.page/u);
   assert.doesNotMatch(eventsRoute, /calendar\/page|readPublicMeetupSyncState/u);
   assert.match(calendarRoute, /new URL\(request\.url\)/u);
-  assert.match(calendarRoute, /new URL\(["']\/events["'], source\)/u);
+  assert.match(
+    calendarRoute,
+    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+  );
   assert.match(calendarRoute, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(calendarRoute, /Response\.redirect\(destination, 308\)/u);
   assert.doesNotMatch(

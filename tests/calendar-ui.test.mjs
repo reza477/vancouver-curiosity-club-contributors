@@ -197,7 +197,10 @@ test("homepage leads with the club purpose and eight distinct sections", async (
   );
 
   assert.match(calendar, /new URL\(request\.url\)/u);
-  assert.match(calendar, /new URL\(["']\/events["'], source\)/u);
+  assert.match(
+    calendar,
+    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+  );
   assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
     calendar,
@@ -430,7 +433,10 @@ test("Events leads with one full calendar and exposes no public diagnostics", as
     /readPublicMeetupSyncState|CalendarSourceStatus|SourceStatus|data-source-status|latest Meetup check|Meetup refresh|last complete calendar|Last completed snapshot|not on a guaranteed schedule/u,
   );
   assert.match(calendar, /new URL\(request\.url\)/u);
-  assert.match(calendar, /new URL\(["']\/events["'], source\)/u);
+  assert.match(
+    calendar,
+    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+  );
   assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
     calendar,
