@@ -25,7 +25,7 @@ test("Events does not promote an empty Past Events destination", async () => {
   );
 });
 
-test("removing the archive dead end preserves calendar, month, and lane discovery", async () => {
+test("removing the archive and lane-filter controls preserves calendar discovery and direct lane URLs", async () => {
   const [page, renderer, calendar] = await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
     readFile(
@@ -39,8 +39,10 @@ test("removing the archive dead end preserves calendar, month, and lane discover
   ]);
 
   assert.match(page, /loadPublicEventsPageData/u);
-  assert.match(renderer, /aria-label="Filter events by activity lane"/u);
-  assert.match(renderer, /PUBLIC_CATALOG_LANES\.map/u);
+  assert.doesNotMatch(
+    renderer,
+    /events-page__lane-filters|Filter events by activity lane|PUBLIC_CATALOG_LANES/u,
+  );
   assert.match(renderer, /<PublicMonthCalendar/u);
   assert.match(
     calendar,

@@ -83,7 +83,7 @@ function anchorHrefForLabel(markup, label) {
   return href.replaceAll("&amp;", "&");
 }
 
-test("valid and invalid public lane query values normalize before reaching SQL or cache", async () => {
+test("direct lane query values still normalize and reach the filtered Events loader", async () => {
   const { resolvePublicEventLaneSelection } = await import(
     "../../lib/server/public/event-lane-filter.ts"
   );
@@ -130,9 +130,24 @@ test("valid and invalid public lane query values normalize before reaching SQL o
     /laneSlug:\s*parsePublicEventLaneSlug\(input\.laneSlug\)/u,
     "the exported loader must independently allowlist lane values before cache or SQL",
   );
+
+  const pageSource = await readFile(
+    new URL("../../app/events/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    pageSource,
+    /resolvePublicEventLaneSelection\(raw\.lane\)/u,
+    "the Events route must continue accepting direct ?lane= URLs",
+  );
+  assert.match(
+    pageSource,
+    /loadPublicEventsPageData\([\s\S]*laneSlug:\s*laneSelection\.activeLaneSlug/u,
+    "the allowlisted direct lane selection must reach the Events data loader",
+  );
 });
 
-test("Events exposes all activity lanes as visible links with one active semantic state", () => {
+test("Events does not render the removed activity-lane filter strip", () => {
   const markup = renderToStaticMarkup(
     createElement(EventsPageRenderer, {
       activeLaneSlug: "reset-and-make",
@@ -146,43 +161,12 @@ test("Events exposes all activity lanes as visible links with one active semanti
     }),
   );
 
-  assert.match(
+  assert.doesNotMatch(
     markup,
-    /<nav\b[^>]*aria-label="[^"]*(?:lane|activity)[^"]*"/iu,
-    "lane chips need a named navigation landmark",
+    /events-page__lane-filters|aria-label="Filter events by activity lane"|href="\/events\?lane=/iu,
+    "the Show / All / lane-chip strip must not be rendered",
   );
-  const labels = [
-    "All",
-    "Think",
-    "Reset &amp; Make",
-    "Explore",
-    "Eat &amp; Play",
-  ];
-  for (const label of labels) anchorAttributesForLabel(markup, label);
-
-  const all = anchorAttributesForLabel(markup, "All");
-  const reset = anchorAttributesForLabel(markup, "Reset &amp; Make");
-  assert.equal(
-    new URL(
-      anchorHrefForLabel(markup, "All"),
-      "https://club.example",
-    ).searchParams.get("lane"),
-    null,
-  );
-  assert.doesNotMatch(all, /aria-current="page"/u);
-  assert.equal(
-    new URL(
-      anchorHrefForLabel(markup, "Reset &amp; Make"),
-      "https://club.example",
-    ).searchParams.get("lane"),
-    "reset-and-make",
-  );
-  assert.match(reset, /aria-current="page"/u);
-  assert.equal(
-    (markup.match(/aria-current="page"/gu) ?? []).length,
-    1,
-    "only the chosen lane chip may be current",
-  );
+  assert.match(markup, /Wednesday Night Reset/u);
 });
 
 test("an invalid lane visibly falls back to All events", () => {
@@ -200,9 +184,9 @@ test("an invalid lane visibly falls back to All events", () => {
   );
 
   assert.match(markup, /role="alert"[^>]*>[^<]*filter[^<]*all events/iu);
-  assert.match(
-    anchorAttributesForLabel(markup, "All"),
-    /aria-current="page"/u,
+  assert.doesNotMatch(
+    markup,
+    /events-page__lane-filters|aria-label="Filter events by activity lane"|href="\/events\?lane=/iu,
   );
   assert.match(markup, /Wednesday Night Reset/u);
 });
@@ -230,7 +214,7 @@ test("a lane-filtered calendar keeps the grid, selected day, and phone agenda co
   }
 });
 
-test("changing lanes in one month resets selection to the filtered calendar", async () => {
+test("changing a direct lane query in one month resets selection to the filtered calendar", async () => {
   const renderer = await readFile(
     new URL("../../app/_components/EventsPageRenderer.tsx", import.meta.url),
     "utf8",
