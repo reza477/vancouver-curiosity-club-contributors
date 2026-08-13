@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a visitor or organizer improvement.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What need would this address?
+      description: Describe the visitor or organizer problem, not only the proposed interface.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Explain what a successful result would look like.
+    validations:
+      required: true
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Primary audience
+      options:
+        - Visitors
+        - Event attendees
+        - Organizers
+        - Owners and administrators
+        - Everyone
+    validations:
+      required: true
+  - type: textarea
+    id: considerations
+    attributes:
+      label: Important considerations
+      description: Note accessibility, privacy, security, data, content, or operational constraints.

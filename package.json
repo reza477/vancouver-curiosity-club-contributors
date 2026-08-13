@@ -1,7 +1,17 @@
 {
   "name": "vancouver-curiosity-club",
   "version": "0.1.0",
+  "description": "Calendar-first community website for Vancouver Curiosity Club.",
   "private": true,
+  "license": "UNLICENSED",
+  "homepage": "https://vancouver-curiosity-club.reza5777.chatgpt.site",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reza477/vancouver-curiosity-club.git"
+  },
+  "bugs": {
+    "url": "https://github.com/reza477/vancouver-curiosity-club/issues"
+  },
   "engines": {
     "node": ">=22.13.0"
   },

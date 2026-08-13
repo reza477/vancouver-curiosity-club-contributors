@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible problem with the website or organizer workspace.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Do not include private submissions, credentials, invitation links, or personal information.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Public website
+        - Events or calendar
+        - Clubs
+        - Public form
+        - Organizer workspace
+        - Import, export, or calendar feed
+        - Accessibility
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Explain the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open …
+        2. Select …
+        3. Observe …
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Page URL
+      placeholder: https://vancouver-curiosity-club.reza5777.chatgpt.site/…
+  - type: input
+    id: environment
+    attributes:
+      label: Device and browser
+      placeholder: iPhone 15, Safari 18
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Add privacy-safe screenshots or error text if useful.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials, invitation links, private submissions, and personal information.
+          required: true

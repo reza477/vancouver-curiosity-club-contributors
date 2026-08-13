@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const ROOT = process.cwd();
@@ -85,16 +85,17 @@ test("Phase 9 ledger preserves local evidence and records the exact private depl
     "docs/organizer-guide-phase8.md",
     "docs/known-limitations-phase8.md",
   ]) {
-    assert.match(readme, new RegExp(escapeRegex(path), "u"), path);
+    assert.equal(existsSync(`${ROOT}/${path}`), true, path);
   }
-  assert.doesNotMatch(readme, /Phase 7 imports,[\s\S]*have not started/u);
-  assert.match(readme, /Phase 9 private deployment and production verification/u);
   assert.match(
     readme,
     /https:\/\/vancouver-curiosity-club\.reza5777\.chatgpt\.site/u,
   );
-  assert.match(readme, /Sites version 14/u);
-  assert.doesNotMatch(readme, /Phase 9 [^\r\n]* Not started/u);
+  assert.match(readme, /docs\/architecture\//u);
+  assert.match(readme, /BUILD_STATUS\.md/u);
+  assert.match(readme, /OWNER_INPUTS\.md/u);
+  assert.doesNotMatch(readme, /appg(?:dep|prj|ver)_/u);
+  assert.doesNotMatch(readme, /Sites version \d+/u);
 });
 
 test("Phase 7 ADR pins persisted approval, resumability, conflict, atomicity, retention, and privacy", () => {
