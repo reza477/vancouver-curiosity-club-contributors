@@ -17,7 +17,7 @@ const OLD_NONCE = "old_nonce_1234567890";
 const NEW_NONCE = "new_nonce_1234567890";
 const projectRoot = new URL("../../", import.meta.url);
 
-test("four protected slot calls stage independently and atomically promote one complete bundle", async () => {
+test("four protected slot calls, including nonce-free Events RSC, atomically promote one complete bundle", async () => {
   const bucket = new MemoryR2Bucket();
   for (const [index, slot] of DURABLE_PUBLIC_RESPONSE_FALLBACK_SLOTS.entries()) {
     const result = await capture(bucket, OLD_BATCH, slot, "old", 1_000 + index);
@@ -378,7 +378,11 @@ async function capture(bucket, batchId, slot, marker, capturedAtUtcMs) {
     render: async (buildRequest) => ({
       nonce: OLD_NONCE,
       response: buildRequest.slot.endsWith("-rsc")
-        ? rscResponse(`${marker}-${slot}`, OLD_NONCE)
+        ? rscResponse(
+            `${marker}-${slot}`,
+            OLD_NONCE,
+            buildRequest.slot !== "events-rsc",
+          )
         : htmlResponse(`${marker}-${slot}`, OLD_NONCE),
     }),
     slot,
@@ -411,8 +415,11 @@ function htmlResponse(marker, nonce, overrides = {}) {
   );
 }
 
-function rscResponse(marker, nonce) {
-  return new Response(`0:["${marker}",{"nonce":"${nonce}"}]`, {
+function rscResponse(marker, nonce, includeBodyNonce = true) {
+  const body = includeBodyNonce
+    ? `0:["${marker}",{"nonce":"${nonce}"}]\n`
+    : `0:["${marker}",{"route":"/events"}]\n`;
+  return new Response(body, {
     headers: {
       "content-security-policy": policy(nonce),
       "content-type": "text/x-component; charset=utf-8",

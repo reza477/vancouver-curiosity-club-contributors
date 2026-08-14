@@ -156,7 +156,7 @@ function htmlResponse(marker, nonce) {
 }
 
 function rscResponse(marker, nonce) {
-  return new Response(`0:["${marker}",{"nonce":"${nonce}"}]`, {
+  return new Response(`0:["${marker}",{"nonce":"${nonce}"}]\n`, {
     headers: {
       "content-security-policy": policy(nonce),
       "content-type": "text/x-component; charset=utf-8",

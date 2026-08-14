@@ -11,6 +11,7 @@ import {
 
 const worker = readFileSync("worker/index.ts", "utf8");
 const staticHeaders = readFileSync("public/_headers", "utf8");
+const viteConfig = readFileSync("vite.config.ts", "utf8");
 
 test("content-hashed assets receive a one-year immutable cache policy", () => {
   assert.match(
@@ -53,7 +54,32 @@ test("bounded regenerable event posters receive one-day SWR caching without immu
   }
 });
 
-test("the packaged static-asset router applies poster and hashed-asset cache policies", async (t) => {
+test("the production asset router sends only event posters through the Worker", () => {
+  assert.match(
+    viteConfig,
+    /assets:\s*\{[\s\S]*?binding:\s*"ASSETS"[\s\S]*?run_worker_first:\s*\["\/event-posters\/\*"\]/u,
+  );
+  assert.equal(
+    /run_worker_first:\s*true/u.test(viteConfig),
+    false,
+  );
+  assert.equal(
+    /run_worker_first:\s*\[[^\]]*"\/assets\//u.test(viteConfig),
+    false,
+  );
+  const posterMatch = worker.indexOf(
+    'normalizedPathname.startsWith("/event-posters/")',
+  );
+  const assetFetch = worker.indexOf("env.ASSETS.fetch(request)", posterMatch);
+  const databaseChecks = worker.indexOf(
+    "ensureDatabaseInvariantsForRequest(env.DB",
+  );
+  assert.ok(posterMatch >= 0);
+  assert.ok(assetFetch > posterMatch);
+  assert.ok(databaseChecks > assetFetch);
+});
+
+test("the selective static-asset router sends posters through the User Worker", async (t) => {
   assert.match(
     staticHeaders,
     /\/assets\/\*[\s\S]*?Cache-Control: public, max-age=31536000, immutable/u,
@@ -65,13 +91,31 @@ test("the packaged static-asset router applies poster and hashed-asset cache pol
 
   const runtime = new Miniflare({
     assets: {
+      binding: "ASSETS",
       directory: resolve("public"),
-      routerConfig: { has_user_worker: true },
+      routerConfig: {
+        has_user_worker: true,
+        static_routing: {
+          user_worker: ["/event-posters/*"],
+        },
+      },
     },
     compatibilityDate: "2026-07-28",
     modules: true,
     script:
-      'export default { fetch() { return new Response("worker fallback"); } };',
+      `export default {
+        async fetch(request, env) {
+          const asset = await env.ASSETS.fetch(request);
+          const headers = new Headers(asset.headers);
+          headers.set("Cache-Control", ${JSON.stringify(EVENT_POSTER_CACHE_CONTROL)});
+          headers.set("X-VCC-Test-Worker", "event-poster");
+          return new Response(asset.body, {
+            headers,
+            status: asset.status,
+            statusText: asset.statusText,
+          });
+        },
+      };`,
   });
   t.after(() => runtime.dispose());
 
@@ -83,7 +127,7 @@ test("the packaged static-asset router applies poster and hashed-asset cache pol
     response.headers.get("Cache-Control"),
     EVENT_POSTER_CACHE_CONTROL,
   );
-  assert.notEqual(await response.text(), "worker fallback");
+  assert.equal(response.headers.get("X-VCC-Test-Worker"), "event-poster");
 });
 
 test("nonce-bearing public HTML is never placed in a shared response cache", () => {

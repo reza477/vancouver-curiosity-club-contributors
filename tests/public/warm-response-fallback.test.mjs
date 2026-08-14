@@ -5,12 +5,19 @@ import {
   PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
   PUBLIC_RESPONSE_FALLBACK_STATE_HEADER,
   createPublicResponseFallback,
+  isStoredPublicResponseFallbackEntry,
   publicResponseFallbackKey,
 } from "../../lib/server/public/warm-response-fallback.ts";
 
 const projectRoot = new URL("../../", import.meta.url);
 const OLD_NONCE = "old_nonce_1234567890";
 const NEW_NONCE = "new_nonce_1234567890";
+const STALE_NONCE = "stale_nonce_1234567890";
+const LIVE_SHAPED_NONCE_FREE_EVENTS_RSC =
+  ":N1723478400000\n" +
+  '1:I["/assets/index.js",["assets/index.js"],"default"]\n' +
+  '2:"$Sreact.fragment"\n' +
+  '0:["$","$2",null,{"children":["$","main",null,{"data-route":"/events","children":"Events"}]}]\n';
 
 test("only exact unauthenticated Home and Events GET representations receive keys", () => {
   assert.ok(publicResponseFallbackKey(request("/"), "/"));
@@ -232,6 +239,114 @@ test("RSC capture keys every known variation and restores bytes without HTML inj
   assert.doesNotMatch(body, /data-vcc-stale-response|recent saved view/u);
 });
 
+test("nonce-free Events RSC is preserved while HTML remains nonce-strict", async () => {
+  let nowUtcMs = 3_000;
+  const fallback = createPublicResponseFallback({
+    captureIntervalMs: 0,
+    clock: () => nowUtcMs,
+  });
+  const headers = { accept: "text/x-component", rsc: "1" };
+  const sourceBody = LIVE_SHAPED_NONCE_FREE_EVENTS_RSC;
+  const captured = fallback.scheduleCapture({
+    nonce: OLD_NONCE,
+    pathname: "/events.rsc",
+    request: request("/events.rsc?_rsc", { headers }),
+    response: rscResponseWithoutBodyNonce(sourceBody, OLD_NONCE),
+  });
+  assert.ok(captured);
+  assert.equal(await captured, true);
+
+  nowUtcMs += 10;
+  const recovered = fallback.responseForFailure({
+    contentSecurityPolicy: policy(NEW_NONCE),
+    failure: { kind: "response", status: 503 },
+    nonce: NEW_NONCE,
+    pathname: "/events.rsc",
+    request: request("/events.rsc?_rsc", { headers }),
+  });
+  assert.ok(recovered);
+  assert.equal(await recovered.text(), sourceBody);
+  assert.equal(recovered.headers.get("content-security-policy"), policy(NEW_NONCE));
+  assert.doesNotMatch(sourceBody, new RegExp(OLD_NONCE, "u"));
+  assert.doesNotMatch(sourceBody, new RegExp(NEW_NONCE, "u"));
+
+  const nonceFreeHtml = fallback.scheduleCapture({
+    nonce: OLD_NONCE,
+    pathname: "/events",
+    request: request("/events"),
+    response: new Response(
+      "<!doctype html><html><head></head><body>unsafe</body></html>",
+      {
+        headers: {
+          "content-security-policy": policy(OLD_NONCE),
+          "content-type": "text/html; charset=utf-8",
+        },
+      },
+    ),
+  });
+  assert.ok(nonceFreeHtml);
+  assert.equal(await nonceFreeHtml, false);
+});
+
+test("RSC capture and stored-entry reads reject incomplete, malformed, or stale-nonce Flight", async () => {
+  const nowUtcMs = 4_000;
+  const headers = { accept: "text/x-component", rsc: "1" };
+  const target = "/events.rsc?_rsc";
+  const pathname = "/events.rsc";
+  const staleNonceField =
+    `0:["$","script",null,{"nonce":"${STALE_NONCE}"}]\n`;
+  const staleNonceAttribute =
+    `0:["$","script",null,{"html":"<script nonce=\\"${STALE_NONCE}\\"></script>"}]\n`;
+  const invalidBodies = [
+    ["empty", ""],
+    ["arbitrary text", "this is not Flight\n"],
+    ["invalid root JSON", "0:not-json\n"],
+    ["serialized stale nonce field", staleNonceField],
+    ["serialized stale nonce attribute", staleNonceAttribute],
+  ];
+
+  for (const [label, body] of invalidBodies) {
+    const fallback = createPublicResponseFallback({
+      captureIntervalMs: 0,
+      clock: () => nowUtcMs,
+    });
+    const capture = fallback.scheduleCapture({
+      nonce: OLD_NONCE,
+      pathname,
+      request: request(target, { headers }),
+      response: rscResponseWithoutBodyNonce(body, OLD_NONCE),
+    });
+    assert.ok(capture, label);
+    assert.equal(await capture, false, label);
+  }
+
+  const key = publicResponseFallbackKey(
+    request(target, { headers }),
+    pathname,
+  );
+  assert.ok(key);
+  assert.equal(
+    isStoredPublicResponseFallbackEntry(
+      storedRscEntry(LIVE_SHAPED_NONCE_FREE_EVENTS_RSC, key, nowUtcMs),
+      key,
+      nowUtcMs,
+    ),
+    true,
+    "a complete production-shaped nonce-free Events Flight stream is durable",
+  );
+  for (const [label, body] of invalidBodies) {
+    assert.equal(
+      isStoredPublicResponseFallbackEntry(
+        storedRscEntry(body, key, nowUtcMs),
+        key,
+        nowUtcMs,
+      ),
+      false,
+      `stored ${label}`,
+    );
+  }
+});
+
 test("capture is globally throttled and bounded by entry count, bytes, and age", async () => {
   let nowUtcMs = 10_000;
   const throttled = createPublicResponseFallback({
@@ -446,7 +561,7 @@ function htmlResponse(marker, nonce, overrides = {}) {
 }
 
 function rscResponse(marker, nonce) {
-  return new Response(`0:["${marker}",{"nonce":"${nonce}"}]`, {
+  return new Response(`0:["${marker}",{"nonce":"${nonce}"}]\n`, {
     headers: {
       "cache-control": "no-store",
       "content-security-policy": policy(nonce),
@@ -463,8 +578,38 @@ function rscResponse(marker, nonce) {
   });
 }
 
+function rscResponseWithoutBodyNonce(body, policyNonce) {
+  return new Response(body, {
+    headers: {
+      "cache-control": "no-store",
+      "content-security-policy": policy(policyNonce),
+      "content-type": "text/x-component; charset=utf-8",
+      vary:
+        "RSC, Accept, Next-Router-State-Tree, Next-Router-Prefetch, " +
+        "Next-Router-Segment-Prefetch, Next-Url, " +
+        "X-Vinext-Interception-Context, X-Vinext-Mounted-Slots, " +
+        "X-Vinext-Rsc-Render-Mode",
+    },
+    status: 200,
+  });
+}
+
 function policy(nonce) {
   return `default-src 'self'; script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`;
+}
+
+function storedRscEntry(bodyTemplate, key, capturedAtUtcMs) {
+  const headers = [["content-type", "text/x-component; charset=utf-8"]];
+  return {
+    bodyTemplate,
+    capturedAtUtcMs,
+    headers,
+    representation: "rsc",
+    storedBytes:
+      utf8Bytes(key) +
+      utf8Bytes(bodyTemplate) +
+      utf8Bytes(JSON.stringify(headers)),
+  };
 }
 
 function recover(fallback, target, pathname, nonce) {
@@ -479,4 +624,8 @@ function recover(fallback, target, pathname, nonce) {
 
 function occurrences(value, needle) {
   return value.split(needle).length - 1;
+}
+
+function utf8Bytes(value) {
+  return new TextEncoder().encode(value).byteLength;
 }

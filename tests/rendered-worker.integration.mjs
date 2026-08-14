@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { Log, LogLevel, Miniflare } from "miniflare";
@@ -34,6 +34,9 @@ import {
   appendFormSubmissionNote,
 } from "../lib/server/phase7/submissions.ts";
 import { ensurePublicCatalog } from "../lib/server/public/catalog.ts";
+import {
+  PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
+} from "../lib/server/public/warm-response-fallback.ts";
 import {
   applyD1MigrationBatches,
   MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
@@ -112,6 +115,17 @@ const OWNER_AUTH_HEADERS = Object.freeze({
   "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
 });
 const INVITATION_TOKEN = "R".repeat(43);
+const DURABLE_CAPTURE_SECRET =
+  "rendered-durable-capture-secret-that-is-at-least-thirty-two-bytes";
+const DURABLE_CAPTURE_PATH = "/api/maintenance/public-snapshots/capture";
+const DURABLE_CURRENT_OBJECT_KEY =
+  "system/public-response-fallback/v1/current.json";
+const DURABLE_CAPTURE_SLOTS = [
+  "home-html",
+  "events-html",
+  "home-rsc",
+  "events-rsc",
+];
 const PUBLIC_PATHS = [
   "/",
   "/events",
@@ -133,6 +147,9 @@ const PRODUCTION_ALTERNATE_ORIGINS = [
 ];
 
 const serverRoot = resolve("dist/server");
+const packagedWrangler = JSON.parse(
+  await readFile(resolve(serverRoot, "wrangler.json"), "utf8"),
+);
 const moduleFiles = await collectJavaScriptModules(serverRoot);
 const clientAssetFiles = await collectTextAssetFiles(resolve("dist/client"));
 const entrypoint = resolve(serverRoot, "index.js");
@@ -962,6 +979,131 @@ test("the built public root is indexable and carries the production security con
   assert.doesNotMatch(secondHtml, /https:\/\/attacker\.example/u);
   assert.doesNotMatch(secondHtml, /nonce="AAAAAAAAAAAAAAAAAAAAAA"/u);
   assert.match(secondHtml, /https:\/\/preview\.example\/og\.png/u);
+});
+
+test("the built Worker promotes a nonce-free Events RSC through the protected four-slot flow", async () => {
+  const batchId = "00000000-0000-4000-8000-000000000111";
+  const bucket = await runtime.getR2Bucket("MEDIA");
+  const stagingKeys = DURABLE_CAPTURE_SLOTS.map(
+    (slot) => `system/public-response-fallback/v1/staging/${slot}.json`,
+  );
+  const objectKeys = [...stagingKeys, DURABLE_CURRENT_OBJECT_KEY];
+  await bucket.delete(objectKeys);
+
+  try {
+    for (const [index, slot] of DURABLE_CAPTURE_SLOTS.entries()) {
+      const body = JSON.stringify({ batchId, slot });
+      const timestamp = String(Math.floor(Date.now() / 1_000));
+      const requestId = crypto.randomUUID();
+      const signature = createHmac("sha256", DURABLE_CAPTURE_SECRET)
+        .update(`${timestamp}.${requestId}.${body}`)
+        .digest("hex");
+      const response = await fetchPath(DURABLE_CAPTURE_PATH, {
+        body,
+        headers: {
+          "content-type": "application/json",
+          "x-maintenance-request-id": requestId,
+          "x-maintenance-signature": `sha256=${signature}`,
+          "x-maintenance-timestamp": timestamp,
+        },
+        method: "POST",
+      });
+      const responseText = await response.text();
+      assert.equal(response.status, 200, `${slot}: ${responseText}`);
+      const report = JSON.parse(responseText);
+      assert.equal(report.batchId, batchId);
+      assert.equal(report.slot, slot);
+      assert.equal(report.capturedEntryCount, index + 1);
+      assert.equal(report.promoted, index === DURABLE_CAPTURE_SLOTS.length - 1);
+      assert.equal(
+        report.status,
+        index === DURABLE_CAPTURE_SLOTS.length - 1 ? "succeeded" : "continue",
+      );
+    }
+
+    const eventsRscObject = await bucket.get(stagingKeys.at(-1));
+    assert.ok(eventsRscObject);
+    const eventsRsc = JSON.parse(await eventsRscObject.text());
+    assert.equal(eventsRsc.slot, "events-rsc");
+    assert.equal(eventsRsc.response.representation, "rsc");
+    assert.equal(
+      eventsRsc.response.bodyTemplate.includes(
+        PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
+      ),
+      false,
+      "the production-shaped Events Flight stream is legitimately nonce-free",
+    );
+
+    const currentObject = await bucket.get(DURABLE_CURRENT_OBJECT_KEY);
+    assert.ok(currentObject);
+    const current = JSON.parse(await currentObject.text());
+    assert.equal(current.entries.length, DURABLE_CAPTURE_SLOTS.length);
+    assert.equal(
+      current.entries.some(
+        (entry) =>
+          entry.response.representation === "rsc" &&
+          entry.response.bodyTemplate === eventsRsc.response.bodyTemplate,
+      ),
+      true,
+      "atomic promotion includes the nonce-free Events RSC entry",
+    );
+  } finally {
+    await bucket.delete(objectKeys);
+  }
+});
+
+test("the built Worker serves event posters through its D1-free cache-policy fast path", async (t) => {
+  assert.deepEqual(packagedWrangler.assets, {
+    binding: "ASSETS",
+    directory: "../client",
+    run_worker_first: ["/event-posters/*"],
+  });
+
+  const posterRuntime = createBuiltRuntime(new Log(LogLevel.WARN), {
+    includeDatabase: false,
+  });
+  t.after(() => posterRuntime.dispose());
+
+  const response = await posterRuntime.dispatchFetch(
+    "https://preview.example/event-posters/meetup-315294572-480.jpeg",
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/jpeg");
+  assert.equal(
+    response.headers.get("cache-control"),
+    "public, max-age=86400, stale-while-revalidate=604800",
+  );
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.ok((await response.arrayBuffer()).byteLength > 1_000);
+
+  const hashedAssetName = clientAssetFiles
+    .map((path) => basename(path))
+    .find((name) => /-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$/u.test(name));
+  assert.ok(hashedAssetName, "the build must emit a content-hashed asset");
+  const hashedResponse = await posterRuntime.dispatchFetch(
+    `https://preview.example/assets/${hashedAssetName}`,
+  );
+  assert.equal(hashedResponse.status, 200);
+  assert.equal(
+    hashedResponse.headers.get("cache-control"),
+    "public, max-age=31536000, immutable",
+  );
+  assert.equal(
+    hashedResponse.headers.get("x-frame-options"),
+    null,
+    "hashed assets remain asset-first instead of invoking the User Worker",
+  );
+
+  const missingPoster = await posterRuntime.dispatchFetch(
+    "https://preview.example/event-posters/nested/missing.jpeg",
+  );
+  assert.equal(missingPoster.status, 404);
+  assert.equal(
+    missingPoster.headers.get("cache-control"),
+    "private, no-store, max-age=0",
+  );
+  assert.equal(missingPoster.headers.get("x-frame-options"), "DENY");
 });
 
 test("all required public pages render shared chrome without private sentinels", async () => {
@@ -3029,11 +3171,17 @@ function createBuiltRuntime(
     compatibilityFlags: ["nodejs_compat"],
     ...(includeDatabase ? { d1Databases: ["DB"] } : {}),
     r2Buckets: ["MEDIA"],
+    bindings: {
+      DAILY_MEETUP_REFRESH_SECRET: DURABLE_CAPTURE_SECRET,
+    },
     assets: {
       binding: "ASSETS",
       directory: resolve("dist/client"),
       routerConfig: {
         has_user_worker: true,
+        static_routing: {
+          user_worker: ["/event-posters/*"],
+        },
       },
     },
     log,

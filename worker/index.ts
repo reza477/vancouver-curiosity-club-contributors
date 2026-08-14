@@ -543,6 +543,19 @@ const worker = {
     const requestPathname = safeRequestPathname(normalizedPathname);
     const canonicalUrl = new URL(url);
     canonicalUrl.pathname = normalizedPathname;
+    if (normalizedPathname.startsWith("/event-posters/")) {
+      const assetPoster = await env.ASSETS.fetch(request);
+      const poster =
+        assetPoster.status >= 400
+          ? responseWithNoStore(assetPoster)
+          : assetPoster;
+      return secureResponse(
+        request,
+        poster,
+        policy,
+        normalizedPathname,
+      );
+    }
     const invitationCapture = captureInvitationToken(
       request,
       canonicalUrl,
@@ -754,5 +767,16 @@ const worker = {
     return securedResponse;
   },
 };
+
+function responseWithNoStore(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "private, no-store, max-age=0");
+  headers.set("Pragma", "no-cache");
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
 
 export default worker;

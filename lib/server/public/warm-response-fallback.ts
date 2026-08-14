@@ -20,6 +20,12 @@ const CLUB_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,159}$/u;
 const PAGE_PATTERN = /^[1-9]\d{0,4}$/u;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{16,64}$/u;
 const RSC_TRANSPORT_VALUE_PATTERN = /^[A-Za-z0-9_-]{0,128}$/u;
+const RSC_DEVELOPMENT_PREAMBLE_PATTERN =
+  /^:N-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?\n/u;
+const RSC_FIRST_ROW_PATTERN = /^[0-9a-f]+:/u;
+const RSC_ROOT_MODEL_ROW_PATTERN = /(?:^|\n)0:([^\r\n]*)\r?\n/gu;
+const RSC_SERIALIZED_NONCE_FIELD_PATTERN = /"nonce"\s*:/giu;
+const RSC_SERIALIZED_NONCE_ATTRIBUTE_PATTERN = /\bnonce\s*=/giu;
 const SITES_IDENTITY_HEADER_PREFIX = "oai-authenticated-user";
 const KEYED_REQUEST_HEADERS = Object.freeze([
   "accept",
@@ -350,13 +356,17 @@ export function responseFromPublicResponseFallbackEntry(
     return null;
   }
 
+  const hasTemplatedNonce = input.entry.bodyTemplate.includes(
+    PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
+  );
   let body = input.entry.bodyTemplate.replaceAll(
     PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
     input.nonce,
   );
   if (
     body.includes(PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER) ||
-    !body.includes(input.nonce)
+    ((input.entry.representation === "html" || hasTemplatedNonce) &&
+      !body.includes(input.nonce))
   ) {
     return null;
   }
@@ -568,9 +578,16 @@ async function captureResponse(input: Readonly<{
   const policy = input.response.headers.get("content-security-policy") ?? "";
   if (!policy.includes(`'nonce-${input.nonce}'`)) return null;
   const body = await readBoundedUtf8(input.response.body, input.maxEntryBytes);
+  if (body === null) return null;
   if (
-    body === null ||
-    !body.includes(input.nonce) ||
+    input.representation === "rsc" &&
+    !validReactFlightBody(body, input.nonce)
+  ) {
+    return null;
+  }
+  const hasResponseNonce = body.includes(input.nonce);
+  if (
+    (input.representation === "html" && !hasResponseNonce) ||
     body.includes(PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER) ||
     body.includes('data-vcc-stale-response="true"')
   ) {
@@ -585,10 +602,12 @@ async function captureResponse(input: Readonly<{
   ) {
     return null;
   }
-  const bodyTemplate = body.replaceAll(
-    input.nonce,
-    PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
-  );
+  // HTML always carries executable bootstrap nonces. A Flight payload may be
+  // nonce-free when its component tree emits no script element; preserve that
+  // valid RSC body byte-for-byte while still rotating any nonce it does carry.
+  const bodyTemplate = hasResponseNonce
+    ? body.replaceAll(input.nonce, PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER)
+    : body;
   if (bodyTemplate.includes(input.nonce)) return null;
 
   const headers: Array<readonly [string, string]> = [];
@@ -660,6 +679,71 @@ function storedResponseBytes(
   return utf8Bytes(key) + utf8Bytes(body) + utf8Bytes(JSON.stringify(headers));
 }
 
+/**
+ * This deliberately validates only the stable text framing Vinext receives
+ * from React Flight: an optional development time-origin row, at least one
+ * hexadecimal row, a complete JSON root model, and a terminating newline.
+ * It does not try to interpret component references or execute the payload.
+ */
+function validReactFlightBody(
+  body: string,
+  allowedSerializedNonce: string,
+): boolean {
+  if (body.length === 0 || !body.endsWith("\n")) return false;
+
+  const preamble = body.match(RSC_DEVELOPMENT_PREAMBLE_PATTERN)?.[0] ?? "";
+  if (!RSC_FIRST_ROW_PATTERN.test(body.slice(preamble.length))) return false;
+
+  let hasRootModel = false;
+  for (const match of body.matchAll(RSC_ROOT_MODEL_ROW_PATTERN)) {
+    try {
+      JSON.parse(match[1]);
+      hasRootModel = true;
+      break;
+    } catch {
+      // Keep looking: a length-prefixed text row may contain row-like text.
+    }
+  }
+  if (!hasRootModel) return false;
+
+  return hasOnlyAllowedSerializedRscNonces(body, allowedSerializedNonce);
+}
+
+function hasOnlyAllowedSerializedRscNonces(
+  body: string,
+  allowedNonce: string,
+): boolean {
+  for (const field of body.matchAll(RSC_SERIALIZED_NONCE_FIELD_PATTERN)) {
+    const valueStart = (field.index ?? 0) + field[0].length;
+    const serializedValue = /^\s*("(?:\\[\s\S]|[^"\\])*")/u.exec(
+      body.slice(valueStart),
+    )?.[1];
+    if (!serializedValue) return false;
+    try {
+      if (JSON.parse(serializedValue) !== allowedNonce) return false;
+    } catch {
+      return false;
+    }
+  }
+
+  for (const attribute of body.matchAll(
+    RSC_SERIALIZED_NONCE_ATTRIBUTE_PATTERN,
+  )) {
+    const valueStart = (attribute.index ?? 0) + attribute[0].length;
+    const tail = body.slice(valueStart).trimStart();
+    if (
+      tail.startsWith(`"${allowedNonce}"`) ||
+      tail.startsWith(`'${allowedNonce}'`) ||
+      tail.startsWith(`\\"${allowedNonce}\\"`) ||
+      tail.startsWith(`\\'${allowedNonce}\\'`)
+    ) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
 function validStoredPublicResponse(
   entry: StoredPublicResponse,
   key: string,
@@ -678,10 +762,15 @@ function validStoredPublicResponse(
     !Number.isSafeInteger(entry.storedBytes) ||
     entry.storedBytes <= 0 ||
     entry.storedBytes > PUBLIC_RESPONSE_FALLBACK_MAX_ENTRY_BYTES ||
-    !entry.bodyTemplate.includes(PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER) ||
     entry.bodyTemplate.includes('data-vcc-stale-response="true"') ||
     !Array.isArray(entry.headers) ||
     entry.headers.length > STORED_RESPONSE_HEADERS.length
+  ) {
+    return false;
+  }
+  if (
+    entry.representation === "html" &&
+    !entry.bodyTemplate.includes(PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER)
   ) {
     return false;
   }
@@ -691,6 +780,15 @@ function validStoredPublicResponse(
       !/<html\b/iu.test(entry.bodyTemplate) ||
       !/<\/body\s*>/iu.test(entry.bodyTemplate) ||
       !/<\/html\s*>/iu.test(entry.bodyTemplate))
+  ) {
+    return false;
+  }
+  if (
+    entry.representation === "rsc" &&
+    !validReactFlightBody(
+      entry.bodyTemplate,
+      PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
+    )
   ) {
     return false;
   }
