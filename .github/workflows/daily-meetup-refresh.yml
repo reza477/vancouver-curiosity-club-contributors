@@ -124,7 +124,7 @@ jobs:
             report_status=$?
             set -e
             read -r pass_created pass_updated pass_cancelled pass_removed pass_rejected < <(
-              node -e 'const report = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); process.stdout.write([report.counts.created, report.counts.updated, report.counts.cancelled, report.counts.removed, report.counts.rejected].join(" "));' "$report_file"
+              node -e 'const report = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); process.stdout.write(`${[report.counts.created, report.counts.updated, report.counts.cancelled, report.counts.removed, report.counts.rejected].join(" ")}\n`);' "$report_file"
             )
             total_created=$((total_created + pass_created))
             total_updated=$((total_updated + pass_updated))

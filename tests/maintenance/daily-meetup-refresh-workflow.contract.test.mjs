@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const ROOT = process.cwd();
@@ -94,6 +102,44 @@ test("workflow treats any HTTP or reporting failure as a failed run", () => {
   assert.match(workflow, /Created before failure/u);
   assert.match(workflow, /unsafe report shape/iu);
   assert.match(workflow, /exceeded its 64-invocation safety limit/iu);
+});
+
+test("aggregate count extraction terminates with a newline for Bash read under errexit", (t) => {
+  const workflow = source(WORKFLOW_PATH);
+  const extraction =
+    /read -r pass_created pass_updated pass_cancelled pass_removed pass_rejected < <\(\s*node -e '([^']+)' "\$report_file"\s*\)/u.exec(
+      workflow,
+    );
+  assert.ok(extraction, "the bounded loop must extract each safe count report");
+
+  const directory = mkdtempSync(join(tmpdir(), "vcc-daily-counts-"));
+  t.after(() => rmSync(directory, { force: true, recursive: true }));
+  const reportPath = join(directory, "report.json");
+  writeFileSync(
+    reportPath,
+    JSON.stringify({
+      counts: {
+        cancelled: 3,
+        created: 1,
+        rejected: 5,
+        removed: 4,
+        updated: 2,
+      },
+    }),
+    "utf8",
+  );
+
+  const executed = spawnSync(
+    process.execPath,
+    ["-e", extraction[1], reportPath],
+    { encoding: "utf8" },
+  );
+  assert.equal(executed.status, 0, executed.stderr);
+  assert.equal(
+    executed.stdout,
+    "1 2 3 4 5\n",
+    "Bash read returns nonzero at EOF when the producer omits its terminating newline",
+  );
 });
 
 test("ordinary public request modules have no Meetup synchronization path", () => {
