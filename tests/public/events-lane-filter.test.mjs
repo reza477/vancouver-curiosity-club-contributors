@@ -127,8 +127,13 @@ test("direct lane query values still normalize and reach the filtered Events loa
   );
   assert.match(
     loaderSource,
-    /laneSlug:\s*parsePublicEventLaneSlug\(input\.laneSlug\)/u,
-    "the exported loader must independently allowlist lane values before cache or SQL",
+    /readPublicEventsPageMaterialization\([\s\S]*input/u,
+    "the exported loader must pass the route-allowlisted lane into the read-only materialization boundary",
+  );
+  assert.doesNotMatch(
+    loaderSource,
+    /queryPublicCalendar|queryPublicEventSlice|refreshMeetup|database\.batch/u,
+    "the exported visitor loader must not project, synchronize, or write event data",
   );
 
   const pageSource = await readFile(

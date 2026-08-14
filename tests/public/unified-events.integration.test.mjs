@@ -777,9 +777,12 @@ test("active Meetup snapshots project only first-party synchronized poster URLs"
   assert.equal(serialized.includes("PENDING POSTER"), false);
 });
 
-test("poster-bearing Events data round-trips from a cold projection to a D1 snapshot hit", async (t) => {
+test("poster-bearing Events data round-trips from updater projection to a durable visitor read", async (t) => {
   const database = await createFixture(t);
   const projections = countUnifiedPublicEventProjections(database);
+  const { refreshPublicEventMaterializations } = await import(
+    "../../lib/server/public/event-materializations.ts"
+  );
   const { loadPublicEventsPageData } = await import(
     "../../lib/server/public/events-page.ts"
   );
@@ -791,6 +794,11 @@ test("poster-bearing Events data round-trips from a cold projection to a D1 snap
     todayDate: TODAY_DATE,
   };
 
+  await refreshPublicEventMaterializations(projections.database, {
+    nowUtcMs: NOW_UTC_MS,
+    organizationId: ORGANIZATION_ID,
+    todayDate: TODAY_DATE,
+  });
   const cold = await loadPublicEventsPageData(projections.database, input);
   const coldPosterEvent = cold.calendar.events.find(
     (event) => event.slug === "meetup-active-event",
@@ -800,7 +808,7 @@ test("poster-bearing Events data round-trips from a cold projection to a D1 snap
   assert.equal(
     projections.count(),
     1,
-    "the cold request must execute the unified public-event projection once",
+    "the updater must execute the unified public-event projection once",
   );
 
   const warm = await loadPublicEventsPageData(projections.database, {
@@ -817,7 +825,7 @@ test("poster-bearing Events data round-trips from a cold projection to a D1 snap
   assert.equal(
     projections.count(),
     1,
-    "the D1 snapshot hit must not repeat the unified public-event projection",
+    "visitor reads must not repeat the updater-owned projection",
   );
 });
 
@@ -5333,7 +5341,11 @@ function countUnifiedPublicEventProjections(database) {
   }
 
   function record(sql) {
-    if (/\bevents_page_public_events\s+AS\s+MATERIALIZED\b/u.test(sql)) {
+    if (
+      /\b(?:events_page_public_events|materialization_public_events)\s+AS\s+MATERIALIZED\b/u.test(
+        sql,
+      )
+    ) {
       projectionCount += 1;
     }
   }
@@ -5425,8 +5437,11 @@ function injectBeforeMatchingQuery(
   };
 }
 
-test("the Events snapshot cache and full calendar honor a valid lane filter", async (t) => {
+test("the updater-owned Events materialization and full calendar honor a valid lane filter", async (t) => {
   const database = await createFixture(t);
+  const { refreshPublicEventMaterializations } = await import(
+    "../../lib/server/public/event-materializations.ts"
+  );
   const { loadPublicEventsPageData } = await import(
     "../../lib/server/public/events-page.ts"
   );
@@ -5437,6 +5452,12 @@ test("the Events snapshot cache and full calendar honor a valid lane filter", as
     rawMonth: "2026-08",
     todayDate: TODAY_DATE,
   };
+
+  await refreshPublicEventMaterializations(database, {
+    nowUtcMs: NOW_UTC_MS,
+    organizationId: ORGANIZATION_ID,
+    todayDate: TODAY_DATE,
+  });
 
   const unfiltered = await loadPublicEventsPageData(database, baseInput);
   assert.ok(

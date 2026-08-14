@@ -28,5 +28,5 @@ export async function requireMeetupApiActor(
     throw new OrganizerAccessDeniedError("role_not_allowed");
   }
 
-  return { database, identity };
+  return { database, identity, membership };
 }

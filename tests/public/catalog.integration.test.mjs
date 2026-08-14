@@ -136,6 +136,7 @@ function loadGeneratedMigrations() {
       "0018_public_event_calendar_snapshots.sql",
       "0019_meetup_event_lanes.sql",
       "0020_meetup_public_event_facts.sql",
+      "0021_daily_meetup_maintenance.sql",
     ],
     "the normalized Sites-compatible migration chain must be authoritative",
   );

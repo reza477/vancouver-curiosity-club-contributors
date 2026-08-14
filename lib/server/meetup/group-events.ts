@@ -24,7 +24,7 @@ const MAX_DESCRIPTION_LIST_ITEMS = 300;
 const MAX_DESCRIPTION_LINK_LENGTH = 2_048;
 const MAX_EVENT_DURATION_MS = 31 * 24 * 60 * 60_000;
 const GROUP_SLUG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/u;
-const EVENT_ID_PATTERN = /^[0-9]{1,20}$/u;
+const EVENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 const ENTITY_ID_PATTERN = /^[0-9]{1,32}$/u;
 const UNSAFE_CONTROL_PATTERN =
   /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
@@ -74,6 +74,17 @@ const PUBLIC_DESCRIPTION_LINK_QUERY_KEYS: Readonly<
 type GroupEventsPageSource = Readonly<{
   groupSlug: string;
   url: string;
+}>;
+
+type FutureConnectionArguments = Readonly<{
+  afterDateTimeUtcMs: number;
+  first: number;
+  kind: "active" | "combined" | "past-cancelled";
+}>;
+
+type FutureConnectionCandidate = Readonly<{
+  arguments: FutureConnectionArguments;
+  value: unknown;
 }>;
 
 type PublicVenue = Readonly<{
@@ -220,54 +231,69 @@ export function parseMeetupGroupEventsPage(
         value,
       }))
       .filter(
-        (candidate): candidate is {
-          arguments: Readonly<{ first: number }>;
-          value: unknown;
-        } => candidate.arguments !== null,
+        (candidate): candidate is FutureConnectionCandidate =>
+          candidate.arguments !== null,
       );
-    if (connectionCandidates.length !== 1) invalidCalendar();
-
-    const candidate = connectionCandidates[0];
-    const connection = requiredRecord(candidate.value);
-    if (connection.__typename !== "GroupEventConnection") invalidCalendar();
-    if (!Array.isArray(connection.edges)) invalidCalendar();
-    if (
-      connection.edges.length > candidate.arguments.first ||
-      connection.edges.length > maxEvents
-    ) {
-      invalidCalendar();
-    }
-    if (
-      !Number.isSafeInteger(connection.totalCount) ||
-      (connection.totalCount as number) < connection.edges.length
-    ) {
-      invalidCalendar();
-    }
-    const pageInfo = requiredRecord(connection.pageInfo);
-    if (typeof pageInfo.hasNextPage !== "boolean") invalidCalendar();
+    const selectedConnections = selectFutureConnections(connectionCandidates);
 
     const events: ParsedMeetupEvent[] = [];
     const seenEventRefs = new Set<string>();
-    for (const [componentIndex, rawEdge] of connection.edges.entries()) {
-      const edge = requiredRecord(rawEdge);
-      if (edge.__typename !== "EventEdge") invalidCalendar();
-      const eventRef = readReference(edge.node, "Event");
-      if (seenEventRefs.has(eventRef)) invalidCalendar();
-      seenEventRefs.add(eventRef);
-      events.push(
-        parseApolloEvent({
+    for (const candidate of selectedConnections) {
+      const connection = requiredRecord(candidate.value);
+      if (connection.__typename !== "GroupEventConnection") invalidCalendar();
+      if (!Array.isArray(connection.edges)) invalidCalendar();
+      if (
+        connection.edges.length > candidate.arguments.first ||
+        events.length + connection.edges.length > maxEvents
+      ) {
+        invalidCalendar();
+      }
+      if (
+        !Number.isSafeInteger(connection.totalCount) ||
+        (connection.totalCount as number) < connection.edges.length
+      ) {
+        invalidCalendar();
+      }
+      const pageInfo = requiredRecord(connection.pageInfo);
+      if (typeof pageInfo.hasNextPage !== "boolean") invalidCalendar();
+
+      for (const rawEdge of connection.edges) {
+        const edge = requiredRecord(rawEdge);
+        if (edge.__typename !== "EventEdge") invalidCalendar();
+        const eventRef = readReference(edge.node, "Event");
+        if (seenEventRefs.has(eventRef)) invalidCalendar();
+        seenEventRefs.add(eventRef);
+        assertEventMatchesConnectionStatus(
           apolloState,
-          componentIndex,
           eventRef,
-          groupRef,
-          groupSlug: source.groupSlug,
-          timeZone,
-        }),
-      );
+          candidate.arguments.kind,
+        );
+        events.push(
+          parseApolloEvent({
+            apolloState,
+            componentIndex: events.length,
+            eventRef,
+            groupRef,
+            groupSlug: source.groupSlug,
+            timeZone,
+          }),
+        );
+      }
     }
 
+    const orderedEvents =
+      selectedConnections.length === 1
+        ? events
+        : events
+            .sort(compareFutureEvents)
+            .map((event, componentIndex) =>
+              event.componentIndex === componentIndex
+                ? event
+                : Object.freeze({ ...event, componentIndex }),
+            );
+
     return Object.freeze({
-      events: Object.freeze(events),
+      events: Object.freeze(orderedEvents),
       method: "PUBLISH" as const,
       rejectedEvents: Object.freeze([]),
     });
@@ -356,7 +382,7 @@ function parseApolloEvent(input: Readonly<{
 
 function readFutureConnectionArguments(
   key: string,
-): Readonly<{ first: number }> | null {
+): FutureConnectionArguments | null {
   if (!key.startsWith("events(") || !key.endsWith(")")) return null;
   let parsed: unknown;
   try {
@@ -376,24 +402,93 @@ function readFutureConnectionArguments(
   }
   if (!isRecord(parsed.filter)) return null;
   if (!hasExactlyKeys(parsed.filter, ["afterDateTime", "status"])) return null;
-  readInstant(parsed.filter.afterDateTime);
+  const afterDateTimeUtcMs = readInstant(parsed.filter.afterDateTime);
   if (!Array.isArray(parsed.filter.status)) return null;
   const statuses = [...parsed.filter.status].sort();
-  if (
-    statuses.length !== 3 ||
-    statuses[0] !== "ACTIVE" ||
-    statuses[1] !== "CANCELLED" ||
-    statuses[2] !== "PAST"
-  ) {
-    return null;
+  const kind =
+    statuses.length === 3 &&
+    statuses[0] === "ACTIVE" &&
+    statuses[1] === "CANCELLED" &&
+    statuses[2] === "PAST"
+      ? "combined"
+      : statuses.length === 1 && statuses[0] === "ACTIVE"
+        ? "active"
+        : statuses.length === 2 &&
+            statuses[0] === "CANCELLED" &&
+            statuses[1] === "PAST"
+          ? "past-cancelled"
+          : null;
+  if (kind === null) return null;
+  return Object.freeze({
+    afterDateTimeUtcMs,
+    first: parsed.first as number,
+    kind,
+  });
+}
+
+function selectFutureConnections(
+  candidates: readonly FutureConnectionCandidate[],
+): readonly FutureConnectionCandidate[] {
+  const combined = candidates.filter(
+    (candidate) => candidate.arguments.kind === "combined",
+  );
+  if (combined.length === 1 && candidates.length === 1) {
+    return Object.freeze(combined);
   }
-  return Object.freeze({ first: parsed.first as number });
+
+  const active = candidates.filter(
+    (candidate) => candidate.arguments.kind === "active",
+  );
+  const pastCancelled = candidates.filter(
+    (candidate) => candidate.arguments.kind === "past-cancelled",
+  );
+  if (
+    candidates.length !== 2 ||
+    active.length !== 1 ||
+    pastCancelled.length !== 1 ||
+    active[0].arguments.afterDateTimeUtcMs !==
+      pastCancelled[0].arguments.afterDateTimeUtcMs
+  ) {
+    invalidCalendar();
+  }
+  return Object.freeze([...candidates]);
+}
+
+function compareFutureEvents(
+  left: ParsedMeetupEvent,
+  right: ParsedMeetupEvent,
+): number {
+  if (left.schedule.kind !== "timed" || right.schedule.kind !== "timed") {
+    invalidCalendar();
+  }
+  return (
+    left.schedule.startsAtUtcMs - right.schedule.startsAtUtcMs ||
+    left.schedule.endsAtUtcMs - right.schedule.endsAtUtcMs ||
+    left.componentIndex - right.componentIndex
+  );
 }
 
 function readEventStatus(value: unknown): ParsedMeetupEventStatus {
   if (value === "CANCELLED") return "cancelled";
   if (value === "ACTIVE" || value === "PAST") return "confirmed";
   invalidCalendar();
+}
+
+function assertEventMatchesConnectionStatus(
+  apolloState: Record<string, unknown>,
+  eventRef: string,
+  kind: FutureConnectionArguments["kind"],
+): void {
+  if (kind === "combined") return;
+  const event = readEntity(apolloState, eventRef, "Event");
+  if (
+    (kind === "active" && event.status !== "ACTIVE") ||
+    (kind === "past-cancelled" &&
+      event.status !== "PAST" &&
+      event.status !== "CANCELLED")
+  ) {
+    invalidCalendar();
+  }
 }
 
 function readVenue(
@@ -935,10 +1030,12 @@ function readInstant(input: unknown): number {
 
 function readReference(input: unknown, expectedType: string): string {
   const reference = requiredRecord(input).__ref;
+  const entityIdPattern =
+    expectedType === "Event" ? EVENT_ID_PATTERN : ENTITY_ID_PATTERN;
   if (
     typeof reference !== "string" ||
     !reference.startsWith(`${expectedType}:`) ||
-    !ENTITY_ID_PATTERN.test(reference.slice(expectedType.length + 1))
+    !entityIdPattern.test(reference.slice(expectedType.length + 1))
   ) {
     invalidCalendar();
   }

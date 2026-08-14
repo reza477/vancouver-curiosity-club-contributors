@@ -73,8 +73,11 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     requestCache,
     /function getRequestPublicPageContent\([\s\S]*?remember\([\s\S]*?getPublicPageContent\(database, slug\)/u,
   );
-  assert.match(homeData, /queryPublicEventSlice\(database, \{/u);
-  assert.match(homeData, /pageSize:\s*6/u);
+  assert.match(homeData, /readPublicHomeEventMaterialization\(database, \{/u);
+  assert.doesNotMatch(
+    homeData,
+    /queryPublicEventSlice|queryPublicEventMaterializationBundle|refreshPublicEventMaterializations/u,
+  );
   assert.match(homeRenderer, /Books, films, ideas, walks & creative nights in Vancouver/u);
   assert.match(homeRenderer, /Come curious\. Leave knowing people\./u);
   assert.match(homeRenderer, /See upcoming gatherings/u);

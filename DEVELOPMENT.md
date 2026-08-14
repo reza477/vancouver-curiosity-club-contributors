@@ -173,7 +173,7 @@ reviewed dependency update with all release gates; never use
 ## Database and content changes
 
 - Never modify an already released migration; add the next numbered one.
-- The checked-in chain currently runs from `0008` through `0020`. Do not run
+- The checked-in chain currently runs from `0008` through `0021`. Do not run
   `npm run db:generate` casually or accept an unrelated generated rewrite.
 - Keep every statement D1-compatible, additive, and retry-safe.
 - Update schema, invariants, query budgets, and integration tests together.
@@ -196,6 +196,23 @@ Only an owner or explicitly authorized release maintainer should deploy:
 Do not put Sites tokens or production secrets in GitHub Actions.
 `.openai/hosting.json` contains the Sites project identifier and logical
 binding names, but no credentials or secrets.
+
+### Scheduled Meetup maintenance
+
+`.github/workflows/daily-meetup-refresh.yml` is the production scheduler. It
+runs once daily at 04:17 America/Vancouver and can also be dispatched manually
+from GitHub Actions. Each request is timestamped, replay-protected, and signed
+with `DAILY_MEETUP_REFRESH_SECRET`, which must exist independently in the
+GitHub repository secret store and the Sites runtime secret store. Never put
+that value in source, an issue, a log, or a local environment template.
+
+The endpoint advances exactly one two-event import slice per Worker request;
+the workflow repeats fresh signed requests until every source is current. The
+terminal request atomically promotes last-known-good Home and Events
+materializations. Visitor routes read those saved projections only: they do
+not fetch or parse a Meetup group page and cannot advance synchronization.
+GitHub Actions supplies the success/failure record and a counts-only summary.
+The organizer Meetup screen retains the manual refresh for urgent changes.
 
 ## Current intentional limits
 

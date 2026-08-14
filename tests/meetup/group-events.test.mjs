@@ -12,6 +12,11 @@ const EVENT_ID = "316010049";
 const EVENT_REF = `Event:${EVENT_ID}`;
 const EVENT_URL =
   `https://www.meetup.com/${GROUP_SLUG}/events/${EVENT_ID}/`;
+const FUTURE_AFTER = "2026-08-07T04:04:02.863Z";
+const CANCELLED_EVENT_ID = "316010050";
+const CANCELLED_EVENT_REF = `Event:${CANCELLED_EVENT_ID}`;
+const OPAQUE_EVENT_ID = "hmmsztyjclbjc";
+const OPAQUE_EVENT_REF = `Event:${OPAQUE_EVENT_ID}`;
 const POSTER_ID = "535545462";
 const POSTER_URL =
   `https://secure.meetupstatic.com/photos/event/b/1/9/6/highres_${POSTER_ID}.jpeg`;
@@ -83,6 +88,185 @@ test("parses only the exact future connection and preserves structured public co
   assert.match(event.publicContent.description, /1\. Arrive on time/u);
   assert.match(event.publicContent.summary, /Why come\?/u);
   assert.ok(Object.isFrozen(event.publicContent.descriptionBlocks));
+});
+
+test("merges the exact ACTIVE and PAST/CANCELLED future connections in schedule order", () => {
+  const state = createApolloState({
+    futureConnections: [
+      { eventRefs: [EVENT_REF], statuses: ["ACTIVE"] },
+      {
+        eventRefs: [CANCELLED_EVENT_REF],
+        statuses: ["PAST", "CANCELLED"],
+      },
+    ],
+  });
+  addEvent(state, {
+    dateTime: "2026-08-10T18:00:00-07:00",
+    endTime: "2026-08-10T20:00:00-07:00",
+    eventId: CANCELLED_EVENT_ID,
+    status: "CANCELLED",
+    title: "Cancelled source event",
+  });
+
+  const parsed = parseMeetupGroupEventsPage(createHtml(state), GROUP_SLUG);
+
+  assert.deepEqual(
+    parsed.events.map((event) => ({
+      componentIndex: event.componentIndex,
+      eventUrl: event.eventUrl,
+      status: event.status,
+      title: event.title,
+    })),
+    [
+      {
+        componentIndex: 0,
+        eventUrl:
+          `https://www.meetup.com/${GROUP_SLUG}/events/${CANCELLED_EVENT_ID}/`,
+        status: "cancelled",
+        title: "Cancelled source event",
+      },
+      {
+        componentIndex: 1,
+        eventUrl: EVENT_URL,
+        status: "confirmed",
+        title: state[EVENT_REF].title,
+      },
+    ],
+  );
+});
+
+test("rejects incomplete, ambiguous, mismatched, duplicate, and over-bound split connections", () => {
+  const incomplete = createApolloState({
+    futureConnections: [{ eventRefs: [EVENT_REF], statuses: ["ACTIVE"] }],
+  });
+  assertSyncError(
+    () => parseMeetupGroupEventsPage(createHtml(incomplete), GROUP_SLUG),
+    "calendar_invalid",
+  );
+
+  const ambiguous = createApolloState({
+    futureConnections: [
+      {
+        eventRefs: [EVENT_REF],
+        statuses: ["ACTIVE", "PAST", "CANCELLED"],
+      },
+      { eventRefs: [EVENT_REF], statuses: ["ACTIVE"] },
+      {
+        eventRefs: [CANCELLED_EVENT_REF],
+        statuses: ["PAST", "CANCELLED"],
+      },
+    ],
+  });
+  addEvent(ambiguous, {
+    eventId: CANCELLED_EVENT_ID,
+    status: "CANCELLED",
+  });
+  assertSyncError(
+    () => parseMeetupGroupEventsPage(createHtml(ambiguous), GROUP_SLUG),
+    "calendar_invalid",
+  );
+
+  const mismatchedCutoffs = createApolloState({
+    futureConnections: [
+      { eventRefs: [EVENT_REF], statuses: ["ACTIVE"] },
+      {
+        afterDateTime: "2026-08-07T05:04:02.863Z",
+        eventRefs: [CANCELLED_EVENT_REF],
+        statuses: ["PAST", "CANCELLED"],
+      },
+    ],
+  });
+  addEvent(mismatchedCutoffs, {
+    eventId: CANCELLED_EVENT_ID,
+    status: "CANCELLED",
+  });
+  assertSyncError(
+    () =>
+      parseMeetupGroupEventsPage(createHtml(mismatchedCutoffs), GROUP_SLUG),
+    "calendar_invalid",
+  );
+
+  const duplicate = createApolloState({
+    futureConnections: [
+      { eventRefs: [EVENT_REF], statuses: ["ACTIVE"] },
+      { eventRefs: [EVENT_REF], statuses: ["PAST", "CANCELLED"] },
+    ],
+  });
+  assertSyncError(
+    () => parseMeetupGroupEventsPage(createHtml(duplicate), GROUP_SLUG),
+    "calendar_invalid",
+  );
+
+  const wrongStatus = createApolloState({
+    futureConnections: [
+      { eventRefs: [EVENT_REF], statuses: ["ACTIVE"] },
+      {
+        eventRefs: [CANCELLED_EVENT_REF],
+        statuses: ["PAST", "CANCELLED"],
+      },
+    ],
+  });
+  addEvent(wrongStatus, {
+    eventId: CANCELLED_EVENT_ID,
+    status: "ACTIVE",
+  });
+  assertSyncError(
+    () => parseMeetupGroupEventsPage(createHtml(wrongStatus), GROUP_SLUG),
+    "calendar_invalid",
+  );
+
+  const overBound = createApolloState({
+    futureConnections: [
+      { eventRefs: [EVENT_REF], statuses: ["ACTIVE"] },
+      {
+        eventRefs: [CANCELLED_EVENT_REF],
+        statuses: ["PAST", "CANCELLED"],
+      },
+    ],
+  });
+  addEvent(overBound, {
+    eventId: CANCELLED_EVENT_ID,
+    status: "CANCELLED",
+  });
+  assertSyncError(
+    () =>
+      parseMeetupGroupEventsPage(createHtml(overBound), GROUP_SLUG, {
+        maxEvents: 1,
+      }),
+    "calendar_invalid",
+  );
+});
+
+test("accepts only bounded URL-safe opaque recurring Meetup event ids", () => {
+  const state = createApolloState({ eventRefs: [OPAQUE_EVENT_REF] });
+  addEvent(state, {
+    eventId: OPAQUE_EVENT_ID,
+    status: "ACTIVE",
+    title: "Meditation and journaling circle",
+  });
+
+  const parsed = parseMeetupGroupEventsPage(createHtml(state), GROUP_SLUG);
+  assert.equal(parsed.events[0].uid, `event_${OPAQUE_EVENT_ID}@meetup.com`);
+  assert.equal(
+    parsed.events[0].eventUrl,
+    `https://www.meetup.com/${GROUP_SLUG}/events/${OPAQUE_EVENT_ID}/`,
+  );
+
+  state[OPAQUE_EVENT_REF].eventUrl = EVENT_URL;
+  assertSyncError(
+    () => parseMeetupGroupEventsPage(createHtml(state), GROUP_SLUG),
+    "calendar_invalid",
+  );
+
+  for (const unsafeId of ["../escape", "contains.dot", "x".repeat(129)]) {
+    const unsafeRef = `Event:${unsafeId}`;
+    const unsafeState = createApolloState({ eventRefs: [unsafeRef] });
+    addEvent(unsafeState, { eventId: unsafeId, status: "ACTIVE" });
+    assertSyncError(
+      () => parseMeetupGroupEventsPage(createHtml(unsafeState), GROUP_SLUG),
+      "calendar_invalid",
+    );
+  }
 });
 
 test("rejects cross-group events, mismatched ids, and non-allowlisted poster hosts", () => {
@@ -392,15 +576,36 @@ test("fetch rejects redirects, non-HTML responses, and oversized bodies", async 
   );
 });
 
-function createApolloState({ eventRefs = [EVENT_REF] } = {}) {
-  const futureConnectionKey = `events(${JSON.stringify({
-    filter: {
-      afterDateTime: "2026-08-07T04:04:02.863Z",
-      status: ["ACTIVE", "PAST", "CANCELLED"],
+function createApolloState({
+  eventRefs = [EVENT_REF],
+  futureConnections,
+} = {}) {
+  const resolvedFutureConnections = futureConnections ?? [
+    {
+      eventRefs,
+      statuses: ["ACTIVE", "PAST", "CANCELLED"],
     },
-    first: 30,
-    sort: "ASC",
-  })})`;
+  ];
+  const futureConnectionState = Object.fromEntries(
+    resolvedFutureConnections.map(
+      ({ afterDateTime = FUTURE_AFTER, eventRefs: refs, statuses }) => [
+        `events(${JSON.stringify({
+          filter: { afterDateTime, status: statuses },
+          first: 30,
+          sort: "ASC",
+        })})`,
+        {
+          __typename: "GroupEventConnection",
+          edges: refs.map((eventRef) => ({
+            __typename: "EventEdge",
+            node: { __ref: eventRef },
+          })),
+          pageInfo: { __typename: "PageInfo", hasNextPage: true },
+          totalCount: Math.max(68, refs.length),
+        },
+      ],
+    ),
+  );
   const state = {
     ROOT_QUERY: {
       __typename: "Query",
@@ -412,15 +617,7 @@ function createApolloState({ eventRefs = [EVENT_REF] } = {}) {
       isPrivate: false,
       timezone: "America/Vancouver",
       urlname: GROUP_SLUG,
-      [futureConnectionKey]: {
-        __typename: "GroupEventConnection",
-        edges: eventRefs.map((eventRef) => ({
-          __typename: "EventEdge",
-          node: { __ref: eventRef },
-        })),
-        pageInfo: { __typename: "PageInfo", hasNextPage: true },
-        totalCount: 68,
-      },
+      ...futureConnectionState,
       'events({"filter":{"beforeDateTime":"2026-08-07T04:04:02.863Z","status":["ACTIVE","PAST","CANCELLED"]},"first":10,"sort":"DESC"})': {
         __typename: "GroupEventConnection",
         edges: [{ __typename: "EventEdge", node: { __ref: "Event:999999999" } }],
@@ -457,6 +654,27 @@ function createApolloState({ eventRefs = [EVENT_REF] } = {}) {
     },
   };
   return structuredClone(state);
+}
+
+function addEvent(
+  state,
+  {
+    dateTime = "2026-08-12T18:00:00-07:00",
+    endTime = "2026-08-12T20:00:00-07:00",
+    eventId,
+    status,
+    title = "Additional source event",
+  },
+) {
+  state[`Event:${eventId}`] = {
+    ...state[EVENT_REF],
+    dateTime,
+    endTime,
+    eventUrl: `https://www.meetup.com/${GROUP_SLUG}/events/${eventId}/`,
+    id: eventId,
+    status,
+    title,
+  };
 }
 
 function createHtml(

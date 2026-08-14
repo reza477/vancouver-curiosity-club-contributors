@@ -8,6 +8,7 @@ import {
 } from "../app/api/organizer/meetup/_mutation.ts";
 import {
   MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS,
+  runMeetupRefreshAndMaterialize,
   runMeetupRefreshSelection,
 } from "../app/organizer/meetup/MeetupControls.tsx";
 
@@ -120,6 +121,126 @@ test("Meetup refresh selection runs canonical clubs first, finishes partial club
   assert.equal(limited.stoppedAtLimit, true);
 });
 
+test("manual Meetup refresh rebuilds public materializations only after every selected club finishes", async (t) => {
+  const state = Object.freeze({
+    enabled: true,
+    lastAttemptAt: "2026-08-06T12:00:00.000Z",
+    lastSuccessAt: "2026-08-06T12:00:00.000Z",
+    nextRefreshAt: "2026-08-06T12:15:00.000Z",
+    scheduleConflict: false,
+    status: "current",
+  });
+  const counts = Object.freeze({
+    cancelled: 0,
+    created: 1,
+    rejected: 0,
+    removed: 0,
+    updated: 0,
+  });
+
+  await t.test("all programs reach terminal completion first", async () => {
+    const order = [];
+    const outcomes = new Map([
+      ["club_a", ["partial", "completed"]],
+      ["club_b", ["not_modified"]],
+    ]);
+    const run = await runMeetupRefreshAndMaterialize(
+      [
+        { id: "club_a", name: "Vancouver Curiosity Club" },
+        { id: "club_b", name: "Vancouver Literature and Film" },
+      ],
+      async (clubId) => {
+        const outcome = outcomes.get(clubId)?.shift();
+        assert.ok(outcome);
+        order.push(`refresh:${clubId}:${outcome}`);
+        return { counts, outcome, state };
+      },
+      async () => {
+        order.push("materialize");
+        return Object.freeze({
+          eventsSnapshotCount: 1,
+          homeEventCount: 6,
+        });
+      },
+    );
+
+    assert.deepEqual(order, [
+      "refresh:club_b:not_modified",
+      "refresh:club_a:partial",
+      "refresh:club_a:completed",
+      "materialize",
+    ]);
+    assert.deepEqual(run.materialization, {
+      eventsSnapshotCount: 1,
+      homeEventCount: 6,
+    });
+    assert.equal(run.materializationError, null);
+  });
+
+  for (const outcome of [
+    "busy",
+    "disabled",
+    "failed",
+    "not_connected",
+    "not_due",
+  ]) {
+    await t.test(`${outcome} never replaces the public snapshots`, async () => {
+      let materializationCalls = 0;
+      const run = await runMeetupRefreshAndMaterialize(
+        [{ id: "club_a", name: "Vancouver Curiosity Club" }],
+        async () => ({ counts, outcome, state }),
+        async () => {
+          materializationCalls += 1;
+          return { eventsSnapshotCount: 1, homeEventCount: 6 };
+        },
+      );
+
+      assert.equal(materializationCalls, 0);
+      assert.equal(run.materialization, null);
+      assert.equal(run.materializationError, null);
+    });
+  }
+
+  await t.test("the bounded safety limit never publishes a partial run", async () => {
+    let refreshCalls = 0;
+    let materializationCalls = 0;
+    const run = await runMeetupRefreshAndMaterialize(
+      [{ id: "club_a", name: "Vancouver Curiosity Club" }],
+      async () => {
+        refreshCalls += 1;
+        return {
+          counts,
+          outcome: "partial",
+          state: { ...state, status: "partial" },
+        };
+      },
+      async () => {
+        materializationCalls += 1;
+        return { eventsSnapshotCount: 1, homeEventCount: 6 };
+      },
+    );
+
+    assert.equal(refreshCalls, MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS);
+    assert.equal(run.stoppedAtLimit, true);
+    assert.equal(materializationCalls, 0);
+  });
+
+  await t.test("a public rebuild failure stays distinct from source success", async () => {
+    const materializationFailure = new Error("private failure detail");
+    const run = await runMeetupRefreshAndMaterialize(
+      [{ id: "club_a", name: "Vancouver Curiosity Club" }],
+      async () => ({ counts, outcome: "not_modified", state }),
+      async () => {
+        throw materializationFailure;
+      },
+    );
+
+    assert.equal(run.error, null);
+    assert.equal(run.materialization, null);
+    assert.equal(run.materializationError, materializationFailure);
+  });
+});
+
 test("Meetup snapshot identity includes the versioned importer, aliases, and public content", async () => {
   const [sync, aliases] = await Promise.all([
     readFile(new URL("lib/server/meetup/sync.ts", projectRoot), "utf8"),
@@ -190,7 +311,12 @@ test("homepage leads with the club purpose and eight distinct sections", async (
     assert.ok(sectionIndex > priorSectionIndex, className);
     priorSectionIndex = sectionIndex;
   }
-  assert.match(homeData, /view:\s*"upcoming"[\s\S]*?pageSize:\s*6/u);
+  assert.match(homeData, /readPublicHomeEventMaterialization/u);
+  assert.doesNotMatch(
+    homeData,
+    /queryPublicEventSlice|queryPublicEventMaterializationBundle|refreshPublicEventMaterializations/u,
+    "ordinary Home requests must read the durable event materialization without projecting or refreshing it",
+  );
   assert.doesNotMatch(
     `${page}\n${homeRenderer}`,
     /PublicMonthCalendar|public-calendar__grid|calendar-view-switcher/u,
@@ -544,7 +670,11 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
   );
   assert.match(
     controls,
-    /runMeetupRefreshSelection\([\s\S]*selectedClubs[\s\S]*requestMeetupRefresh/u,
+    /runMeetupRefreshAndMaterialize\([\s\S]*selectedClubs[\s\S]*requestMeetupRefresh[\s\S]*requestMeetupMaterialization/u,
+  );
+  assert.match(
+    controls,
+    /fetch\("\/api\/organizer\/meetup\/materialize"[\s\S]*body:\s*JSON\.stringify\(\{\}\)/u,
   );
   assert.match(
     controls,
@@ -575,7 +705,15 @@ test("organizer connection UI is noindex, server-authorized, and read-only for O
 });
 
 test("manual Meetup APIs derive authority server-side and restrict every mutation", async () => {
-  const [shared, connect, refresh, model, worker, requestPathname] =
+  const [
+    shared,
+    connect,
+    refresh,
+    materialize,
+    model,
+    worker,
+    requestPathname,
+  ] =
     await Promise.all([
     readFile(
       new URL("app/api/organizer/meetup/_shared.ts", projectRoot),
@@ -587,6 +725,13 @@ test("manual Meetup APIs derive authority server-side and restrict every mutatio
     ),
     readFile(
       new URL("app/api/organizer/meetup/refresh/route.ts", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "app/api/organizer/meetup/materialize/route.ts",
+        projectRoot,
+      ),
       "utf8",
     ),
     readFile(new URL("app/organizer/meetup/model.ts", projectRoot), "utf8"),
@@ -633,6 +778,23 @@ test("manual Meetup APIs derive authority server-side and restrict every mutatio
   assert.match(
     refresh,
     /refreshMeetupCalendarSource\(database, identity,\s*\{\s*clubId,\s*\}\)/u,
+  );
+  assert.match(materialize, /requireSameOriginMutation\(request\)/u);
+  assert.match(materialize, /readBoundedUtf8Body\(request,\s*16\)/u);
+  assert.match(
+    materialize,
+    /requireMeetupApiActor\(\[\s*"owner",\s*"administrator",?\s*\]\)/u,
+  );
+  assert.match(materialize, /assertOnlyKeys\(payload,\s*\[\]\)/u);
+  assert.match(
+    materialize,
+    /refreshPublicEventMaterializations\([\s\S]*database,[\s\S]*organizationId:\s*membership\.organizationId/u,
+  );
+  assert.match(materialize, /privateJsonHeaders\(\)/u);
+  assert.match(materialize, /safeErrorResponse/u);
+  assert.doesNotMatch(
+    materialize,
+    /payload\.(?:organizationId|actorId|membershipRole)/u,
   );
   assert.doesNotMatch(connect, /sourceUrl|source_url/);
   assert.doesNotMatch(

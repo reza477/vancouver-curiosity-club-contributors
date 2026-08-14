@@ -30,6 +30,8 @@ export const PUBLIC_EVENTS_SNAPSHOT_TTL_MS = 10 * 60 * 1_000;
 export const PUBLIC_EVENTS_SNAPSHOT_MAX_BYTES = 1_000_000;
 const PUBLIC_EVENTS_SNAPSHOT_SCHEMA_VERSION = 3;
 const PUBLIC_EVENTS_MAX_CALENDAR_EVENTS = 96;
+const PUBLIC_EVENTS_MAX_MATERIALIZED_EVENTS =
+  PUBLIC_EVENTS_MAX_CALENDAR_EVENTS * 27;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const MONTH_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])$/u;
 
@@ -357,13 +359,15 @@ function parseSnapshotJson(
       maximum: MAX_TIMESTAMP,
     });
     if (expiresAtUtcMs <= nowUtcMs) return null;
-    return parseEventsPageData(envelope.data);
+    return parsePublicEventsPageData(envelope.data);
   } catch {
     return null;
   }
 }
 
-function parseEventsPageData(value: unknown): PublicEventsPageData {
+export function parsePublicEventsPageData(
+  value: unknown,
+): PublicEventsPageData {
   const data = parseObject(value, "snapshot.data");
   assertOnlyKeys(data, ["calendar", "calendarAvailable"], "snapshot.data");
   if (data.calendarAvailable !== true) {
@@ -404,11 +408,10 @@ function parseEventsPageData(value: unknown): PublicEventsPageData {
   }
   return Object.freeze({
     calendar: Object.freeze({
-      events: Object.freeze(
-        calendar.events.map((event, index) =>
-          parseEventCard(event, index),
-        ),
-      ),
+      events: parsePublicEventCardList(calendar.events, {
+        maximum: PUBLIC_EVENTS_MAX_CALENDAR_EVENTS,
+        path: "snapshot.data.calendar.events",
+      }),
       hasMore: calendar.hasMore,
       resolvedMonth: Object.freeze({
         invalid: resolvedMonth.invalid,
@@ -422,8 +425,31 @@ function parseEventsPageData(value: unknown): PublicEventsPageData {
   });
 }
 
-function parseEventCard(value: unknown, index: number): PublicEventCardDto {
-  const path = `snapshot.data.calendar.events.${index}`;
+export function parsePublicEventCardList(
+  value: unknown,
+  options: Readonly<{ maximum: number; path: string }>,
+): readonly PublicEventCardDto[] {
+  const maximum = parseFiniteInteger(options.maximum, {
+    path: `${options.path}.maximum`,
+    minimum: 0,
+    maximum: PUBLIC_EVENTS_MAX_MATERIALIZED_EVENTS,
+  });
+  if (!Array.isArray(value) || value.length > maximum) {
+    throw new Error(`The cached public events at ${options.path} are invalid.`);
+  }
+  return Object.freeze(
+    value.map((event, index) =>
+      parseEventCard(event, index, options.path),
+    ),
+  );
+}
+
+function parseEventCard(
+  value: unknown,
+  index: number,
+  basePath = "snapshot.data.calendar.events",
+): PublicEventCardDto {
+  const path = `${basePath}.${index}`;
   const event = parseObject(value, path);
   assertOnlyKeys(
     event,

@@ -39,6 +39,7 @@ import {
   type CuratedMeetupEventEnrichment,
   validateMeetupDescriptionBlocks,
 } from "../../meetup-event-enrichment";
+import { PUBLIC_EVENT_LANE_SLUGS } from "../../public-event-lanes";
 
 export type PublicEventDto = Readonly<{
   category: Readonly<{
@@ -1109,6 +1110,15 @@ export type QueryPublicCalendarLandingBundleInput = Readonly<{
 export type PublicCalendarLandingBundleDto = Readonly<{
   calendar: PublicCalendarMonthDto;
   landingEvent: PublicEventCardDto | null;
+}>;
+
+export type QueryPublicEventMaterializationBundleInput = Readonly<{
+  calendar: QueryPublicCalendarMonthInput;
+}>;
+
+export type PublicEventMaterializationBundleDto = Readonly<{
+  calendarEvents: readonly PublicEventCardDto[];
+  upcomingEvents: readonly PublicEventCardDto[];
 }>;
 
 export type GetPublicEventInput = Readonly<{
@@ -4416,6 +4426,143 @@ export async function listNextPublicEventsByClub(
 }
 
 const PUBLIC_CALENDAR_MONTH_EVENT_LIMIT = 96;
+const PUBLIC_EVENT_MATERIALIZATION_UPCOMING_LIMIT = 48;
+const PUBLIC_EVENT_MATERIALIZATION_CALENDAR_LIMIT =
+  PUBLIC_CALENDAR_MONTH_EVENT_LIMIT * 27;
+
+/**
+ * Updater-only projection for durable Home and Events materializations.
+ *
+ * One materialized public-event CTE reads the complete supported calendar
+ * window plus the global Home six and the nearest upcoming event for each
+ * supported lane. The returned rows pass the same enrichment and current
+ * publication revalidation boundary as every other public surface. The hard
+ * calendar cap is intentionally large enough to retain 96 rows in each of
+ * the 25 UI-reachable months; the materializer applies the stricter per-month
+ * and per-lane bounds before publishing. An overflow rejects the refresh
+ * instead of publishing a partial generation.
+ */
+export async function queryPublicEventMaterializationBundle(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: QueryPublicEventMaterializationBundleInput,
+): Promise<PublicEventMaterializationBundleDto> {
+  const calendar = parsePublicCalendarMonthQuery(input.calendar);
+  const upcoming = parsePublicEventQuery({
+    nowUtcMs: calendar.nowUtcMs,
+    organizationId: calendar.organizationId,
+    page: 1,
+    pageSize: PUBLIC_EVENT_MATERIALIZATION_UPCOMING_LIMIT,
+    todayDate: calendar.todayDate,
+    view: "upcoming",
+  });
+  const calendarFilter = buildPublicCalendarMonthFilter(calendar);
+  const upcomingFilter = buildPublicEventFilter(upcoming);
+  const upcomingOrder = publicEventOrderExpression("upcoming");
+  const laneBindings = [...PUBLIC_EVENT_LANE_SLUGS];
+  const result = await database
+    .prepare(
+      `${UNIFIED_PUBLIC_EVENT_CTE_SQL},
+       materialization_public_events AS MATERIALIZED (
+         SELECT *
+         FROM public_events
+       ),
+       materialization_calendar AS (
+         SELECT public_event.*,
+                row_number() OVER (
+                  ORDER BY ${upcomingOrder}
+                ) AS public_result_ordinal
+         FROM materialization_public_events AS public_event
+         WHERE ${calendarFilter.sql}
+         ORDER BY ${upcomingOrder}
+         LIMIT ?
+       ),
+       materialization_upcoming_ranked AS (
+         SELECT public_event.*,
+                row_number() OVER (
+                  ORDER BY ${upcomingOrder}
+                ) AS public_result_ordinal,
+                row_number() OVER (
+                  PARTITION BY public_event.lane_slug
+                  ORDER BY ${upcomingOrder}
+                ) AS public_lane_ordinal
+         FROM materialization_public_events AS public_event
+         WHERE ${upcomingFilter.sql}
+       ),
+       materialization_upcoming AS (
+         SELECT *
+         FROM materialization_upcoming_ranked
+         WHERE public_result_ordinal <= ${PUBLIC_EVENT_MATERIALIZATION_UPCOMING_LIMIT}
+            OR (
+              public_lane_ordinal = 1
+              AND lane_slug IN (?, ?, ?, ?)
+            )
+       )
+       SELECT 'calendar' AS public_result_kind,
+              public_event.public_result_ordinal,
+              ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
+       FROM materialization_calendar AS public_event
+       UNION ALL
+       SELECT 'upcoming' AS public_result_kind,
+              public_event.public_result_ordinal,
+              ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
+       FROM materialization_upcoming AS public_event
+       ORDER BY public_result_kind, public_result_ordinal`,
+    )
+    .bind(
+      calendar.organizationId,
+      calendar.organizationId,
+      calendar.organizationId,
+      ...calendarFilter.bindings,
+      PUBLIC_EVENT_MATERIALIZATION_CALENDAR_LIMIT + 1,
+      ...upcomingFilter.bindings,
+      ...laneBindings,
+    )
+    .all<Record<string, unknown>>();
+  assertSuccessfulResult(result);
+  const rows = result.results ?? [];
+  for (const row of rows) assertSinglePublicSlug(row);
+  const calendarRows = rows.filter(
+    (row) => row.public_result_kind === "calendar",
+  );
+  if (calendarRows.length > PUBLIC_EVENT_MATERIALIZATION_CALENDAR_LIMIT) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The public event materialization exceeds its safe row limit.",
+    );
+  }
+  const upcomingRows = rows.filter(
+    (row) => row.public_result_kind === "upcoming",
+  );
+  const uniqueRows = new Map<string, Record<string, unknown>>();
+  for (const row of [...calendarRows, ...upcomingRows]) {
+    uniqueRows.set(publicEventResultIdentity(row), row);
+  }
+  const enrichedRows = await enrichPublicEventRows(
+    database,
+    calendar.organizationId,
+    [...uniqueRows.values()],
+  );
+  const eventByIdentity = new Map(
+    enrichedRows.map((row) => [
+      publicEventResultIdentity(row),
+      toPublicEventCardDto(row),
+    ]),
+  );
+  const eventsFor = (
+    sourceRows: readonly Record<string, unknown>[],
+  ): readonly PublicEventCardDto[] =>
+    Object.freeze(
+      sourceRows.flatMap((row) => {
+        const event = eventByIdentity.get(publicEventResultIdentity(row));
+        return event ? [event] : [];
+      }),
+    );
+  return Object.freeze({
+    calendarEvents: eventsFor(calendarRows),
+    upcomingEvents: eventsFor(upcomingRows),
+  });
+}
 
 /**
  * Reads one calendar month and (when needed) the nearest upcoming event from

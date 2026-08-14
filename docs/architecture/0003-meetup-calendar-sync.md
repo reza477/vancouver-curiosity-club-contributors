@@ -91,14 +91,15 @@ parser for each exact configured group's canonical public events page.
 - Refetch the no-store page while a partial snapshot is pending so the cursor
   resumes only when the complete normalized hash still matches. Conditional
   ETag/Last-Modified behavior remains confined to the legacy iCalendar adapter.
-- Refresh on explicit Owner/Administrator request or opportunistically on a
-  public view. A complete source waits at least 15 minutes; a partial snapshot
-  may resume on the next request. If another request already owns the refresh,
-  render the last completed snapshot immediately rather than redirecting the
-  visitor into a busy loop. Do not claim scheduled or background sync.
+- Refresh on explicit Owner/Administrator request or through the protected
+  daily maintenance endpoint. The scheduled caller signs each bounded request
+  with a timestamp, UUID, and replay-protected HMAC. A complete source waits at
+  least 15 minutes; a partial snapshot resumes in a later signed request.
+  Public visitor requests only read the last completed generation and never
+  fetch or parse a Meetup group page.
 - Record import batches, sanitized row facts, immutable event revisions,
   source links, and content-free audit entries. Audit terminal sync records
-  distinguish manual from refresh-on-view triggers.
+  distinguish manual from scheduled triggers.
 - Publish only completed snapshot rows whose generation ID exactly matches the
   source's active generation. Finalization atomically advances that pointer,
   records absence revisions and audit facts, soft-retires missing future rows,

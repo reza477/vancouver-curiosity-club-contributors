@@ -12,7 +12,7 @@ A calendar-first community website for finding thoughtful, creative, and social 
 ## Product highlights
 
 - Responsive public event discovery, month planning, club profiles, and event detail pages.
-- Trusted Meetup synchronization with local poster handling and source-faithful event facts.
+- Protected daily Meetup synchronization with durable, fast Home and Events snapshots, local poster handling, and source-faithful event facts.
 - Google Calendar links plus standards-compliant public and private iCalendar feeds.
 - An authenticated organizer workspace for scheduling, publishing, content, media, imports, exports, and submissions.
 - D1-backed structured content with revision history, previews, publication safeguards, and audited changes.

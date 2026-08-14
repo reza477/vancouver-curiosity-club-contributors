@@ -22,9 +22,11 @@ test("Home bounds peak D1 read concurrency at the catalog fan-out of five", asyn
   let active = 0;
   let peak = 0;
   let statementCount = 0;
+  const executedSql = [];
 
   const execute = async (sql, mode) => {
     statementCount += 1;
+    executedSql.push(sql);
     active += 1;
     peak = Math.max(peak, active);
     try {
@@ -86,11 +88,23 @@ test("Home bounds peak D1 read concurrency at the catalog fan-out of five", asyn
 
   assert.equal(result?.page.slug, "home");
   assert.deepEqual(result?.events, []);
-  assert.match(
+  assert.match(homeSource, /readPublicHomeEventMaterialization/u);
+  assert.doesNotMatch(
     homeSource,
-    /view:\s*"upcoming"[\s\S]*?page:\s*1[\s\S]*?pageSize:\s*6/u,
+    /queryPublicEventSlice|queryPublicEventMaterializationBundle|refreshPublicEventMaterializations/u,
   );
   assert.equal(statementCount, 7);
+  assert.equal(
+    executedSql.filter((sql) =>
+      sql.includes("FROM public_event_calendar_snapshots"),
+    ).length,
+    1,
+    "Home adds exactly one indexed durable event-materialization read after the catalog fan-out",
+  );
+  assert.ok(
+    executedSql.every((sql) => !/\bpublic_events\s+AS\s*\(/u.test(sql)),
+    "Home must not run the unified event projection",
+  );
   assert.equal(
     peak,
     5,

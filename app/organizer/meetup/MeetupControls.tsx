@@ -42,6 +42,17 @@ type RefreshRun = Readonly<{
   stoppedAtLimit: boolean;
 }>;
 
+type MaterializationCounts = Readonly<{
+  eventsSnapshotCount: number;
+  homeEventCount: number;
+}>;
+
+type RefreshAndMaterializeRun = RefreshRun &
+  Readonly<{
+    materialization: MaterializationCounts | null;
+    materializationError: unknown | null;
+  }>;
+
 const ALL_REFRESH_CLUBS = "__all__";
 const DEPENDENT_MEETUP_PROGRAM_NAME = "Vancouver Curiosity Club";
 export const MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS = 64;
@@ -114,9 +125,10 @@ export function MeetupControls({
     setBusyAction("refresh");
     setNotice(null);
     try {
-      const run = await runMeetupRefreshSelection(
+      const run = await runMeetupRefreshAndMaterialize(
         selectedClubs,
         requestMeetupRefresh,
+        requestMeetupMaterialization,
       );
       if (run.lastAggregateState) setState(run.lastAggregateState);
       setNotice(
@@ -148,6 +160,22 @@ export function MeetupControls({
     return body;
   }
 
+  async function requestMeetupMaterialization(): Promise<MaterializationCounts> {
+    const response = await fetch("/api/organizer/meetup/materialize", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    const body = await readJson(response);
+    if (!response.ok || !isMaterializationResponse(body)) {
+      throw new SafeUiRequestError(safeApiMessage(body));
+    }
+    return body.counts;
+  }
+
   const copy = connectionCopy(state);
   const cannotRefresh =
     busyAction !== null ||
@@ -175,7 +203,7 @@ export function MeetupControls({
             <dd>{formatPrivateTime(state.lastSuccessAt)}</dd>
           </div>
           <div>
-            <dt>Next view refresh due</dt>
+            <dt>Next scheduled refresh due</dt>
             <dd>{formatPrivateTime(state.nextRefreshAt)}</dd>
           </div>
         </dl>
@@ -310,11 +338,12 @@ export function MeetupControls({
 
       <aside className="meetup-cadence-note">
         <p>
-          <strong>No scheduled sync:</strong> Home and Calendar page views may
-          request one opportunistic feed check when a refresh is due. Completed
-          feeds wait at least 15 minutes; partial snapshots resume in bounded
-          chunks. Manual refresh is explicit and still respects an in-progress
-          refresh lease.
+          <strong>Daily protected sync:</strong> A signed maintenance job
+          checks the official feeds each day and follows partial imports in
+          bounded two-event requests. After every source is current, it
+          prebuilds the durable Home and Events views. Ordinary visitor page
+          requests only read the last completed data and never run a Meetup
+          import. Use the manual refresh for an urgent correction.
         </p>
         <p>
           The official calendar feed updates event titles, times, status, and
@@ -355,7 +384,8 @@ export function connectionCopy(state: MeetupUiState) {
     return {
       label: "Disabled",
       heading: "Feed refresh is paused.",
-      detail: "No view or manual refresh runs while the source is disabled.",
+      detail:
+        "No scheduled or manual refresh runs while the source is disabled.",
       tone: "quiet",
     };
   }
@@ -479,7 +509,66 @@ export async function runMeetupRefreshSelection(
   });
 }
 
-function refreshRunCopy(run: RefreshRun, selectedProgramCount: number): string {
+export async function runMeetupRefreshAndMaterialize(
+  clubs: readonly RefreshClubTarget[],
+  requestRefresh: (clubId: string) => Promise<RefreshResponse>,
+  requestMaterialization: () => Promise<MaterializationCounts>,
+): Promise<RefreshAndMaterializeRun> {
+  const refresh = await runMeetupRefreshSelection(clubs, requestRefresh);
+  const selectedProgramCount = new Set(clubs.map((club) => club.id)).size;
+  if (!isSuccessfulTerminalRefresh(refresh, selectedProgramCount)) {
+    return Object.freeze({
+      ...refresh,
+      materialization: null,
+      materializationError: null,
+    });
+  }
+
+  try {
+    const materialization = await requestMaterialization();
+    return Object.freeze({
+      ...refresh,
+      materialization,
+      materializationError: null,
+    });
+  } catch (error) {
+    return Object.freeze({
+      ...refresh,
+      materialization: null,
+      materializationError: error,
+    });
+  }
+}
+
+function isSuccessfulTerminalRefresh(
+  run: RefreshRun,
+  selectedProgramCount: number,
+): boolean {
+  if (
+    selectedProgramCount < 1 ||
+    run.error !== null ||
+    run.stoppedAtLimit
+  ) {
+    return false;
+  }
+  const terminalOutcomes = run.outcomes.filter(
+    (outcome) => outcome === "completed" || outcome === "not_modified",
+  );
+  return (
+    terminalOutcomes.length === selectedProgramCount &&
+    run.outcomes.every(
+      (outcome) =>
+        outcome === "partial" ||
+        outcome === "completed" ||
+        outcome === "not_modified",
+    )
+  );
+}
+
+function refreshRunCopy(
+  run: RefreshAndMaterializeRun,
+  selectedProgramCount: number,
+): string {
   const totals = refreshCountsCopy(run.counts);
   if (run.error) {
     const message =
@@ -492,6 +581,12 @@ function refreshRunCopy(run: RefreshRun, selectedProgramCount: number): string {
   }
   if (run.stoppedAtLimit) {
     return `Refresh paused at the ${MAX_AUTOMATIC_MEETUP_REFRESH_REQUESTS}-request safety limit. Choose the same selection and refresh again to continue. ${totals}`;
+  }
+  if (run.materializationError) {
+    return `Meetup source refresh completed, but the public Home and Events views could not be rebuilt. Run Refresh now again to retry the public update. ${totals}`;
+  }
+  if (run.materialization) {
+    return `Refresh completed across ${selectedProgramCount} selected program${selectedProgramCount === 1 ? "" : "s"} in ${run.requestCount} bounded request${run.requestCount === 1 ? "" : "s"}. Public Home and Events were rebuilt with ${run.materialization.homeEventCount} Home event${run.materialization.homeEventCount === 1 ? "" : "s"} and ${run.materialization.eventsSnapshotCount} Events snapshot${run.materialization.eventsSnapshotCount === 1 ? "" : "s"}. ${totals}`;
   }
   const exceptional = new Set(
     run.outcomes.filter(
@@ -595,6 +690,21 @@ function isRefreshResponse(value: unknown): value is Readonly<{
     isRefreshCounts(value.counts) &&
     isMeetupUiState(value.state)
   );
+}
+
+function isMaterializationResponse(
+  value: unknown,
+): value is Readonly<{ counts: MaterializationCounts }> {
+  if (!isRecord(value) || !isRecord(value.counts)) return false;
+  const counts = value.counts;
+  return ["eventsSnapshotCount", "homeEventCount"].every((key) => {
+    const count = counts[key];
+    return (
+      typeof count === "number" &&
+      Number.isSafeInteger(count) &&
+      count >= 0
+    );
+  });
 }
 
 function isRefreshCounts(value: unknown): value is RefreshCounts {

@@ -27,12 +27,13 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0018_public_event_calendar_snapshots.sql",
   "0019_meetup_event_lanes.sql",
   "0020_meetup_public_event_facts.sql",
+  "0021_daily_meetup_maintenance.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
-  checks: 246,
-  explicitIndexes: 200,
+  checks: 249,
+  explicitIndexes: 201,
   foreignKeys: 300,
-  tables: 88,
+  tables: 89,
   triggers: 0,
   uniqueIndexes: 79,
 });
@@ -57,6 +58,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0018_snapshot.json",
       "0019_snapshot.json",
       "0020_snapshot.json",
+      "0021_snapshot.json",
       "_journal.json",
     ],
     "the normalized chain must include every public-content and Events snapshot migration",
@@ -81,6 +83,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 18, tag: "0018_public_event_calendar_snapshots" },
       { idx: 19, tag: "0019_meetup_event_lanes" },
       { idx: 20, tag: "0020_meetup_public_event_facts" },
+      { idx: 21, tag: "0021_daily_meetup_maintenance" },
     ],
   );
   assert.deepEqual(
@@ -98,6 +101,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0018",
       "0019",
       "0020",
+      "0021",
     ].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
@@ -111,7 +115,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200, 200],
+    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200, 200, 201],
     "migration snapshots must match the cumulative packaged index state",
   );
 
@@ -206,6 +210,19 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
   assert.match(
     eventSnapshotFragments[1],
     /CREATE INDEX IF NOT EXISTS `public_event_calendar_snapshots_org_expiry_idx`/u,
+  );
+
+  const maintenanceFragments = productionFragments(
+    migrationSql("0021_daily_meetup_maintenance.sql"),
+  );
+  assert.equal(maintenanceFragments.length, 2);
+  assert.match(
+    maintenanceFragments[0],
+    /CREATE TABLE IF NOT EXISTS `maintenance_request_receipts`/u,
+  );
+  assert.match(
+    maintenanceFragments[1],
+    /CREATE INDEX IF NOT EXISTS `maintenance_request_receipts_expiry_idx`/u,
   );
 
   const database = new DatabaseSync(":memory:");
@@ -361,8 +378,14 @@ test("every normalized partial migration prefix can be retried safely", () => {
   const ledgerAtomicFacts = productionFragments(
     migrationSql("0020_meetup_public_event_facts.sql"),
   );
-  const baseline = EXPECTED_MIGRATIONS.slice(1, -1).flatMap((file) =>
+  const factsIndex = EXPECTED_MIGRATIONS.indexOf(
+    "0020_meetup_public_event_facts.sql",
+  );
+  const baseline = EXPECTED_MIGRATIONS.slice(1, factsIndex).flatMap((file) =>
     productionFragments(migrationSql(file)),
+  );
+  const afterFacts = EXPECTED_MIGRATIONS.slice(factsIndex + 1).flatMap(
+    (file) => productionFragments(migrationSql(file)),
   );
 
   for (let cut = 0; cut <= reset.length; cut += 1) {
@@ -374,6 +397,7 @@ test("every normalized partial migration prefix can be retried safely", () => {
       applyProductionFragments(database, reset);
       applyProductionFragments(database, baseline);
       applyProductionFragments(database, ledgerAtomicFacts);
+      applyProductionFragments(database, afterFacts);
       assertDatabaseSignature(database, EXPECTED_SIGNATURE);
       assert.equal(
         database
@@ -396,6 +420,7 @@ test("every normalized partial migration prefix can be retried safely", () => {
       applyProductionFragments(database, baseline.slice(0, cut));
       applyProductionFragments(database, baseline);
       applyProductionFragments(database, ledgerAtomicFacts);
+      applyProductionFragments(database, afterFacts);
       assertDatabaseSignature(database, EXPECTED_SIGNATURE);
     } finally {
       database.close();

@@ -4,7 +4,7 @@ import test from "node:test";
 
 const projectRoot = new URL("../../", import.meta.url);
 
-test("Events keeps one calendar behind a bounded failure-only fallback", async () => {
+test("Events keeps one calendar behind one durable materialization read", async () => {
   const [source, loader, renderer] = await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
     readFile(
@@ -22,15 +22,12 @@ test("Events keeps one calendar behind a bounded failure-only fallback", async (
     source,
     /\bqueryPublicEventSlice\b|\bloadPublicMonthCalendar\b/u,
   );
-  assert.match(loader, /queryPublicCalendarLandingBundle/u);
-  assert.match(loader, /loadIndependentEventsCalendar/u);
-  assert.match(loader, /queryPublicEventSlice/u);
-  assert.match(loader, /queryPublicCalendarMonth/u);
+  assert.match(loader, /readPublicEventsPageMaterialization/u);
   assert.doesNotMatch(loader, /eventListAvailable|eventPage|emptyEventPage/u);
   assert.doesNotMatch(
     loader,
-    /Promise\.all\(\s*\[[\s\S]{0,2500}queryPublicEventSlice[\s\S]{0,2500}queryPublicCalendarMonth[\s\S]{0,2500}\]\s*\)/u,
-    "the failure-only fallback must not fan out through competing event projections",
+    /queryPublicCalendarLandingBundle|loadIndependentEventsCalendar|queryPublicEventSlice|queryPublicCalendarMonth|queryPublicEventMaterializationBundle|writePublicEventsSnapshot|refreshPublicEventMaterializations|database\.batch/u,
+    "visitor Events requests must neither project, write, refresh, nor fall back after the indexed materialization read",
   );
   assert.match(renderer, /<PublicMonthCalendar/u);
   assert.doesNotMatch(

@@ -9,11 +9,18 @@ const ORGANIZATION_ID = "org_events_page_performance";
 const TODAY_DATE = "2026-08-11";
 const projectRoot = new URL("../../", import.meta.url);
 
-test("Events delegates its calendar to one bounded landing loader", async () => {
-  const [source, projection] = await Promise.all([
+test("Events delegates its calendar to one indexed materialization loader", async () => {
+  const [source, loader, materializations] = await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
     readFile(
-      new URL("lib/server/public/events.ts", projectRoot),
+      new URL("lib/server/public/events-page.ts", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "lib/server/public/event-materializations.ts",
+        projectRoot,
+      ),
       "utf8",
     ),
   ]);
@@ -33,22 +40,17 @@ test("Events delegates its calendar to one bounded landing loader", async () => 
     /\bqueryPublicEventSlice\b|\bloadPublicMonthCalendar\b/u,
     "/events must not fan out through independent expensive loaders",
   );
-  assert.match(
-    projection,
-    /events_page_public_events AS MATERIALIZED\s*\(\s*SELECT \*\s*FROM public_events\s*\)/u,
-    "the calendar and landing reads must share one materialized public-event projection",
+  assert.match(loader, /readPublicEventsPageMaterialization/u);
+  assert.doesNotMatch(
+    loader,
+    /queryPublicEventMaterializationBundle|queryPublicCalendarLandingBundle|queryPublicCalendarMonth|queryPublicEventSlice|writePublicEventsSnapshot|refreshPublicEventMaterializations|database\.batch/u,
+    "the visitor loader must not project, write, refresh, or fall back",
   );
-  for (const resultGroup of ["calendar", "landing"]) {
-    assert.match(
-      projection,
-      new RegExp(
-        `events_page_${resultGroup} AS \\([\\s\\S]*?FROM events_page_public_events AS public_event`,
-        "u",
-      ),
-      `${resultGroup} must read the materialized Events projection`,
-    );
-  }
-  assert.doesNotMatch(projection, /events_page_list|SELECT 'list'/u);
+  assert.match(
+    materializations,
+    /FROM public_event_calendar_snapshots[\s\S]*WHERE cache_key = \?[\s\S]*AND organization_id = \?[\s\S]*LIMIT 1/u,
+    "the visitor seam must use the cache-key primary lookup with an organization seal",
+  );
 });
 
 test("public event discovery avoids automatic RSC fan-out and shows a pending state", async () => {
@@ -122,7 +124,7 @@ test("public event discovery avoids automatic RSC fan-out and shows a pending st
   assert.match(loading, /Loading events/u);
 });
 
-test("the combined Events loader preserves a bounded empty calendar", async (t) => {
+test("a missing Events materialization returns one bounded unavailable calendar read", async (t) => {
   const { loadPublicEventsPageData } = await import(
     "../../lib/server/public/events-page.ts"
   );
@@ -149,13 +151,14 @@ test("the combined Events loader preserves a bounded empty calendar", async (t) 
     },
     shiftedToUpcoming: false,
   });
-  assert.equal(loaded.calendarAvailable, true);
+  assert.equal(loaded.calendarAvailable, false);
   assert.equal(
     counter.count(),
-    4,
-    "the cold load performs one indexed miss, one unified projection, and one bounded cleanup/upsert batch",
+    1,
+    "a visitor miss performs only one indexed durable read",
   );
-  assert.equal(counter.projectionCount(), 1);
+  assert.equal(counter.projectionCount(), 0);
+  assert.equal(counter.writeCount(), 0);
 
   const warm = await loadPublicEventsPageData(counter.database, {
     nowUtcMs: NOW_UTC_MS + 1_000,
@@ -166,17 +169,18 @@ test("the combined Events loader preserves a bounded empty calendar", async (t) 
   assert.deepEqual(warm, loaded);
   assert.equal(
     counter.count(),
-    5,
-    "the warm load adds only one indexed cache read",
+    2,
+    "a second visitor request adds only its own indexed read",
   );
   assert.equal(
     counter.projectionCount(),
-    1,
-    "the warm load must not repeat the unified public-event projection",
+    0,
+    "missing materializations must never trigger a visitor projection",
   );
+  assert.equal(counter.writeCount(), 0);
 });
 
-test("the unqualified Events landing reuses its empty landing result", async (t) => {
+test("the unqualified Events landing remains unavailable without a durable generation", async (t) => {
   const { loadPublicEventsPageData } = await import(
     "../../lib/server/public/events-page.ts"
   );
@@ -192,16 +196,17 @@ test("the unqualified Events landing reuses its empty landing result", async (t)
     todayDate: TODAY_DATE,
   });
 
-  assert.equal(loaded.calendarAvailable, true);
+  assert.equal(loaded.calendarAvailable, false);
   assert.deepEqual(loaded.calendar.events, []);
   assert.equal(loaded.calendar.resolvedMonth.month, "2026-08");
   assert.equal(loaded.calendar.shiftedToUpcoming, false);
-  assert.equal(counter.count(), 4);
+  assert.equal(counter.count(), 1);
   assert.equal(
     counter.projectionCount(),
-    1,
-    "the default landing must not run a separate nearest-event projection after the bundled landing result already proved there is no target",
+    0,
+    "the default landing must not run an event projection after a materialization miss",
   );
+  assert.equal(counter.writeCount(), 0);
 
   const warm = await loadPublicEventsPageData(counter.database, {
     nowUtcMs: NOW_UTC_MS + 1_000,
@@ -210,47 +215,57 @@ test("the unqualified Events landing reuses its empty landing result", async (t)
     todayDate: TODAY_DATE,
   });
   assert.deepEqual(warm, loaded);
-  assert.equal(counter.count(), 5);
+  assert.equal(counter.count(), 2);
   assert.equal(
     counter.projectionCount(),
-    1,
-    "the identical landing request must be served without another unified projection",
+    0,
+    "the identical landing request must remain a read-only miss",
   );
+  assert.equal(counter.writeCount(), 0);
 });
 
-test("the Events fallback preserves a successfully read current month", async (t) => {
+test("a corrupt Events materialization returns a safe unavailable empty calendar without fallback", async (t) => {
   const { loadPublicEventsPageData } = await import(
     "../../lib/server/public/events-page.ts"
   );
+  const database = new SqliteD1TestDatabase(await generatedMigrationSql());
+  t.after(() => database.close());
+  seedSnapshotOrganization(database);
+  seedCorruptMaterialization(database);
+  const counter = inspectD1Statements(database);
 
-  await t.test("a failed landing lookup does not discard the calendar", async (t) => {
-    const database = new SqliteD1TestDatabase(await generatedMigrationSql());
-    t.after(() => database.close());
-    const loaded = await loadPublicEventsPageData(
-      failBundleThenStandalone(
-        database,
-        (sql) => /LIMIT\s+\?\s+OFFSET\s+\?/u.test(sql),
-      ),
-      { ...loaderInput(), rawMonth: undefined },
-    );
+  const loaded = await loadPublicEventsPageData(
+    counter.database,
+    loaderInput(),
+  );
 
-    assert.equal(loaded.calendarAvailable, true);
-    assert.deepEqual(loaded.calendar.events, []);
-    assert.equal(loaded.calendar.resolvedMonth.month, "2026-08");
-    assert.equal(loaded.calendar.shiftedToUpcoming, false);
+  assert.equal(loaded.calendarAvailable, false);
+  assert.deepEqual(loaded.calendar, {
+    events: [],
+    hasMore: false,
+    resolvedMonth: {
+      invalid: false,
+      maxMonth: "2027-08",
+      minMonth: "2025-08",
+      month: "2026-08",
+    },
+    shiftedToUpcoming: false,
   });
-
-  await t.test("an explicit month falls back to its standalone calendar read", async (t) => {
-    const database = new SqliteD1TestDatabase(await generatedMigrationSql());
-    t.after(() => database.close());
-    const loaded = await loadPublicEventsPageData(
-      failBundleThenStandalone(database, () => false),
-      loaderInput(),
-    );
-
-    assert.equal(loaded.calendarAvailable, true);
-    assert.deepEqual(loaded.calendar.events, []);
-  });
+  assert.equal(counter.count(), 1);
+  assert.equal(counter.projectionCount(), 0);
+  assert.equal(counter.writeCount(), 0);
+  assert.equal(
+    await database
+      .prepare(
+        `SELECT count(*) AS count
+         FROM public_event_calendar_snapshots
+         WHERE organization_id = ?`,
+      )
+      .bind(ORGANIZATION_ID)
+      .first("count"),
+    1,
+    "a corrupt visitor read must not delete or replace the last stored generation",
+  );
 });
 
 function loaderInput() {
@@ -289,11 +304,30 @@ function seedSnapshotOrganization(database) {
   `);
 }
 
+function seedCorruptMaterialization(database) {
+  const cacheKey = JSON.stringify([
+    "public-event-materializations",
+    1,
+    ORGANIZATION_ID,
+    "events",
+  ]).replaceAll("'", "''");
+  database.exec(`
+    INSERT INTO public_event_calendar_snapshots (
+      cache_key, organization_id, snapshot_json,
+      expires_at, created_at, updated_at
+    ) VALUES (
+      '${cacheKey}', '${ORGANIZATION_ID}', '{}',
+      8640000000000000, ${NOW_UTC_MS}, ${NOW_UTC_MS}
+    );
+  `);
+}
+
 function inspectD1Statements(database) {
   const innerStatements = new WeakMap();
   const statementSql = new WeakMap();
   let statementCount = 0;
   let projectionCount = 0;
+  let writeCount = 0;
 
   const inspected = {
     batch(statements) {
@@ -316,6 +350,7 @@ function inspectD1Statements(database) {
     count: () => statementCount,
     database: inspected,
     projectionCount: () => projectionCount,
+    writeCount: () => writeCount,
   });
 
   function wrap(statement, sql) {
@@ -344,43 +379,8 @@ function inspectD1Statements(database) {
   function record(sql) {
     statementCount += 1;
     if (/\bpublic_events\s+AS\s*\(/u.test(sql)) projectionCount += 1;
-  }
-}
-
-function failBundleThenStandalone(database, shouldFailStandalone) {
-  let bundleFailed = false;
-
-  return {
-    prepare(sql) {
-      return wrap(database.prepare(sql), sql);
-    },
-  };
-
-  function wrap(statement, sql) {
-    return {
-      bind(...values) {
-        return wrap(statement.bind(...values), sql);
-      },
-      first(...args) {
-        return execute("first", args);
-      },
-      all(...args) {
-        return execute("all", args);
-      },
-      run(...args) {
-        return execute("run", args);
-      },
-    };
-
-    function execute(method, args) {
-      if (!bundleFailed && /events_page_public_events/u.test(sql)) {
-        bundleFailed = true;
-        throw new Error("Synthetic bundled Events projection failure");
-      }
-      if (bundleFailed && shouldFailStandalone(sql)) {
-        throw new Error("Synthetic standalone Events projection failure");
-      }
-      return statement[method](...args);
+    if (/^\s*(?:DELETE|INSERT|REPLACE|UPDATE)\b/iu.test(sql)) {
+      writeCount += 1;
     }
   }
 }

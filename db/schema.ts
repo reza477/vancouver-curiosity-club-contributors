@@ -5879,12 +5879,10 @@ export const eventCalendarComponentRevisions = sqliteTable(
 );
 
 /**
- * Bounded, public-only render snapshots for the Events calendar. The heavy
- * unified event projection populates this table on a miss; ordinary public
- * requests then read one indexed JSON value instead of rebuilding the same
- * projection. Cache keys include the build revision and normalized calendar
- * context, while the short expiry bounds how long an organizer-side change
- * can remain cached.
+ * Durable, public-only Home and Events materializations. A protected updater
+ * projects and atomically promotes the last-known-good rows; ordinary public
+ * requests only read the stable, organization-scoped keys and never rebuild
+ * or replace materializations on a visitor request.
  */
 export const publicEventCalendarSnapshots = sqliteTable(
   "public_event_calendar_snapshots",
@@ -5920,6 +5918,45 @@ export const publicEventCalendarSnapshots = sqliteTable(
           AND ${table.updatedAt} BETWEEN ${table.createdAt}
               AND 8640000000000000
           AND ${table.expiresAt} > ${table.updatedAt}
+          AND ${table.expiresAt} <= 8640000000000000`,
+    ),
+  ],
+);
+
+/**
+ * Durable replay claims for narrowly authenticated maintenance requests.
+ *
+ * The public website never reads this table. A signed maintenance request
+ * earns exactly one receipt before it can advance the Meetup importer, so a
+ * retried or captured request cannot execute the updater twice.
+ */
+export const maintenanceRequestReceipts = sqliteTable(
+  "maintenance_request_receipts",
+  {
+    requestId: text("request_id").primaryKey(),
+    purpose: text("purpose", {
+      enum: ["daily_meetup_refresh"],
+    }).notNull(),
+    issuedAt: integer("issued_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull().default(nowMs),
+  },
+  (table) => [
+    index("maintenance_request_receipts_expiry_idx").on(table.expiresAt),
+    check(
+      "maintenance_request_receipts_request_id_check",
+      sql`length(${table.requestId}) = 36
+          AND ${table.requestId} = lower(${table.requestId})`,
+    ),
+    check(
+      "maintenance_request_receipts_purpose_check",
+      sql`${table.purpose} = 'daily_meetup_refresh'`,
+    ),
+    check(
+      "maintenance_request_receipts_timestamp_check",
+      sql`${table.issuedAt} BETWEEN 0 AND 8640000000000000
+          AND ${table.createdAt} BETWEEN 0 AND 8640000000000000
+          AND ${table.expiresAt} > ${table.createdAt}
           AND ${table.expiresAt} <= 8640000000000000`,
     ),
   ],

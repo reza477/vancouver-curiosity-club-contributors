@@ -1,0 +1,164 @@
+name: Daily Meetup refresh
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+      timezone: "America/Vancouver"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-meetup-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh Meetup and public event snapshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Run bounded signed refresh requests
+        env:
+          DAILY_MEETUP_REFRESH_SECRET: ${{ secrets.DAILY_MEETUP_REFRESH_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          completed=false
+          report_file="$(mktemp)"
+          response_file="$(mktemp)"
+          total_created=0
+          total_updated=0
+          total_cancelled=0
+          total_removed=0
+          total_rejected=0
+          failed_invocation=0
+          trap 'rm -f "$report_file" "$response_file"; if [ "$completed" != true ]; then printf "## Daily Meetup refresh failed\n\n- Last invocation: %s\n- Created before failure: %s\n- Updated before failure: %s\n- Cancelled before failure: %s\n- Removed before failure: %s\n- Rejected before failure: %s\n" "$failed_invocation" "$total_created" "$total_updated" "$total_cancelled" "$total_removed" "$total_rejected" >> "$GITHUB_STEP_SUMMARY"; fi' EXIT
+
+          for invocation in $(seq 1 64); do
+            failed_invocation="$invocation"
+            timestamp="$(date -u +%s)"
+            request_id="$(node -e 'const { randomUUID } = require("node:crypto"); process.stdout.write(randomUUID());')"
+            body='{}'
+            signature="$(
+              TIMESTAMP="$timestamp" REQUEST_ID="$request_id" BODY="$body" \
+                node -e 'const { createHmac } = require("node:crypto"); process.stdout.write(createHmac("sha256", process.env.DAILY_MEETUP_REFRESH_SECRET).update(`${process.env.TIMESTAMP}.${process.env.REQUEST_ID}.${process.env.BODY}`).digest("hex"));'
+            )"
+
+            if ! curl --silent --show-error --fail-with-body \
+              --connect-timeout 15 \
+              --max-time 90 \
+              --request POST \
+              --header 'content-type: application/json' \
+              --header "x-maintenance-timestamp: $timestamp" \
+              --header "x-maintenance-request-id: $request_id" \
+              --header "x-maintenance-signature: sha256=$signature" \
+              --data-binary "$body" \
+              --output "$response_file" \
+              https://vancouvercuriosityclub.com/api/maintenance/meetup/refresh
+            then
+              echo "Signed refresh request failed on invocation $invocation." >&2
+              exit 1
+            fi
+
+            set +e
+            node - "$response_file" "$invocation" > "$report_file" <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const [responsePath, invocationText] = process.argv.slice(2);
+          let response;
+          try {
+            response = JSON.parse(readFileSync(responsePath, "utf8"));
+          } catch {
+            process.stderr.write("The updater returned an invalid report.\n");
+            process.exit(2);
+          }
+          const number = (value) =>
+            Number.isSafeInteger(value) && value >= 0 ? value : null;
+          const counts = response?.counts;
+          const safe = {
+            invocation: Number(invocationText),
+            status: response?.status,
+            outcome: response?.outcome,
+            counts: {
+              passes: number(counts?.passes),
+              created: number(counts?.created),
+              updated: number(counts?.updated),
+              cancelled: number(counts?.cancelled),
+              removed: number(counts?.removed),
+              rejected: number(counts?.rejected),
+              materializations:
+                counts?.materializations === null
+                  ? null
+                  : {
+                      homeEventCount: number(
+                        counts?.materializations?.homeEventCount,
+                      ),
+                      eventsSnapshotCount: number(
+                        counts?.materializations?.eventsSnapshotCount,
+                      ),
+                    },
+            },
+          };
+          const validCounts =
+            Object.entries(safe.counts)
+              .filter(([key]) => key !== "materializations")
+              .every(([, value]) => value !== null) &&
+            (safe.counts.materializations === null ||
+              Object.values(safe.counts.materializations).every(
+                (value) => value !== null,
+              ));
+          if (
+            !validCounts ||
+            !["continue", "succeeded"].includes(safe.status) ||
+            typeof safe.outcome !== "string"
+          ) {
+            process.stderr.write("The updater returned an unsafe report shape.\n");
+            process.exit(2);
+          }
+          process.stdout.write(`${JSON.stringify(safe)}\n`);
+          process.exit(safe.status === "succeeded" ? 0 : 10);
+          NODE
+            report_status=$?
+            set -e
+            read -r pass_created pass_updated pass_cancelled pass_removed pass_rejected < <(
+              node -e 'const report = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); process.stdout.write([report.counts.created, report.counts.updated, report.counts.cancelled, report.counts.removed, report.counts.rejected].join(" "));' "$report_file"
+            )
+            total_created=$((total_created + pass_created))
+            total_updated=$((total_updated + pass_updated))
+            total_cancelled=$((total_cancelled + pass_cancelled))
+            total_removed=$((total_removed + pass_removed))
+            total_rejected=$((total_rejected + pass_rejected))
+
+            if [ "$report_status" -eq 0 ]; then
+              terminal_report="$(cat "$report_file")"
+              node - "$invocation" "$total_created" "$total_updated" "$total_cancelled" "$total_removed" "$total_rejected" "$terminal_report" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
+          const [invocations, created, updated, cancelled, removed, rejected, terminalJson] = process.argv.slice(2);
+          const terminal = JSON.parse(terminalJson);
+          const materializations = terminal.counts.materializations;
+          process.stdout.write([
+            "## Daily Meetup refresh succeeded",
+            "",
+            `- Invocations: ${invocations}`,
+            `- Created: ${created}`,
+            `- Updated: ${updated}`,
+            `- Cancelled: ${cancelled}`,
+            `- Removed: ${removed}`,
+            `- Rejected: ${rejected}`,
+            `- Home snapshot events: ${materializations.homeEventCount}`,
+            `- Durable Events datasets: ${materializations.eventsSnapshotCount}`,
+            "",
+          ].join("\n"));
+          NODE
+              completed=true
+              exit 0
+            fi
+            if [ "$report_status" -ne 10 ]; then
+              exit "$report_status"
+            fi
+          done
+
+          echo "Daily Meetup refresh exceeded its 64-invocation safety limit." >&2
+          exit 1

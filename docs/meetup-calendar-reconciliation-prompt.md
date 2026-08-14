@@ -228,7 +228,8 @@ Do not weaken tests or update expectations merely to hide a mismatch.
 ## Scheduling honesty
 
 Do not claim this runs automatically every day. Sites currently provides manual
-bounded refresh plus refresh-on-view; there is no guaranteed cron scheduler.
+bounded refresh plus a protected daily scheduler; public page views never run
+the Meetup importer.
 This separate task is the repeatable owner-invoked reconciliation workflow
 until a supported scheduler is explicitly added.
 

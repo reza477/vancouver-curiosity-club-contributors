@@ -92,6 +92,13 @@
       "when": 1786498488031,
       "tag": "0020_meetup_public_event_facts",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1786662033408,
+      "tag": "0021_daily_meetup_maintenance",
+      "breakpoints": true
     }
   ]
 }

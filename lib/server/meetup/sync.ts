@@ -81,7 +81,7 @@ const CONFIGURE_ACTOR_GUARD_SQL = `EXISTS (
 // server-side identity envelope. Two rows keep the complete Worker invocation
 // below D1's 50-statement ceiling even on the densest successful row shape.
 export const MAX_MEETUP_ROWS_PER_REFRESH = 2;
-const MAX_MEETUP_ROWS_PER_REFRESH_ON_VIEW = 2;
+const MAX_MEETUP_ROWS_PER_SCHEDULED_REFRESH = 2;
 
 type SourceRecord = Readonly<{
   clubId: string;
@@ -134,7 +134,7 @@ type AliasCanonicalTarget = Readonly<{
 }>;
 
 type RefreshMode = "if_due" | "manual";
-type RefreshTriggerMode = "manual" | "refresh_on_view";
+type RefreshTriggerMode = "manual" | "scheduled";
 type ManualRefreshAuthority = Readonly<{
   identity: TrustedServerIdentity;
   membership: AuthorizedMembership;
@@ -599,7 +599,7 @@ async function refreshOrganizationSource(
   }>,
 ): Promise<MeetupRefreshResult> {
   const triggerMode: RefreshTriggerMode =
-    input.mode === "manual" ? "manual" : "refresh_on_view";
+    input.mode === "manual" ? "manual" : "scheduled";
   const initialSource = input.source;
   const manualActorWhere = manualActorWhereClause(
     input.manualAuthority,
@@ -797,7 +797,7 @@ async function refreshOrganizationSource(
   const maxRows =
     input.mode === "manual"
       ? MAX_MEETUP_ROWS_PER_REFRESH
-      : MAX_MEETUP_ROWS_PER_REFRESH_ON_VIEW;
+      : MAX_MEETUP_ROWS_PER_SCHEDULED_REFRESH;
   const workSlice = workItems.slice(
     cursor,
     cursor + maxRows,
