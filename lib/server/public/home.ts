@@ -3,11 +3,8 @@ import {
   type PublicCatalogDto,
   type PublicPageDto,
 } from "./catalog";
-import { vancouverCalendarDate } from "./date";
-import {
-  queryPublicEventSlice,
-  type PublicEventCardDto,
-} from "./events";
+import type { PublicEventCardDto } from "./events";
+import { readPublicHomeEventMaterialization } from "./event-materializations";
 import {
   getRequestPublicCatalog,
   getRequestPublicPageContent,
@@ -34,22 +31,18 @@ export async function loadPublicHomeData(
   const catalog = await getRequestPublicCatalog(database);
   if (!catalog) return null;
 
-  const [page, eventPage] = await Promise.all([
+  const [page, events] = await Promise.all([
     getRequestPublicPageContent(database, "home"),
-    queryPublicEventSlice(database, {
-      organizationId: input.organizationId,
+    readPublicHomeEventMaterialization(database, {
       nowUtcMs: input.nowUtcMs,
-      todayDate: vancouverCalendarDate(input.nowUtcMs),
-      view: "upcoming",
-      page: 1,
-      pageSize: 6,
+      organizationId: input.organizationId,
     }),
   ]);
 
   return page
     ? Object.freeze({
         catalog,
-        events: eventPage.events,
+        events: events ?? [],
         page,
       })
     : null;
