@@ -600,7 +600,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    88,
+    89,
   );
   assert.equal(
     await database
@@ -611,7 +611,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    200,
+    201,
   );
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
