@@ -9,11 +9,17 @@ export const LEGACY_SHIPPED_BRAND_PALETTE = Object.freeze({
   foreground: "#142C30",
   secondary: "#0C665E",
 });
-export const SHIPPED_BRAND_PALETTE = Object.freeze({
+const VIOLET_SHIPPED_BRAND_PALETTE = Object.freeze({
   accent: "#5B2CC9",
   background: "#FFF9F5",
   foreground: "#221C3D",
   secondary: "#2457D6",
+});
+export const SHIPPED_BRAND_PALETTE = Object.freeze({
+  accent: "#B8402B",
+  background: "#FBF7F0",
+  foreground: "#131C33",
+  secondary: "#1F5F5B",
 });
 export const SHIPPED_BRAND_TYPOGRAPHY = "editorial";
 
@@ -81,6 +87,7 @@ export function usesShippedVisualSystem(
     palette !== null &&
     palette !== undefined &&
     (matchesBrandPalette(palette, SHIPPED_BRAND_PALETTE) ||
+      matchesBrandPalette(palette, VIOLET_SHIPPED_BRAND_PALETTE) ||
       matchesBrandPalette(palette, LEGACY_SHIPPED_BRAND_PALETTE))
   );
 }
@@ -89,7 +96,8 @@ export function resolvePublicBrandPalette(
   palette: BrandPalette | null | undefined,
 ): BrandPalette | null {
   if (!palette) return null;
-  return matchesBrandPalette(palette, LEGACY_SHIPPED_BRAND_PALETTE)
+  return matchesBrandPalette(palette, LEGACY_SHIPPED_BRAND_PALETTE) ||
+    matchesBrandPalette(palette, VIOLET_SHIPPED_BRAND_PALETTE)
     ? SHIPPED_BRAND_PALETTE
     : palette;
 }

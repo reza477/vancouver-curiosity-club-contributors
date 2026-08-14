@@ -169,19 +169,19 @@ test("all fields are editable immediately while only secure submission prepares"
       /\btype="submit"/u.test(tag)
     );
     assert.ok(submit, `${formKey} submit button`);
-    assert.match(
+    assert.doesNotMatch(
       submit,
       /\bdisabled(?:="")?/u,
-      `${formKey} submit must wait for its token and cookie`,
+      `${formKey} submit must be immediately usable while its token loads`,
     );
     assert.ok(
       visibleText(form).includes(submitLabel),
       `${formKey} primary action label`,
     );
-    assert.match(
+    assert.doesNotMatch(
       form,
       /role="status"[\s\S]*?prepar(?:e|ing)[\s\S]*?(?:secure|send)|prepar(?:e|ing)[\s\S]*?(?:secure|send)[\s\S]*?role="status"/iu,
-      `${formKey} needs a compact accessible secure-send status`,
+      `${formKey} must not sit in a Preparing send state`,
     );
     assert.doesNotMatch(form, /public-submission__skeleton/iu);
     const honeypot = /<div(?=[^>]*\bclass="public-submission__honeypot")(?=[^>]*\baria-hidden="true")[^>]*>[\s\S]*?<\/div>/u.exec(
@@ -244,11 +244,13 @@ test("secure-send preparation reports slowness within one second without weakeni
     /PUBLIC_FORM_MINIMUM_COMPLETION_MS/u,
     "the client send gate must use the shared anti-abuse interval",
   );
+  assert.match(formSource, /await waitForMinimumFormCompletion/u);
   assert.match(
     formSource,
-    /setTimeout\([\s\S]*PUBLIC_FORM_MINIMUM_COMPLETION_MS/u,
-    "a freshly received token must not enable Send too early",
+    /PUBLIC_FORM_MINIMUM_COMPLETION_MS\s*-\s*\(Date\.now\(\)\s*-\s*instanceReceivedAtUtcMs\)/u,
+    "an immediate click must wait only for the remaining server anti-abuse interval",
   );
+  assert.doesNotMatch(formSource, /Preparing send/u);
   assert.match(protection, /PUBLIC_FORM_MINIMUM_COMPLETION_MS\s*=\s*3_000/u);
   assert.match(
     submissionService,
@@ -264,7 +266,11 @@ test("secure-send preparation reports slowness within one second without weakeni
   assert.match(postRoute, /verifyPublicFormInstanceToken/u);
   assert.match(postRoute, /application\/x-www-form-urlencoded/u);
   assert.match(postRoute, /readBoundedNativeForm\(request, formKey, 16_384\)/u);
-  assert.match(formSource, /if \(!instanceToken \|\| busy\) return;/u);
+  assert.match(
+    formSource,
+    /if \(busy \|\| instanceState === "error"\) return;/u,
+  );
+  assert.match(formSource, /await instanceGateRef\.current\?\.promise/u);
   assert.match(formSource, /role="alert"/u);
   assert.match(formSource, /errorSummaryRef\.current\?\.focus\(\)/u);
   assert.match(formSource, /successRef\.current\?\.focus\(\)/u);

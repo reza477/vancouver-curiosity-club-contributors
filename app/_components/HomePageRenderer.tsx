@@ -37,8 +37,7 @@ export function HomePageRenderer({
   previewMediaAssets?: readonly ResponsiveMediaAssetDto[];
   privatePreview?: boolean;
 }>) {
-  const heroEvents = events.slice(0, 3);
-  const upcomingEvents = events.slice(3, 6);
+  const { heroEvent, upcomingEvents } = selectHomeDiscoveryEvents(events);
   const lanes = catalog.lanes.slice(0, 4);
   const clubs = selectHomepageClubs(catalog.clubs);
 
@@ -53,7 +52,6 @@ export function HomePageRenderer({
             <Link
               className="primary-action"
               href="/events"
-              prefetch={false}
             >
               See upcoming gatherings
             </Link>
@@ -61,15 +59,13 @@ export function HomePageRenderer({
           </div>
         </div>
 
-        {heroEvents.length > 0 ? (
+        {heroEvent ? (
           <div
-            className="home-hero__poster-collage"
-            aria-label="Posters for the next upcoming gatherings"
+            className="home-hero__featured-poster"
+            aria-label="Featured upcoming gathering"
             role="group"
           >
-            {heroEvents.map((event, index) => (
-              <HomeHeroPoster event={event} index={index} key={event.slug} />
-            ))}
+            <HomeHeroPoster event={heroEvent} />
           </div>
         ) : null}
       </section>
@@ -80,7 +76,7 @@ export function HomePageRenderer({
             <p className="section-kicker">Coming up next</p>
             <h2 id="home-events-title">More ways to join in</h2>
           </div>
-          <Link href="/events" prefetch={false}>
+          <Link href="/events">
             See all upcoming gatherings
           </Link>
         </div>
@@ -90,12 +86,12 @@ export function HomePageRenderer({
               <EventCard event={event} key={event.slug} />
             ))}
           </div>
-        ) : heroEvents.length > 0 ? (
+        ) : heroEvent ? (
           <div className="public-empty-state">
             <p className="section-kicker">More gatherings</p>
             <h3>Those are the next gatherings.</h3>
             <p>See the complete events page as more dates are added.</p>
-            <Link href="/events" prefetch={false}>
+            <Link href="/events">
               Open events
             </Link>
           </div>
@@ -104,7 +100,7 @@ export function HomePageRenderer({
             <p className="section-kicker">Upcoming gatherings</p>
             <h3>No upcoming event yet.</h3>
             <p>Check the complete events page for the latest public listings.</p>
-            <Link href="/events" prefetch={false}>
+            <Link href="/events">
               Open events
             </Link>
           </div>
@@ -126,27 +122,16 @@ export function HomePageRenderer({
             read what to expect on its event page, and show up as you are.
           </p>
           <p>
-            You do not need to know anyone already, prepare a clever answer, or
-            be an expert in the topic.
+            How a gathering begins depends on the event. Its page tells you the
+            topic or activity, place, timing, preparation, arrival details, and
+            what to expect. Follow those specific details rather than assuming
+            every club uses the same routine.
           </p>
-        </div>
-      </section>
-
-      <section
-        className="home-community-feel attending-note"
-        aria-labelledby="home-community-feel-title"
-      >
-        <div>
-          <p className="section-kicker">What the community feels like</p>
-          <h2 id="home-community-feel-title">
-            Thoughtful, welcoming, and genuinely social.
-          </h2>
-        </div>
-        <div>
           <p>
-            The point is not to perform expertise. It is to follow an
-            interesting thread together, make room for different perspectives,
-            and let conversation become connection.
+            You do not need to know anyone already, prepare a clever answer, or
+            be an expert in the topic. The point is not to perform expertise,
+            but to follow an interesting thread together and make room for
+            different perspectives.
           </p>
         </div>
       </section>
@@ -174,7 +159,6 @@ export function HomePageRenderer({
               {lane.description ? <p>{lane.description}</p> : null}
               <Link
                 href={`/events?lane=${encodeURIComponent(lane.slug)}`}
-                prefetch={false}
               >
                 See {lane.name} events
               </Link>
@@ -213,22 +197,22 @@ export function HomePageRenderer({
       </section>
 
       <section
-        className="home-proof home-community"
+        className="home-mission home-community"
         aria-labelledby="home-organizer-note-title"
       >
-        <div className="home-organizer-note">
-          <OrganizerNote headingId="home-organizer-note-title" />
-        </div>
-        {catalog.communityLinks.length > 0 ? (
-          <div
-            className="home-official-links"
-            aria-labelledby="home-official-links-title"
-            role="navigation"
-          >
+        <OrganizerNote headingId="home-organizer-note-title" />
+      </section>
+
+      {catalog.communityLinks.length > 0 ? (
+        <section
+          className="home-proof home-community"
+          aria-labelledby="home-official-links-title"
+        >
+          <div className="home-official-links">
             <p className="section-kicker">Official community links</p>
-            <h3 id="home-official-links-title">
+            <h2 id="home-official-links-title">
               Find the club beyond this website.
-            </h3>
+            </h2>
             <p>{catalog.site.mission}</p>
             <ul aria-label="Official Vancouver Curiosity Club destinations">
               {catalog.communityLinks.map((link) => (
@@ -241,8 +225,8 @@ export function HomePageRenderer({
               ))}
             </ul>
           </div>
-        ) : null}
-      </section>
+        </section>
+      ) : null}
 
       <section
         className="home-closing home-invitation"
@@ -257,7 +241,6 @@ export function HomePageRenderer({
           <Link
             className="primary-action"
             href="/events"
-            prefetch={false}
           >
             See upcoming gatherings
           </Link>
@@ -290,19 +273,13 @@ export function HomePageRenderer({
   );
 }
 
-function HomeHeroPoster({
-  event,
-  index,
-}: Readonly<{ event: PublicEventCardDto; index: number }>) {
+function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
   if (!event.artwork) {
     return (
-      <article
-        className="home-hero__poster home-hero__poster--fallback"
-        data-poster-position={index + 1}
-      >
+      <article className="home-hero__poster home-hero__poster--fallback">
         <p>{event.club.name}</p>
         <h2>
-          <Link href={`/events/${event.slug}`} prefetch={false}>
+          <Link href={`/events/${event.slug}`}>
             {event.title}
           </Link>
         </h2>
@@ -313,10 +290,7 @@ function HomeHeroPoster({
   const artworkCredit = discoveryArtworkCredit(event.artwork.credit);
 
   return (
-    <figure
-      className="home-hero__poster"
-      data-poster-position={index + 1}
-    >
+    <figure className="home-hero__poster">
       {/* Published media URLs enforce the rights and usage boundary, so these
           images intentionally bypass Next/Image's independent optimizer cache. */}
       <EventPosterImage
@@ -332,9 +306,9 @@ function HomeHeroPoster({
             <strong>{event.title}</strong>
           </div>
         }
-        fetchPriority={index === 0 ? "high" : "auto"}
+        fetchPriority="high"
         height={event.artwork.dimensions.large.height}
-        loading={index === 0 ? "eager" : "lazy"}
+        loading="eager"
         sizes="(max-width: 700px) 100vw, (max-width: 1120px) 50vw, 38vw"
         src={event.artwork.url}
         srcSet={responsiveImageSrcSet([
@@ -357,13 +331,51 @@ function HomeHeroPoster({
         width={event.artwork.dimensions.large.width}
       />
       <figcaption>
-        <Link href={`/events/${event.slug}`} prefetch={false}>
+        <Link href={`/events/${event.slug}`}>
           {event.title}
         </Link>
         {artworkCredit ? <span>Artwork: {artworkCredit}</span> : null}
       </figcaption>
     </figure>
   );
+}
+
+function selectHomeDiscoveryEvents(
+  events: readonly PublicEventCardDto[],
+): Readonly<{
+  heroEvent: PublicEventCardDto | null;
+  upcomingEvents: readonly PublicEventCardDto[];
+}> {
+  const heroEvent =
+    events.find((event) => event.artwork !== null) ?? events[0] ?? null;
+  if (!heroEvent) {
+    return Object.freeze({
+      heroEvent: null,
+      upcomingEvents: Object.freeze([]),
+    });
+  }
+
+  const seenArtworkUrls = new Set<string>();
+  const seenSlugs = new Set([heroEvent.slug]);
+  if (heroEvent.artwork) seenArtworkUrls.add(heroEvent.artwork.url);
+  const upcomingEvents: PublicEventCardDto[] = [];
+  for (const event of events) {
+    if (
+      upcomingEvents.length >= 3 ||
+      !event.artwork ||
+      seenSlugs.has(event.slug) ||
+      seenArtworkUrls.has(event.artwork.url)
+    ) {
+      continue;
+    }
+    seenSlugs.add(event.slug);
+    seenArtworkUrls.add(event.artwork.url);
+    upcomingEvents.push(event);
+  }
+  return Object.freeze({
+    heroEvent,
+    upcomingEvents: Object.freeze(upcomingEvents),
+  });
 }
 
 function selectHomepageClubs(

@@ -1,6 +1,11 @@
 import { parseIanaTimeZone } from "../../time";
 import { isRecord } from "../../validation";
 import { extractMeetupPublicEventFacts } from "../../meetup-public-event-facts.js";
+import {
+  applyApprovedMeetupEventEditorialOverride,
+  removeOrphanMeetupTicketAndRsvpCallToActions,
+  splitTrailingMeetupTicketOrRsvpCallToAction,
+} from "../../meetup-publication-policy.js";
 import { MeetupSyncError } from "./errors";
 import type {
   ParsedMeetupCalendar,
@@ -334,13 +339,34 @@ function parseApolloEvent(input: Readonly<{
     invalidCalendar();
   }
   const status = readEventStatus(event.status);
-  const publicDescription = normalizePublicDescription(event.description);
+  const sourcePublicDescription = normalizePublicDescription(event.description);
   const venue = readVenue(input.apolloState, event.venue);
   const poster = readPoster(input.apolloState, event.featuredEventPhoto, title);
-  const publicEventFacts = extractMeetupPublicEventFacts(
+  const editorialProjection = applyApprovedMeetupEventEditorialOverride({
+    description: sourcePublicDescription.plainText,
+    descriptionBlocks: sourcePublicDescription.blocks,
+    eventId,
+    groupSlug: input.groupSlug,
+  });
+  const publicDescription = Object.freeze({
+    blocks: editorialProjection.descriptionBlocks,
+    plainText: descriptionBlocksToPlainText(
+      editorialProjection.descriptionBlocks,
+    ),
+  });
+  if (publicDescription.plainText !== editorialProjection.description) {
+    invalidCalendar();
+  }
+  const extractedPublicEventFacts = extractMeetupPublicEventFacts(
     publicDescription.plainText,
     { hasPublicVenue: venue !== null },
   );
+  const publicEventFacts = Object.freeze({
+    ...extractedPublicEventFacts,
+    publicFloor:
+      editorialProjection.approvedPublicFloor ??
+      extractedPublicEventFacts.publicFloor,
+  });
   const publicContent: ParsedMeetupPublicContent = Object.freeze({
     ...publicEventFacts,
     description: publicDescription.plainText,
@@ -601,7 +627,7 @@ function normalizePublicDescription(input: unknown): Readonly<{
 
 function parsePublicDescriptionBlocks(
   source: string,
-): ParsedMeetupDescriptionBlock[] {
+): readonly ParsedMeetupDescriptionBlock[] {
   const blocks: ParsedMeetupDescriptionBlock[] = [];
   let inlineNodeCount = 0;
   let paragraphLines: string[] = [];
@@ -691,7 +717,9 @@ function parsePublicDescriptionBlocks(
   }
   flushParagraph();
   flushList();
-  return mergeStandaloneDescriptionCallToActionBlocks(blocks);
+  return removeOrphanMeetupTicketAndRsvpCallToActions(
+    mergeStandaloneDescriptionCallToActionBlocks(blocks),
+  );
 }
 
 function parsePublicDescriptionInlines(
@@ -744,6 +772,29 @@ function pushPublicLinkInline(
   const href = normalizePublicDescriptionLink(rawHref);
   const label = normalizeDescriptionInlineText(rawLabel);
   if (href === null) {
+    const previous = inlines.at(-1);
+    const precedingCallToAction =
+      previous?.type === "text"
+        ? splitTrailingMeetupTicketOrRsvpCallToAction(previous.text)
+        : null;
+    if (
+      precedingCallToAction !== null &&
+      FORBIDDEN_PUBLIC_TEXT_PATTERN.test(label)
+    ) {
+      inlines.pop();
+      if (precedingCallToAction.prefix) {
+        pushPublicTextInline(inlines, precedingCallToAction.prefix);
+      }
+      return;
+    }
+    const labelCallToAction =
+      splitTrailingMeetupTicketOrRsvpCallToAction(label);
+    if (labelCallToAction !== null) {
+      if (labelCallToAction.prefix) {
+        pushPublicTextInline(inlines, labelCallToAction.prefix);
+      }
+      return;
+    }
     const safeLabel = FORBIDDEN_PUBLIC_TEXT_PATTERN.test(label)
       ? "External resource"
       : label;

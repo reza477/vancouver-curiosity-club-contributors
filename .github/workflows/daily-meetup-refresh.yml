@@ -23,10 +23,41 @@ jobs:
       - name: Run bounded signed refresh requests
         env:
           DAILY_MEETUP_REFRESH_SECRET: ${{ secrets.DAILY_MEETUP_REFRESH_SECRET }}
+          PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL || 'https://vancouvercuriosityclub.com' }}
         shell: bash
         run: |
           set -euo pipefail
 
+          public_site_origin="$(
+            node -e '
+              const candidate = process.env.PUBLIC_SITE_URL;
+              let parsed;
+              try {
+                parsed = new URL(candidate);
+              } catch {
+                process.stderr.write("PUBLIC_SITE_URL must be one exact HTTPS origin.\n");
+                process.exit(2);
+              }
+              const local = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+              if (
+                parsed.protocol !== "https:" ||
+                parsed.username ||
+                parsed.password ||
+                parsed.port ||
+                parsed.pathname !== "/" ||
+                parsed.search ||
+                parsed.hash ||
+                parsed.hostname.endsWith(".") ||
+                local.has(parsed.hostname.toLowerCase())
+              ) {
+                process.stderr.write("PUBLIC_SITE_URL must be one exact HTTPS origin.\n");
+                process.exit(2);
+              }
+              process.stdout.write(parsed.origin);
+            '
+          )"
+          refresh_url="${public_site_origin}/api/maintenance/meetup/refresh"
+          snapshot_url="${public_site_origin}/api/maintenance/public-snapshots/capture"
           completed=false
           report_file="$(mktemp)"
           response_file="$(mktemp)"
@@ -58,7 +89,7 @@ jobs:
               --header "x-maintenance-signature: sha256=$signature" \
               --data-binary "$body" \
               --output "$response_file" \
-              https://vancouvercuriosityclub.com/api/maintenance/meetup/refresh
+              "$refresh_url"
             then
               echo "Signed refresh request failed on invocation $invocation." >&2
               exit 1
@@ -134,8 +165,81 @@ jobs:
 
             if [ "$report_status" -eq 0 ]; then
               terminal_report="$(cat "$report_file")"
-              node - "$invocation" "$total_created" "$total_updated" "$total_cancelled" "$total_removed" "$total_rejected" "$terminal_report" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
-          const [invocations, created, updated, cancelled, removed, rejected, terminalJson] = process.argv.slice(2);
+              snapshot_batch_id="$(node -e 'const { randomUUID } = require("node:crypto"); process.stdout.write(randomUUID());')"
+              snapshot_index=0
+              snapshot_promoted=false
+              snapshot_bytes=0
+              for snapshot_slot in home-html events-html home-rsc events-rsc; do
+                snapshot_index=$((snapshot_index + 1))
+                failed_invocation="snapshot-${snapshot_slot}"
+                timestamp="$(date -u +%s)"
+                request_id="$(node -e 'const { randomUUID } = require("node:crypto"); process.stdout.write(randomUUID());')"
+                body="$(BATCH_ID="$snapshot_batch_id" SLOT="$snapshot_slot" node -e 'process.stdout.write(JSON.stringify({ batchId: process.env.BATCH_ID, slot: process.env.SLOT }));')"
+                signature="$(
+                  TIMESTAMP="$timestamp" REQUEST_ID="$request_id" BODY="$body" \
+                    node -e 'const { createHmac } = require("node:crypto"); process.stdout.write(createHmac("sha256", process.env.DAILY_MEETUP_REFRESH_SECRET).update(`${process.env.TIMESTAMP}.${process.env.REQUEST_ID}.${process.env.BODY}`).digest("hex"));'
+                )"
+
+                if ! curl --silent --show-error --fail-with-body \
+                  --connect-timeout 15 \
+                  --max-time 90 \
+                  --request POST \
+                  --header 'content-type: application/json' \
+                  --header "x-maintenance-timestamp: $timestamp" \
+                  --header "x-maintenance-request-id: $request_id" \
+                  --header "x-maintenance-signature: sha256=$signature" \
+                  --data-binary "$body" \
+                  --output "$response_file" \
+                  "$snapshot_url"
+                then
+                  echo "Durable snapshot capture failed for $snapshot_slot." >&2
+                  exit 1
+                fi
+
+                read -r snapshot_status snapshot_count snapshot_promoted snapshot_bytes < <(
+                  node - "$response_file" "$snapshot_batch_id" "$snapshot_slot" "$snapshot_index" <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const [path, batchId, slot, expectedCountText] = process.argv.slice(2);
+          let response;
+          try {
+            response = JSON.parse(readFileSync(path, "utf8"));
+          } catch {
+            process.stderr.write("The durable snapshot capture returned invalid JSON.\n");
+            process.exit(2);
+          }
+          const expectedCount = Number(expectedCountText);
+          const valid =
+            response?.batchId === batchId &&
+            response?.slot === slot &&
+            Number.isSafeInteger(response?.capturedEntryCount) &&
+            response.capturedEntryCount === expectedCount &&
+            typeof response?.promoted === "boolean" &&
+            (response?.promotedByteSize === null ||
+              (Number.isSafeInteger(response.promotedByteSize) &&
+                response.promotedByteSize > 0)) &&
+            ((expectedCount < 4 &&
+              response.status === "continue" &&
+              response.promoted === false &&
+              response.promotedByteSize === null) ||
+              (expectedCount === 4 &&
+                response.status === "succeeded" &&
+                response.promoted === true &&
+                response.promotedByteSize > 0));
+          if (!valid) {
+            process.stderr.write("The durable snapshot capture returned an unsafe report shape.\n");
+            process.exit(2);
+          }
+          process.stdout.write(`${response.status} ${response.capturedEntryCount} ${response.promoted} ${response.promotedByteSize ?? 0}\n`);
+          NODE
+                )
+              done
+              if [ "$snapshot_promoted" != true ] || [ "$snapshot_bytes" -le 0 ]; then
+                echo "The durable public response bundle was not promoted." >&2
+                exit 1
+              fi
+
+              node - "$invocation" "$total_created" "$total_updated" "$total_cancelled" "$total_removed" "$total_rejected" "$terminal_report" "$snapshot_bytes" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
+          const [invocations, created, updated, cancelled, removed, rejected, terminalJson, snapshotBytes] = process.argv.slice(2);
           const terminal = JSON.parse(terminalJson);
           const materializations = terminal.counts.materializations;
           process.stdout.write([
@@ -149,6 +253,8 @@ jobs:
             `- Rejected: ${rejected}`,
             `- Home snapshot events: ${materializations.homeEventCount}`,
             `- Durable Events datasets: ${materializations.eventsSnapshotCount}`,
+            "- Durable response snapshots: 4 (Home/Events HTML + RSC)",
+            `- Durable response bundle bytes: ${snapshotBytes}`,
             "",
           ].join("\n"));
           NODE

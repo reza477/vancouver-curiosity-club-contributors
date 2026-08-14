@@ -12,6 +12,33 @@ const { d1, r2 } = hostingConfig;
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
+function appRscPath(moduleId: string): string | null {
+  const normalizedId = moduleId.replaceAll("\\", "/");
+  const appMarker = "/app/";
+  const appIndex = normalizedId.lastIndexOf(appMarker);
+  if (appIndex < 0) return null;
+
+  return normalizedId.slice(appIndex + appMarker.length);
+}
+
+function isOrganizerAppModule(moduleId: string): boolean {
+  const appPath = appRscPath(moduleId);
+  if (appPath === null) return false;
+
+  if (
+    appPath.startsWith("organizer/") ||
+    appPath.startsWith("_organizer/") ||
+    appPath.startsWith("accept-invitation/")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isSharedServerModule(moduleId: string): boolean {
+  return moduleId.replaceAll("\\", "/").includes("/lib/");
+}
+
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
@@ -57,6 +84,44 @@ export default defineConfig(async ({ command }) => {
       ...(isCodexSeatbeltSandbox
         ? { watch: { useFsEvents: false, usePolling: true } }
         : {}),
+    },
+    environments: {
+      rsc: {
+        build: {
+          rolldownOptions: {
+            output: {
+              // Vinext uses one RSC entry. Without an explicit asymmetric
+              // partition, organizer CSS is recursively assigned to the
+              // public root layout. Shared lib modules stay CSS-free here.
+              codeSplitting: {
+                minSize: 0,
+                groups: [
+                  {
+                    name: "shared-rsc",
+                    priority: 100,
+                    test: isSharedServerModule,
+                  },
+                  {
+                    name: "public-rsc",
+                    priority: 60,
+                    test: (moduleId: string) => {
+                      return (
+                        appRscPath(moduleId) !== null &&
+                        !isOrganizerAppModule(moduleId)
+                      );
+                    },
+                  },
+                  {
+                    name: "organizer-rsc",
+                    priority: 50,
+                    test: isOrganizerAppModule,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
     },
     plugins: [
       vinext(),

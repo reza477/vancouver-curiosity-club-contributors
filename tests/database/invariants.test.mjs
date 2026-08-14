@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 import test from "node:test";
 import {
   DATABASE_INVARIANT_MARKER_KEY,
@@ -10,6 +11,7 @@ import {
   DATABASE_INVARIANT_VERSION,
   PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_NAMES,
   ensureDatabaseInvariants,
+  ensureDatabaseInvariantsForRequest,
   getExpectedDatabaseInvariantFingerprint,
   normalizeTriggerDefinition,
 } from "../../lib/server/database/invariants.ts";
@@ -197,6 +199,69 @@ test("concurrent isolate initialization installs one exact durable guard set", a
     (await normalizedTriggerDefinitions(database)).map(({ name }) => name),
     [...DATABASE_INVARIANT_TRIGGER_NAMES],
   );
+});
+
+test("the compile-time invariant fingerprint stays memoized", async () => {
+  const expected = await getExpectedDatabaseInvariantFingerprint();
+  const startedAt = performance.now();
+  for (let index = 0; index < 200; index += 1) {
+    assert.equal(await getExpectedDatabaseInvariantFingerprint(), expected);
+  }
+  const averageMs = (performance.now() - startedAt) / 200;
+  assert.ok(
+    averageMs < 0.05,
+    `memoized fingerprint calls averaged ${averageMs.toFixed(4)} ms`,
+  );
+});
+
+test("healthy public reads reuse five-second readiness while private and mutating requests reverify", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await ensureInvariantReadiness(database, "public readiness TTL setup");
+
+  const counter = countedBinding(database);
+  assert.equal(
+    await ensureDatabaseInvariantsForRequest(counter.binding, {
+      method: "GET",
+      pathname: "/events",
+    }),
+    "ready",
+  );
+  assert.equal(counter.counts().statementCount, 2);
+
+  counter.resetCounts();
+  assert.equal(
+    await ensureDatabaseInvariantsForRequest(counter.binding, {
+      method: "HEAD",
+      pathname: "/events",
+    }),
+    "ready",
+  );
+  assert.equal(
+    counter.counts().statementCount,
+    0,
+    "a healthy warm public read must not query D1 again within the TTL",
+  );
+
+  counter.resetCounts();
+  assert.equal(
+    await ensureDatabaseInvariantsForRequest(counter.binding, {
+      method: "GET",
+      pathname: "/organizer",
+    }),
+    "ready",
+  );
+  assert.equal(counter.counts().statementCount, 2);
+
+  counter.resetCounts();
+  assert.equal(
+    await ensureDatabaseInvariantsForRequest(counter.binding, {
+      method: "POST",
+      pathname: "/events",
+    }),
+    "ready",
+  );
+  assert.equal(counter.counts().statementCount, 2);
 });
 
 test("empty and twelve-record legacy-attribution upgrades converge to an observed ready request within the D1 cap", async (t) => {

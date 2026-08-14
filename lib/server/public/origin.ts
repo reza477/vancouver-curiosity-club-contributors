@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { trustedPublicRequestOrigin } from "../../public-domain";
 import { isCanonicalTrustedRequestPathname } from "../../request-pathname";
 
 export const TRUSTED_REQUEST_ORIGIN_HEADER = "x-vcc-request-origin";
@@ -14,6 +15,18 @@ export async function getTrustedRequestOrigin(): Promise<URL | null> {
   const requestHeaders = await headers();
   return parseTrustedRequestOrigin(
     requestHeaders.get(TRUSTED_REQUEST_ORIGIN_HEADER),
+  );
+}
+
+/**
+ * Uses the Worker's PUBLIC_SITE_URL-derived origin when the trusted request
+ * header is present. The request URL is only a local/direct-render fallback;
+ * production fallback remains the established .com apex.
+ */
+export async function getPublicRequestOrigin(requestUrl: URL): Promise<URL> {
+  return (
+    (await getTrustedRequestOrigin()) ??
+    new URL(trustedPublicRequestOrigin(requestUrl))
   );
 }
 

@@ -91,7 +91,7 @@ export default async function AboutPage() {
           <p className="section-kicker">Come to the next one</p>
           <h2 id="about-closing-title">Follow the question that catches you.</h2>
         </div>
-        <Link className="primary-action" href="/events" prefetch={false}>
+        <Link className="primary-action" href="/events">
           See upcoming gatherings
         </Link>
       </section>

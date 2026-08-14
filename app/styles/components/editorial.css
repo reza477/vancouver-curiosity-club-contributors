@@ -1,0 +1,268 @@
+/* Shared editorial sections, actions, empty states, and pagination. */
+.editorial-section--media {
+  margin: 0;
+}
+
+.editorial-section--media img, .club-detail__cover img {
+  border: 1px solid var(--line);
+  object-fit: cover;
+  width: 100%;
+  max-height: 46rem;
+  display: block;
+}
+
+.editorial-section--media figcaption {
+  color: var(--ink-soft);
+  margin-top: 0.65rem;
+  font-size: 0.94rem;
+}
+
+.editorial-link-list, .club-detail__links ul {
+  gap: 0.85rem;
+  padding: 0;
+  list-style-position: inside;
+  display: grid;
+}
+
+.editorial-link-list li, .club-detail__links li {
+  border-bottom: 1px solid var(--line);
+  padding-block: 0.75rem;
+}
+
+.editorial-link-list p {
+  max-width: 64ch;
+  color: var(--ink-soft);
+  margin: 0.35rem 0 0;
+}
+
+.editorial-feature-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 1rem;
+  display: grid;
+}
+
+.editorial-feature-grid article, .club-detail__profile, .club-detail__links {
+  border: 1px solid var(--line);
+  background: var(--paper-deep);
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.editorial-sections {
+  background: var(--line);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: clamp(1rem, 2vw, 1.75rem);
+  display: grid;
+}
+
+.editorial-section {
+  background: var(--paper-deep);
+  min-height: 24rem;
+  padding: clamp(2rem, 5vw, 5rem);
+}
+
+.editorial-section:nth-child(2n) {
+  background: var(--paper-deep);
+}
+
+.editorial-section--callout {
+  color: var(--paper);
+  background: var(--ink) !important;
+}
+
+.editorial-section h2, .community-destinations h2, .club-directory h2, .club-detail__destination h2, .club-event-list h2, .public-service-state h1, .public-service-state h2, .public-empty-state h2 {
+  max-width: 15ch;
+  font-family: var(--display);
+  letter-spacing: -0.05em;
+  margin: 0 0 1.4rem;
+  font-size: clamp(2rem, 4.5vw, 4.8rem);
+  font-weight: 400;
+  line-height: 0.96;
+}
+
+.editorial-section > p:not(.section-kicker) {
+  max-width: 43rem;
+  color: var(--ink-soft);
+  font-size: clamp(1rem, 1.25vw, 1.16rem);
+}
+
+.editorial-section--callout > p:not(.section-kicker) {
+  color: var(--paper);
+}
+
+.community-destinations > p, .public-empty-note {
+  max-width: 42rem;
+  color: inherit;
+}
+
+.public-service-state, .public-empty-state {
+  min-height: 24rem;
+  padding: clamp(3rem, 7vw, 7rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) clamp(3rem, 7vw, 7rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-deep);
+}
+
+.public-service-state > p:not(.section-kicker), .public-empty-state > p:not(.section-kicker) {
+  max-width: 42rem;
+  color: var(--ink-soft);
+}
+
+.public-service-state > a, .public-empty-state > a {
+  align-items: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  font-weight: 750;
+  display: inline-flex;
+}
+
+.home-page, .public-page, .event-detail-page {
+  width: 100%;
+  overflow: clip;
+}
+
+.home-hero__actions a, .home-invitation__actions a, .primary-action, .share-controls a, .share-controls button, .pagination a {
+  border: 1px solid var(--ink);
+  justify-content: center;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.68rem 0.9rem;
+  font-weight: 750;
+  text-decoration: none;
+  display: inline-flex;
+}
+
+.primary-action, .home-hero__actions .primary-action {
+  border-color: var(--forest);
+  background: var(--forest);
+  color: var(--paper);
+}
+
+.primary-action:hover, .primary-action:focus-visible, .home-hero__actions .primary-action:hover, .home-hero__actions .primary-action:focus-visible {
+  border-color: var(--cobalt);
+  background: var(--cobalt);
+  color: var(--paper);
+}
+
+.home-events, .lane-index, .home-clubs, .related-events {
+  border-bottom: 1px solid var(--line);
+}
+
+.section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .event-detail h2, .related-events h2, .public-empty-state h3 {
+  max-width: 15ch;
+  font-family: var(--display);
+  letter-spacing: -0.055em;
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 5.5rem);
+  font-weight: 400;
+  line-height: 0.95;
+}
+
+.event-card__date span, .event-card__meta, .event-card__facts, .event-detail__facts dt, .event-detail__stamp span {
+  font-family: var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.event-card__date strong, .event-detail__stamp strong {
+  font-family: var(--display);
+  letter-spacing: -0.07em;
+  font-size: clamp(2.3rem, 5vw, 5rem);
+  font-weight: 400;
+  line-height: 0.9;
+}
+
+.event-card__artwork, .event-detail__artwork {
+  border: 1px solid var(--line);
+  background: var(--paper-deep);
+  position: relative;
+  overflow: hidden;
+}
+
+.event-card__artwork-frame, .event-detail__artwork-frame {
+  aspect-ratio: 16 / 9;
+  background: var(--ink);
+  width: 100%;
+  overflow: hidden;
+}
+
+.event-card__artwork img, .event-detail__artwork img {
+  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.event-card__artwork figcaption, .event-detail__artwork figcaption {
+  background: var(--forest);
+  max-width: none;
+  color: var(--paper);
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+  position: static;
+}
+
+.event-card__artwork--fallback, .event-detail__artwork--fallback {
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  display: grid;
+}
+
+.add-to-calendar__choices a, .public-calendar-event__actions .add-to-calendar__choices a {
+  background: var(--paper);
+  min-height: 2.75rem;
+  color: var(--ink);
+  border: 0;
+  align-items: center;
+  padding: 0.55rem 0.65rem;
+  font-weight: 750;
+  text-decoration: none;
+  display: flex;
+}
+
+.home-events, .lane-index, .home-clubs, .related-events {
+  padding: clamp(3rem, 6vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(3rem, 6vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+}
+
+.attending-note, .home-invitation, .home-community, .about-feel, .about-audience, .about-solo, .about-closing {
+  padding: clamp(3rem, 6vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(3rem, 6vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  gap: clamp(1.5rem, 5vw, 5rem);
+}
+
+.section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .about-page h2, .event-detail h2, .related-events h2, .public-empty-state :is(h2, h3) {
+  font-size: clamp(2.4rem, 4.5vw, 4.5rem);
+  line-height: 0.98;
+}
+
+.home-closing, .about-closing {
+  border-color: var(--forest);
+  background: var(--forest);
+  color: var(--paper);
+}
+
+.home-closing .section-kicker, .about-closing .section-kicker {
+  color: var(--paper);
+}
+
+.home-closing .primary-action, .about-closing .primary-action {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.event-detail__lead > .event-detail__artwork--fallback, .home-hero__poster--fallback {
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+}
+
+.event-card, .home-hero__poster, .club-directory__card, .lane-note {
+  transition: background-color 0.18s, border-color 0.18s, transform 0.18s;
+}
+
+.event-card:hover, .event-card:focus-within, .home-hero__poster:hover, .home-hero__poster:focus-within, .club-directory__card:hover, .club-directory__card:focus-within {
+  transform: translateY(-0.18rem);
+}

@@ -10,3 +10,249 @@ body[data-surface="organizer"] .site-content {
 body[data-surface="organizer"] .skip-link {
   z-index: 1000;
 }
+
+/* Route-scoped Meetup controls moved out of public CSS. */
+.organizer-shell__eyebrow {
+  margin: 0 0 0.8rem;
+  color: var(--forest);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.meetup-controls {
+  display: grid;
+  gap: 1rem;
+}
+
+.meetup-status,
+.meetup-refresh-panel,
+.meetup-connect-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(15rem, 0.7fr);
+  gap: clamp(1.5rem, 5vw, 5rem);
+  padding: clamp(1.4rem, 3.5vw, 3.2rem);
+  border: 1px solid var(--line);
+}
+
+.meetup-status {
+  border-left-width: 0.55rem;
+}
+
+.meetup-status-fresh,
+.meetup-status-waiting,
+.meetup-status-error,
+.meetup-status-quiet {
+  border-left-color: var(--ink);
+  background: var(--paper-deep);
+}
+
+.meetup-status h2,
+.meetup-refresh-panel h2,
+.meetup-connect-panel h2 {
+  margin: 0 0 0.7rem;
+  font-family: var(--display);
+  font-size: clamp(1.75rem, 3.4vw, 3.35rem);
+  font-weight: 400;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+
+.meetup-status p,
+.meetup-refresh-panel p,
+.meetup-connect-panel p {
+  max-width: 48rem;
+}
+
+.meetup-status dl {
+  display: grid;
+  align-self: start;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+
+.meetup-status dl div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.meetup-status dt {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.meetup-status dd {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.meetup-refresh-panel {
+  align-items: center;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.meetup-refresh-panel .organizer-shell__eyebrow,
+.meetup-refresh-panel p {
+  color: var(--paper);
+}
+
+.meetup-refresh-actions {
+  display: grid;
+  gap: 0.65rem;
+  align-self: start;
+}
+
+.meetup-refresh-actions label {
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.meetup-refresh-actions select {
+  width: 100%;
+  min-height: 3.1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--paper);
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+}
+
+.meetup-refresh-actions p {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.meetup-refresh-panel button {
+  justify-self: start;
+}
+
+.meetup-connect-panel {
+  background: var(--paper-deep);
+}
+
+.meetup-connect-panel form {
+  display: grid;
+  gap: 0.75rem;
+  align-self: start;
+}
+
+.meetup-connect-panel label {
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.meetup-connect-panel input,
+.meetup-connect-panel select {
+  width: 100%;
+  min-height: 3.1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
+.meetup-connect-panel input:focus-visible,
+.meetup-connect-panel select:focus-visible,
+.meetup-refresh-actions select:focus-visible,
+.meetup-controls button:focus-visible {
+  outline: 0.2rem solid var(--focus-ring-inner);
+  outline-offset: 0.18rem;
+  box-shadow: 0 0 0 0.42rem var(--focus-ring-outer);
+}
+
+.meetup-connect-panel form p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.meetup-controls button {
+  min-height: 3rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+}
+
+.meetup-connect-panel button {
+  justify-self: start;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.meetup-controls button:hover:not(:disabled) {
+  border-color: var(--warm-surface-ink);
+  background: var(--coral);
+  color: var(--warm-surface-ink);
+}
+
+.meetup-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.meetup-role-note,
+.meetup-cadence-note {
+  padding: 1rem 1.2rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.meetup-role-note {
+  border: 1px solid var(--line);
+  border-left: 0.35rem solid var(--cobalt);
+  background: var(--paper-deep);
+}
+
+.meetup-cadence-note {
+  border-left: 0.35rem solid var(--amber);
+  background: var(--paper-deep);
+}
+
+.meetup-role-note p,
+.meetup-cadence-note p,
+.meetup-live-notice {
+  margin: 0;
+}
+
+.meetup-live-notice {
+  min-height: 1.5rem;
+  color: var(--forest);
+  font-weight: 700;
+}
+
+@media (max-width: 70rem) {
+  .meetup-status,
+  .meetup-refresh-panel,
+  .meetup-connect-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .meetup-refresh-panel button {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 38rem) {
+  .meetup-status,
+  .meetup-refresh-panel,
+  .meetup-connect-panel {
+    padding: 1.15rem;
+  }
+}

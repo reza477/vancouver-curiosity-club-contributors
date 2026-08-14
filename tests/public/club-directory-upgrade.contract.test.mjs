@@ -1,3 +1,4 @@
+import { readPublicCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
@@ -127,7 +128,7 @@ test("three published clubs render distinct responsive art and prominent CMS pro
   );
   assert.doesNotMatch(markup, /Activity lane:/u);
 
-  const css = await source("app/globals.css");
+  const css = await readPublicCss();
   const promiseRule = cssRule(
     css,
     ".club-directory__promise > p:last-child",
@@ -135,7 +136,7 @@ test("three published clubs render distinct responsive art and prominent CMS pro
   assert.match(promiseRule, /font-size:\s*(?:clamp\(|1\.[1-9]\d*rem)/u);
   assert.match(promiseRule, /font-weight:\s*(?:6\d\d|[7-9]\d\d)/u);
   const laneRules = [
-    cssRule(css, ".club-directory__number,\n.club-directory__lane"),
+    cssRule(css, ".club-directory__number, .club-directory__lane"),
     cssRule(css, ".club-directory--clubs .club-directory__lane"),
   ].join("\n");
   assert.match(laneRules, /font-size:\s*0\.75rem/u);
@@ -363,7 +364,7 @@ test("the Clubs route uses one grouped D1 loader with no per-card or remote quer
 test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   const [directory, css] = await Promise.all([
     source("app/_components/ClubDirectory.tsx"),
-    source("app/globals.css"),
+    readPublicCss(),
   ]);
   assert.match(
     directory,
@@ -378,17 +379,16 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
     css,
     ".club-directory--clubs .club-directory__artwork",
   );
-  assert.match(desktopArtworkRule, /grid-column:\s*3/u);
   assert.match(
     desktopArtworkRule,
-    /grid-row:\s*1\s*\/\s*6/u,
+    /grid-area:\s*1\s*\/\s*3\s*\/\s*6/u,
     "desktop cards must retain the editorial side-by-side artwork treatment",
   );
   const imageRule = cssRule(css, ".club-directory__artwork img");
   assert.match(imageRule, /width:\s*100%/u);
   assert.match(imageRule, /aspect-ratio:\s*16\s*\/\s*9/u);
   assert.match(imageRule, /object-fit:\s*cover/u);
-  const tabletCss = mediaRule(css, "52rem");
+  const tabletCss = mediaRules(css, "52rem").join("\n");
   assert.match(
     cssRule(tabletCss, ".club-directory--clubs .club-directory__card"),
     /grid-template-columns:[^;]*minmax\(0,\s*1fr\)/u,
@@ -399,12 +399,12 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   );
   assert.match(
     stackedArtworkRule,
-    /grid-column:\s*2/u,
+    /grid-area:\s*auto\s*\/\s*2/u,
     "phone-sized cards need an equally specific override so artwork cannot create an implicit third column and collapse the text",
   );
   assert.match(
     stackedArtworkRule,
-    /grid-row:\s*auto/u,
+    /grid-area:\s*auto\s*\/\s*2/u,
     "stacked artwork must follow the heading instead of spanning and overlapping the card copy",
   );
   assert.match(
@@ -420,7 +420,7 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   assert.match(phoneDirectoryRule, /safe-area-inset-left/u);
   assert.match(phoneDirectoryRule, /safe-area-inset-right/u);
   assert.match(
-    cssRule(css, ".club-directory__promise,\n.club-directory__next"),
+    cssRule(css, ".club-directory__promise, .club-directory__next"),
     /min-width:\s*0/u,
     "variable CMS and event copy must be allowed to shrink on phones",
   );
@@ -432,12 +432,12 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
 });
 
 test("the Clubs-index internal header keeps the first card well inside the desktop fold without changing shared directories", async () => {
-  const css = await source("app/globals.css");
+  const css = await readPublicCss();
   const sharedDirectoryRule = cssRule(css, ".club-directory");
   const sharedHeaderRule = cssRule(css, ".club-directory > header");
   const sharedHeadingRule = cssRule(
     css,
-    ".editorial-section h2,\n.community-destinations h2,\n.editorial-actions h2,\n.club-directory h2,\n.club-detail__destination h2,\n.club-event-list h2,\n.public-service-state h1,\n.public-service-state h2,\n.public-empty-state h2",
+    ".editorial-section h2, .community-destinations h2, .club-directory h2, .club-detail__destination h2, .club-event-list h2, .public-service-state h1, .public-service-state h2, .public-empty-state h2",
   );
   assert.match(
     sharedDirectoryRule,
@@ -481,7 +481,7 @@ test("the Clubs-index internal header keeps the first card well inside the deskt
     `the Clubs-only header may consume at most 10% of a 936px desktop fold; got ${conservativeHeaderHeightPx}px`,
   );
 
-  const tabletCss = mediaRule(css, "52rem");
+  const tabletCss = mediaRules(css, "52rem").join("\n");
   assert.match(
     cssRule(tabletCss, ".club-directory > header"),
     /grid-template-columns:\s*1fr/u,
@@ -642,20 +642,6 @@ function maximumRem(value) {
   );
   assert.ok(remValues.length > 0, `missing rem length: ${value}`);
   return Math.max(...remValues);
-}
-
-function mediaRule(css, width) {
-  const startPattern = new RegExp(`@media\\s*\\(max-width:\\s*${escapeRegex(width)}\\)\\s*\\{`, "u");
-  const startMatch = startPattern.exec(css);
-  assert.ok(startMatch, `missing max-width ${width} media query`);
-  const contentStart = startMatch.index + startMatch[0].length;
-  let depth = 1;
-  for (let index = contentStart; index < css.length; index += 1) {
-    if (css[index] === "{") depth += 1;
-    if (css[index] === "}") depth -= 1;
-    if (depth === 0) return css.slice(contentStart, index);
-  }
-  assert.fail(`unterminated max-width ${width} media query`);
 }
 
 function mediaRules(css, width) {

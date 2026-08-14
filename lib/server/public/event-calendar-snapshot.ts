@@ -16,7 +16,7 @@ import {
   type PublicEventArtworkDto,
   type PublicEventCardDto,
 } from "@/lib/server/public/events";
-import type { PublicEventsPageData } from "@/lib/server/public/events-page";
+import type { PublicMonthCalendarData } from "@/lib/server/public/month-calendar";
 import { parseOfficialMeetupEventUrl } from "@/lib/server/meetup/url";
 import { resolvePublicCalendarMonth } from "@/lib/public-calendar";
 import { parsePublicEventLaneSlug } from "@/lib/public-event-lanes";
@@ -58,6 +58,11 @@ export type PublicEventsSnapshotContext = Readonly<{
 
 export type PublicEventsSnapshotServices = Readonly<{
   edgeCache?: PublicEventsSnapshotEdgeCache | null;
+}>;
+
+type PublicEventsPageData = Readonly<{
+  calendar: PublicMonthCalendarData;
+  calendarAvailable: boolean;
 }>;
 
 type SnapshotEnvelope = Readonly<{

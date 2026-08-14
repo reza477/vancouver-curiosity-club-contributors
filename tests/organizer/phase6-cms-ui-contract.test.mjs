@@ -1,3 +1,4 @@
+import { readPublicCssSync } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -256,7 +257,7 @@ test("public routes keep one combined Events renderer and private previews keep 
   assert.match(calendarRoute, /new URL\(request\.url\)/u);
   assert.match(
     calendarRoute,
-    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+    /new URL\(\s*["']\/events["'],\s*await getPublicRequestOrigin\(source\),?\s*\)/u,
   );
   assert.match(calendarRoute, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(calendarRoute, /Response\.redirect\(destination, 308\)/u);
@@ -329,7 +330,7 @@ test("published shell and editorial metadata use live media readiness and truthf
     "_components",
     "ClubDetailRenderer.tsx",
   );
-  const css = source("app", "globals.css");
+  const css = readPublicCssSync();
 
   assert.match(layout, /resolveMediaAssetsForRendering/u);
   assert.match(

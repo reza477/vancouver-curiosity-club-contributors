@@ -1,3 +1,4 @@
+import { readPublicCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -467,7 +468,10 @@ test("month calendar renders an accessible date grid, calendar actions, approved
   assert.match(markup, />See what is coming up<\/h2>/u);
   assert.match(markup, /src="\/media\/poster-1\/webp_480"/u);
   assert.match(markup, /data-event-lane="explore"/u);
-  assert.match(markup, /href="\/events\?month=2026-07">Today<\/a>/u);
+  assert.match(
+    markup,
+    /href="\/events\?view=calendar&amp;month=2026-07">Today<\/a>/u,
+  );
 
   assert.match(markup, /src="\/media\/poster-1\/webp_1600"/u);
   assert.match(markup, /alt="A colourful Meetup event poster\."/u);
@@ -691,10 +695,7 @@ test("the phone agenda initially shows seven upcoming events and exposes the res
     "the disclosure must support both expansion and collapse",
   );
 
-  const styles = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+  const styles = await readPublicCss();
   const phoneVisibilityRule = styles.match(
     /@media \(max-width:\s*([\d.]+)rem\)[\s\S]*?\.public-calendar__mobile-agenda\s*\{[^}]*display:\s*block;/u,
   );
@@ -733,6 +734,11 @@ test("a busy selected day remains complete inside a bounded keyboard-reachable e
 
   assert.ok(dayEventsTag, "the selected-day event region must render");
   assert.match(
+    markup,
+    /aria-label="Monday, July 6, 2026\. 8 events: Busy day gathering 01, Busy day gathering 02, and 6 more\."/u,
+    "a busy calendar day must name its full date, total, first two titles, and remainder",
+  );
+  assert.match(
     dayEventsTag,
     /(?:aria-label|aria-labelledby)="[^"]+"/u,
     "the selected-day scroll region needs an accessible name",
@@ -755,10 +761,7 @@ test("a busy selected day remains complete inside a bounded keyboard-reachable e
     );
   }
 
-  const styles = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+  const styles = await readPublicCss();
   assert.match(
     styles,
     /\.public-calendar__day-events\s*\{[^}]*(?:max-block-size|max-height):\s*[^;]+;[^}]*overflow-y:\s*auto;/u,
@@ -894,7 +897,7 @@ test("the public calendar route preserves month and lane while forwarding to com
   );
 
   assert.match(route, /new URL\(request\.url\)/u);
-  assert.match(route, /trustedPublicRequestOrigin\(source\)/u);
+  assert.match(route, /await getPublicRequestOrigin\(source\)/u);
   assert.match(route, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
     route,

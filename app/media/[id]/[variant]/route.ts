@@ -5,6 +5,9 @@ import { safeErrorResponse } from "@/lib/validation/server-observability";
 
 export const dynamic = "force-dynamic";
 
+const PUBLIC_MEDIA_CACHE_CONTROL =
+  "public, max-age=300, stale-while-revalidate=3600";
+
 type RouteContext = Readonly<{
   params: Promise<{ id: string; variant: string }>;
 }>;
@@ -25,7 +28,7 @@ export async function GET(
     if (request.headers.get("if-none-match") === etag) {
       return new Response(null, {
         headers: {
-          "Cache-Control": "public, max-age=0, must-revalidate",
+          "Cache-Control": PUBLIC_MEDIA_CACHE_CONTROL,
           ETag: etag,
           "X-Content-Type-Options": "nosniff",
         },
@@ -35,7 +38,7 @@ export async function GET(
     const body = media.body.body ?? (await media.body.arrayBuffer());
     return new Response(body, {
       headers: {
-        "Cache-Control": "public, max-age=0, must-revalidate",
+        "Cache-Control": PUBLIC_MEDIA_CACHE_CONTROL,
         "Content-Disposition": "inline",
         "Content-Type": media.mimeType,
         ETag: etag,

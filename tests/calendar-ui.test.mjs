@@ -1,3 +1,4 @@
+import { readPublicCss } from "./helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -241,24 +242,34 @@ test("manual Meetup refresh rebuilds public materializations only after every se
   });
 });
 
-test("Meetup snapshot identity includes the versioned importer, aliases, and public content", async () => {
-  const [sync, aliases] = await Promise.all([
+test("Meetup snapshot identity includes versioned aliases, editorial policy, and public content", async () => {
+  const [sync, aliases, editorialPolicy] = await Promise.all([
     readFile(new URL("lib/server/meetup/sync.ts", projectRoot), "utf8"),
     readFile(
       new URL("lib/server/meetup/event-aliases.ts", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("lib/meetup-publication-policy.js", projectRoot),
       "utf8",
     ),
   ]);
   assert.match(sync, /MEETUP_IMPORT_POLICY_VERSION\s*=\s*"[^"]+"/u);
   assert.match(
     sync,
-    /importPolicy:\s*\{[\s\S]*aliasPolicyVersion:\s*MEETUP_EVENT_ALIAS_POLICY_VERSION[\s\S]*aliases:\s*MEETUP_EVENT_ALIASES[\s\S]*version:\s*MEETUP_IMPORT_POLICY_VERSION/u,
+    /importPolicy:\s*\{[\s\S]*aliasPolicyVersion:\s*MEETUP_EVENT_ALIAS_POLICY_VERSION[\s\S]*aliases:\s*MEETUP_EVENT_ALIASES[\s\S]*editorialOverridePolicyVersion:\s*MEETUP_EDITORIAL_OVERRIDE_POLICY_VERSION[\s\S]*version:\s*MEETUP_IMPORT_POLICY_VERSION/u,
   );
   assert.match(sync, /publicContent:\s*item\.event\.publicContent/u);
   assert.match(
     aliases,
     /MEETUP_EVENT_ALIAS_POLICY_VERSION\s*=\s*"[^"]+"/u,
   );
+  assert.match(
+    editorialPolicy,
+    /MEETUP_EDITORIAL_OVERRIDE_POLICY_VERSION\s*=\s*\n?\s*"[^"]+"/u,
+  );
+  assert.match(editorialPolicy, /315823022/u);
+  assert.match(editorialPolicy, /315823081/u);
 });
 
 test("homepage leads with the club purpose and eight distinct sections", async () => {
@@ -298,9 +309,9 @@ test("homepage leads with the club purpose and eight distinct sections", async (
     "home-hero",
     "home-events",
     "home-newcomer attending-note",
-    "home-community-feel attending-note",
     "lane-index",
     "home-clubs",
+    "home-mission home-community",
     "home-proof home-community",
     "home-closing home-invitation",
   ];
@@ -312,6 +323,7 @@ test("homepage leads with the club purpose and eight distinct sections", async (
     priorSectionIndex = sectionIndex;
   }
   assert.match(homeData, /readPublicHomeEventMaterialization/u);
+  assert.match(homeData, /maximum: HOME_EVENT_SELECTION_RESERVE/u);
   assert.doesNotMatch(
     homeData,
     /queryPublicEventSlice|queryPublicEventMaterializationBundle|refreshPublicEventMaterializations/u,
@@ -325,7 +337,7 @@ test("homepage leads with the club purpose and eight distinct sections", async (
   assert.match(calendar, /new URL\(request\.url\)/u);
   assert.match(
     calendar,
-    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+    /new URL\(\s*["']\/events["'],\s*await getPublicRequestOrigin\(source\),?\s*\)/u,
   );
   assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
@@ -354,10 +366,7 @@ test("homepage leads with the club purpose and eight distinct sections", async (
 });
 
 test("event titles use a clean color change instead of a hover underline", async () => {
-  const styles = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+  const styles = await readPublicCss();
 
   assert.match(
     styles,
@@ -393,7 +402,7 @@ test("the public cultural identity is poster-led, lane-aware, and motion-safe", 
         new URL("app/_components/EditorialRouteBodies.tsx", projectRoot),
         "utf8",
       ),
-      readFile(new URL("app/globals.css", projectRoot), "utf8"),
+      readPublicCss(),
     ]);
 
   assert.match(calendar, /data-event-lane=\{item\.lane\?\.slug\}/u);
@@ -412,21 +421,18 @@ test("the public cultural identity is poster-led, lane-aware, and motion-safe", 
       new RegExp(`data-contribution-path="${path}"`, "u"),
     );
   }
-  assert.match(styles, /2026 cultural-community redesign:/u);
+  assert.match(styles, /\.event-artwork-fallback\[data-event-lane="explore"\]/u);
   assert.match(styles, /@media \(prefers-reduced-motion: no-preference\)/u);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/u);
   assert.match(
     styles,
-    /\.field-artwork__orbit,[\s\S]*?\.field-artwork__disc\s*\{\s*animation:\s*none !important;/u,
+    /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.event-card,[\s\S]*?transform:\s*none\s*!important;/u,
   );
   assert.match(styles, /\.public-calendar__mobile-agenda\s*\{\s*display:\s*none;/u);
 });
 
 test("the calendar switches to its named-event agenda at 768px", async () => {
-  const styles = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+  const styles = await readPublicCss();
   const rulesApplicableAt768 = getMaxWidthMediaBlocks(styles)
     .filter(({ maxWidthRem }) => maxWidthRem >= 48)
     .map(({ body }) => body)
@@ -451,7 +457,7 @@ test("the calendar switches to its named-event agenda at 768px", async () => {
 test("About is concise, reassuring, and quick to navigate", async () => {
   const [about, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readPublicCss(),
   ]);
 
   assert.match(about, /<main className="about-page"/u);
@@ -479,10 +485,8 @@ test("About is concise, reassuring, and quick to navigate", async () => {
     about,
     /\bloadAboutData\b|\bloadPublicCatalog\b|\bqueryPublicEvents\b|\bEventCard\b|className="about-(?:facts|events)"/u,
   );
-  assert.match(
-    about,
-    /href="\/events"\s+prefetch=\{false\}/u,
-  );
+  assert.match(about, /href="\/events">/u);
+  assert.doesNotMatch(about, /prefetch=\{false\}/u);
   assert.doesNotMatch(
     about,
     /FieldArtwork|PageMasthead|Meetup refresh|Last completed|sync failed/ui,
@@ -490,7 +494,7 @@ test("About is concise, reassuring, and quick to navigate", async () => {
   assert.match(styles, /\.about-feel,/u);
 });
 
-test("Events leads with one full calendar and exposes no public diagnostics", async () => {
+test("Events defaults to Upcoming, keeps Calendar, and exposes no public diagnostics", async () => {
   const [
     page,
     renderer,
@@ -540,19 +544,47 @@ test("Events leads with one full calendar and exposes no public diagnostics", as
     maintenance,
     /refreshMeetupCalendarSourceIfDue|schedulePublicMeetupRefresh/u,
   );
-  assert.match(worker, /maintenanceRedirect/);
+  assert.match(
+    worker,
+    /await ensureDatabaseInvariantsForRequest\(env\.DB,[\s\S]*?const response = await handler\.fetch\([\s\S]*?\(request\.method === "GET" \|\| request\.method === "HEAD"\)[\s\S]*?!isPrivateOrIdentityPath\(requestPathname\)[\s\S]*?schedulePublicRequestMaintenance\(ctx, env\.DB/u,
+  );
+  const publicSchedulerStart = worker.indexOf(
+    "function schedulePublicRequestMaintenance(",
+  );
+  const publicSchedulerEnd = worker.indexOf(
+    "function contentSecurityPolicy(",
+    publicSchedulerStart,
+  );
+  assert.ok(publicSchedulerStart >= 0);
+  assert.ok(publicSchedulerEnd > publicSchedulerStart);
+  const publicScheduler = worker.slice(
+    publicSchedulerStart,
+    publicSchedulerEnd,
+  );
+  assert.match(publicScheduler, /runRequestMaintenance\(database, request\)/u);
+  assert.match(
+    publicScheduler,
+    /nowUtcMs < publicRequestMaintenanceNextEligibleAtUtcMs/u,
+  );
+  assert.match(publicScheduler, /context\.waitUntil\(maintenance\)/u);
+  assert.doesNotMatch(
+    publicScheduler,
+    /maintenanceRedirect|maintenanceUnavailableResponse|secureResponse/u,
+    "visitor maintenance must stay background-only and never return 303 or 503",
+  );
   assert.doesNotMatch(
     worker,
     /schedulePublicMeetupRefresh|public_meetup_refresh_/u,
   );
-  assert.doesNotMatch(renderer, /Event timeframe|>\s*Upcoming\s*<|>\s*Past\s*</u);
+  assert.match(renderer, /aria-label="Event views"[\s\S]*Upcoming[\s\S]*Calendar/u);
+  assert.doesNotMatch(renderer, /Event timeframe|>\s*Past\s*</u);
   assert.doesNotMatch(renderer, /<EventFilters\b/u);
   assert.doesNotMatch(
     renderer,
     /public-export-actions|Download this public view|exportHref\(/u,
   );
   assert.match(renderer, /<PublicMonthCalendar/u);
-  assert.doesNotMatch(renderer, /<EventCollection|<Pagination|events-page__list/u);
+  assert.match(renderer, /<EventCard compact event=\{event\}/u);
   assert.doesNotMatch(renderer, /EditorialSection|editorial-sections/u);
   assert.doesNotMatch(
     `${page}\n${renderer}`,
@@ -561,7 +593,7 @@ test("Events leads with one full calendar and exposes no public diagnostics", as
   assert.match(calendar, /new URL\(request\.url\)/u);
   assert.match(
     calendar,
-    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+    /new URL\(\s*["']\/events["'],\s*await getPublicRequestOrigin\(source\),?\s*\)/u,
   );
   assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
@@ -905,7 +937,7 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
       new URL("app/_components/SiteHeader.tsx", projectRoot),
       "utf8",
     ),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readPublicCss(),
   ]);
 
   assert.match(
@@ -929,7 +961,7 @@ test("the exact four primary destinations stay ordered and map related routes ac
       new URL("app/_components/SiteFooter.tsx", projectRoot),
       "utf8",
     ),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readPublicCss(),
   ]);
 
   const destinations = [
@@ -970,7 +1002,10 @@ test("the exact four primary destinations stay ordered and map related routes ac
   assert.match(header, /className="primary-nav"/u);
   assert.match(header, /className="primary-nav__link"/u);
   assert.doesNotMatch(header, /<details|<summary|site-navigation/u);
-  assert.match(header, /return Object\.freeze\(requiredNavigation\)/u);
+  assert.match(header, /normalizedPrimaryNavigation\(navigation\)/u);
+  assert.match(header, /for \(const sourceItem of configured\)/u);
+  assert.match(header, /requiredByHref\.get\(normalizedHref\)/u);
+  assert.match(header, /primary\.push\(required\)/u);
   assert.match(
     header,
     /href === "\/events"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)[\s\S]*?pathname === "\/calendar"/u,
@@ -989,10 +1024,7 @@ test("the exact four primary destinations stay ordered and map related routes ac
 });
 
 test("small metadata labels keep a readable 0.75rem floor", async () => {
-  const css = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+  const css = await readPublicCss();
   const subFloorRemSizes = [...css.matchAll(/font-size:\s*0\.(\d+)rem/g)]
     .map((match) => Number(`0.${match[1]}`))
     .filter((size) => size < 0.75);

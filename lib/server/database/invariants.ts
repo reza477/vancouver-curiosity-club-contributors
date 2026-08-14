@@ -28,6 +28,7 @@ import {
 } from "../organizer/conflict-domain";
 import { protectedLegalClaimSql } from "../../validation/protected-legal-claims";
 import { publicOrganizerEmailExposureSql } from "../../validation/public-organizer-email";
+import { isPrivateOrIdentityPath } from "../../request-pathname";
 
 export const DATABASE_INVARIANT_MARKER_KEY = "database-guards";
 export const PRE_PHASE5_DATABASE_INVARIANT_VERSION = 4;
@@ -35,6 +36,7 @@ export const PRE_PHASE6_DATABASE_INVARIANT_VERSION = 5;
 export const PRE_PHASE7_DATABASE_INVARIANT_VERSION = 6;
 export const DATABASE_INVARIANT_VERSION = 7;
 export const DATABASE_INVARIANT_STATEMENT_LIMIT = 50;
+export const PUBLIC_DATABASE_INVARIANT_READY_TTL_MS = 5_000;
 
 export type DatabaseInvariantVersion =
   | typeof PRE_PHASE5_DATABASE_INVARIANT_VERSION
@@ -361,6 +363,11 @@ type DatabaseInvariantContract = Readonly<{
   expectedTriggerNameSql: string;
   maxAtomicRepairMutations: number;
   maxFailClosedDropCount: number;
+  normalizedTriggerDefinitionByName: ReadonlyMap<string, string>;
+  normalizedTriggerDefinitions: ReadonlyArray<{
+    name: string;
+    sql: string;
+  }>;
   triggerNames: readonly string[];
   triggerStatements: readonly string[];
   version: DatabaseInvariantVersion;
@@ -379,6 +386,16 @@ function createDatabaseInvariantContract(input: Readonly<{
   // certification. Do not pre-scan or repeat the counts in the marker write.
   const readinessStatementCount = 2;
   const certificationReadBackStatementCount = 2;
+  const normalizedTriggerDefinitions = Object.freeze(
+    input.triggerStatements
+      .map((sql) =>
+        Object.freeze({
+          name: readTriggerName(sql),
+          sql: normalizeTriggerDefinition(sql),
+        }),
+      )
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  );
   return Object.freeze({
     ...input,
     // Trigger names are compile-time constants extracted from our own CREATE
@@ -404,6 +421,10 @@ function createDatabaseInvariantContract(input: Readonly<{
       PHASE4_ADOPTION_PREFLIGHT_STATEMENT_COUNT -
       readinessStatementCount -
       1,
+    normalizedTriggerDefinitionByName: new Map(
+      normalizedTriggerDefinitions.map(({ name, sql }) => [name, sql]),
+    ),
+    normalizedTriggerDefinitions,
   });
 }
 
@@ -474,12 +495,25 @@ const MAX_EXTERNAL_ADOPTIONS_PER_REQUEST = 22;
 const MAX_MANUAL_ALL_DAY_SCAN = 5_000;
 const MAX_EXTERNAL_SCAN = 5_000;
 
+type DatabaseInvariantInitializationEntry = {
+  promise: Promise<DatabaseInvariantInitializationStatus>;
+  readyUntilUtcMs: number | null;
+};
+
 const initializationByDatabase = new WeakMap<
   D1DatabaseLike,
-  Map<DatabaseInvariantVersion, Promise<DatabaseInvariantInitializationStatus>>
+  Map<DatabaseInvariantVersion, DatabaseInvariantInitializationEntry>
+>();
+const expectedFingerprintByVersion = new Map<
+  DatabaseInvariantVersion,
+  Promise<string>
 >();
 
 export type DatabaseInvariantInitializationStatus = "ready" | "repaired";
+export type DatabaseInvariantRequestContext = Readonly<{
+  method: string;
+  pathname: string;
+}>;
 
 export class DatabaseInvariantError extends Error {
   constructor() {
@@ -490,41 +524,80 @@ export class DatabaseInvariantError extends Error {
 
 /**
  * Installs and verifies every database-enforced guard before application code
- * can access D1. The in-isolate promise deduplicates concurrent calls only:
- * every request revalidates the durable marker and exact sqlite_master
- * definitions. The database triggers keep a healthy marked database closed
- * against malformed writes; the heavier integrity/adoption scans run only
- * after the marker or definitions drift. A repair initiated by another isolate
- * therefore remains fail closed without charging every application request for
- * the complete integrity suite.
+ * can access D1. Direct callers always revalidate the durable marker and exact
+ * sqlite_master definitions; only `ensureDatabaseInvariantsForRequest` may
+ * reuse a healthy public-read result for five seconds. The triggers themselves
+ * remain the write-time enforcement, and private or mutating requests always
+ * bypass the ready-result TTL. Repaired and rejected results are never cached.
  */
 export function ensureDatabaseInvariants(
   database: D1DatabaseLike,
   expectedVersion: DatabaseInvariantVersion = DATABASE_INVARIANT_VERSION,
 ): Promise<DatabaseInvariantInitializationStatus> {
+  return ensureDatabaseInvariantsWithReadyCache(
+    database,
+    expectedVersion,
+    false,
+  );
+}
+
+export function ensureDatabaseInvariantsForRequest(
+  database: D1DatabaseLike,
+  request: DatabaseInvariantRequestContext,
+  expectedVersion: DatabaseInvariantVersion = DATABASE_INVARIANT_VERSION,
+): Promise<DatabaseInvariantInitializationStatus> {
+  const method = request.method.toUpperCase();
+  const cacheReadyResult =
+    (method === "GET" || method === "HEAD") &&
+    !isPrivateOrIdentityPath(request.pathname);
+  return ensureDatabaseInvariantsWithReadyCache(
+    database,
+    expectedVersion,
+    cacheReadyResult,
+  );
+}
+
+function ensureDatabaseInvariantsWithReadyCache(
+  database: D1DatabaseLike,
+  expectedVersion: DatabaseInvariantVersion,
+  cacheReadyResult: boolean,
+): Promise<DatabaseInvariantInitializationStatus> {
   const byVersion =
     initializationByDatabase.get(database) ??
-    new Map<
-      DatabaseInvariantVersion,
-      Promise<DatabaseInvariantInitializationStatus>
-    >();
+    new Map<DatabaseInvariantVersion, DatabaseInvariantInitializationEntry>();
   if (!initializationByDatabase.has(database)) {
     initializationByDatabase.set(database, byVersion);
   }
   const existing = byVersion.get(expectedVersion);
-  if (existing) return existing;
+  if (existing?.readyUntilUtcMs === null) return existing.promise;
+  if (
+    existing &&
+    cacheReadyResult &&
+    existing.readyUntilUtcMs > Date.now()
+  ) {
+    return existing.promise;
+  }
+  if (existing) byVersion.delete(expectedVersion);
 
   const contract = databaseInvariantContract(expectedVersion);
+  const entry: DatabaseInvariantInitializationEntry = {
+    promise: Promise.resolve("ready"),
+    readyUntilUtcMs: null,
+  };
   const clearInitialization = () => {
-    byVersion.delete(expectedVersion);
+    if (byVersion.get(expectedVersion) === entry) {
+      byVersion.delete(expectedVersion);
+    }
     if (byVersion.size === 0) initializationByDatabase.delete(database);
   };
   const initialization = initializeDatabaseInvariants(database, contract).then(
     (status) => {
-      // This map deduplicates only concurrent work. Never cache a resolved
-      // result across requests: another Worker isolate may have invalidated
-      // the durable marker while repairing a corrupted trigger set.
-      clearInitialization();
+      if (status === "ready" && cacheReadyResult) {
+        entry.readyUntilUtcMs =
+          Date.now() + PUBLIC_DATABASE_INVARIANT_READY_TTL_MS;
+      } else {
+        clearInitialization();
+      }
       return status;
     },
     (error: unknown) => {
@@ -534,26 +607,39 @@ export function ensureDatabaseInvariants(
         : new DatabaseInvariantError();
     },
   );
-  byVersion.set(expectedVersion, initialization);
+  entry.promise = initialization;
+  byVersion.set(expectedVersion, entry);
   return initialization;
 }
 
 export async function getExpectedDatabaseInvariantFingerprint(
   expectedVersion: DatabaseInvariantVersion = DATABASE_INVARIANT_VERSION,
 ): Promise<string> {
-  const definitions = expectedNormalizedTriggerDefinitions(
-    databaseInvariantContract(expectedVersion),
-  );
-  const serialized = definitions
-    .map(({ name, sql }) => `${name}\u0000${sql}`)
-    .join("\u0001");
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(serialized),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  const cached = expectedFingerprintByVersion.get(expectedVersion);
+  if (cached) return cached;
+
+  const fingerprint = (async () => {
+    const definitions = expectedNormalizedTriggerDefinitions(
+      databaseInvariantContract(expectedVersion),
+    );
+    const serialized = definitions
+      .map(({ name, sql }) => `${name}\u0000${sql}`)
+      .join("\u0001");
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(serialized),
+    );
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  })();
+  expectedFingerprintByVersion.set(expectedVersion, fingerprint);
+  fingerprint.catch(() => {
+    if (expectedFingerprintByVersion.get(expectedVersion) === fingerprint) {
+      expectedFingerprintByVersion.delete(expectedVersion);
+    }
+  });
+  return fingerprint;
 }
 
 export function normalizeTriggerDefinition(sql: string): string {
@@ -602,10 +688,7 @@ async function initializeDatabaseInvariants(
     return "repaired";
   }
 
-  const expectedDefinitions = expectedNormalizedTriggerDefinitions(contract);
-  const expectedByName = new Map(
-    expectedDefinitions.map((definition) => [definition.name, definition.sql]),
-  );
+  const expectedByName = contract.normalizedTriggerDefinitionByName;
   const actualByName = new Map(
     readiness.actualDefinitions.map((definition) => [
       definition.name,
@@ -2983,10 +3066,7 @@ function expectedNormalizedTriggerDefinitions(
   name: string;
   sql: string;
 }> {
-  return contract.triggerStatements.map((sql) => ({
-    name: readTriggerName(sql),
-    sql: normalizeTriggerDefinition(sql),
-  })).sort((left, right) => left.name.localeCompare(right.name));
+  return contract.normalizedTriggerDefinitions;
 }
 
 function readTriggerName(sql: string): string {

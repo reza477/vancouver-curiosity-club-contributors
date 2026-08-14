@@ -1,5 +1,5 @@
+import { readPublicCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -9,7 +9,6 @@ import { PublicEventDetailRenderer } from "../../app/_components/PublicEventDeta
 import { PublicMonthCalendar } from "../../app/_components/PublicMonthCalendar.tsx";
 import { CURATED_MEETUP_EVENT_ENRICHMENTS } from "../../lib/meetup-event-enrichment.ts";
 
-const projectRoot = new URL("../../", import.meta.url);
 const IMPORTED_EVENT_ID = "315560589";
 const importedEvent = CURATED_MEETUP_EVENT_ENRICHMENTS[IMPORTED_EVENT_ID];
 
@@ -120,10 +119,7 @@ test("the imported long-form description remains complete on the event detail pa
 });
 
 test("discovery summaries use an accessible two-or-three-line CSS clamp at desktop and mobile widths", async () => {
-  const styles = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+  const styles = await readPublicCss();
 
   for (const viewportWidth of [390, 768, 1440]) {
     assert.equal(

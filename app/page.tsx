@@ -38,7 +38,7 @@ export default async function HomePage() {
             Events and club information will appear here when the website is
             ready.
           </p>
-          <Link href="/events" prefetch={false}>
+          <Link href="/events">
             See upcoming gatherings
           </Link>
         </section>

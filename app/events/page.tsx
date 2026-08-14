@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { resolvePublicEventLaneSelection } from "@/lib/server/public/event-lane-filter";
+import { resolvePublicEventsView } from "@/lib/public-events-view";
 import { EventsPageRenderer } from "@/app/_components/EventsPageRenderer";
 import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
@@ -9,10 +10,10 @@ import {
   getRequestPublicPageContent,
 } from "@/lib/server/public/request-cache";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
-import { loadPublicEventsPageData } from "@/lib/server/public/events-page";
 import {
-  emptyPublicMonthCalendar,
-} from "@/lib/server/public/month-calendar";
+  emptyPublicEventsPageData,
+  loadPublicEventsPageData,
+} from "@/lib/server/public/events-page";
 import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
 import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
 import { writeSafeLog } from "@/lib/validation/server-observability";
@@ -50,14 +51,19 @@ export default async function EventsPage({
 }: Readonly<{ searchParams: PageSearchParams }>) {
   const raw = await searchParams;
   const laneSelection = resolvePublicEventLaneSelection(raw.lane);
+  const viewSelection = resolvePublicEventsView(raw.view);
   const nowUtcMs = readServerUtcMs();
   const todayDate = vancouverCalendarDate(nowUtcMs);
   const origin = await getTrustedRequestOrigin();
   let pageContent:
     | Awaited<ReturnType<typeof getRequestPublicPageContent>>
     | null = null;
-  let calendar = emptyPublicMonthCalendar(raw.month, todayDate);
-  let calendarAvailable = true;
+  let eventsData = emptyPublicEventsPageData({
+    clubSlug: raw.club,
+    rawMonth: raw.month,
+    rawPage: raw.page,
+    todayDate,
+  });
 
   try {
     const { database } = getRuntimeAuthConfiguration();
@@ -77,15 +83,16 @@ export default async function EventsPage({
       });
       const loaded = await loadPublicEventsPageData(database, {
         cacheOrigin: origin?.origin ?? null,
+        clubSlug: raw.club,
         organizationId: organization.id,
         nowUtcMs,
         laneSlug: laneSelection.activeLaneSlug,
         rawMonth: raw.month,
+        rawPage: raw.page,
         todayDate,
       });
       pageContent = await pageContentPromise;
-      calendar = loaded.calendar;
-      calendarAvailable = loaded.calendarAvailable;
+      eventsData = loaded;
     }
   } catch {
     writeSafeLog("error", "public_events_unavailable", {
@@ -99,10 +106,11 @@ export default async function EventsPage({
 
   return (
     <EventsPageRenderer
-      calendar={calendar}
-      calendarAvailable={calendarAvailable}
       activeLaneSlug={laneSelection.activeLaneSlug}
+      activeView={viewSelection.activeView}
+      data={eventsData}
       invalidLane={laneSelection.invalid}
+      invalidView={viewSelection.invalid}
       nowUtcMs={nowUtcMs}
       pageContent={pageContent}
       siteOrigin={origin?.origin ?? null}

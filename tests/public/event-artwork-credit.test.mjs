@@ -131,7 +131,10 @@ test("event detail keeps one primary Meetup credit while a related discovery car
   assert.match(related, /href="\/events\/related-event"/u);
 });
 
-function meetupArtwork(credit = MEETUP_POSTER_CREDIT) {
+function meetupArtwork(
+  credit = MEETUP_POSTER_CREDIT,
+  fixtureStem = "fixture",
+) {
   return Object.freeze({
     altText: "A vivid event poster with blue circles.",
     credit,
@@ -142,11 +145,11 @@ function meetupArtwork(credit = MEETUP_POSTER_CREDIT) {
     }),
     focalPoint: Object.freeze({ x: 5000, y: 5000 }),
     srcSet: Object.freeze({
-      large: "/event-posters/fixture-1600.jpeg",
-      medium: "/event-posters/fixture-960.jpeg",
-      small: "/event-posters/fixture-480.jpeg",
+      large: `/event-posters/${fixtureStem}-1600.jpeg`,
+      medium: `/event-posters/${fixtureStem}-960.jpeg`,
+      small: `/event-posters/${fixtureStem}-480.jpeg`,
     }),
-    url: "/event-posters/fixture-1600.jpeg",
+    url: `/event-posters/${fixtureStem}-1600.jpeg`,
   });
 }
 
@@ -233,6 +236,7 @@ function homeProps(credit) {
       Array.from({ length: 4 }, (_, index) => {
         const position = index + 1;
         return eventCard(credit, {
+          artwork: meetupArtwork(credit, `fixture-${position}`),
           slug: `fixture-event-${position}`,
           title: `Fixture event ${position}`,
         });

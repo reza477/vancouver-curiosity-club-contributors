@@ -434,10 +434,71 @@ function assertCalendarRouteComposition() {
     pageSource,
     /loadOrganizerPageContext\("\/organizer\/calendar"\)[\s\S]*?loadCalendarWorkspaceData\([\s\S]*?listOwnCalendarSubscriptions\(/u,
   );
+  const invariantInitialization = workerSource.indexOf(
+    "await ensureDatabaseInvariantsForRequest(env.DB, {",
+  );
+  const synchronousGate = workerSource.indexOf(
+    "shouldRunSynchronousRequestMaintenance(",
+    invariantInitialization,
+  );
+  const synchronousMaintenance = workerSource.indexOf(
+    "const maintenance = await runRequestMaintenance(",
+    synchronousGate,
+  );
+  const applicationDispatch = workerSource.indexOf(
+    "const response = await handler.fetch(",
+    synchronousMaintenance,
+  );
+  const publicMaintenance = workerSource.indexOf(
+    "schedulePublicRequestMaintenance(ctx, env.DB, {",
+    applicationDispatch,
+  );
+  assert.ok(invariantInitialization >= 0);
+  assert.ok(synchronousGate > invariantInitialization);
+  assert.ok(synchronousMaintenance > synchronousGate);
+  assert.ok(applicationDispatch > synchronousMaintenance);
+  assert.ok(publicMaintenance > applicationDispatch);
+
+  const synchronousSection = workerSource.slice(
+    synchronousGate,
+    applicationDispatch,
+  );
+  assert.match(synchronousSection, /maintenanceUnavailableResponse\(\)/u);
+  assert.match(synchronousSection, /maintenanceRedirect\(canonicalUrl\)/u);
+
+  const publicSchedulerStart = workerSource.indexOf(
+    "function schedulePublicRequestMaintenance(",
+  );
+  const publicSchedulerEnd = workerSource.indexOf(
+    "function contentSecurityPolicy(",
+    publicSchedulerStart,
+  );
+  assert.ok(publicSchedulerStart >= 0);
+  assert.ok(publicSchedulerEnd > publicSchedulerStart);
+  const publicScheduler = workerSource.slice(
+    publicSchedulerStart,
+    publicSchedulerEnd,
+  );
+  assert.match(publicScheduler, /runRequestMaintenance\(database, request\)/u);
+  assert.match(publicScheduler, /publicRequestMaintenanceInFlight/u);
+  assert.match(
+    publicScheduler,
+    /nowUtcMs < publicRequestMaintenanceNextEligibleAtUtcMs/u,
+  );
+  assert.match(publicScheduler, /context\.waitUntil\(maintenance\)/u);
+  assert.doesNotMatch(
+    publicScheduler,
+    /maintenanceRedirect|maintenanceUnavailableResponse|secureResponse/u,
+    "public background maintenance must never replace a visitor response",
+  );
   assert.match(
     workerSource,
-    /await ensureDatabaseInvariants\(env\.DB\)[\s\S]*?const maintenance = await runRequestMaintenance\([\s\S]*?if \(maintenance\.kind === "unavailable"\) \{[\s\S]*?return secureResponse\([\s\S]*?if \(maintenance\.kind === "redirect"\) \{[\s\S]*?return secureResponse\([\s\S]*?const securedRequest = requestWithSecurityContext\([\s\S]*?const response = await handler\.fetch/u,
-    "invariants and synchronous CMS/publication maintenance must return before route dispatch",
+    /\(request\.method === "GET" \|\| request\.method === "HEAD"\)[\s\S]*?!isPrivateOrIdentityPath\(requestPathname\)[\s\S]*?schedulePublicRequestMaintenance\(ctx, env\.DB/u,
+  );
+  assert.match(
+    workerSource,
+    /\(method !== "GET" && method !== "HEAD"\)[\s\S]*?isPrivateOrIdentityPath\(pathname\)/u,
+    "private and mutating requests must keep synchronous maintenance",
   );
   assert.doesNotMatch(
     workerSource,

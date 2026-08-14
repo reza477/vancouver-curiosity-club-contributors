@@ -1329,7 +1329,7 @@ async function readClubCandidates(
             summary: description.slice(0, 500),
             themeColor: hasDetails
               ? requiredString(row.theme_color)
-              : "#2457D6",
+              : "#1F5F5B",
             thumbnailAssetId: null,
             typicalFormat: null,
             whatToExpect: null,
@@ -1511,7 +1511,7 @@ async function readProgramCandidates(
           slug,
           socialUrls: [],
           summary: description.slice(0, 500),
-          themeColor: "#2457D6",
+          themeColor: "#1F5F5B",
           thumbnailAssetId: null,
           typicalFormat: null,
           whatToExpect: null,
@@ -1742,10 +1742,10 @@ async function readIdentityCandidate(
     openGraphAssetId: existing.openGraphAssetId ?? null,
     palette:
       existing.palette ?? {
-        accent: "#5B2CC9",
-        background: "#FFF9F5",
-        foreground: "#221C3D",
-        secondary: "#2457D6",
+        accent: "#B8402B",
+        background: "#FBF7F0",
+        foreground: "#131C33",
+        secondary: "#1F5F5B",
       },
     seoTitle: existing.seoTitle ?? brandName,
     tagline:

@@ -1,3 +1,4 @@
+import { readPublicCss } from "./helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir, stat } from "node:fs/promises";
 import test from "node:test";
@@ -41,7 +42,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
       new URL("lib/server/public/request-cache.ts", projectRoot),
       "utf8",
     ),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readPublicCss(),
     readFile(new URL("package.json", projectRoot), "utf8"),
   ]);
 
@@ -82,7 +83,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(homeRenderer, /Come curious\. Leave knowing people\./u);
   assert.match(homeRenderer, /See upcoming gatherings/u);
   assert.match(homeRenderer, /New here\? Start here/u);
-  assert.match(homeRenderer, /home-hero__poster-collage/u);
+  assert.match(homeRenderer, /home-hero__featured-poster/u);
   assert.doesNotMatch(homeRenderer, /FieldArtwork/u);
   assert.match(catalog, /A social calendar with a brain\./);
   assert.match(catalog, /Vancouver Curiosity Club/);
@@ -121,9 +122,9 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     "home-hero",
     "home-events",
     "home-newcomer",
-    "home-community-feel",
     "lane-index",
     "home-clubs",
+    "home-mission",
     "home-proof",
     "home-closing",
   ];
@@ -155,9 +156,9 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(css, /--paper-line:\s*var\(--paper\)/u);
   assert.match(
     css,
-    /--ink-soft:\s*var\(--cms-foreground,\s*#514b68\)/u,
+    /--ink-soft:\s*#3d4a66/u,
   );
-  assert.match(css, /--warm-surface-ink:\s*#221c3d/u);
+  assert.match(css, /--warm-surface-ink:\s*#131c33/u);
   assert.match(
     css,
     /outline:\s*0\.2rem solid var\(--focus-ring-inner\)/u,
@@ -172,8 +173,6 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   );
   for (const selector of [
     "::selection",
-    ".agenda-card-meta .cancelled-badge",
-    ".meetup-controls button:hover:not(:disabled)",
     ".status-chip--tentative",
   ]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -189,7 +188,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     css,
     /\.primary-nav a\[aria-current="page"\]\s*\{[^}]*background:\s*[^;]+;[^}]*color:\s*[^;]+;/su,
   );
-  for (const selector of [".cancellation-banner", ".public-error-state"]) {
+  for (const selector of [".cancellation-banner"]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     assert.match(
       css,
@@ -205,15 +204,9 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   );
   assert.match(
     css,
-    /\.event-card::before[\s\S]{0,260}background:\s*var\(--paper-deep\)/u,
+    /\.event-card::?before[\s\S]{0,260}background:\s*var\(--paper-deep\)/u,
   );
-  for (const selector of [
-    ".calendar-state-label span",
-    ".lane-dot",
-    ".source-mark",
-    ".source-status > span",
-    ".status-chip--tentative",
-  ]) {
+  for (const selector of [".status-chip--tentative"]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     assert.match(
       css,
@@ -237,7 +230,6 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     [".site-footer", "--cobalt", "--paper"],
     [".lane-index", "--paper-deep", "--ink"],
     [".community-destinations", "--forest", "--paper"],
-    [".event-filters", "--ink", "--paper"],
     [".editorial-section--callout", "--ink", "--paper"],
   ]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -322,11 +314,45 @@ test("the worker applies a security and noindex header foundation", async () => 
     /pathname\.startsWith\(`\$\{path\}\/`\)/,
   );
   const invariantInitialization = worker.indexOf(
-    "await ensureDatabaseInvariants(env.DB)",
+    "await ensureDatabaseInvariantsForRequest(env.DB, {",
   );
-  const applicationDispatch = worker.indexOf("handler.fetch(");
+  const synchronousGate = worker.indexOf(
+    "shouldRunSynchronousRequestMaintenance(",
+    invariantInitialization,
+  );
+  const applicationDispatch = worker.indexOf(
+    "const response = await handler.fetch(",
+    synchronousGate,
+  );
+  const publicMaintenance = worker.indexOf(
+    "schedulePublicRequestMaintenance(ctx, env.DB, {",
+    applicationDispatch,
+  );
   assert.ok(invariantInitialization >= 0);
-  assert.ok(applicationDispatch > invariantInitialization);
+  assert.ok(synchronousGate > invariantInitialization);
+  assert.ok(applicationDispatch > synchronousGate);
+  assert.ok(publicMaintenance > applicationDispatch);
+  const synchronousSection = worker.slice(synchronousGate, applicationDispatch);
+  assert.match(synchronousSection, /maintenanceUnavailableResponse\(\)/u);
+  assert.match(synchronousSection, /maintenanceRedirect\(canonicalUrl\)/u);
+  const publicSchedulerStart = worker.indexOf(
+    "function schedulePublicRequestMaintenance(",
+  );
+  const publicSchedulerEnd = worker.indexOf(
+    "function contentSecurityPolicy(",
+    publicSchedulerStart,
+  );
+  assert.ok(publicSchedulerStart >= 0);
+  assert.ok(publicSchedulerEnd > publicSchedulerStart);
+  const publicScheduler = worker.slice(
+    publicSchedulerStart,
+    publicSchedulerEnd,
+  );
+  assert.match(publicScheduler, /context\.waitUntil\(maintenance\)/u);
+  assert.doesNotMatch(
+    publicScheduler,
+    /maintenanceRedirect|maintenanceUnavailableResponse|secureResponse/u,
+  );
   assert.match(worker, /database_invariants_unavailable/);
   assert.match(worker, /The site is temporarily unavailable\./);
 });

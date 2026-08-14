@@ -78,10 +78,14 @@ test("workflow treats any HTTP or reporting failure as a failed run", () => {
   assert.match(workflow, /--connect-timeout\s+15/u);
   assert.match(workflow, /--max-time\s+90/u);
   assert.match(workflow, /--fail(?:-with-body)?/u);
+  assert.match(workflow, /vars\.PUBLIC_SITE_URL/iu);
+  assert.match(workflow, /PUBLIC_SITE_URL[^\r\n]*vancouvercuriosityclub\.com/iu);
   assert.match(
     workflow,
-    /https:\/\/vancouvercuriosityclub\.com\/api\/maintenance\/meetup\/refresh/u,
+    /refresh_url=[^\r\n]*public_site_origin[^\r\n]*api\/maintenance\/meetup\/refresh/iu,
   );
+  assert.match(workflow, /PUBLIC_SITE_URL must be one exact HTTPS origin/iu);
+  assert.match(workflow, /"\$refresh_url"/u);
   assert.doesNotMatch(workflow, /continue-on-error:\s*true/iu);
   assert.doesNotMatch(workflow, /\|\|\s*true/u);
   assert.match(workflow, /status/iu);

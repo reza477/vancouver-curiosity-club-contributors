@@ -1,0 +1,200 @@
+/* Events discovery route, view switcher, filters, and upcoming list. */
+.events-page > .event-list, .events-page > .public-empty-state {
+  margin-inline: max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left)) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right));
+}
+
+.events-page-masthead {
+  padding: clamp(2.75rem, 5vw, 5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(2rem, 4vw, 3.5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  border-bottom: 1px solid var(--ink);
+}
+
+.events-page-masthead h1 {
+  max-width: 13ch;
+  font-family: var(--display);
+  letter-spacing: -0.06em;
+  margin: 0;
+  font-size: clamp(4.5rem, 7vw, 5.5rem);
+  font-weight: 400;
+  line-height: 0.94;
+}
+
+.events-page-masthead > p:last-child {
+  max-width: 58ch;
+  color: var(--ink-soft);
+  margin: 1.25rem 0 0;
+  font-size: clamp(1.05rem, 1.5vw, 1.25rem);
+}
+
+.events-page__discovery, .events-page__calendar {
+  border-bottom: 1px solid var(--ink);
+}
+
+.events-page__controls {
+  padding: 1rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) 1rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  border-bottom: 1px solid var(--ink);
+  background: var(--paper-raised, var(--paper-deep));
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: 1rem clamp(1rem, 3vw, 2.5rem);
+  display: grid;
+}
+
+.events-view-switcher {
+  border: 1px solid var(--ink);
+  align-items: stretch;
+  display: inline-flex;
+}
+
+.events-view-switcher a {
+  min-height: 2.75rem;
+  color: var(--ink);
+  align-items: center;
+  padding: 0.55rem 0.9rem;
+  font-weight: 800;
+  text-decoration: none;
+  display: inline-flex;
+}
+
+.events-view-switcher a + a {
+  border-left: 1px solid var(--ink);
+}
+
+.events-view-switcher a[aria-current="page"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.events-filter-form {
+  grid-template-columns: minmax(9rem, 0.75fr) minmax(11rem, 1fr) auto auto;
+  justify-self: end;
+  align-items: end;
+  gap: 0.65rem;
+  display: grid;
+}
+
+.events-filter-form label {
+  gap: 0.3rem;
+  min-width: 0;
+  display: grid;
+}
+
+.events-filter-form label > span {
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.events-filter-form select, .events-filter-form :is(a, button) {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  min-height: 2.75rem;
+  color: var(--ink);
+  border-radius: 0;
+}
+
+.events-filter-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 2rem 0.5rem 0.65rem;
+}
+
+.events-filter-form :is(a, button) {
+  cursor: pointer;
+  justify-content: center;
+  align-items: center;
+  padding: 0.5rem 0.8rem;
+  font-weight: 800;
+  text-decoration: none;
+  display: inline-flex;
+}
+
+.events-filter-form button {
+  background: var(--forest);
+  color: var(--paper);
+}
+
+.events-page__upcoming {
+  padding: clamp(1.5rem, 3vw, 2.5rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) clamp(3rem, 6vw, 5rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+}
+
+.events-upcoming__summary {
+  color: var(--ink-soft);
+  margin: 0 0 1rem;
+}
+
+.events-upcoming__summary strong {
+  color: var(--ink);
+  font-size: 1.2rem;
+}
+
+.events-upcoming__list .event-card {
+  grid-template-columns: clamp(9rem, 16vw, 13rem) minmax(0, 1fr) 2.75rem;
+  gap: clamp(1rem, 2vw, 1.75rem);
+  padding-block: 1rem;
+}
+
+.events-upcoming__list .event-card h3 {
+  font-size: clamp(1.65rem, 2.6vw, 2.8rem);
+}
+
+.events-upcoming__list .event-card__facts {
+  gap: 0.45rem 1rem;
+}
+
+.events-upcoming__list .event-card__facts div {
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+}
+
+.events-upcoming__empty {
+  min-height: 18rem;
+  margin: 0;
+}
+
+.events-upcoming__pagination {
+  margin: 2rem 0 0;
+}
+
+.events-page__calendar .public-calendar {
+  padding-top: clamp(1.25rem, 2.5vw, 2rem);
+  padding-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+@media (max-width: 64rem) {
+  .events-page__controls {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .events-filter-form {
+    justify-self: stretch;
+    width: 100%;
+  }
+}
+
+@media (max-width: 52rem) {
+  .events-page__calendar .public-calendar__mobile-agenda {
+    display: none;
+  }
+}
+
+@media (max-width: 42rem) {
+  .events-filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .events-filter-form :is(a, button) {
+    width: 100%;
+  }
+
+  .events-upcoming__list .event-card {
+    grid-template-columns: minmax(6.5rem, 8rem) minmax(0, 1fr);
+    gap: 0.85rem;
+  }
+
+  .events-upcoming__list .event-card__arrow {
+    display: none;
+  }
+
+  .events-upcoming__list .event-card__facts div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -9,7 +9,7 @@ const masterPath = resolve(
   "brand-icon-master.svg",
 );
 const masterSvg = await readFile(masterPath);
-const midnightViolet = Object.freeze({ b: 61, g: 28, r: 34 });
+const deepNavy = Object.freeze({ b: 51, g: 28, r: 19 });
 
 const iconTargets = Object.freeze([
   ["favicon-16.png", 16],
@@ -37,7 +37,7 @@ const maskableMark = await sharp(masterSvg, { density: 384 })
   .toBuffer();
 await sharp({
   create: {
-    background: { ...midnightViolet, alpha: 1 },
+    background: { ...deepNavy, alpha: 1 },
     channels: 4,
     height: 512,
     width: 512,
@@ -63,14 +63,14 @@ const socialType = Buffer.from(`
   <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
     <style>
       .name {
-        fill: #FFF9F5;
+        fill: #FBF7F0;
         font-family: "Segoe UI", Arial, sans-serif;
         font-size: 78px;
         font-weight: 760;
         letter-spacing: 3px;
       }
       .tagline {
-        fill: #C7BEFF;
+        fill: #F3EBDD;
         font-family: "Segoe UI", Arial, sans-serif;
         font-size: 31px;
         font-weight: 650;
@@ -81,12 +81,12 @@ const socialType = Buffer.from(`
     <text class="name" x="515" y="288">CURIOSITY</text>
     <text class="name" x="515" y="388">CLUB</text>
     <text class="tagline" x="520" y="476">A SOCIAL CALENDAR WITH A BRAIN</text>
-    <circle cx="1109" cy="466" r="9" fill="#FF7867" />
+    <circle cx="1109" cy="466" r="9" fill="#B8402B" />
   </svg>
 `);
 await sharp({
   create: {
-    background: { ...midnightViolet, alpha: 1 },
+    background: { ...deepNavy, alpha: 1 },
     channels: 4,
     height: 630,
     width: 1200,

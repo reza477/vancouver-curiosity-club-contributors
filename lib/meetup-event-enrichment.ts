@@ -4,6 +4,10 @@ import {
   validateMeetupPublicEventFactsCandidate,
 } from "./meetup-public-event-facts.js";
 import type { MeetupPublicEventFacts } from "./meetup-public-event-facts.js";
+import {
+  applyApprovedMeetupEventEditorialOverride,
+  removeOrphanMeetupTicketAndRsvpCallToActions,
+} from "./meetup-publication-policy.js";
 
 const ALLOWED_MEETUP_GROUP_SLUGS = Object.freeze([
   "vancouver-fantasy-scifi-meetup-group",
@@ -235,7 +239,7 @@ export function meetupDescriptionBlocksForDisplay(
     }
     merged.push(block);
   }
-  return Object.freeze(merged);
+  return removeOrphanMeetupTicketAndRsvpCallToActions(merged);
 }
 
 const LEGACY_PADDLEBOARDING_EVENT_URL =
@@ -338,28 +342,66 @@ export function validateCuratedMeetupEventCandidate(
     500,
     10,
   );
-  const description = normalizePublicSafeMultiline(
+  const sourceDescription = normalizePublicSafeMultiline(
     candidate.description,
     "event description",
     20_000,
     10,
   );
-  const descriptionBlocks = normalizePublicDescriptionBlocks(
+  const sourceDescriptionBlocks = normalizePublicDescriptionBlocks(
     candidate.descriptionBlocks,
   );
-  if (meetupDescriptionBlocksToPlainText(descriptionBlocks) !== description) {
+  if (
+    meetupDescriptionBlocksToPlainText(sourceDescriptionBlocks) !==
+    sourceDescription
+  ) {
     throw new Error("Invalid curated Meetup event description structure.");
   }
   const poster = candidate.poster === null
     ? null
     : validateCuratedMeetupPoster(candidate.eventId, candidate.poster);
   const venue = normalizePublicVenue(candidate.venue);
-  const publicEventFacts = validateMeetupPublicEventFactsCandidate(
+  validateMeetupPublicEventFactsCandidate(
     candidate,
-    extractMeetupPublicEventFacts(description, {
+    extractMeetupPublicEventFacts(sourceDescription, {
       hasPublicVenue: venue !== null,
     }),
   );
+  const editorialProjection = applyApprovedMeetupEventEditorialOverride({
+    description: sourceDescription,
+    descriptionBlocks: sourceDescriptionBlocks,
+    eventId: candidate.eventId,
+    groupSlug: candidate.groupSlug,
+  });
+  if (
+    meetupDescriptionBlocksToPlainText(
+      editorialProjection.descriptionBlocks,
+    ) !== editorialProjection.description
+  ) {
+    throw new Error("Invalid curated Meetup editorial description structure.");
+  }
+  const descriptionBlocks =
+    removeOrphanMeetupTicketAndRsvpCallToActions(
+      editorialProjection.descriptionBlocks,
+    );
+  if (descriptionBlocks.length < 1) {
+    throw new Error("Invalid curated Meetup event description structure.");
+  }
+  const description = normalizePublicSafeMultiline(
+    meetupDescriptionBlocksToPlainText(descriptionBlocks),
+    "event description",
+    20_000,
+    10,
+  );
+  const extractedPublicEventFacts = extractMeetupPublicEventFacts(description, {
+    hasPublicVenue: venue !== null,
+  });
+  const publicEventFacts = Object.freeze({
+    ...extractedPublicEventFacts,
+    publicFloor:
+      editorialProjection.approvedPublicFloor ??
+      extractedPublicEventFacts.publicFloor,
+  });
   return Object.freeze({
     ...candidate,
     ...publicEventFacts,

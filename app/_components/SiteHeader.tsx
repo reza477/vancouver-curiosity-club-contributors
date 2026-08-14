@@ -15,7 +15,8 @@ const requiredNavigation = [
 export function SiteHeader({
   brandName = "Vancouver Curiosity Club",
   logoAssetId = null,
-  prefetchInternalLinks = false,
+  navigation = [],
+  prefetchInternalLinks = true,
   privateMedia = false,
 }: Readonly<{
   brandName?: string;
@@ -24,7 +25,7 @@ export function SiteHeader({
   prefetchInternalLinks?: boolean;
   privateMedia?: boolean;
 }>) {
-  const primaryNavigation = normalizedPrimaryNavigation();
+  const primaryNavigation = normalizedPrimaryNavigation(navigation);
   return (
     <header className="site-header">
       <Link
@@ -89,9 +90,7 @@ function NavigationLinks({
             data-primary-destination={item.label.toLowerCase()}
             href={item.href}
             key={item.href}
-            prefetch={
-              prefetchInternalLinks && item.href !== "/events"
-            }
+            prefetch={prefetchInternalLinks}
           >
             {item.label}
           </Link>
@@ -111,8 +110,30 @@ function NavigationLinks({
   );
 }
 
-function normalizedPrimaryNavigation(): readonly PublicNavigationItemDto[] {
-  return Object.freeze(requiredNavigation);
+export function normalizedPrimaryNavigation(
+  configured: readonly PublicNavigationItemDto[],
+): readonly PublicNavigationItemDto[] {
+  const requiredByHref = new Map<
+    string,
+    (typeof requiredNavigation)[number]
+  >(
+    requiredNavigation.map((item) => [item.href, item]),
+  );
+  const seen = new Set<string>();
+  const primary: PublicNavigationItemDto[] = [];
+  for (const sourceItem of configured) {
+    const normalizedHref =
+      sourceItem.href === "/calendar" ? "/events" : sourceItem.href;
+    const required = requiredByHref.get(normalizedHref);
+    if (!required || seen.has(normalizedHref)) continue;
+    seen.add(normalizedHref);
+    primary.push(required);
+  }
+  for (const required of requiredNavigation) {
+    if (seen.has(required.href)) continue;
+    primary.push(required);
+  }
+  return Object.freeze(primary);
 }
 
 function isCurrentNavigationPath(

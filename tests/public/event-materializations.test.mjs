@@ -35,6 +35,24 @@ test("one updater-owned dataset serves Home, arbitrary months, lanes, and date r
   );
   assert.equal(home?.length, 6);
   assert.ok(home?.every((event) => event.title.startsWith("daily-v1")));
+  const homeReserve =
+    await materializations.readPublicHomeEventMaterialization(database, {
+      ...materializationInput(),
+      maximum: 48,
+    });
+  assert.equal(homeReserve?.length, 9);
+  await assert.rejects(
+    materializations.readPublicHomeEventMaterialization(database, {
+      ...materializationInput(),
+      maximum: 49,
+    }),
+    (error) =>
+      error?.issues?.some(
+        (issue) =>
+          issue.path === "eventMaterializations.home.maximum" &&
+          issue.code === "invalid_integer",
+      ),
+  );
 
   for (const [month, expected] of [
     ["2025-08", "daily-v1 old-bound"],
@@ -88,6 +106,167 @@ test("one updater-owned dataset serves Home, arbitrary months, lanes, and date r
   );
   assert.equal(laterHome?.length, 1);
   assert.equal(laterHome?.[0]?.title, "daily-v1 reserve-later");
+});
+
+test("Events derives club intersections and bounded pages from one durable dataset", async (t) => {
+  const materializations = await import(
+    "../../lib/server/public/event-materializations.ts"
+  );
+  const database = await materializationDatabase(t);
+  const alphaEvents = Array.from({ length: 13 }, (_unused, index) =>
+    eventCard(`Alpha gathering ${index + 1}`, {
+      clubName: "Alpha Club",
+      clubSlug: "alpha-club",
+      day: 12 + index,
+      ordinal: 100 + index,
+    }),
+  );
+  const betaExplore = eventCard("Beta Explore gathering", {
+    clubName: "Beta Club",
+    clubSlug: "beta-club",
+    day: 25,
+    laneSlug: "explore",
+    ordinal: 200,
+  });
+  const betaUnlaned = eventCard("Beta general gathering", {
+    clubName: "Beta Club",
+    clubSlug: "beta-club",
+    day: 26,
+    ordinal: 201,
+  });
+  const events = [...alphaEvents, betaExplore, betaUnlaned];
+
+  await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    {
+      async projectBundle() {
+        return { calendarEvents: events, upcomingEvents: events };
+      },
+    },
+  );
+
+  const firstPage = await materializations.readPublicEventsPageMaterialization(
+    database,
+    {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    },
+  );
+  assert.deepEqual(firstPage?.clubOptions, [
+    { name: "Alpha Club", slug: "alpha-club" },
+    { name: "Beta Club", slug: "beta-club" },
+  ]);
+  assert.deepEqual(
+    {
+      invalidPage: firstPage?.upcoming.invalidPage,
+      page: firstPage?.upcoming.page,
+      pageSize: firstPage?.upcoming.pageSize,
+      resultCount: firstPage?.upcoming.events.length,
+      totalCount: firstPage?.upcoming.totalCount,
+      totalPages: firstPage?.upcoming.totalPages,
+    },
+    {
+      invalidPage: false,
+      page: 1,
+      pageSize: 12,
+      resultCount: 12,
+      totalCount: 15,
+      totalPages: 2,
+    },
+  );
+
+  const secondPage =
+    await materializations.readPublicEventsPageMaterialization(database, {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      rawPage: "2",
+      todayDate: TODAY_DATE,
+    });
+  assert.equal(secondPage?.upcoming.invalidPage, false);
+  assert.equal(secondPage?.upcoming.page, 2);
+  assert.equal(secondPage?.upcoming.events.length, 3);
+
+  for (const rawPage of ["0", "3", "not-a-page", ["2"]]) {
+    const invalidPage =
+      await materializations.readPublicEventsPageMaterialization(database, {
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        rawMonth: "2026-08",
+        rawPage,
+        todayDate: TODAY_DATE,
+      });
+    assert.equal(invalidPage?.upcoming.invalidPage, true, String(rawPage));
+    assert.equal(invalidPage?.upcoming.page, 1, String(rawPage));
+    assert.equal(invalidPage?.upcoming.events.length, 12, String(rawPage));
+  }
+
+  const beta = await materializations.readPublicEventsPageMaterialization(
+    database,
+    {
+      clubSlug: "beta-club",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    },
+  );
+  assert.equal(beta?.activeClubSlug, "beta-club");
+  assert.equal(beta?.invalidClub, false);
+  assert.deepEqual(
+    beta?.upcoming.events.map((event) => event.title),
+    ["Beta Explore gathering", "Beta general gathering"],
+  );
+
+  const betaExploreOnly =
+    await materializations.readPublicEventsPageMaterialization(database, {
+      clubSlug: "beta-club",
+      laneSlug: "explore",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    });
+  assert.deepEqual(
+    betaExploreOnly?.upcoming.events.map((event) => event.title),
+    ["Beta Explore gathering"],
+  );
+  assert.deepEqual(
+    betaExploreOnly?.calendar.events.map((event) => event.title),
+    ["Beta Explore gathering"],
+  );
+
+  const emptyIntersection =
+    await materializations.readPublicEventsPageMaterialization(database, {
+      clubSlug: "alpha-club",
+      laneSlug: "explore",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    });
+  assert.equal(emptyIntersection?.activeClubSlug, "alpha-club");
+  assert.equal(emptyIntersection?.invalidClub, false);
+  assert.deepEqual(emptyIntersection?.upcoming.events, []);
+  assert.equal(emptyIntersection?.upcoming.totalCount, 0);
+  assert.equal(emptyIntersection?.upcoming.totalPages, 1);
+  assert.deepEqual(emptyIntersection?.calendar.events, []);
+
+  const invalidClub =
+    await materializations.readPublicEventsPageMaterialization(database, {
+      clubSlug: "missing-club",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    });
+  assert.equal(invalidClub?.activeClubSlug, null);
+  assert.equal(invalidClub?.invalidClub, true);
+  assert.equal(invalidClub?.upcoming.totalCount, 15);
+  assert.equal(invalidClub?.calendar.events.length, 15);
 });
 
 test("failed projection and failed atomic promotion preserve both prior rows", async (t) => {
@@ -293,7 +472,14 @@ function materializationBundle(version, homeCount) {
 
 function eventCard(
   title,
-  { day = 20, laneSlug = null, month = "2026-08", ordinal = 1 } = {},
+  {
+    clubName = "Materialization Club",
+    clubSlug = "materialization-club",
+    day = 20,
+    laneSlug = null,
+    month = "2026-08",
+    ordinal = 1,
+  } = {},
 ) {
   const dayKey = String(day).padStart(2, "0");
   return {
@@ -304,7 +490,7 @@ function eventCard(
     availabilityState: "open",
     capacity: 20,
     category: null,
-    club: { name: "Materialization Club", slug: "materialization-club" },
+    club: { name: clubName, slug: clubSlug },
     costText: null,
     isCancelled: false,
     lane: laneSlug ? { name: "Explore", slug: laneSlug } : null,

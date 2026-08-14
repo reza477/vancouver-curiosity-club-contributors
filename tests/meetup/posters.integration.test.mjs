@@ -342,6 +342,57 @@ test("active published Meetup poster is transformed once, cached in R2, and isol
   assert.notEqual(fetchCalls[0].url, STAGING_POSTER_SOURCE_URL);
 });
 
+test("an unconfigured Images binding serves and caches the validated JPEG instead of returning 503", async (t) => {
+  const database = createPosterDatabase();
+  t.after(() => database.close());
+  const { jpeg } = await createImageFixtures();
+  const bucket = new MemoryPosterBucket();
+  const fetchCalls = [];
+
+  const first = await getSynchronizedMeetupPoster(
+    database,
+    bucket,
+    null,
+    {
+      eventId: EVENT_ID,
+      fetcher: jpegFetcher(jpeg, fetchCalls),
+      groupSlug: GROUP_SLUG,
+      variant: "small",
+    },
+  );
+  const sourceDigest = createHash("sha256")
+    .update(POSTER_SOURCE_URL)
+    .digest("hex");
+  const expectedKey = `meetup-posters/${sourceDigest}/original.jpeg`;
+  assert.equal(first.mimeType, "image/jpeg");
+  assert.deepEqual(new Uint8Array(first.body), new Uint8Array(jpeg));
+  assert.deepEqual(bucket.puts, [
+    {
+      key: expectedKey,
+      options: { httpMetadata: { contentType: "image/jpeg" } },
+      size: jpeg.byteLength,
+    },
+  ]);
+
+  const second = await getSynchronizedMeetupPoster(
+    database,
+    bucket,
+    null,
+    {
+      eventId: EVENT_ID,
+      fetcher: async () => {
+        throw new Error("A cached original must not refetch Meetup.");
+      },
+      groupSlug: GROUP_SLUG,
+      variant: "large",
+    },
+  );
+  assert.equal(second.mimeType, "image/jpeg");
+  assert.deepEqual(new Uint8Array(second.body), new Uint8Array(jpeg));
+  assert.deepEqual(bucket.gets, [expectedKey, expectedKey]);
+  assert.equal(fetchCalls.length, 1);
+});
+
 test("every poster route serves the exact dimensions advertised by its public srcset", async (t) => {
   const database = createPosterDatabase();
   t.after(() => database.close());
@@ -569,7 +620,7 @@ test("public poster route keeps bytes first-party, cacheable, conditional, and n
   );
   assert.match(routeSource, /getSynchronizedMeetupPoster\(/u);
   assert.match(routeSource, /getRuntimeMediaBucket\(\)/u);
-  assert.match(routeSource, /getRuntimeImagesBinding\(\)/u);
+  assert.match(routeSource, /getOptionalRuntimeImagesBinding\(\)/u);
   assert.match(routeSource, /request\.headers\.get\("if-none-match"\) === etag/u);
   assert.match(routeSource, /status:\s*304/u);
   assert.match(

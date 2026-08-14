@@ -1,8 +1,11 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
-import { ensureDatabaseInvariants } from "../lib/server/database/invariants";
-import { runRequestMaintenance } from "../lib/server/database/request-maintenance";
+import { ensureDatabaseInvariantsForRequest } from "../lib/server/database/invariants";
+import {
+  runRequestMaintenance,
+  shouldRunRequestMaintenance,
+} from "../lib/server/database/request-maintenance";
 import {
   clearInvitationTokenCookie,
   invitationTokenCookie,
@@ -17,11 +20,23 @@ import {
   canonicalPublicRedirectTarget,
   trustedPublicRequestOrigin,
 } from "../lib/public-domain";
+import { publicAssetCacheControl } from "../lib/public-asset-cache";
+import {
+  createPublicResponseFallback,
+  type PublicResponseFallbackFailure,
+} from "../lib/server/public/warm-response-fallback";
+import {
+  captureDurablePublicResponseFallbackSlot,
+  durablePublicResponseForFailure,
+  isDurablePublicResponseFallbackSlot,
+  type DurablePublicResponseBuildRequest,
+} from "../lib/server/public/durable-response-fallback";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   MEDIA: R2Bucket;
+  PUBLIC_SITE_URL?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -39,6 +54,14 @@ interface ExecutionContext {
 const TRUSTED_REQUEST_ORIGIN_HEADER = "x-vcc-request-origin";
 const TRUSTED_REQUEST_PATHNAME_HEADER = "x-vcc-request-pathname";
 const TRUSTED_CSP_NONCE_HEADER = "x-vcc-csp-nonce";
+const ORGANIZER_FORCE_MAINTENANCE_PATH =
+  "/api/organizer/maintenance/reconcile";
+const DURABLE_PUBLIC_RESPONSE_CAPTURE_PATH =
+  "/api/maintenance/public-snapshots/capture";
+const PUBLIC_REQUEST_MAINTENANCE_INTERVAL_MS = 15_000;
+let publicRequestMaintenanceInFlight: Promise<void> | null = null;
+let publicRequestMaintenanceNextEligibleAtUtcMs = 0;
+const publicResponseFallback = createPublicResponseFallback();
 
 function isLocalRequest(requestUrl: URL): boolean {
   return (
@@ -63,6 +86,68 @@ function maintenanceUnavailableResponse(): Response {
   return databaseInvariantUnavailableResponse(
     "A required data refresh could not be completed safely. Please try again shortly.",
   );
+}
+
+function shouldRunSynchronousRequestMaintenance(
+  method: string,
+  pathname: string,
+): boolean {
+  if (pathname === ORGANIZER_FORCE_MAINTENANCE_PATH) return false;
+  if (pathname === DURABLE_PUBLIC_RESPONSE_CAPTURE_PATH) return false;
+  return (
+    (method !== "GET" && method !== "HEAD") ||
+    isPrivateOrIdentityPath(pathname)
+  );
+}
+
+function schedulePublicRequestMaintenance(
+  context: ExecutionContext,
+  database: D1Database,
+  request: Readonly<{ method: string; pathname: string }>,
+): void {
+  if (!shouldRunRequestMaintenance(request.method, request.pathname)) {
+    return;
+  }
+  const nowUtcMs = Date.now();
+  if (
+    publicRequestMaintenanceInFlight ||
+    nowUtcMs < publicRequestMaintenanceNextEligibleAtUtcMs
+  ) {
+    return;
+  }
+  publicRequestMaintenanceNextEligibleAtUtcMs =
+    nowUtcMs + PUBLIC_REQUEST_MAINTENANCE_INTERVAL_MS;
+  const maintenance = runRequestMaintenance(database, request)
+    .then((result) => {
+      if (result.kind === "continue") return;
+      const level = result.kind === "unavailable" ? "error" : "info";
+      console[level](
+        JSON.stringify({
+          event:
+            result.kind === "unavailable"
+              ? "public_request_maintenance_deferred"
+              : "public_request_maintenance_completed",
+          level,
+          source: result.source,
+        }),
+      );
+    })
+    .catch(() => {
+      console.error(
+        JSON.stringify({
+          event: "public_request_maintenance_deferred",
+          level: "error",
+          source: "unknown",
+        }),
+      );
+    })
+    .finally(() => {
+      if (publicRequestMaintenanceInFlight === maintenance) {
+        publicRequestMaintenanceInFlight = null;
+      }
+    });
+  publicRequestMaintenanceInFlight = maintenance;
+  context.waitUntil(maintenance);
 }
 
 function contentSecurityPolicy(requestUrl: URL, nonce: string | null): string {
@@ -178,12 +263,181 @@ function secureResponse(
   if (isPrivateRequest || response.status >= 500) {
     headers.set("Cache-Control", "private, no-store, max-age=0");
     headers.set("Pragma", "no-cache");
+  } else if (requestPathname !== null) {
+    const assetCacheControl = publicAssetCacheControl({
+      method: request.method,
+      pathname: requestPathname,
+      status: response.status,
+    });
+    if (assetCacheControl) {
+      headers.set("Cache-Control", assetCacheControl);
+    }
   }
 
   return new Response(response.body, {
     headers,
     status: response.status,
     statusText: response.statusText,
+  });
+}
+
+async function recoverPublicResponseAfterFailure(
+  media: R2Bucket,
+  request: Request,
+  pathname: string,
+  nonce: string | null,
+  policy: string,
+  failure: PublicResponseFallbackFailure,
+  source: "database_invariants" | "handler",
+): Promise<Response | null> {
+  const warmRecovered = publicResponseFallback.responseForFailure({
+    contentSecurityPolicy: policy,
+    failure,
+    nonce,
+    pathname,
+    request,
+  });
+  const recovered =
+    warmRecovered ??
+    (await durablePublicResponseForFailure(media, {
+      contentSecurityPolicy: policy,
+      failure,
+      nonce,
+      pathname,
+      request,
+    }));
+  if (!recovered) return null;
+  console.warn(
+    JSON.stringify({
+      event: "public_last_known_good_response_served",
+      level: "warn",
+      source,
+      storage: warmRecovered ? "isolate" : "media",
+    }),
+  );
+  return secureResponse(request, recovered, policy, pathname);
+}
+
+async function captureDurableResponseAfterProtectedRequest(
+  request: Request,
+  response: Response,
+  env: Env,
+  context: ExecutionContext,
+): Promise<Response> {
+  const requestUrl = new URL(request.url);
+  if (
+    request.method !== "POST" ||
+    requestUrl.pathname !== DURABLE_PUBLIC_RESPONSE_CAPTURE_PATH ||
+    response.status !== 200
+  ) {
+    return response;
+  }
+  const rawPayload: unknown = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  if (
+    typeof rawPayload !== "object" ||
+    rawPayload === null ||
+    Array.isArray(rawPayload)
+  ) {
+    return response;
+  }
+  const payload = rawPayload as Record<string, unknown>;
+  if (
+    payload.status !== "accepted" ||
+    typeof payload.batchId !== "string" ||
+    !isDurablePublicResponseFallbackSlot(payload.slot)
+  ) {
+    return response;
+  }
+
+  const origin = trustedPublicRequestOrigin(
+    requestUrl,
+    env.PUBLIC_SITE_URL,
+  );
+  try {
+    const captured = await captureDurablePublicResponseFallbackSlot(env.MEDIA, {
+      batchId: payload.batchId,
+      origin,
+      render: (buildRequest) =>
+        renderDurablePublicResponse(buildRequest, env, context),
+      slot: payload.slot,
+    });
+    console.info(
+      JSON.stringify({
+        capturedEntryCount: captured.capturedEntryCount,
+        event: captured.promoted
+          ? "durable_public_responses_promoted"
+          : "durable_public_response_staged",
+        level: "info",
+        source: "protected_snapshot_capture",
+      }),
+    );
+    const headers = new Headers(response.headers);
+    headers.set("Content-Type", "application/json; charset=utf-8");
+    return new Response(JSON.stringify({
+      batchId: payload.batchId,
+      capturedEntryCount: captured.capturedEntryCount,
+      promoted: captured.promoted,
+      promotedByteSize: captured.promotedByteSize,
+      slot: payload.slot,
+      status: captured.promoted ? "succeeded" : "continue",
+    }), {
+      headers,
+      status: response.status,
+      statusText: response.statusText,
+    });
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: "durable_public_response_capture_failed",
+        level: "error",
+        source: "protected_snapshot_capture",
+      }),
+    );
+    return new Response(
+      JSON.stringify({
+        code: "service_unavailable",
+        message: "The durable public snapshot could not be captured.",
+      }),
+      {
+        headers: {
+          "Cache-Control": "private, no-store, max-age=0",
+          "Content-Type": "application/json; charset=utf-8",
+          Pragma: "no-cache",
+          "Referrer-Policy": "no-referrer",
+        },
+        status: 503,
+      },
+    );
+  }
+}
+
+async function renderDurablePublicResponse(
+  buildRequest: DurablePublicResponseBuildRequest,
+  env: Env,
+  context: ExecutionContext,
+): Promise<Readonly<{ nonce: string; response: Response }>> {
+  const requestUrl = new URL(buildRequest.request.url);
+  const nonce = createCspNonce();
+  const policy = contentSecurityPolicy(requestUrl, nonce);
+  const securedRequest = requestWithSecurityContext(
+    buildRequest.request,
+    policy,
+    nonce,
+    trustedPublicRequestOrigin(requestUrl, env.PUBLIC_SITE_URL),
+    buildRequest.pathname,
+  );
+  const rendered = await handler.fetch(securedRequest, env, context);
+  return Object.freeze({
+    nonce,
+    response: secureResponse(
+      buildRequest.request,
+      rendered,
+      policy,
+      buildRequest.pathname,
+    ),
   });
 }
 
@@ -259,7 +513,10 @@ const worker = {
     const url = new URL(request.url);
     const nonce = isLocalRequest(url) ? null : createCspNonce();
     const policy = contentSecurityPolicy(url, nonce);
-    const publicDomainRedirect = canonicalPublicRedirectTarget(url);
+    const publicDomainRedirect = canonicalPublicRedirectTarget(
+      url,
+      env.PUBLIC_SITE_URL,
+    );
     if (publicDomainRedirect) {
       return secureResponse(
         request,
@@ -319,7 +576,10 @@ const worker = {
     }
 
     try {
-      const invariantStatus = await ensureDatabaseInvariants(env.DB);
+      const invariantStatus = await ensureDatabaseInvariantsForRequest(env.DB, {
+        method: request.method,
+        pathname: requestPathname,
+      });
       if (invariantStatus === "repaired") {
         console.info(
           JSON.stringify({
@@ -328,13 +588,25 @@ const worker = {
             level: "info",
           }),
         );
-        return secureResponse(
-          request,
-          databaseInvariantUnavailableResponse(
-            "The database safety checks were updated. Please try again shortly so the fresh state can be verified.",
-          ),
-          policy,
-          normalizedPathname,
+        const unavailable = databaseInvariantUnavailableResponse(
+          "The database safety checks were updated. Please try again shortly so the fresh state can be verified.",
+        );
+        return (
+          (await recoverPublicResponseAfterFailure(
+            env.MEDIA,
+            request,
+            requestPathname,
+            nonce,
+            policy,
+            { kind: "response", status: unavailable.status },
+            "database_invariants",
+          )) ??
+          secureResponse(
+            request,
+            unavailable,
+            policy,
+            normalizedPathname,
+          )
         );
       }
     } catch {
@@ -345,69 +617,141 @@ const worker = {
           level: "error",
         }),
       );
-      return secureResponse(
-        request,
-        databaseInvariantUnavailableResponse(),
-        policy,
-        normalizedPathname,
+      const unavailable = databaseInvariantUnavailableResponse();
+      return (
+        (await recoverPublicResponseAfterFailure(
+          env.MEDIA,
+          request,
+          requestPathname,
+          nonce,
+          policy,
+          { kind: "throw" },
+          "database_invariants",
+        )) ??
+        secureResponse(
+          request,
+          unavailable,
+          policy,
+          normalizedPathname,
+        )
       );
     }
 
-    const maintenance = await runRequestMaintenance(
-      env.DB,
-      {
-        method: request.method,
-        pathname: requestPathname,
-      },
-    );
-    if (maintenance.kind === "unavailable") {
-      if (maintenance.source === "publication") {
-        console.error(
-          JSON.stringify({
-            code: "publication_reconciliation_deferred",
-            event: "scheduled_publication_reconciliation_failed",
-            level: "error",
-          }),
-        );
-      } else {
-        console.error(
-          JSON.stringify({
-            code: "starter_copy_reconciliation_deferred",
-            event: "starter_copy_reconciliation_failed",
-            level: "error",
-          }),
+    if (
+      shouldRunSynchronousRequestMaintenance(
+        request.method,
+        requestPathname,
+      )
+    ) {
+      const maintenance = await runRequestMaintenance(
+        env.DB,
+        {
+          method: request.method,
+          pathname: requestPathname,
+        },
+      );
+      if (maintenance.kind === "unavailable") {
+        if (maintenance.source === "publication") {
+          console.error(
+            JSON.stringify({
+              code: "publication_reconciliation_deferred",
+              event: "scheduled_publication_reconciliation_failed",
+              level: "error",
+            }),
+          );
+        } else {
+          console.error(
+            JSON.stringify({
+              code: "starter_copy_reconciliation_deferred",
+              event: "starter_copy_reconciliation_failed",
+              level: "error",
+            }),
+          );
+        }
+        return secureResponse(
+          request,
+          maintenanceUnavailableResponse(),
+          policy,
+          normalizedPathname,
         );
       }
-      return secureResponse(
-        request,
-        maintenanceUnavailableResponse(),
-        policy,
-        normalizedPathname,
-      );
-    }
-    if (maintenance.kind === "redirect") {
-      return secureResponse(
-        request,
-        maintenanceRedirect(canonicalUrl),
-        policy,
-        normalizedPathname,
-      );
+      if (maintenance.kind === "redirect") {
+        return secureResponse(
+          request,
+          maintenanceRedirect(canonicalUrl),
+          policy,
+          normalizedPathname,
+        );
+      }
     }
 
     const securedRequest = requestWithSecurityContext(
       request,
       policy,
       nonce,
-      trustedPublicRequestOrigin(url),
+      trustedPublicRequestOrigin(url, env.PUBLIC_SITE_URL),
       requestPathname,
     );
-    const response = await handler.fetch(securedRequest, env, ctx);
-    return secureResponse(
+    const response = await handler.fetch(securedRequest, env, ctx).catch(
+      async (error: unknown) => {
+        const recovered = await recoverPublicResponseAfterFailure(
+          env.MEDIA,
+          request,
+          requestPathname,
+          nonce,
+          policy,
+          { kind: "throw" },
+          "handler",
+        );
+        if (recovered) return recovered;
+        throw error;
+      },
+    );
+    const responseAfterDurableRefresh =
+      await captureDurableResponseAfterProtectedRequest(
+        request,
+        response,
+        env,
+        ctx,
+      );
+    if (
+      (request.method === "GET" || request.method === "HEAD") &&
+      !isPrivateOrIdentityPath(requestPathname)
+    ) {
+      schedulePublicRequestMaintenance(ctx, env.DB, {
+        method: request.method,
+        pathname: requestPathname,
+      });
+    }
+    const responseAfterFailure =
+      responseAfterDurableRefresh.status >= 500
+        ? (await recoverPublicResponseAfterFailure(
+            env.MEDIA,
+            request,
+            requestPathname,
+            nonce,
+            policy,
+            {
+              kind: "response",
+              status: responseAfterDurableRefresh.status,
+            },
+            "handler",
+          )) ?? responseAfterDurableRefresh
+        : responseAfterDurableRefresh;
+    const securedResponse = secureResponse(
       request,
-      response,
+      responseAfterFailure,
       policy,
       normalizedPathname,
     );
+    const capture = publicResponseFallback.scheduleCapture({
+      nonce,
+      pathname: requestPathname,
+      request,
+      response: securedResponse,
+    });
+    if (capture) ctx.waitUntil(capture);
+    return securedResponse;
   },
 };
 

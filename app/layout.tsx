@@ -226,6 +226,15 @@ export default async function RootLayout({
 
   return (
     <html lang="en-CA">
+      <head>
+        <link
+          rel="preload"
+          href="/fonts/fraunces-72pt-latin-400.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body
         data-surface={isPrivatePath ? "organizer" : "public"}
         data-typography={isPrivatePath ? undefined : shell?.typography}

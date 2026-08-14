@@ -13,6 +13,10 @@ const BRAND_NAME = "Vancouver Curiosity Club";
 const SOCIAL_IMAGE_ALT =
   "Vancouver Curiosity Club — A social calendar with a brain.";
 
+export const MAX_PUBLIC_METADATA_DESCRIPTION_LENGTH = 160;
+const MIN_USEFUL_METADATA_BOUNDARY_LENGTH = 48;
+const GENERIC_EVENT_METADATA_DESCRIPTION = "Event details.";
+
 export type PublicMetadataImage = Readonly<{
   altText: string;
   height: number;
@@ -31,6 +35,83 @@ export type PublicPageMetadataInput = Readonly<{
   siteName?: string;
   title: string;
 }>;
+
+export type PublicEventMetadataDescriptionInput = Readonly<{
+  description: string | null;
+  fallback: string;
+  metaDescription: string | null;
+  summary: string | null;
+}>;
+
+/**
+ * Generates the event's search/social summary independently from its long-form
+ * body. It preserves a useful complete sentence when possible and otherwise
+ * stops at a complete word before adding one ellipsis character.
+ */
+export function buildPublicEventMetadataDescription(
+  input: PublicEventMetadataDescriptionInput,
+): string {
+  const fullDescription = normalizedMetadataText(input.description);
+  const preferred = normalizedMetadataText(
+    input.metaDescription ?? input.summary,
+  );
+  const fallback =
+    normalizedMetadataText(input.fallback) ||
+    GENERIC_EVENT_METADATA_DESCRIPTION;
+  const source =
+    preferred && preferred !== fullDescription ? preferred : fallback;
+  return conciseMetadataText(source, fallback);
+}
+
+function conciseMetadataText(value: string, fallback: string): string {
+  if (value.length <= MAX_PUBLIC_METADATA_DESCRIPTION_LENGTH) return value;
+
+  const sentenceWindow = value.slice(
+    0,
+    MAX_PUBLIC_METADATA_DESCRIPTION_LENGTH,
+  );
+  const sentenceBoundaries = [
+    ...sentenceWindow.matchAll(/[.!?](?:["'’”)\]])?(?=\s|$)/gu),
+  ];
+  const sentenceBoundary = sentenceBoundaries.at(-1);
+  if (
+    sentenceBoundary?.index !== undefined &&
+    sentenceBoundary.index + sentenceBoundary[0].length >=
+      MIN_USEFUL_METADATA_BOUNDARY_LENGTH
+  ) {
+    return sentenceWindow
+      .slice(0, sentenceBoundary.index + sentenceBoundary[0].length)
+      .trimEnd();
+  }
+
+  const wordWindow = value.slice(
+    0,
+    MAX_PUBLIC_METADATA_DESCRIPTION_LENGTH - 1,
+  );
+  const wordBoundary = wordWindow.lastIndexOf(" ");
+  if (wordBoundary >= MIN_USEFUL_METADATA_BOUNDARY_LENGTH) {
+    const completeWords = wordWindow
+      .slice(0, wordBoundary)
+      .replace(/[,:;—–-]+$/u, "")
+      .trimEnd();
+    if (completeWords) return `${completeWords}…`;
+  }
+
+  const normalizedFallback = normalizedMetadataText(fallback);
+  if (normalizedFallback && normalizedFallback !== value) {
+    return conciseMetadataText(
+      normalizedFallback,
+      GENERIC_EVENT_METADATA_DESCRIPTION,
+    );
+  }
+  return GENERIC_EVENT_METADATA_DESCRIPTION;
+}
+
+function normalizedMetadataText(value: string | null): string {
+  return typeof value === "string"
+    ? value.normalize("NFKC").replace(/\s+/gu, " ").trim()
+    : "";
+}
 
 /**
  * Event artwork remains the first choice. If it is absent or has been revoked

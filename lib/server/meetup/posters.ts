@@ -19,13 +19,13 @@ export const SYNCHRONIZED_MEETUP_POSTER_VARIANTS = Object.freeze({
 export type SynchronizedMeetupPoster = Readonly<{
   body: ArrayBuffer;
   etag: string;
-  mimeType: "image/webp";
+  mimeType: "image/jpeg" | "image/webp";
 }>;
 
 export async function getSynchronizedMeetupPoster(
   database: Pick<D1DatabaseLike, "prepare">,
   bucket: R2BucketLike,
-  images: RuntimeImagesBinding,
+  images: RuntimeImagesBinding | null,
   input: Readonly<{
     eventId: unknown;
     fetcher?: typeof fetch;
@@ -99,7 +99,10 @@ export async function getSynchronizedMeetupPoster(
   const sourceUrl = parsePosterSourceUrl(rows[0]?.poster_source_url);
   const sourceDigest = await sha256Hex(sourceUrl);
   const target = SYNCHRONIZED_MEETUP_POSTER_VARIANTS[variant];
-  const objectKey = `meetup-posters/${sourceDigest}/${target.width}.webp`;
+  const objectKey = images
+    ? `meetup-posters/${sourceDigest}/${target.width}.webp`
+    : `meetup-posters/${sourceDigest}/original.jpeg`;
+  const outputMimeType = images ? "image/webp" : "image/jpeg";
 
   const cached = await bucket.get(objectKey);
   if (cached) {
@@ -108,7 +111,7 @@ export async function getSynchronizedMeetupPoster(
         ? await new Response(cached.body).arrayBuffer()
         : await cached.arrayBuffer(),
       etag: sourceDigest,
-      mimeType: "image/webp" as const,
+      mimeType: outputMimeType,
     });
   }
 
@@ -116,6 +119,18 @@ export async function getSynchronizedMeetupPoster(
     input.fetcher ?? fetch,
     sourceUrl,
   );
+  if (!images) {
+    const bytes = new Uint8Array(original.bytes.byteLength);
+    bytes.set(original.bytes);
+    await bucket.put(objectKey, bytes, {
+      httpMetadata: { contentType: "image/jpeg" },
+    });
+    return Object.freeze({
+      body: bytes.buffer,
+      etag: sourceDigest,
+      mimeType: "image/jpeg" as const,
+    });
+  }
   const originalBody = new Uint8Array(original.bytes.byteLength);
   originalBody.set(original.bytes);
   const transformed = await images

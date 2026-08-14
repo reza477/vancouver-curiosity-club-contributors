@@ -1,0 +1,7 @@
+# Static assets are served before the application Worker, so their cache policy
+# must be declared here instead of relying only on Worker response headers.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/event-posters/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800

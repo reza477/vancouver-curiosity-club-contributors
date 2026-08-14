@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { HomePageRenderer } from "../../app/_components/HomePageRenderer.tsx";
 import { PublicSubmissionForm } from "../../app/_components/PublicSubmissionForm.tsx";
 import { SiteFooter } from "../../app/_components/SiteFooter.tsx";
+import { normalizedPrimaryNavigation } from "../../app/_components/SiteHeader.tsx";
 import { publicFormLabel } from "../../lib/server/phase7/public-form-contract.ts";
 import { PUBLIC_CATALOG_PAGES } from "../../lib/server/public/catalog-definitions.ts";
 import { buildPublicPageMetadataForOrigin } from "../../lib/server/public/metadata.ts";
@@ -28,6 +29,26 @@ test("the primary header remains exactly Events, Clubs, About, and Feedback", as
     { href: "/about", label: "About" },
     { href: "/contact", label: "Feedback" },
   ]);
+});
+
+test("configured header order cannot rename or expand the approved destinations", () => {
+  assert.deepEqual(
+    normalizedPrimaryNavigation(
+      Object.freeze([
+        Object.freeze({ href: "/about", label: "Our story" }),
+        Object.freeze({ href: "/calendar", label: "Calendar" }),
+        Object.freeze({ href: "/contact", label: "Contact" }),
+        Object.freeze({ href: "/events", label: "Duplicate events" }),
+        Object.freeze({ href: "https://example.com", label: "External" }),
+      ]),
+    ),
+    [
+      { href: "/about", label: "About" },
+      { href: "/events", label: "Events" },
+      { href: "/contact", label: "Feedback" },
+      { href: "/clubs", label: "Clubs" },
+    ],
+  );
 });
 
 test("Feedback keeps the canonical contact route and complete public metadata", async () => {

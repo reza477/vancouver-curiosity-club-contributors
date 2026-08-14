@@ -53,10 +53,11 @@ test("Events delegates its calendar to one indexed materialization loader", asyn
   );
 });
 
-test("public event discovery avoids automatic RSC fan-out and shows a pending state", async () => {
+test("public event discovery prefetches navigation and shows a pending state", async () => {
   const pathsWithDirectEventLinks = [
     "app/page.tsx",
     "app/about/page.tsx",
+    "app/_components/ClubDirectory.tsx",
     "app/_components/ClubEventList.tsx",
     "app/_components/EventCard.tsx",
     "app/_components/HomePageRenderer.tsx",
@@ -70,15 +71,20 @@ test("public event discovery avoids automatic RSC fan-out and shows a pending st
     })),
   );
   for (const { path, source } of directSources) {
+    assert.doesNotMatch(
+      source,
+      /prefetch=\{false\}/u,
+      `${path} must not opt public links out of prefetching`,
+    );
     const eventLinks = (source.match(/<Link\b[\s\S]*?>/gu) ?? []).filter(
       (link) => /\/events/u.test(link),
     );
     assert.ok(eventLinks.length > 0, `${path} must expose an Events link`);
     for (const link of eventLinks) {
-      assert.match(
+      assert.doesNotMatch(
         link,
         /prefetch=\{false\}/u,
-        `${path} must not preload a dynamic Events route`,
+        `${path} must allow the public Events route to prefetch`,
       );
     }
   }
@@ -105,19 +111,21 @@ test("public event discovery avoids automatic RSC fan-out and shows a pending st
     ]);
   assert.match(
     header,
-    /prefetchInternalLinks = false[\s\S]*?prefetch=\{\s*prefetchInternalLinks && item\.href !== "\/events"\s*\}/u,
+    /prefetchInternalLinks = true[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
   );
   assert.match(
     footer,
-    /prefetchInternalLinks && item\.href !== "\/events"/u,
+    /prefetchInternalLinks = true[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
   );
-  assert.ok(
-    (calendar.match(/prefetch=\{false\}/gu) ?? []).length >= 5,
-    "month and selected-event links must not preload more Events renders",
+  assert.doesNotMatch(
+    calendar,
+    /prefetch=\{false\}/u,
+    "month and selected-event links must allow public prefetching",
   );
-  assert.match(
+  assert.doesNotMatch(
     breadcrumbs,
-    /prefetch=\{!item\.href\.startsWith\("\/events"\)\}/u,
+    /prefetch=\{false\}|startsWith\("\/events"\)/u,
+    "event breadcrumbs must allow public prefetching",
   );
   assert.match(loading, /aria-busy="true"/u);
   assert.match(loading, /role="status"/u);

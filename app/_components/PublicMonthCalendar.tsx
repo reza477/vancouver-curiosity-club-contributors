@@ -28,6 +28,7 @@ import {
 } from "@/lib/public-calendar";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { PublicEventLaneSlug } from "@/lib/public-event-lanes";
+import { publicEventsHref } from "@/lib/public-events-view";
 
 const WEEKDAYS = [
   "Sunday",
@@ -43,6 +44,7 @@ const MOBILE_AGENDA_INITIAL_LIMIT = 7;
 
 export function PublicMonthCalendar({
   calendarRoute = "/events",
+  clubSlug = null,
   complete,
   events,
   headingLevel = 1,
@@ -51,10 +53,12 @@ export function PublicMonthCalendar({
   minMonth,
   month,
   nowUtcMs,
+  prefetchInternalLinks = true,
   siteOrigin = null,
   todayDate,
 }: Readonly<{
   calendarRoute?: string;
+  clubSlug?: string | null;
   complete: boolean;
   events: readonly PublicEventCardDto[];
   headingLevel?: 1 | 2;
@@ -63,6 +67,7 @@ export function PublicMonthCalendar({
   minMonth: string;
   month: string;
   nowUtcMs: number;
+  prefetchInternalLinks?: boolean;
   siteOrigin?: string | null;
   todayDate: string;
 }>) {
@@ -174,8 +179,14 @@ export function PublicMonthCalendar({
         <nav aria-label="Calendar months">
           {previousMonth ? (
             <Link
-              href={calendarHref(previousMonth, calendarRoute, laneSlug)}
-              prefetch={false}
+              href={publicEventsHref({
+                clubSlug,
+                laneSlug,
+                month: previousMonth,
+                route: calendarRoute,
+                view: "calendar",
+              })}
+              prefetch={prefetchInternalLinks}
             >
               Previous month
             </Link>
@@ -183,19 +194,27 @@ export function PublicMonthCalendar({
             <span aria-hidden="true" />
           )}
           <Link
-            href={calendarHref(
-              todayDate.slice(0, 7),
-              calendarRoute,
+            href={publicEventsHref({
+              clubSlug,
               laneSlug,
-            )}
-            prefetch={false}
+              month: todayDate.slice(0, 7),
+              route: calendarRoute,
+              view: "calendar",
+            })}
+            prefetch={prefetchInternalLinks}
           >
             Today
           </Link>
           {nextMonth ? (
             <Link
-              href={calendarHref(nextMonth, calendarRoute, laneSlug)}
-              prefetch={false}
+              href={publicEventsHref({
+                clubSlug,
+                laneSlug,
+                month: nextMonth,
+                route: calendarRoute,
+                view: "calendar",
+              })}
+              prefetch={prefetchInternalLinks}
             >
               Next month
             </Link>
@@ -259,7 +278,9 @@ export function PublicMonthCalendar({
                                 : `${count} loaded ${
                                     count === 1 ? "event" : "events"
                                   }`
-                            }${titlePreview ? `: ${titlePreview}` : ""}.`}
+                            }${titlePreview ? `: ${titlePreview}` : ""}${
+                              count > 2 ? `, and ${count - 2} more` : ""
+                            }.`}
                             aria-pressed={selected}
                             className={[
                               "public-calendar__day",
@@ -357,6 +378,7 @@ export function PublicMonthCalendar({
                 <CalendarEventPreview
                   event={event}
                   key={event.slug}
+                  prefetchInternalLinks={prefetchInternalLinks}
                   siteOrigin={siteOrigin}
                 />
               ))}
@@ -471,9 +493,11 @@ export function PublicMonthCalendar({
 
 function CalendarEventPreview({
   event,
+  prefetchInternalLinks,
   siteOrigin,
 }: Readonly<{
   event: PublicEventCardDto;
+  prefetchInternalLinks: boolean;
   siteOrigin: string | null;
 }>) {
   const locationParts = publicEventLocationParts(event);
@@ -543,7 +567,10 @@ function CalendarEventPreview({
           {formatPublicCalendarEventTime(event)} / {location}
         </p>
         <h4>
-          <Link href={`/events/${event.slug}`} prefetch={false}>
+          <Link
+            href={`/events/${event.slug}`}
+            prefetch={prefetchInternalLinks}
+          >
             {event.title}
           </Link>
         </h4>
@@ -581,7 +608,10 @@ function CalendarEventPreview({
           <p className="event-discovery-summary">{event.summary}</p>
         ) : null}
         <div className="public-calendar-event__actions">
-          <Link href={`/events/${event.slug}`} prefetch={false}>
+          <Link
+            href={`/events/${event.slug}`}
+            prefetch={prefetchInternalLinks}
+          >
             Event details
           </Link>
           {event.rsvpMode === "meetup" && event.rsvpUrl ? (
@@ -638,18 +668,6 @@ function publicEventStatusLabel(
   if (status === "completed") return "Completed";
   if (status === "tentative") return "Tentative";
   return "Confirmed";
-}
-
-function calendarHref(
-  month: string,
-  route: string,
-  laneSlug: PublicEventLaneSlug | null,
-): string {
-  const separator = route.includes("?") ? "&" : "?";
-  const laneQuery = laneSlug
-    ? `&lane=${encodeURIComponent(laneSlug)}`
-    : "";
-  return `${route}${separator}month=${encodeURIComponent(month)}${laneQuery}`;
 }
 
 function shiftMonthForHref(month: string, delta: number): string {

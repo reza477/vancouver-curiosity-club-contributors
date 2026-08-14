@@ -1,3 +1,4 @@
+import { readPublicCssSync } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import * as nodeModule from "node:module";
@@ -169,7 +170,7 @@ test(
       /<noscript>[\s\S]*Your information has not been sent[\s\S]*<\/noscript>/u,
       "visitors without JavaScript need an explicit safe state",
     );
-    const globalCss = source("app/globals.css");
+    const globalCss = readPublicCssSync();
     assert.match(
       globalCss,
       /\.public-submission__noscript\s*\{\s*min-height:\s*0;/u,
@@ -1457,24 +1458,21 @@ test(
     );
     assert.match(
       formSource,
-      /instanceState === "slow"[\s\S]*You can keep filling out the form/u,
+      /instanceState === "slow"[\s\S]*You can keep\s+filling\s+out the form/u,
     );
     assert.match(formSource, /Try loading the form again/u);
     assert.match(formSource, /FORM_INSTANCE_SLOW_MS = 750/u);
     assert.match(formSource, /FORM_INSTANCE_TIMEOUT_MS = 10_000/u);
-    assert.match(
-      formSource,
-      /PUBLIC_FORM_MINIMUM_COMPLETION_MS[\s\S]*window\.setTimeout\([\s\S]*PUBLIC_FORM_MINIMUM_COMPLETION_MS/u,
-    );
-    assert.match(formSource, /if \(!instanceToken \|\| busy\) return;/u);
+    assert.match(formSource, /await waitForMinimumFormCompletion/u);
+    assert.match(formSource, /if \(busy \|\| instanceState === "error"\) return;/u);
     assert.equal(
       countMatches(sharedFormsHtml, /<form\b/gu),
       2,
     );
-    assert.equal(countMatches(sharedFormsHtml, /<button disabled=""/gu), 2);
+    assert.equal(countMatches(sharedFormsHtml, /<button disabled=""/gu), 0);
     assert.equal(
       countMatches(sharedFormsHtml, /Preparing send/gu),
-      2,
+      0,
     );
     assert.doesNotMatch(
       sharedFormsHtml,

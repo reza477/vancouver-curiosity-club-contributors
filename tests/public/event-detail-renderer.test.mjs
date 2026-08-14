@@ -1,3 +1,4 @@
+import { readPublicCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -158,6 +159,37 @@ test("curated Meetup descriptions render semantic headings, lists, and links", (
   assert.match(markup, /rel="noreferrer noopener"/u);
   assert.match(markup, /class="event-detail__rich-description"/u);
   assert.doesNotMatch(markup, /dangerouslySetInnerHTML/u);
+});
+
+test("display policy removes ticket and RSVP calls to action without a vetted href", () => {
+  const blocks = Object.freeze([
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({ text: "A useful public event note.", type: "text" }),
+      ]),
+      type: "paragraph",
+    }),
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({ text: "Buy your ticket here:", type: "text" }),
+      ]),
+      type: "paragraph",
+    }),
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({ text: "RSVP here: ", type: "text" }),
+        Object.freeze({
+          href: "https://tickets.example.invalid/buy",
+          text: "Register now",
+          type: "link",
+        }),
+      ]),
+      type: "paragraph",
+    }),
+  ]);
+  const display = meetupDescriptionBlocksForDisplay(blocks);
+  assert.deepEqual(display, [blocks[0]]);
+  assert.doesNotMatch(JSON.stringify(display), /buy your ticket|rsvp|register/iu);
 });
 
 test("affected Meetup imports keep structure and attach every source link to its call to action", async (t) => {
@@ -595,18 +627,18 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
     1,
   );
 
-  const css = await readFile(new URL("app/globals.css", projectRoot), "utf8");
-  const mobileStart = css.lastIndexOf("@media (max-width: 38rem)");
-  const mobileEnd = css.indexOf(
-    "@media (prefers-reduced-motion: reduce)",
-    mobileStart,
-  );
-  const tabletStart = css.lastIndexOf(
+  const [css, detailStyles] = await Promise.all([
+    readPublicCss(),
+    readFile(new URL("app/styles/pages/event-detail.css", projectRoot), "utf8"),
+  ]);
+  const mobileStart = detailStyles.lastIndexOf("@media (max-width: 38rem)");
+  const mobileEnd = detailStyles.length;
+  const tabletStart = detailStyles.lastIndexOf(
     "@media (max-width: 52rem)",
     mobileStart,
   );
-  const tabletStyles = css.slice(tabletStart, mobileStart);
-  const mobileStyles = css.slice(mobileStart, mobileEnd);
+  const tabletStyles = detailStyles.slice(tabletStart, mobileStart);
+  const mobileStyles = detailStyles.slice(mobileStart, mobileEnd);
 
   assert.match(
     css,
@@ -630,11 +662,13 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
     /\.event-detail__header h1\s*\{[^}]*overflow-wrap:\s*normal;[^}]*word-break:\s*normal;[^}]*hyphens:\s*none;/su,
     "a 390px title must not split or hyphenate words",
   );
-  assert.match(
-    mobileStyles,
-    /\.event-detail__summary\s*>\s*\.primary-action\s*\{[^}]*position:\s*fixed;[^}]*bottom:\s*max\(0\.75rem,\s*env\(safe-area-inset-bottom\)\);[^}]*display:\s*flex;[^}]*min-height:\s*3\.25rem;/su,
-    "the 390px RSVP action must be sticky and at least 44px tall",
-  );
+  const stickyRule = mobileStyles.match(
+    /\.event-detail__summary\s*>\s*\.primary-action\s*\{([^}]*)\}/su,
+  )?.[1] ?? "";
+  assert.match(stickyRule, /position:\s*fixed;/u);
+  assert.match(stickyRule, /bottom:\s*max\(0\.75rem,\s*env\(safe-area-inset-bottom\)\);/u);
+  assert.match(stickyRule, /display:\s*flex;/u);
+  assert.match(stickyRule, /min-height:\s*3\.25rem;/u, "the 390px RSVP action must be sticky and at least 44px tall");
   assert.match(
     css,
     /\.event-detail__summary\s*>\s*\.primary-action\s*\{[^}]*min-height:\s*2\.75rem;/su,
@@ -692,8 +726,9 @@ test("the shared detail renderer supports a preview-safe discovery mode", async 
   assert.match(eventPage, /<PublicEventDetailRenderer/u);
   assert.match(
     eventPage,
-    /<Link href="\/events" prefetch=\{false\}>\s*All events\s*<\/Link>/u,
+    /<Link href="\/events">\s*All events\s*<\/Link>/u,
   );
+  assert.doesNotMatch(eventPage, /prefetch=\{false\}/u);
   assert.doesNotMatch(eventPage, /<article className="event-detail">/u);
   assert.doesNotMatch(eventPage, /<ShareControls/u);
 });

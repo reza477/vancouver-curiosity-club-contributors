@@ -377,6 +377,71 @@ test("keeps unsafe description markup and links out of public content", () => {
   ]);
 });
 
+test("applies the approved Level 8 Chekhov correction to canonical and alias imports", () => {
+  for (const { eventId, groupSlug } of [
+    {
+      eventId: "315823022",
+      groupSlug: "vancouver-literature-and-film",
+    },
+    { eventId: "315823081", groupSlug: "vancouver-meetup-group" },
+  ]) {
+    const state = createApolloState();
+    const eventRef = relabelPrimaryMeetupEvent(state, { eventId, groupSlug });
+    state[eventRef].description =
+      "A sufficiently detailed public event description. Location: Vancouver Central Library, 9th floor, left of the elevators.";
+    const rawDescription = state[eventRef].description;
+
+    const event = parseMeetupGroupEventsPage(
+      createHtml(state, { canonicalSlug: groupSlug, querySlug: groupSlug }),
+      groupSlug,
+    ).events[0];
+    assert.equal(state[eventRef].description, rawDescription, eventId);
+    assert.equal(event.publicContent.publicFloor, "Level 8", eventId);
+    assert.match(event.publicContent.description, /\bLevel 8\b/u, eventId);
+    assert.doesNotMatch(
+      JSON.stringify(event.publicContent.descriptionBlocks),
+      /\b(?:9th[ -]+floor|ninth[ -]+floor|(?:Level|Floor)\s*:?\s*9)\b/iu,
+      eventId,
+    );
+  }
+});
+
+test("rejects unknown conflicting live floor claims", () => {
+  const state = createApolloState();
+  state[EVENT_REF].description =
+    "A sufficiently detailed public event description. Location: Level 7 in one source line and Level 8 in another.";
+  assertSyncError(
+    () => parseMeetupGroupEventsPage(createHtml(state), GROUP_SLUG),
+    "calendar_invalid",
+  );
+});
+
+test("removes or rejects orphan ticket and RSVP calls to action", () => {
+  const removable = createApolloState();
+  removable[EVENT_REF].description = `Short summary
+A useful public event note. [Buy your ticket here](https://tickets.example.invalid/buy)
+
+RSVP here:`;
+  const publicContent = parseMeetupGroupEventsPage(
+    createHtml(removable),
+    GROUP_SLUG,
+  ).events[0].publicContent;
+  assert.match(publicContent.description, /A useful public event note\./u);
+  assert.doesNotMatch(
+    JSON.stringify(publicContent),
+    /buy your ticket|rsvp here|tickets\.example\.invalid/iu,
+  );
+
+  const rejected = createApolloState();
+  rejected[EVENT_REF].description = `A sufficiently detailed public event note.
+
+[Buy your ticket here](https://tickets.example.invalid/buy)`;
+  assertSyncError(
+    () => parseMeetupGroupEventsPage(createHtml(rejected), GROUP_SLUG),
+    "calendar_invalid",
+  );
+});
+
 test("normalizes the exact Banking Markdown residue in automatic group-page imports", () => {
   const state = createApolloState();
   state[EVENT_REF].description = `Short Summary
@@ -675,6 +740,31 @@ function addEvent(
     status,
     title,
   };
+}
+
+function relabelPrimaryMeetupEvent(state, { eventId, groupSlug }) {
+  const eventRef = `Event:${eventId}`;
+  state[eventRef] = {
+    ...state[EVENT_REF],
+    eventUrl: `https://www.meetup.com/${groupSlug}/events/${eventId}/`,
+    id: eventId,
+  };
+  delete state[EVENT_REF];
+
+  for (const connection of Object.values(state[GROUP_REF])) {
+    if (!connection || typeof connection !== "object" || !Array.isArray(connection.edges)) {
+      continue;
+    }
+    for (const edge of connection.edges) {
+      if (edge?.node?.__ref === EVENT_REF) edge.node.__ref = eventRef;
+    }
+  }
+  state[GROUP_REF].urlname = groupSlug;
+  delete state.ROOT_QUERY[`groupByUrlname:{"urlname":"${GROUP_SLUG}"}`];
+  state.ROOT_QUERY[`groupByUrlname:{"urlname":"${groupSlug}"}`] = {
+    __ref: GROUP_REF,
+  };
+  return eventRef;
 }
 
 function createHtml(

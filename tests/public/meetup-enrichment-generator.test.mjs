@@ -300,6 +300,17 @@ Buy your VIFF ticket here:
   assert.doesNotMatch(result.plainText, /Open viff\.org/u);
   assert.doesNotMatch(result.plainText, /https?:\/\//u);
 
+  const invalidTicketCallToAction = normalizePublicDescription(`Short summary
+A useful public event note. [Buy your ticket here](https://tickets.example.invalid/buy)`);
+  assert.equal(
+    invalidTicketCallToAction.plainText,
+    "Short summary A useful public event note.",
+  );
+  assert.doesNotMatch(
+    JSON.stringify(invalidTicketCallToAction.blocks),
+    /buy your ticket|tickets\.example\.invalid/iu,
+  );
+
   const standaloneCallToAction = normalizePublicDescription(`Short summary
 A safe event description with a separate source link.
 

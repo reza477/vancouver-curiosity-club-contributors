@@ -1,3 +1,4 @@
+import { readPublicCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -113,7 +114,7 @@ test("the month calendar uses substantial brand accents without losing non-colou
       new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
       "utf8",
     ),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readPublicCss(),
   ]);
 
   for (const viewportWidth of [390, 768, 1440]) {
@@ -211,10 +212,7 @@ test("the month calendar uses substantial brand accents without losing non-colou
 });
 
 test("the calendar month title has no offset text shadow", async () => {
-  const styles = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+  const styles = await readPublicCss();
   for (const viewportWidth of [390, 768, 1440]) {
     const textShadow = lastDeclarationAtViewport(
       styles,
@@ -236,7 +234,7 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
       "utf8",
     ),
     readFile(new URL("app/_components/EventCard.tsx", projectRoot), "utf8"),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readPublicCss(),
   ]);
 
   for (const viewportWidth of [390, 768, 1440]) {

@@ -103,7 +103,7 @@ test("the near-title RSVP becomes the mobile sticky action without a duplicate",
         }),
       ),
     ),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readFile(new URL("app/styles/pages/event-detail.css", projectRoot), "utf8"),
     readFile(
       new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
       "utf8",
@@ -128,14 +128,12 @@ test("the near-title RSVP becomes the mobile sticky action without a duplicate",
   assert.doesNotMatch(markup, /event-detail__mobile-rsvp/u);
 
   const mobileStart = css.lastIndexOf("@media (max-width: 38rem)");
-  const mobileEnd = css.indexOf(
-    "@media (prefers-reduced-motion: reduce)",
-    mobileStart,
-  );
+  const mobileEnd = css.length;
   const mobileStyles = css.slice(mobileStart, mobileEnd);
-  assert.match(
-    mobileStyles,
-    /\.event-detail__summary\s*>\s*\.primary-action\s*\{[^}]*position:\s*fixed;[^}]*display:\s*flex;[^}]*min-height:\s*3\.25rem;/su,
-    "the same early-focus RSVP must become sticky and comfortably tappable",
-  );
+  const stickyRule = mobileStyles.match(
+    /\.event-detail__summary\s*>\s*\.primary-action\s*\{([^}]*)\}/su,
+  )?.[1] ?? "";
+  assert.match(stickyRule, /position:\s*fixed;/u);
+  assert.match(stickyRule, /display:\s*flex;/u);
+  assert.match(stickyRule, /min-height:\s*3\.25rem;/u, "the same early-focus RSVP must become sticky and comfortably tappable");
 });

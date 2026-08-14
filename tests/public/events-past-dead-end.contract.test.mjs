@@ -46,12 +46,10 @@ test("removing the archive and lane-filter controls preserves calendar discovery
   assert.match(renderer, /<PublicMonthCalendar/u);
   assert.match(
     calendar,
-    /href=\{calendarHref\(previousMonth, calendarRoute, laneSlug\)\}/u,
+    /href=\{publicEventsHref\(\{\s*clubSlug,\s*laneSlug,\s*month: previousMonth,\s*route: calendarRoute,\s*view: "calendar",\s*\}\)\}/u,
   );
   assert.match(
     calendar,
-    /href=\{calendarHref\(nextMonth, calendarRoute, laneSlug\)\}/u,
+    /href=\{publicEventsHref\(\{\s*clubSlug,\s*laneSlug,\s*month: nextMonth,\s*route: calendarRoute,\s*view: "calendar",\s*\}\)\}/u,
   );
-  assert.match(calendar, /month=\$\{encodeURIComponent\(month\)\}/u);
-  assert.match(calendar, /lane=\$\{encodeURIComponent\(laneSlug\)\}/u);
 });

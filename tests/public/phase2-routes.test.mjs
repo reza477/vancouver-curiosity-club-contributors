@@ -107,9 +107,9 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "home-hero",
     "home-events",
     "home-newcomer attending-note",
-    "home-community-feel attending-note",
     "lane-index",
     "home-clubs",
+    "home-mission home-community",
     "home-proof home-community",
     "home-closing home-invitation",
   ];
@@ -138,7 +138,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.doesNotMatch(layout, /http:\/\/localhost/u);
 });
 
-test("Events renders one full calendar while Calendar forwards into it", async () => {
+test("Events renders explicit Upcoming and Calendar views while /calendar forwards", async () => {
   const [calendar, events, renderer, maintenance, worker] = await Promise.all([
     readFile(new URL("app/calendar/route.ts", projectRoot), "utf8"),
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
@@ -156,12 +156,16 @@ test("Events renders one full calendar while Calendar forwards into it", async (
   assert.match(calendar, /new URL\(request\.url\)/u);
   assert.match(
     calendar,
-    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+    /new URL\(\s*["']\/events["'],\s*await getPublicRequestOrigin\(source\),?\s*\)/u,
   );
   assert.match(calendar, /source\.searchParams\.getAll\(["']month["']\)/u);
   assert.match(
     calendar,
     /destination\.searchParams\.set\(["']month["'], month\)/u,
+  );
+  assert.match(
+    calendar,
+    /destination\.searchParams\.set\(["']view["'], ["']calendar["']\)/u,
   );
   assert.match(calendar, /Response\.redirect\(destination, 308\)/u);
   assert.doesNotMatch(calendar, /<PublicMonthCalendar|calendar-view-switcher/u);
@@ -180,7 +184,8 @@ test("Events renders one full calendar while Calendar forwards into it", async (
   assert.doesNotMatch(events, /values\.state|values\.page/u);
   assert.doesNotMatch(events, /from "\.\.\/calendar\/page"/u);
   assert.match(`${events}\n${renderer}`, /PublicMonthCalendar/u);
-  assert.doesNotMatch(renderer, /Event timeframe|>\s*Upcoming\s*<|>\s*Past\s*</u);
+  assert.match(renderer, /aria-label="Event views"[\s\S]*Upcoming[\s\S]*Calendar/u);
+  assert.doesNotMatch(renderer, /Event timeframe|>\s*Past\s*</u);
   assert.doesNotMatch(renderer, /<EventFilters\b/u);
   assert.doesNotMatch(
     renderer,
@@ -188,7 +193,7 @@ test("Events renders one full calendar while Calendar forwards into it", async (
   );
   assert.doesNotMatch(renderer, /calendar-view-switcher/u);
   assert.match(renderer, /<PublicMonthCalendar/u);
-  assert.doesNotMatch(renderer, /<EventCollection|<Pagination|events-page__list/u);
+  assert.match(renderer, /<EventCard compact event=\{event\}/u);
   assert.doesNotMatch(renderer, /EditorialSection|editorial-sections/u);
   assert.doesNotMatch(calendar, /Download upcoming events/u);
   assert.doesNotMatch(
@@ -200,7 +205,34 @@ test("Events renders one full calendar while Calendar forwards into it", async (
     maintenance,
     /refreshMeetupCalendarSourceIfDue|schedulePublicMeetupRefresh/u,
   );
-  assert.match(worker, /maintenanceRedirect/u);
+  assert.match(
+    worker,
+    /await ensureDatabaseInvariantsForRequest\(env\.DB,[\s\S]*?const response = await handler\.fetch\([\s\S]*?\(request\.method === "GET" \|\| request\.method === "HEAD"\)[\s\S]*?!isPrivateOrIdentityPath\(requestPathname\)[\s\S]*?schedulePublicRequestMaintenance\(ctx, env\.DB/u,
+  );
+  const publicSchedulerStart = worker.indexOf(
+    "function schedulePublicRequestMaintenance(",
+  );
+  const publicSchedulerEnd = worker.indexOf(
+    "function contentSecurityPolicy(",
+    publicSchedulerStart,
+  );
+  assert.ok(publicSchedulerStart >= 0);
+  assert.ok(publicSchedulerEnd > publicSchedulerStart);
+  const publicScheduler = worker.slice(
+    publicSchedulerStart,
+    publicSchedulerEnd,
+  );
+  assert.match(publicScheduler, /runRequestMaintenance\(database, request\)/u);
+  assert.match(
+    publicScheduler,
+    /nowUtcMs < publicRequestMaintenanceNextEligibleAtUtcMs/u,
+  );
+  assert.match(publicScheduler, /context\.waitUntil\(maintenance\)/u);
+  assert.doesNotMatch(
+    publicScheduler,
+    /maintenanceRedirect|maintenanceUnavailableResponse|secureResponse/u,
+    "visitor maintenance must stay background-only and never return 303 or 503",
+  );
   assert.doesNotMatch(
     worker,
     /schedulePublicMeetupRefresh|public_meetup_refresh_/u,

@@ -275,6 +275,20 @@ export function shouldReconcileScheduledPublication(
   );
 }
 
+export function shouldRunRequestMaintenance(
+  method: string,
+  pathname: string,
+): boolean {
+  return (
+    shouldReconcilePhase7StarterCopy(method, pathname) ||
+    shouldReconcileVisitorFormPageCopy(method, pathname) ||
+    shouldReconcileVisitorFeedbackCopy(method, pathname) ||
+    shouldReconcileVisitorPrivacyCopy(method, pathname) ||
+    shouldReconcileVisitorEventsCopy(method, pathname) ||
+    shouldReconcileScheduledPublication(method, pathname)
+  );
+}
+
 function requestRoutePathname(pathname: string): string {
   return pathname.endsWith(".rsc")
     ? pathname.slice(0, -4) || "/"

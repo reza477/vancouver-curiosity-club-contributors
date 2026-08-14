@@ -1,19 +1,25 @@
+import { readPublicCss } from "./helpers/public-css.mjs";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const projectRoot = new URL("../", import.meta.url);
 const legacyDarkSurfaces = new Set(["#071b31", "#145e59"]);
 
 test("the public palette stays coherent and primary navigation labels remain readable", async () => {
-  const css = await readFile(new URL("app/globals.css", projectRoot), "utf8");
+  const css = await readPublicCss();
   const rootVariables = declarationsFor(css, ":root");
   const publicVariables = new Map([
     ...rootVariables,
     ...declarationsFor(css, 'body[data-surface="public"]'),
   ]);
 
-  for (const token of ["--paper", "--ink", "--forest", "--cobalt"]) {
+  for (const token of [
+    "--paper",
+    "--ink",
+    "--accent",
+    "--accent-quiet",
+    "--forest",
+    "--cobalt",
+  ]) {
     const rootColor = resolveColor(`var(${token})`, rootVariables);
     const publicColor = resolveColor(`var(${token})`, publicVariables);
     assert.equal(
@@ -29,6 +35,21 @@ test("the public palette stays coherent and primary navigation labels remain rea
     contrastRatio(pageText, pageBackground) >= 4.5,
     "the default public text/background pair must meet WCAG AA",
   );
+  const raisedBackground = resolveColor(
+    "var(--paper-raised)",
+    publicVariables,
+  );
+  for (const token of ["--accent", "--accent-quiet", "--ink-soft"]) {
+    const foreground = resolveColor(`var(${token})`, publicVariables);
+    assert.ok(
+      contrastRatio(foreground, pageBackground) >= 4.5,
+      `${token} must meet WCAG AA on the default paper`,
+    );
+    assert.ok(
+      contrastRatio(foreground, raisedBackground) >= 4.5,
+      `${token} must meet WCAG AA on the raised paper`,
+    );
+  }
 
   for (const { label, matches } of [
     {

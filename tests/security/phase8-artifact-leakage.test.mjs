@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
 import {
   existsSync,
+  realpathSync,
   readFileSync,
   readdirSync,
+  statSync,
 } from "node:fs";
-import { basename, extname, join, relative } from "node:path";
+import {
+  basename,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import test from "node:test";
 
 const ROOT = process.cwd();
@@ -55,11 +65,54 @@ function source(...segments) {
   return readFileSync(join(ROOT, ...segments), "utf8");
 }
 
+function publicTargetForPath(pathname) {
+  let decodedPathname;
+  try {
+    decodedPathname = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+
+  if (
+    !decodedPathname.startsWith("/") ||
+    decodedPathname.includes("\\") ||
+    decodedPathname.includes("\0")
+  ) {
+    return null;
+  }
+
+  const publicRoot = realpathSync(join(ROOT, "public"));
+  const candidate = resolve(publicRoot, `.${decodedPathname}`);
+  const candidateRelative = relative(publicRoot, candidate);
+  if (
+    candidateRelative.length === 0 ||
+    candidateRelative === ".." ||
+    candidateRelative.startsWith(`..${sep}`) ||
+    isAbsolute(candidateRelative) ||
+    !existsSync(candidate)
+  ) {
+    return null;
+  }
+
+  const resolvedCandidate = realpathSync(candidate);
+  const resolvedRelative = relative(publicRoot, resolvedCandidate);
+  if (
+    resolvedRelative.length === 0 ||
+    resolvedRelative === ".." ||
+    resolvedRelative.startsWith(`..${sep}`) ||
+    isAbsolute(resolvedRelative) ||
+    !statSync(resolvedCandidate).isFile()
+  ) {
+    return null;
+  }
+
+  return `public/${candidateRelative.replaceAll("\\", "/")}`;
+}
+
 function appTargetForPath(pathname) {
   if (pathname === "/") return "app/page.tsx";
-  if (pathname.startsWith("/templates/")) {
-    return `public${pathname}`;
-  }
+  const publicTarget = publicTargetForPath(pathname);
+  if (publicTarget) return publicTarget;
   const route = pathname.slice(1);
   for (const candidate of [
     `app/${route}/page.tsx`,

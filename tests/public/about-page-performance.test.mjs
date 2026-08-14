@@ -40,8 +40,8 @@ test("About keeps its CMS gate without loading catalog or event projections", as
   );
   assert.match(
     about,
-    /<Link\s+className="primary-action"\s+href="\/events"\s+prefetch=\{false\}>[\s\S]*?See upcoming gatherings[\s\S]*?<\/Link>/u,
-    "About must retain a direct path to the live Events page without preloading it",
+    /<Link\s+className="primary-action"\s+href="\/events">[\s\S]*?See upcoming gatherings[\s\S]*?<\/Link>/u,
+    "About must retain a prefetched direct path to the live Events page",
   );
 
   assert.doesNotMatch(
@@ -56,7 +56,7 @@ test("About keeps its CMS gate without loading catalog or event projections", as
   );
 });
 
-test("primary navigation does not prefetch force-dynamic destinations by default", async () => {
+test("primary navigation prefetches public destinations by default", async () => {
   const [header, ...publicRoutes] = await Promise.all([
     readFile(
       new URL("app/_components/SiteHeader.tsx", projectRoot),
@@ -108,18 +108,23 @@ test("primary navigation does not prefetch force-dynamic destinations by default
   );
   assert.match(
     navigationLinks,
-    /prefetch=\{\s*prefetchInternalLinks && item\.href !== "\/events"\s*\}/u,
-    "the primary navigation must not render About or another dynamic route in the background",
+    /prefetch=\{prefetchInternalLinks\}/u,
+    "every public primary destination must use the shared prefetch setting",
   );
   assert.match(
     header,
-    /prefetchInternalLinks = false/u,
-    "public primary navigation must default to no background route renders",
+    /prefetchInternalLinks = true/u,
+    "public primary navigation must default to prefetching",
+  );
+  assert.doesNotMatch(
+    navigationLinks,
+    /item\.href !== "\/events"/u,
+    "Events must not be excluded from public navigation prefetching",
   );
   assert.match(
     header,
     /className="wordmark"[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
-    "the wordmark and primary links must share the public no-prefetch default",
+    "the wordmark and primary links must share the public prefetch default",
   );
   assert.match(
     header,

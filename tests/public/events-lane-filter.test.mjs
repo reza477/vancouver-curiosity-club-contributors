@@ -54,6 +54,7 @@ function calendarData(events = Object.freeze([event()])) {
 
 function calendarProps(overrides = {}) {
   return {
+    clubSlug: "vancouver-curiosity-club",
     complete: true,
     events: Object.freeze([event()]),
     laneSlug: "reset-and-make",
@@ -152,10 +153,11 @@ test("direct lane query values still normalize and reach the filtered Events loa
   );
 });
 
-test("Events does not render the removed activity-lane filter strip", () => {
+test("Events uses a select without restoring the removed lane pill strip", () => {
   const markup = renderToStaticMarkup(
     createElement(EventsPageRenderer, {
       activeLaneSlug: "reset-and-make",
+      activeView: "calendar",
       calendar: calendarData(),
       calendarAvailable: true,
       invalidLane: false,
@@ -166,11 +168,8 @@ test("Events does not render the removed activity-lane filter strip", () => {
     }),
   );
 
-  assert.doesNotMatch(
-    markup,
-    /events-page__lane-filters|aria-label="Filter events by activity lane"|href="\/events\?lane=/iu,
-    "the Show / All / lane-chip strip must not be rendered",
-  );
+  assert.doesNotMatch(markup, /events-page__lane-filters|Filter events by activity lane/iu);
+  assert.match(markup, /<select name="lane">[\s\S]*Reset &amp; Make/u);
   assert.match(markup, /Wednesday Night Reset/u);
 });
 
@@ -178,6 +177,7 @@ test("an invalid lane visibly falls back to All events", () => {
   const markup = renderToStaticMarkup(
     createElement(EventsPageRenderer, {
       activeLaneSlug: null,
+      activeView: "calendar",
       calendar: calendarData(),
       calendarAvailable: true,
       invalidLane: true,
@@ -189,10 +189,7 @@ test("an invalid lane visibly falls back to All events", () => {
   );
 
   assert.match(markup, /role="alert"[^>]*>[^<]*filter[^<]*all events/iu);
-  assert.doesNotMatch(
-    markup,
-    /events-page__lane-filters|aria-label="Filter events by activity lane"|href="\/events\?lane=/iu,
-  );
+  assert.doesNotMatch(markup, /events-page__lane-filters|Filter events by activity lane/iu);
   assert.match(markup, /Wednesday Night Reset/u);
 });
 
@@ -231,7 +228,7 @@ test("changing a direct lane query in one month resets selection to the filtered
   );
 });
 
-test("calendar month navigation preserves the selected lane", () => {
+test("calendar month navigation preserves view, lane, club, and month", () => {
   const markup = renderToStaticMarkup(
     createElement(PublicMonthCalendar, calendarProps()),
   );
@@ -246,9 +243,42 @@ test("calendar month navigation preserves the selected lane", () => {
       "https://club.example",
     );
     assert.equal(destination.pathname, "/events");
+    assert.equal(destination.searchParams.get("view"), "calendar");
     assert.equal(destination.searchParams.get("month"), month);
     assert.equal(destination.searchParams.get("lane"), "reset-and-make");
+    assert.equal(
+      destination.searchParams.get("club"),
+      "vancouver-curiosity-club",
+    );
   }
+});
+
+test("Events URL helpers keep legacy lane links and exact two-view state", async () => {
+  const { publicEventsHref, resolvePublicEventsView } = await import(
+    "../../lib/public-events-view.ts"
+  );
+
+  assert.equal(
+    publicEventsHref({ laneSlug: "think", view: "upcoming" }),
+    "/events?lane=think",
+  );
+  assert.equal(
+    publicEventsHref({
+      clubSlug: "vancouver-curiosity-club",
+      laneSlug: "explore",
+      month: "2026-09",
+      view: "calendar",
+    }),
+    "/events?view=calendar&lane=explore&club=vancouver-curiosity-club&month=2026-09",
+  );
+  assert.deepEqual(resolvePublicEventsView(undefined), {
+    activeView: "upcoming",
+    invalid: false,
+  });
+  assert.deepEqual(resolvePublicEventsView("unknown"), {
+    activeView: "upcoming",
+    invalid: true,
+  });
 });
 
 test("representative Meetup activities receive their real lane instead of Think", async () => {

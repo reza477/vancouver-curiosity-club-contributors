@@ -6,9 +6,16 @@ const projectRoot = new URL("../../", import.meta.url);
 
 test("Home labels official community links honestly instead of calling links community proof", async () => {
   const home = await source("app/_components/HomePageRenderer.tsx");
+  const mission = sectionSource(home, "home-mission home-community");
   const proof = sectionSource(home, "home-proof home-community");
 
-  assert.match(proof, /<OrganizerNote\b/u);
+  assert.match(mission, /<OrganizerNote\b/u);
+  assert.doesNotMatch(proof, /<OrganizerNote\b/u);
+  assert.match(
+    home,
+    /catalog\.communityLinks\.length > 0 \? \([\s\S]*?className="home-proof home-community"/u,
+    "the proof-position section must stay hidden without real official content",
+  );
   assert.match(
     proof,
     /<div(?=[^>]*(?:className="[^"]*(?:home-proof__links|home-official-links)[^"]*"|aria-labelledby="home-official-links-title"))[^>]*>[\s\S]*?Official community links/u,

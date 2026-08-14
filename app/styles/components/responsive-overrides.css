@@ -1,0 +1,36 @@
+/* Cross-route responsive and reduced-motion overrides load after owned modules. */
+@media (max-width: 52rem) {
+  .editorial-sections, .club-detail__events, .community-destinations, .club-detail__destination, .club-directory > header {
+    grid-template-columns: 1fr;
+  }
+
+  .about-feel, .about-audience, .about-solo, .about-closing, .lane-index__grid, .home-clubs__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 38rem) {
+  .editorial-section, .club-event-list {
+    padding: 2rem 1.25rem;
+  }
+
+  .home-hero, .home-events, .lane-index, .home-clubs, .related-events, .attending-note, .home-invitation, .home-community, .about-hero, .about-feel, .about-audience, .about-solo, .about-closing, .events-page-masthead {
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .home-hero h1, .about-hero h1, .events-page-masthead h1, .page-masthead__copy h1 {
+    font-size: clamp(3rem, 13vw, 3.5rem);
+    line-height: 0.95;
+  }
+
+  .section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .about-page h2, .event-detail h2, .related-events h2 {
+    font-size: clamp(2.25rem, 10vw, 3rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .event-card, .home-hero__poster, .home-clubs__grid article, .club-directory__card, .club-directory__artwork img, .event-card__artwork img, .event-detail__artwork img, .home-hero__poster img {
+    transform: none !important;
+  }
+}

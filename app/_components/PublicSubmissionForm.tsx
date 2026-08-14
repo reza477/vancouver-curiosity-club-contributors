@@ -18,6 +18,10 @@ export type PublicFormChoice = Readonly<{
 
 type FormState = Readonly<Record<string, string | readonly string[]>>;
 type FormInstanceState = "error" | "loading" | "ready" | "slow";
+type FormInstanceGate = Readonly<{
+  promise: Promise<string | null>;
+  resolve(value: string | null): void;
+}>;
 
 const FORM_INSTANCE_SLOW_MS = 750;
 const FORM_INSTANCE_TIMEOUT_MS = 10_000;
@@ -35,7 +39,6 @@ export function PublicSubmissionForm({
   const [instanceState, setInstanceState] =
     useState<FormInstanceState>("loading");
   const [instanceRequest, setInstanceRequest] = useState(0);
-  const [sendReady, setSendReady] = useState(false);
   const [instanceNotice, setInstanceNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -46,14 +49,21 @@ export function PublicSubmissionForm({
   );
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const instanceGateRef = useRef<FormInstanceGate | null>(null);
+  const instanceReceivedAtRef = useRef(0);
   const successRef = useRef<HTMLDivElement>(null);
+  if (instanceGateRef.current === null) {
+    instanceGateRef.current = createFormInstanceGate();
+  }
   const reactInstanceId = useId().replaceAll(":", "");
   const idPrefix = `${formKey}-${reactInstanceId}`;
 
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    let sendReadyTimer: number | undefined;
+    const instanceGate =
+      instanceGateRef.current ?? createFormInstanceGate();
+    instanceGateRef.current = instanceGate;
     const slowTimer = window.setTimeout(() => {
       if (!active) return;
       setInstanceState((current) =>
@@ -84,14 +94,14 @@ export function PublicSubmissionForm({
         }
         if (!active) return;
         window.clearTimeout(slowTimer);
+        instanceReceivedAtRef.current = Date.now();
         setInstanceToken(body.instanceToken);
         setInstanceState("ready");
         setInstanceNotice("");
-        sendReadyTimer = window.setTimeout(() => {
-          if (active) setSendReady(true);
-        }, PUBLIC_FORM_MINIMUM_COMPLETION_MS);
+        instanceGate.resolve(body.instanceToken);
       } catch (error) {
         if (!active) return;
+        instanceGate.resolve(null);
         setInstanceState("error");
         setInstanceNotice(
           (error as { name?: unknown }).name === "AbortError"
@@ -108,9 +118,6 @@ export function PublicSubmissionForm({
       active = false;
       window.clearTimeout(slowTimer);
       window.clearTimeout(timeout);
-      if (sendReadyTimer !== undefined) {
-        window.clearTimeout(sendReadyTimer);
-      }
       controller.abort();
     };
   }, [formKey, instanceRequest]);
@@ -122,19 +129,26 @@ export function PublicSubmissionForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!instanceToken || busy) return;
-    if (!sendReady) return;
+    if (busy || instanceState === "error") return;
     setBusy(true);
     setNotice("");
     setErrors({});
     const formData = new FormData(event.currentTarget);
     try {
+      const token =
+        instanceToken ||
+        (await instanceGateRef.current?.promise) ||
+        null;
+      if (!token) {
+        throw new Error("The form is temporarily unavailable. Try again.");
+      }
+      await waitForMinimumFormCompletion(instanceReceivedAtRef.current);
       const response = await fetch(
         `/api/forms/${encodeURIComponent(formKey)}`,
         {
           body: JSON.stringify({
             companyFax: formData.get("companyFax"),
-            instanceToken,
+            instanceToken: token,
             payload: values,
           }),
           credentials: "same-origin",
@@ -187,7 +201,8 @@ export function PublicSubmissionForm({
 
   function retryInstance() {
     setInstanceToken("");
-    setSendReady(false);
+    instanceReceivedAtRef.current = 0;
+    instanceGateRef.current = createFormInstanceGate();
     setInstanceState("loading");
     setInstanceNotice("");
     setInstanceRequest((current) => current + 1);
@@ -477,16 +492,15 @@ export function PublicSubmissionForm({
                 Try loading the form again
               </button>
             </div>
-          ) : !sendReady ? (
+          ) : instanceState === "slow" ? (
             <p className="public-submission__instance-status" role="status">
-              {instanceState === "slow"
-                ? "Send is taking a little longer to prepare. You can keep filling out the form."
-                : "Preparing send…"}
+              Send is taking a little longer to prepare. You can keep filling
+              out the form and press Send when you are ready.
             </p>
           ) : null}
 
           <button
-            disabled={busy || !sendReady}
+            disabled={busy || instanceState === "error"}
             type="submit"
           >
             {busy ? "Sending..." : submitButtonLabel(formKey)}
@@ -515,6 +529,26 @@ function submitButtonLabel(formKey: PublicFormKey): string {
     case "partnership":
       return "Send partnership idea";
   }
+}
+
+function createFormInstanceGate(): FormInstanceGate {
+  let resolve!: (value: string | null) => void;
+  const promise = new Promise<string | null>((complete) => {
+    resolve = complete;
+  });
+  return Object.freeze({ promise, resolve });
+}
+
+async function waitForMinimumFormCompletion(
+  instanceReceivedAtUtcMs: number,
+): Promise<void> {
+  const remaining = Math.max(
+    0,
+    PUBLIC_FORM_MINIMUM_COMPLETION_MS -
+      (Date.now() - instanceReceivedAtUtcMs),
+  );
+  if (remaining === 0) return;
+  await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
 }
 
 function TextField({

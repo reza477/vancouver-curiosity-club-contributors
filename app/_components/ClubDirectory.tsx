@@ -76,7 +76,7 @@ export function ClubDirectory({
                 </p>
               ) : null}
               <h3>
-                <Link href={`/clubs/${club.slug}`} prefetch={false}>
+                <Link href={`/clubs/${club.slug}`}>
                   {club.name}
                 </Link>
               </h3>
@@ -104,7 +104,6 @@ export function ClubDirectory({
                   aria-label={`Explore club: ${club.name}`}
                   className="club-directory__primary-action"
                   href={`/clubs/${club.slug}`}
-                  prefetch={false}
                 >
                   Explore club
                 </Link>
@@ -208,7 +207,7 @@ function ClubNextEvent({
       ) : event ? (
         <>
           <p className="club-directory__next-title">
-            <Link href={`/events/${event.slug}`} prefetch={false}>
+            <Link href={`/events/${event.slug}`}>
               {event.title}
             </Link>
           </p>

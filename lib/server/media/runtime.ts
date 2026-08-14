@@ -57,6 +57,18 @@ export function getRuntimeMediaDecodeProbe(): MediaImageDecodeProbe {
 }
 
 export function getRuntimeImagesBinding(): RuntimeImagesBinding {
+  const images = getOptionalRuntimeImagesBinding();
+  if (!images) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "Image validation is not configured.",
+    );
+  }
+  return images;
+}
+
+export function getOptionalRuntimeImagesBinding(): RuntimeImagesBinding | null {
   const images =
     (typeof env === "object" || typeof env === "function") && env !== null
       ? Reflect.get(env, "IMAGES")
@@ -66,11 +78,7 @@ export function getRuntimeImagesBinding(): RuntimeImagesBinding {
     images === null ||
     typeof Reflect.get(images, "input") !== "function"
   ) {
-    throw new SafeApplicationError(
-      "service_unavailable",
-      503,
-      "Image validation is not configured.",
-    );
+    return null;
   }
   return images as RuntimeImagesBinding;
 }

@@ -650,7 +650,8 @@ test("event website fields share the CMS legal-claim gate and never reach public
 
   const routeSource = readFileSync("app/events/[slug]/page.tsx", "utf8");
   assert.match(routeSource, /event\.seoTitle \?\? loaded\.event\.title/u);
-  assert.match(routeSource, /event\.metaDescription \?\?/u);
+  assert.match(routeSource, /buildPublicEventMetadataDescription/u);
+  assert.match(routeSource, /metaDescription:\s*loaded\.event\.metaDescription/u);
   assert.match(routeSource, /resolvePublicEventMetadataImage/u);
   assert.match(routeSource, /siteOpenGraphAssetId/u);
   assert.match(routeSource, /imageHeight:\s*image\?\.height/u);

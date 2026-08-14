@@ -1,0 +1,85 @@
+@font-face {
+  font-family: "Fraunces";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/fraunces-72pt-latin-ext-400.woff2");
+  unicode-range: U+0100-02BA, U+02BD-036F, U+1D00-1EFF, U+2000-21FF, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/fraunces-72pt-latin-400.woff2");
+  unicode-range: U+0000-00FF, U+2000-22FF, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Inter";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-latin-ext-400.woff2");
+  unicode-range: U+0100-02BA, U+02BD-036F, U+1D00-1EFF, U+2000-21FF, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Inter";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-latin-400.woff2");
+  unicode-range: U+0000-00FF, U+2000-22FF, U+FEFF, U+FFFD;
+}
+
+:root {
+  --paper: #fbf7f0;
+  --paper-raised: #f3ebdd;
+  --paper-deep: var(--paper-raised);
+  --ink: #131c33;
+  --ink-soft: #3d4a66;
+  --accent: #b8402b;
+  --accent-quiet: #1f5f5b;
+  --forest: var(--accent);
+  --teal: var(--accent-quiet);
+  --cobalt: var(--accent-quiet);
+  --coral: #ff7867;
+  --amber: #f7c74a;
+  --coral-strong: #b83350;
+  --amber-strong: #895000;
+  --blue-surface: #e4eeff;
+  --teal-surface: #ddf8f3;
+  --amber-surface: #fff0cc;
+  --coral-surface: #ffe4e8;
+  --warm-surface-ink: #131c33;
+  --warm-surface-inverse: #ffffff;
+  --line: var(--ink);
+  --paper-line: var(--paper);
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --focus-ring-inner: #000000;
+  --focus-ring-outer: #ffffff;
+  --display: "Fraunces", Georgia, "Times New Roman", Times, serif;
+  --sans: "Inter", "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+body[data-surface="public"] {
+  --paper: var(--cms-background, #fbf7f0);
+  --paper-raised: #f3ebdd;
+  --paper-deep: var(--paper-raised);
+  --ink: var(--cms-foreground, #131c33);
+  --ink-soft: #3d4a66;
+  --accent: var(--cms-accent, #b8402b);
+  --accent-quiet: var(--cms-secondary, #1f5f5b);
+  --forest: var(--accent);
+  --teal: var(--accent-quiet);
+  --cobalt: var(--accent-quiet);
+}
+
+body[data-surface="public"][data-typography="humanist"] {
+  --display: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+body[data-surface="public"][data-typography="system"] {
+  --display: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}

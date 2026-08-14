@@ -20,7 +20,10 @@ import {
   queryPublicEventMaterializationBundle,
   type PublicEventCardDto,
 } from "./events";
-import type { PublicEventsPageData } from "./events-page";
+import type {
+  PublicEventsClubOption,
+  PublicEventsPageData,
+} from "./events-page";
 import {
   parsePublicEventCardList,
 } from "./event-calendar-snapshot";
@@ -41,12 +44,14 @@ const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const MAX_MATERIALIZATION_BYTES = 1_000_000;
 const MAX_EVENTS_PER_MONTH = 96;
 const MAX_HOME_EVENTS = 48;
+const DEFAULT_HOME_EVENT_READ_LIMIT = 6;
 const MATERIALIZED_MONTH_BUFFER = 1;
 const PUBLIC_MONTH_COUNT = 25;
 const MATERIALIZED_MONTH_COUNT =
   PUBLIC_MONTH_COUNT + MATERIALIZED_MONTH_BUFFER * 2;
 const MAX_MATERIALIZED_EVENTS =
   MAX_EVENTS_PER_MONTH * MATERIALIZED_MONTH_COUNT;
+export const PUBLIC_EVENTS_PAGE_SIZE = 12;
 
 type EventMaterializationDatabase = Pick<
   D1DatabaseLike,
@@ -220,11 +225,20 @@ export async function refreshPublicEventMaterializations(
 export async function readPublicHomeEventMaterialization(
   database: Pick<D1DatabaseLike, "prepare">,
   input: Readonly<{
+    maximum?: number;
     nowUtcMs?: number;
     organizationId: string;
     todayDate?: string;
   }>,
 ): Promise<readonly PublicEventCardDto[] | null> {
+  const maximum = parseFiniteInteger(
+    input.maximum ?? DEFAULT_HOME_EVENT_READ_LIMIT,
+    {
+      path: "eventMaterializations.home.maximum",
+      minimum: 1,
+      maximum: MAX_HOME_EVENTS,
+    },
+  );
   const envelope = await readHomeEnvelope(database, input.organizationId);
   if (!envelope) return null;
   const nowUtcMs = parseFiniteInteger(input.nowUtcMs ?? Date.now(), {
@@ -240,7 +254,7 @@ export async function readPublicHomeEventMaterialization(
       .filter((event) =>
         isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
       )
-      .slice(0, 6),
+      .slice(0, maximum),
   );
 }
 
@@ -251,10 +265,12 @@ export async function readPublicHomeEventMaterialization(
 export async function readPublicEventsPageMaterialization(
   database: Pick<D1DatabaseLike, "prepare">,
   input: Readonly<{
+    clubSlug?: unknown;
     laneSlug?: unknown;
     nowUtcMs?: number;
     organizationId: string;
     rawMonth: unknown;
+    rawPage?: unknown;
     todayDate: string;
   }>,
 ): Promise<PublicEventsPageData | null> {
@@ -271,6 +287,30 @@ export async function readPublicEventsPageMaterialization(
   const envelope = await readEnvelope(database, organizationId);
   if (!envelope) return null;
   const laneSlug = parsePublicEventLaneSlug(input.laneSlug);
+  const clubOptions = materializedClubOptions(envelope.calendarEvents);
+  const clubSelection = resolveMaterializedClubSelection(
+    input.clubSlug,
+    clubOptions,
+  );
+  const clubSlug = clubSelection.activeClubSlug;
+  const requestedPage = parseRequestedEventsPage(input.rawPage);
+  const matchingUpcoming = envelope.calendarEvents
+    .filter(
+      (event) =>
+        eventMatchesLane(event, laneSlug) &&
+        eventMatchesClub(event, clubSlug) &&
+        isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
+    )
+    .sort(comparePublicEventStart);
+  const totalCount = matchingUpcoming.length;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalCount / PUBLIC_EVENTS_PAGE_SIZE),
+  );
+  const invalidPage =
+    requestedPage.invalid || requestedPage.page > totalPages;
+  const page = invalidPage ? 1 : requestedPage.page;
+  const pageStart = (page - 1) * PUBLIC_EVENTS_PAGE_SIZE;
   let resolvedMonth = resolvePublicCalendarMonth(
     input.rawMonth,
     todayDate,
@@ -282,7 +322,7 @@ export async function readPublicEventsPageMaterialization(
     envelope.calendarEvents,
     resolvedMonth.month,
     laneSlug,
-  );
+  ).filter((event) => eventMatchesClub(event, clubSlug));
   let shiftedToUpcoming = false;
 
   if (input.rawMonth === undefined) {
@@ -294,6 +334,7 @@ export async function readPublicEventsPageMaterialization(
       envelope.calendarEvents.find(
         (event) =>
           eventMatchesLane(event, laneSlug) &&
+          eventMatchesClub(event, clubSlug) &&
           isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
       ) ??
       null;
@@ -311,19 +352,32 @@ export async function readPublicEventsPageMaterialization(
         envelope.calendarEvents,
         resolvedMonth.month,
         laneSlug,
-      );
+      ).filter((event) => eventMatchesClub(event, clubSlug));
       shiftedToUpcoming = true;
     }
   }
 
   return Object.freeze({
+    activeClubSlug: clubSlug,
     calendar: Object.freeze({
-      events,
+      events: Object.freeze(events),
       hasMore: false,
       resolvedMonth,
       shiftedToUpcoming,
     }),
     calendarAvailable: true,
+    clubOptions,
+    invalidClub: clubSelection.invalid,
+    upcoming: Object.freeze({
+      events: Object.freeze(
+        matchingUpcoming.slice(pageStart, pageStart + PUBLIC_EVENTS_PAGE_SIZE),
+      ),
+      invalidPage,
+      page,
+      pageSize: PUBLIC_EVENTS_PAGE_SIZE,
+      totalCount,
+      totalPages,
+    }),
   });
 }
 
@@ -518,6 +572,66 @@ function eventMatchesLane(
   laneSlug: PublicEventLaneSlug | null,
 ): boolean {
   return laneSlug === null || event.lane?.slug === laneSlug;
+}
+
+function eventMatchesClub(
+  event: PublicEventCardDto,
+  clubSlug: string | null,
+): boolean {
+  return clubSlug === null || event.club.slug === clubSlug;
+}
+
+function materializedClubOptions(
+  events: readonly PublicEventCardDto[],
+): readonly PublicEventsClubOption[] {
+  const clubs = new Map<string, string>();
+  for (const event of events) {
+    if (!clubs.has(event.club.slug)) {
+      clubs.set(event.club.slug, event.club.name);
+    }
+  }
+  return Object.freeze(
+    [...clubs.entries()]
+      .map(([slug, name]) => Object.freeze({ name, slug }))
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name, "en") ||
+          left.slug.localeCompare(right.slug),
+      ),
+  );
+}
+
+function resolveMaterializedClubSelection(
+  value: unknown,
+  clubOptions: readonly PublicEventsClubOption[],
+): Readonly<{
+  activeClubSlug: string | null;
+  invalid: boolean;
+}> {
+  if (value === undefined || value === "") {
+    return Object.freeze({ activeClubSlug: null, invalid: false });
+  }
+  if (
+    typeof value !== "string" ||
+    !/^[a-z0-9][a-z0-9-]{0,159}$/u.test(value) ||
+    !clubOptions.some((club) => club.slug === value)
+  ) {
+    return Object.freeze({ activeClubSlug: null, invalid: true });
+  }
+  return Object.freeze({ activeClubSlug: value, invalid: false });
+}
+
+function parseRequestedEventsPage(value: unknown): Readonly<{
+  invalid: boolean;
+  page: number;
+}> {
+  if (value === undefined || value === "") {
+    return Object.freeze({ invalid: false, page: 1 });
+  }
+  if (typeof value !== "string" || !/^[1-9]\d{0,4}$/u.test(value)) {
+    return Object.freeze({ invalid: true, page: 1 });
+  }
+  return Object.freeze({ invalid: false, page: Number(value) });
 }
 
 function comparePublicEventStart(

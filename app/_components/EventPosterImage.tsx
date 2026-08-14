@@ -27,11 +27,19 @@ export function EventPosterImage({
 
   if (failedSrc === src) return fallback;
 
+  const renderedImageProps = dynamicMeetupPoster(src)
+    ? Object.freeze({ ...imageProps, sizes: undefined, srcSet: undefined })
+    : imageProps;
+  const modernSources = localPosterModernSources(
+    src,
+    renderedImageProps.srcSet,
+  );
+
   // The public poster URLs intentionally bypass Next/Image so a revoked or
   // malformed response reaches this decode-error boundary immediately.
-  return (
+  const image = (
     <img
-      {...imageProps}
+      {...renderedImageProps}
       alt={alt}
       onError={() => {
         setFailedSrc(src);
@@ -39,4 +47,47 @@ export function EventPosterImage({
       src={src}
     />
   );
+
+  if (!modernSources) return image;
+
+  return (
+    <picture>
+      <source srcSet={modernSources.avif} type="image/avif" />
+      <source srcSet={modernSources.webp} type="image/webp" />
+      {image}
+    </picture>
+  );
+}
+
+function dynamicMeetupPoster(src: string): boolean {
+  return src.startsWith("/meetup-posters/");
+}
+
+function localPosterModernSources(
+  src: string,
+  srcSet: string | undefined,
+): Readonly<{ avif: string; webp: string }> | null {
+  const candidates = srcSet ?? src;
+  const urls = candidates
+    .split(",")
+    .map((candidate) => candidate.trim().split(/\s+/u, 1)[0])
+    .filter(Boolean);
+  if (
+    urls.length === 0 ||
+    urls.some(
+      (url) =>
+        !/^\/event-posters\/[a-z0-9][a-z0-9-]*\.jpeg$/u.test(url),
+    )
+  ) {
+    return null;
+  }
+
+  return Object.freeze({
+    avif: replacePosterExtension(candidates, "avif"),
+    webp: replacePosterExtension(candidates, "webp"),
+  });
+}
+
+function replacePosterExtension(srcSet: string, extension: "avif" | "webp") {
+  return srcSet.replace(/\.jpeg(?=\s|,|$)/gu, `.${extension}`);
 }

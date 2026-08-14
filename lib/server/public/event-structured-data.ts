@@ -46,9 +46,7 @@ export function buildPublicEventJsonLd(
     name: event.title,
     description: event.summary ?? event.description ?? undefined,
     url: canonicalUrl,
-    ...(event.artwork
-      ? { image: new URL(event.artwork.url, canonicalUrl).toString() }
-      : {}),
+    image: new URL(event.artwork?.url ?? "/og.png", canonicalUrl).toString(),
     ...schedule,
     eventStatus: event.isCancelled
       ? "https://schema.org/EventCancelled"
@@ -70,6 +68,15 @@ function eventLocation(
   | readonly Readonly<Record<string, unknown>>[]
   | Readonly<Record<string, unknown>>
   | undefined {
+  const postalAddress = event.venue
+    ? compactPostalAddress({
+        addressCountry: event.venue.addressCountry,
+        addressLocality: event.venue.addressLocality,
+        addressRegion: event.venue.addressRegion,
+        postalCode: event.venue.postalCode,
+        streetAddress: event.venue.address,
+      })
+    : undefined;
   const place = event.venue
     ? {
         "@type": "Place",
@@ -83,12 +90,7 @@ function eventLocation(
         ]
           .filter(Boolean)
           .join(", "),
-        address: event.venue.address
-          ? {
-              "@type": "PostalAddress",
-              name: event.venue.address,
-            }
-          : undefined,
+        address: postalAddress,
       }
     : undefined;
   const virtualLocation = event.publicOnlineUrl
@@ -106,6 +108,24 @@ function eventLocation(
     return locations.length > 0 ? locations : undefined;
   }
   return undefined;
+}
+
+function compactPostalAddress(input: Readonly<{
+  addressCountry?: string | null;
+  addressLocality?: string | null;
+  addressRegion?: string | null;
+  postalCode?: string | null;
+  streetAddress?: string | null;
+}>): Readonly<Record<string, string>> | undefined {
+  const fields = Object.fromEntries(
+    Object.entries(input).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === "string" && entry[1].trim().length > 0,
+    ),
+  );
+  return Object.keys(fields).length > 0
+    ? Object.freeze({ "@type": "PostalAddress", ...fields })
+    : undefined;
 }
 
 function inclusiveCalendarEnd(endDateExclusive: string): string {

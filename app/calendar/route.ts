@@ -1,5 +1,5 @@
 import { parsePublicEventLaneSlug } from "@/lib/public-event-lanes";
-import { trustedPublicRequestOrigin } from "@/lib/public-domain";
+import { getPublicRequestOrigin } from "@/lib/server/public/origin";
 
 /**
  * Keep legacy Calendar bookmarks useful while Events remains the single
@@ -8,11 +8,11 @@ import { trustedPublicRequestOrigin } from "@/lib/public-domain";
  */
 export const dynamic = "force-dynamic";
 
-export function GET(request: Request): Response {
+export async function GET(request: Request): Promise<Response> {
   const source = new URL(request.url);
   const destination = new URL(
     "/events",
-    trustedPublicRequestOrigin(source),
+    await getPublicRequestOrigin(source),
   );
   const monthValues = source.searchParams.getAll("month");
   const month = monthValues.length === 1 ? monthValues[0] : "";
@@ -21,6 +21,8 @@ export function GET(request: Request): Response {
     laneValues.length === 1
       ? parsePublicEventLaneSlug(laneValues[0])
       : null;
+
+  destination.searchParams.set("view", "calendar");
 
   if (month) {
     destination.searchParams.set("month", month);

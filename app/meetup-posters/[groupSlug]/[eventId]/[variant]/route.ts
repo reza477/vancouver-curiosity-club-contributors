@@ -1,6 +1,6 @@
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import {
-  getRuntimeImagesBinding,
+  getOptionalRuntimeImagesBinding,
   getRuntimeMediaBucket,
 } from "@/lib/server/media/runtime";
 import { getSynchronizedMeetupPoster } from "@/lib/server/meetup/posters";
@@ -25,7 +25,7 @@ export async function GET(
     const poster = await getSynchronizedMeetupPoster(
       getRuntimeAuthConfiguration().database,
       getRuntimeMediaBucket(),
-      getRuntimeImagesBinding(),
+      getOptionalRuntimeImagesBinding(),
       { eventId, groupSlug, variant },
     );
     const etag = `"${poster.etag}-${variant}"`;

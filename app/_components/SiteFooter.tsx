@@ -91,7 +91,7 @@ function FooterLink({
   return item.href.startsWith("/") ? (
     <Link
       href={item.href}
-      prefetch={prefetchInternalLinks && item.href !== "/events"}
+      prefetch={prefetchInternalLinks}
     >
       {item.label}
     </Link>

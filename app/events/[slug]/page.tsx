@@ -19,6 +19,7 @@ import {
 } from "@/lib/server/public/events";
 import { buildPublicEventJsonLd } from "@/lib/server/public/event-structured-data";
 import {
+  buildPublicEventMetadataDescription,
   buildPublicPageMetadata,
   resolvePublicEventMetadataImage,
 } from "@/lib/server/public/metadata";
@@ -51,10 +52,12 @@ export async function generateMetadata({
   });
   return buildPublicPageMetadata({
     title: loaded.event.seoTitle ?? loaded.event.title,
-    description:
-      loaded.event.metaDescription ??
-      loaded.event.summary ??
-      `Event details from ${loaded.event.club.name}.`,
+    description: buildPublicEventMetadataDescription({
+      description: loaded.event.description,
+      fallback: `Event details from ${loaded.event.club.name}.`,
+      metaDescription: loaded.event.metaDescription,
+      summary: loaded.event.summary,
+    }),
     imageAlt: image?.altText,
     imageHeight: image?.height,
     imagePath:
@@ -108,7 +111,7 @@ export default async function EventDetailPage({
               <p className="section-kicker">Keep following the thread</p>
               <h2 id="related-title">Related events</h2>
             </div>
-            <Link href="/events" prefetch={false}>
+            <Link href="/events">
               All events
             </Link>
           </div>

@@ -10,6 +10,8 @@ import {
   getRequestPublicPageContent,
 } from "./request-cache";
 
+const HOME_EVENT_SELECTION_RESERVE = 48;
+
 export type PublicHomeData = Readonly<{
   catalog: PublicCatalogDto;
   events: readonly PublicEventCardDto[];
@@ -34,6 +36,7 @@ export async function loadPublicHomeData(
   const [page, events] = await Promise.all([
     getRequestPublicPageContent(database, "home"),
     readPublicHomeEventMaterialization(database, {
+      maximum: HOME_EVENT_SELECTION_RESERVE,
       nowUtcMs: input.nowUtcMs,
       organizationId: input.organizationId,
     }),

@@ -1,3 +1,4 @@
+import { readPublicCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -27,7 +28,7 @@ function maxWidthMediaBlocks(styles) {
   return blocks;
 }
 
-test("Events removes the keyword and advanced-filter form", async () => {
+test("Events uses compact lane and club selects without the retired advanced form", async () => {
   const renderer = await readFile(
     new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
     "utf8",
@@ -36,8 +37,11 @@ test("Events removes the keyword and advanced-filter form", async () => {
   assert.doesNotMatch(
     renderer,
     /<EventFilters\b/u,
-    "/events must not render the keyword, date, club, lane, category, or format filter form",
+    "/events must not restore the keyword/date/category/format advanced form",
   );
+  assert.match(renderer, /className="events-filter-form"[\s\S]*name="lane"/u);
+  assert.match(renderer, /className="events-filter-form"[\s\S]*name="club"/u);
+  assert.doesNotMatch(renderer, /events-page__lane-filters|Filter events by activity lane/u);
 });
 
 test("Events removes the filtered-download strip", async () => {
@@ -53,7 +57,7 @@ test("Events removes the filtered-download strip", async () => {
   );
 });
 
-test("Events keeps the full month calendar and removes the separate event list", async () => {
+test("Events offers a compact Upcoming list and keeps the full Calendar", async () => {
   const renderer = await readFile(
     new URL("app/_components/EventsPageRenderer.tsx", projectRoot),
     "utf8",
@@ -63,14 +67,15 @@ test("Events keeps the full month calendar and removes the separate event list",
     /<PublicMonthCalendar/u,
     "/events must render the full PublicMonthCalendar, not only a link to /calendar",
   );
-  assert.doesNotMatch(
+  assert.match(
     renderer,
-    /<EventCollection|events-page__list|Event timeframe|<Pagination/u,
-    "/events must not repeat the calendar records in a separate paginated list",
+    /<EventCard compact event=\{event\}/u,
+    "/events must render durable upcoming records as compact EventCards",
   );
+  assert.match(renderer, /upcoming\.totalPages > 1[\s\S]*Upcoming events pages/u);
 });
 
-test("public Events has no separate List or Month view switcher", async () => {
+test("public Events has explicit Upcoming and Calendar views", async () => {
   const [calendarRoute, monthCalendar, renderer] = await Promise.all([
     readFile(new URL("app/calendar/route.ts", projectRoot), "utf8"),
     readFile(
@@ -84,15 +89,15 @@ test("public Events has no separate List or Month view switcher", async () => {
   ]);
   const publicEventsSurface = `${calendarRoute}\n${monthCalendar}\n${renderer}`;
 
-  assert.doesNotMatch(
+  assert.match(
     publicEventsSurface,
-    /calendar-view-switcher|aria-label=["']Event views["']/u,
-    "the calendar experience must not offer redundant List/Month views",
+    /aria-label=["']Event views["'][\s\S]*Upcoming[\s\S]*Calendar/u,
+    "the discovery surface must offer the two approved explicit views",
   );
   assert.doesNotMatch(
     publicEventsSurface,
     />\s*List\s*<[^>]*>[\s\S]{0,300}>\s*Month\s*</u,
-    "public visitors must not be asked to choose between List and Month",
+    "the view labels must be Upcoming and Calendar, not the retired List/Month terms",
   );
   assert.doesNotMatch(
     publicEventsSurface,
@@ -110,7 +115,7 @@ test("Calendar forwards its month query to the combined Events experience", asyn
   assert.match(calendarRoute, /new URL\(request\.url\)/u);
   assert.match(
     calendarRoute,
-    /new URL\(\s*["']\/events["'],\s*trustedPublicRequestOrigin\(source\),?\s*\)/u,
+    /new URL\(\s*["']\/events["'],\s*await getPublicRequestOrigin\(source\),?\s*\)/u,
   );
   assert.match(
     calendarRoute,
@@ -121,12 +126,17 @@ test("Calendar forwards its month query to the combined Events experience", asyn
     /destination\.searchParams\.set\(["']month["'], month\)/u,
     "the legacy /calendar route must safely preserve a requested month",
   );
+  assert.match(
+    calendarRoute,
+    /destination\.searchParams\.set\(["']view["'], ["']calendar["']\)/u,
+    "legacy /calendar URLs must activate the secondary Calendar view",
+  );
   assert.match(calendarRoute, /Response\.redirect\(destination, 308\)/u);
   assert.doesNotMatch(calendarRoute, /<PublicMonthCalendar\b/u);
   assert.doesNotMatch(calendarRoute, /Download upcoming events/u);
 });
 
-test("Events does not parse or render retired list controls", async () => {
+test("Events parses the approved URL state and renders only the active view", async () => {
   const [page, renderer, calendar] = await Promise.all([
     readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
     readFile(
@@ -140,11 +150,15 @@ test("Events does not parse or render retired list controls", async () => {
   ]);
   const eventsSurface = `${page}\n${renderer}`;
 
-  assert.doesNotMatch(page, /eventListValues|values\.state|values\.page/u);
-  assert.doesNotMatch(
-    eventsSurface,
-    /Event timeframe|>\s*Upcoming\s*<|>\s*Past\s*<|<Pagination/u,
+  assert.match(page, /resolvePublicEventsView\(raw\.view\)/u);
+  assert.match(page, /clubSlug:\s*raw\.club/u);
+  assert.match(page, /rawPage:\s*raw\.page/u);
+  assert.match(
+    renderer,
+    /activeView === "upcoming"[\s\S]*<UpcomingEventsView[\s\S]*:\s*\([\s\S]*<CalendarEventsView/u,
+    "only the active view may be mounted, including on mobile",
   );
+  assert.doesNotMatch(eventsSurface, /Event timeframe|>\s*Past\s*</u);
   assert.doesNotMatch(renderer, /EditorialSection|editorial-sections/u);
   const monthIndex = calendar.indexOf('className="public-calendar__month"');
   const dayPanelIndex = calendar.indexOf('className="public-calendar__day-panel"');
@@ -162,7 +176,7 @@ test("the full calendar exposes event names in its mobile agenda", async () => {
       new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
       "utf8",
     ),
-    readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readPublicCss(),
   ]);
   const rulesAt390 = maxWidthMediaBlocks(styles)
     .filter(({ maxWidthRem }) => maxWidthRem >= 24.375)
@@ -184,5 +198,10 @@ test("the full calendar exposes event names in its mobile agenda", async () => {
     rulesAt390,
     /\.public-calendar__mobile-agenda-list button\s*\{[^}]*min-height:\s*4\.5rem;/u,
     "mobile agenda event targets must remain at least 44px tall",
+  );
+  assert.match(
+    rulesAt390,
+    /\.events-page__calendar \.public-calendar__mobile-agenda\s*\{[^}]*display:\s*none;/u,
+    "the Events Calendar view must not stack its grid, day panel, and monthly agenda on a phone",
   );
 });

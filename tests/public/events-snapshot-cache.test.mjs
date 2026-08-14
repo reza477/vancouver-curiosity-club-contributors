@@ -91,6 +91,13 @@ test("the updater atomically prebuilds DTO-only Home and Events materializations
   assert.equal(publicRead.writeCount(), 0);
   assert.equal(loaded.calendarAvailable, true);
   assert.deepEqual(
+    loaded.upcoming.events.map((event) => event.slug),
+    ["daily-v1-explore-poster", "daily-v1-think", "daily-v1-september"],
+  );
+  assert.deepEqual(loaded.clubOptions, [
+    { name: "Cache Test Club", slug: "cache-test-club" },
+  ]);
+  assert.deepEqual(
     loaded.calendar.events.map((event) => event.slug),
     ["daily-v1-explore-poster", "daily-v1-think"],
   );
@@ -122,6 +129,10 @@ test("the updater atomically prebuilds DTO-only Home and Events materializations
     explore.calendar.events.map((event) => event.slug),
     ["daily-v1-explore-poster"],
   );
+  assert.deepEqual(
+    explore.upcoming.events.map((event) => event.slug),
+    ["daily-v1-explore-poster", "daily-v1-september"],
+  );
 
   const homeRead = readOnlyVisitorDatabase(database);
   const home = await readPublicHomeEventMaterialization(
@@ -136,6 +147,66 @@ test("the updater atomically prebuilds DTO-only Home and Events materializations
   assert.equal(homeRead.writeCount(), 0);
   assert.equal(home?.length, 6);
   assert.equal(home?.[0]?.slug, "daily-v1-explore-poster");
+});
+
+test("Upcoming pagination is chronological, filterable, and derived by one visitor read", async (t) => {
+  const database = await materializationDatabase(t);
+  const { refreshPublicEventMaterializations } = await import(
+    "../../lib/server/public/event-materializations.ts"
+  );
+  const { loadPublicEventsPageData } = await import(
+    "../../lib/server/public/events-page.ts"
+  );
+  const calendarEvents = Array.from({ length: 14 }, (_unused, index) =>
+    publicEventCard(`paged-${String(index + 1).padStart(2, "0")}`, {
+      lane: { name: "Explore", slug: "explore" },
+      startsAtUtc: `2026-08-${String(index + 12).padStart(2, "0")}T19:00:00.000Z`,
+    }),
+  );
+  await refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    {
+      async projectBundle() {
+        return { calendarEvents, upcomingEvents: calendarEvents };
+      },
+    },
+  );
+
+  const visitor = readOnlyVisitorDatabase(database);
+  const loaded = await loadPublicEventsPageData(
+    visitor.database,
+    loaderInput({
+      clubSlug: "cache-test-club",
+      laneSlug: "explore",
+      rawPage: "2",
+    }),
+  );
+
+  assert.equal(visitor.readCount(), 1);
+  assert.equal(visitor.writeCount(), 0);
+  assert.deepEqual(
+    {
+      invalidPage: loaded.upcoming.invalidPage,
+      page: loaded.upcoming.page,
+      pageSize: loaded.upcoming.pageSize,
+      totalCount: loaded.upcoming.totalCount,
+      totalPages: loaded.upcoming.totalPages,
+    },
+    {
+      invalidPage: false,
+      page: 2,
+      pageSize: 12,
+      totalCount: 14,
+      totalPages: 2,
+    },
+  );
+  assert.deepEqual(
+    loaded.upcoming.events.map((event) => event.slug),
+    ["paged-13", "paged-14"],
+  );
+  assert.equal(loaded.activeClubSlug, "cache-test-club");
+  assert.equal(loaded.invalidClub, false);
 });
 
 test("visitors never cold-project or write when a materialization is absent or invalid", async (t) => {

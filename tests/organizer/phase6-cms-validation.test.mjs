@@ -794,25 +794,40 @@ test("site identity stays neutral unless legal wording uses the Owner-only legal
       4.5,
   );
   assert.ok(contrastRatio(softInkPalette.foreground, "#E8E0CF") >= 4.5);
-  const greyPalette = parseSiteIdentitySnapshot({
-    ...base,
-    palette: {
-      accent: "#071B31",
-      background: "#858585",
-      foreground: "#071B31",
-      secondary: "#071B31",
-    },
-  }).palette;
-  assert.equal(greyPalette.background, "#858585");
+  const unsafeMutedTextPalette = {
+    accent: "#071B31",
+    background: "#858585",
+    foreground: "#071B31",
+    secondary: "#071B31",
+  };
   assert.ok(
-    contrastRatio(greyPalette.foreground, greyPalette.background) >= 4.5,
+    contrastRatio(
+      unsafeMutedTextPalette.foreground,
+      unsafeMutedTextPalette.background,
+    ) >= 4.5,
+  );
+  assert.ok(
+    contrastRatio("#3D4A66", unsafeMutedTextPalette.background) < 4.5,
+  );
+  assert.throws(
+    () =>
+      parseSiteIdentitySnapshot({
+        ...base,
+        palette: unsafeMutedTextPalette,
+      }),
+    (error) =>
+      error?.issues?.some(
+        (issue) =>
+          issue.code === "insufficient_contrast" &&
+          /ink-soft/u.test(issue.message),
+      ),
   );
   for (const surface of [
     base.palette.background,
     "#E8E0CF",
     "#E85B48",
     "#D79123",
-    greyPalette.background,
+    unsafeMutedTextPalette.background,
   ]) {
     assert.ok(
       Math.max(

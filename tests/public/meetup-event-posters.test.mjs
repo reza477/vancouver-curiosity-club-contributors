@@ -721,6 +721,71 @@ test("the generated enrichment manifest is bounded and public safe", () => {
   );
 });
 
+test("the approved Chekhov floor correction overlays both raw fallback listings", async () => {
+  const rawManifest = JSON.parse(
+    await readFile(
+      new URL("../../lib/meetup-event-enrichment.generated.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const expectedIdentities = new Map([
+    ["315823022", "vancouver-literature-and-film"],
+    ["315823081", "vancouver-meetup-group"],
+  ]);
+
+  for (const [eventId, groupSlug] of expectedIdentities) {
+    const raw = rawManifest.events.find((event) => event.eventId === eventId);
+    const published = CURATED_MEETUP_EVENT_ENRICHMENTS[eventId];
+    assert.ok(raw, eventId);
+    assert.ok(published, eventId);
+    assert.equal(raw.groupSlug, groupSlug, eventId);
+    assert.match(raw.description, /\b9th floor\b/iu, eventId);
+    assert.equal(published.publicFloor, "Level 8", eventId);
+    assert.match(published.description, /\bLevel 8\b/u, eventId);
+    assert.doesNotMatch(
+      JSON.stringify({
+        description: published.description,
+        descriptionBlocks: published.descriptionBlocks,
+      }),
+      /\b(?:9th[ -]+floor|ninth[ -]+floor|(?:Level|Floor)\s*:?\s*9)\b/iu,
+      eventId,
+    );
+    assert.equal(
+      validateCuratedMeetupEventCandidate(raw).publicFloor,
+      "Level 8",
+      eventId,
+    );
+  }
+});
+
+test("unknown structured and prose floor conflicts fail instead of guessing", () => {
+  const baseline = CURATED_MEETUP_EVENT_ENRICHMENTS["315772533"];
+  assert.ok(baseline?.venue);
+  assert.throws(
+    () =>
+      validateCuratedMeetupEventCandidate({
+        ...baseline,
+        publicFloor: "Level 7",
+      }),
+    /Invalid curated Meetup public event fact publicFloor/u,
+  );
+
+  const descriptionBlocks = structuredClone(baseline.descriptionBlocks);
+  descriptionBlocks.push({
+    content: [{ text: "A conflicting source line says Level 7.", type: "text" }],
+    type: "paragraph",
+  });
+  assert.throws(
+    () =>
+      validateCuratedMeetupEventCandidate({
+        ...baseline,
+        description: `${baseline.description}\n\nA conflicting source line says Level 7.`,
+        descriptionBlocks,
+      }),
+    /Conflicting Meetup public floor claims/u,
+  );
+});
+
 test("every exact enrichment survives the public card and detail projections", () => {
   for (const event of Object.values(CURATED_MEETUP_EVENT_ENRICHMENTS)) {
     const row = {

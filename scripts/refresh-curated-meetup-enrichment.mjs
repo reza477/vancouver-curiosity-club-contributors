@@ -14,6 +14,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { extractMeetupPublicEventFacts } from "../lib/meetup-public-event-facts.js";
+import {
+  removeOrphanMeetupTicketAndRsvpCallToActions,
+  splitTrailingMeetupTicketOrRsvpCallToAction,
+} from "../lib/meetup-publication-policy.js";
 
 const DEFAULT_WORKSPACE_ROOT = process.cwd();
 
@@ -742,7 +746,9 @@ function parsePublicDescriptionBlocks(source) {
   }
   flushParagraph();
   flushList();
-  return mergeStandaloneDescriptionCallToActionBlocks(blocks);
+  return removeOrphanMeetupTicketAndRsvpCallToActions(
+    mergeStandaloneDescriptionCallToActionBlocks(blocks),
+  );
 }
 
 function parsePublicDescriptionInlines(value) {
@@ -787,6 +793,29 @@ function pushPublicLinkInline(inlines, rawLabel, rawHref) {
   const href = normalizePublicDescriptionLink(rawHref);
   const label = normalizeDescriptionInlineText(rawLabel);
   if (href === null) {
+    const previous = inlines.at(-1);
+    const precedingCallToAction =
+      previous?.type === "text"
+        ? splitTrailingMeetupTicketOrRsvpCallToAction(previous.text)
+        : null;
+    if (
+      precedingCallToAction !== null &&
+      FORBIDDEN_PUBLIC_TEXT_PATTERN.test(label)
+    ) {
+      inlines.pop();
+      if (precedingCallToAction.prefix) {
+        pushPublicTextInline(inlines, precedingCallToAction.prefix);
+      }
+      return;
+    }
+    const labelCallToAction =
+      splitTrailingMeetupTicketOrRsvpCallToAction(label);
+    if (labelCallToAction !== null) {
+      if (labelCallToAction.prefix) {
+        pushPublicTextInline(inlines, labelCallToAction.prefix);
+      }
+      return;
+    }
     const safeLabel = FORBIDDEN_PUBLIC_TEXT_PATTERN.test(label)
       ? "External resource"
       : label;

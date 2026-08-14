@@ -3,13 +3,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-test("public media route revalidates mutable rights/usage on every stable URL request", () => {
+test("public media route uses a bounded cache while preserving rights checks", () => {
   const source = readFileSync(
     join(process.cwd(), "app", "media", "[id]", "[variant]", "route.ts"),
     "utf8",
   );
   assert.match(source, /getPublicMediaVariant/u);
-  assert.match(source, /public, max-age=0, must-revalidate/u);
+  assert.match(
+    source,
+    /public, max-age=300, stale-while-revalidate=3600/u,
+  );
   assert.doesNotMatch(source, /immutable/u);
   assert.match(source, /X-Content-Type-Options/u);
   assert.match(source, /ETag/u);

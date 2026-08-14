@@ -17,6 +17,7 @@ import {
   calendarDateInTimeZone,
   DEFAULT_TIME_ZONE,
 } from "../../time";
+import { MEETUP_EDITORIAL_OVERRIDE_POLICY_VERSION } from "../../meetup-publication-policy.js";
 import { MeetupSyncError, MEETUP_SYNC_ERROR_CODES } from "./errors";
 import type { MeetupSyncErrorCode } from "./errors";
 import { fetchMeetupCalendar } from "./fetch";
@@ -4608,6 +4609,8 @@ async function calendarSnapshotHash(
       importPolicy: {
         aliasPolicyVersion: MEETUP_EVENT_ALIAS_POLICY_VERSION,
         aliases: MEETUP_EVENT_ALIASES,
+        editorialOverridePolicyVersion:
+          MEETUP_EDITORIAL_OVERRIDE_POLICY_VERSION,
         version: MEETUP_IMPORT_POLICY_VERSION,
       },
       method,

@@ -33,6 +33,16 @@ test("the legacy published palette resolves to the modern shipped color system",
   );
   assert.equal(manifest.background_color, SHIPPED_BRAND_PALETTE.background);
   assert.equal(manifest.theme_color, SHIPPED_BRAND_PALETTE.foreground);
+  assert.deepEqual(
+    resolvePublicBrandPalette({
+      accent: "#5B2CC9",
+      background: "#FFF9F5",
+      foreground: "#221C3D",
+      secondary: "#2457D6",
+    }),
+    SHIPPED_BRAND_PALETTE,
+    "the currently published violet identity must transition without a stale live palette",
+  );
 });
 
 const customSite = Object.freeze({

@@ -16,10 +16,7 @@ export function Breadcrumbs({
           return (
             <li key={`${item.label}-${index}`}>
               {item.href && !isCurrent ? (
-                <Link
-                  href={item.href}
-                  prefetch={!item.href.startsWith("/events")}
-                >
+                <Link href={item.href}>
                   {item.label}
                 </Link>
               ) : (

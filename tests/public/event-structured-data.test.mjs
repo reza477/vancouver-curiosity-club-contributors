@@ -68,7 +68,11 @@ test("Event JSON-LD maps public attendance locations without private meeting dat
         "@type": "Place",
         address: {
           "@type": "PostalAddress",
-          name: "100 Public Test Street",
+          addressCountry: "CA",
+          addressLocality: "Vancouver",
+          addressRegion: "BC",
+          postalCode: "V6B 6B1",
+          streetAddress: "100 Public Test Street",
         },
         name: "Approved Public Room",
       },
@@ -95,12 +99,17 @@ test("Event JSON-LD maps public attendance locations without private meeting dat
       "@type": "Place",
       address: {
         "@type": "PostalAddress",
-        name: "100 Public Test Street",
+        addressCountry: "CA",
+        addressLocality: "Vancouver",
+        addressRegion: "BC",
+        postalCode: "V6B 6B1",
+        streetAddress: "100 Public Test Street",
       },
       name: "Approved Public Room",
     });
     assert.equal(document.eventAttendanceMode, "https://schema.org/OfflineEventAttendanceMode");
     assert.equal(JSON.stringify(document).includes(PUBLIC_ONLINE_URL), false);
+    assert.equal(Object.hasOwn(document.location.address, "name"), false);
     assert.doesNotMatch(JSON.stringify(document), /private-meeting|secret/iu);
   });
 
@@ -145,9 +154,9 @@ test("Event JSON-LD maps public attendance locations without private meeting dat
       "Confirmed Site Identity",
     );
     assert.equal(
-      Object.hasOwn(withoutArtwork, "image"),
-      false,
-      "structured data must not invent a placeholder image",
+      withoutArtwork.image,
+      "https://site.synthetic.invalid/og.png",
+      "structured data must use the canonical branded image when event artwork is unavailable",
     );
   });
 });
@@ -209,7 +218,11 @@ function eventFixture(overrides = {}) {
     title: "Public Event",
     venue: {
       address: "100 Public Test Street",
+      addressCountry: "CA",
+      addressLocality: "Vancouver",
+      addressRegion: "BC",
       name: "Approved Public Room",
+      postalCode: "V6B 6B1",
     },
     verifiedAccessibilityNotes: null,
     weatherNote: null,

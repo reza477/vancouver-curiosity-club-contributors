@@ -27,7 +27,7 @@ export function ClubEventList({
                   {eventSchedule(event)}
                 </p>
                 <h3>
-                  <Link href={`/events/${event.slug}`} prefetch={false}>
+                  <Link href={`/events/${event.slug}`}>
                     {event.title}
                   </Link>
                 </h3>

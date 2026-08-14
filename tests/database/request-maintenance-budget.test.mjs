@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   runRequestMaintenance,
@@ -8,6 +9,7 @@ import {
   shouldReconcileVisitorFeedbackCopy,
   shouldReconcileVisitorFormPageCopy,
   shouldReconcileVisitorPrivacyCopy,
+  shouldRunRequestMaintenance,
 } from "../../lib/server/database/request-maintenance.ts";
 import {
   ORGANIZER_PUBLICATION_RECONCILIATION_STATEMENT_MAXIMUM,
@@ -205,6 +207,61 @@ test("only safe read routes run bounded pre-dispatch maintenance", () => {
   assert.equal(
     shouldReconcileVisitorPrivacyCopy("POST", "/privacy"),
     false,
+  );
+});
+
+test("public maintenance claims its throttle only for route-eligible work", () => {
+  for (const pathname of [
+    "/",
+    "/calendar",
+    "/clubs/example",
+    "/contact",
+    "/events",
+    "/events/example",
+    "/get-involved",
+    "/host-an-event",
+    "/privacy",
+    "/sitemap.xml",
+  ]) {
+    assert.equal(
+      shouldRunRequestMaintenance("GET", pathname),
+      true,
+      `${pathname} has request maintenance work`,
+    );
+  }
+  for (const pathname of [
+    "/about",
+    "/accessibility",
+    "/assets/framework-12345678.js",
+    "/clubs",
+    "/conduct",
+    "/favicon.ico",
+    "/not-found",
+  ]) {
+    assert.equal(
+      shouldRunRequestMaintenance("GET", pathname),
+      false,
+      `${pathname} must not consume the maintenance throttle`,
+    );
+  }
+  assert.equal(shouldRunRequestMaintenance("POST", "/events"), false);
+  assert.equal(shouldRunRequestMaintenance("HEAD", "/events.rsc"), true);
+
+  const worker = readFileSync("worker/index.ts", "utf8");
+  const schedulerStart = worker.indexOf(
+    "function schedulePublicRequestMaintenance(",
+  );
+  const schedulerEnd = worker.indexOf(
+    "function contentSecurityPolicy(",
+    schedulerStart,
+  );
+  assert.notEqual(schedulerStart, -1);
+  assert.notEqual(schedulerEnd, -1);
+  const scheduler = worker.slice(schedulerStart, schedulerEnd);
+  assert.ok(
+    scheduler.indexOf("!shouldRunRequestMaintenance(") <
+      scheduler.indexOf("Date.now()"),
+    "route eligibility must be checked before the throttle timestamp is claimed",
   );
 });
 

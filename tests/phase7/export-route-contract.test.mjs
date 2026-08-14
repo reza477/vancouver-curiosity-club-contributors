@@ -115,6 +115,34 @@ test("private calendar path tokens are replaced before maintenance and protected
     worker,
     /runRequestMaintenance\(\s*env\.DB,[\s\S]*?pathname:\s*requestPathname/u,
   );
+  const invariantInitialization = worker.indexOf(
+    "await ensureDatabaseInvariantsForRequest(env.DB, {",
+  );
+  const synchronousGate = worker.indexOf(
+    "shouldRunSynchronousRequestMaintenance(",
+    invariantInitialization,
+  );
+  const synchronousMaintenance = worker.indexOf(
+    "const maintenance = await runRequestMaintenance(",
+    synchronousGate,
+  );
+  const applicationDispatch = worker.indexOf(
+    "const response = await handler.fetch(",
+    synchronousMaintenance,
+  );
+  assert.ok(invariantInitialization >= 0);
+  assert.ok(synchronousGate > invariantInitialization);
+  assert.ok(synchronousMaintenance > synchronousGate);
+  assert.ok(applicationDispatch > synchronousMaintenance);
+  assert.match(
+    worker.slice(synchronousGate, applicationDispatch),
+    /maintenanceUnavailableResponse\(\)[\s\S]*?maintenanceRedirect\(canonicalUrl\)/u,
+    "private and identity routes must fail closed before handler dispatch",
+  );
+  assert.match(
+    worker,
+    /\(method !== "GET" && method !== "HEAD"\)[\s\S]*?isPrivateOrIdentityPath\(pathname\)/u,
+  );
   assert.match(
     worker,
     /normalizeEncodedRequestPathname\(url\.pathname\)/u,

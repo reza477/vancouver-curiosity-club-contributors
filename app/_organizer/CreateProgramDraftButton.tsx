@@ -63,7 +63,7 @@ export function CreateProgramDraftButton({
               slug,
               socialUrls: [],
               summary: "",
-              themeColor: "#2457D6",
+              themeColor: "#1F5F5B",
               thumbnailAssetId: null,
               typicalFormat: null,
               whatToExpect: null,

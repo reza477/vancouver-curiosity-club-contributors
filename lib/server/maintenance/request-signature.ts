@@ -5,7 +5,9 @@ export const MAINTENANCE_REQUEST_MAX_AGE_MS = 5 * 60_000;
 export const MAINTENANCE_REPLAY_RETENTION_MS = 10 * 60_000;
 
 const MAINTENANCE_PURPOSE = "daily_meetup_refresh";
-const MAX_BODY_BYTES = 64;
+// Large enough for the bounded {batchId, slot} snapshot-capture envelope;
+// still far below a generic API payload.
+const MAX_BODY_BYTES = 128;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const SIGNATURE_PATTERN = /^sha256=([0-9a-f]{64})$/iu;

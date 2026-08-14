@@ -918,7 +918,7 @@ test("owner venue selection atomically overrides or suppresses synchronized Meet
     "@type": "Place",
     address: {
       "@type": "PostalAddress",
-      name: "900 Source Address",
+      streetAddress: "900 Source Address",
     },
     name: "Meetup Source Venue",
   });

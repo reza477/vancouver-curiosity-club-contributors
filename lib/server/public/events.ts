@@ -984,8 +984,12 @@ export type PublicEventCardDto = Readonly<{
   title: string;
   venue: Readonly<{
     address: string | null;
+    addressCountry?: string | null;
+    addressLocality?: string | null;
+    addressRegion?: string | null;
     floor: string | null;
     name: string;
+    postalCode?: string | null;
     room: string | null;
   }> | null;
   waitlistAvailable: boolean | null;

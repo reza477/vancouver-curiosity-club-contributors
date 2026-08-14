@@ -347,14 +347,18 @@ test("production metadata, structured data, sharing, exports, robots, and sitema
   }
 });
 
-async function readRenderedStyles(html) {
-  const hrefs = [...html.matchAll(/<link\b[^>]*>/giu)].flatMap(
+function renderedStylesheetHrefs(html) {
+  return [...html.matchAll(/<link\b[^>]*>/giu)].flatMap(
     ([linkTag]) => {
       if (!/\brel="[^"]*\bstylesheet\b[^"]*"/iu.test(linkTag)) return [];
       const href = /\bhref="([^"]+)"/iu.exec(linkTag)?.[1];
       return href ? [href.replaceAll("&amp;", "&")] : [];
     },
   );
+}
+
+async function readRenderedStyles(html) {
+  const hrefs = renderedStylesheetHrefs(html);
   assert.ok(hrefs.length > 0, "the built page must link its rendered CSS");
   const styles = [];
   for (const href of hrefs) {
@@ -762,9 +766,9 @@ test("the built public root is indexable and carries the production security con
   assert.match(html, /class="home-hero"/u);
   assert.match(html, /class="home-events"/u);
   assert.match(html, /class="home-newcomer attending-note"/u);
-  assert.match(html, /class="home-community-feel attending-note"/u);
   assert.match(html, /class="lane-index"/u);
   assert.match(html, /class="home-clubs"/u);
+  assert.match(html, /class="home-mission home-community"/u);
   assert.match(html, /class="home-proof home-community"/u);
   assert.match(html, /class="home-closing home-invitation"/u);
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
@@ -772,9 +776,9 @@ test("the built public root is indexable and carries the production security con
     'class="home-hero"',
     'class="home-events"',
     'class="home-newcomer attending-note"',
-    'class="home-community-feel attending-note"',
     'class="lane-index"',
     'class="home-clubs"',
+    'class="home-mission home-community"',
     'class="home-proof home-community"',
     'class="home-closing home-invitation"',
   ];
@@ -838,9 +842,30 @@ test("the built public root is indexable and carries the production security con
   }
   assert.match(html, /self\.__VINEXT_RSC_DONE__=true/u);
 
+  const publicStylesheetHrefs = renderedStylesheetHrefs(html);
+  assert.ok(
+    publicStylesheetHrefs.length > 0,
+    "Home must link at least one built stylesheet",
+  );
+  let publicStylesheetBytes = 0;
+  for (const href of publicStylesheetHrefs) {
+    assert.match(href, /^\/assets\/[A-Za-z0-9_.-]+\.css$/u);
+    publicStylesheetBytes += (
+      await stat(resolve("dist/client", `.${href}`))
+    ).size;
+  }
+  assert.ok(
+    publicStylesheetBytes < 80_000,
+    `Home linked ${publicStylesheetBytes} CSS bytes; expected fewer than 80000`,
+  );
+
   const renderedCss = await readRenderedStyles(html);
-  assert.match(renderedCss, /--ink-soft:var\(--cms-foreground,#514b68\)/u);
-  assert.match(renderedCss, /--warm-surface-ink:#221c3d/u);
+  assert.doesNotMatch(
+    renderedCss,
+    /body\[data-surface=organizer\]|\.meetup-controls|--ow-/u,
+  );
+  assert.match(renderedCss, /--ink-soft:#3d4a66/u);
+  assert.match(renderedCss, /--warm-surface-ink:#131c33/u);
   assert.match(renderedCss, /--focus-ring-inner:#000(?:000)?/u);
   assert.match(renderedCss, /--focus-ring-outer:#fff(?:fff)?/u);
   assert.match(
@@ -861,22 +886,12 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(
     renderedCss,
-    /\.public-error-state\{[^}]*background:var\(--paper-deep\)[^}]*color:var\(--ink\)/u,
+    /\.public-service-state,\.public-empty-state\{(?=[^}]*background:var\(--paper-deep\))[^}]*\}/u,
   );
-  for (const selector of [
-    "\\.calendar-state-label span",
-    "\\.lane-dot",
-    "\\.source-mark",
-    "\\.source-status>span",
-  ]) {
-    assert.match(
-      renderedCss,
-      new RegExp(
-        `${selector}\\{[^}]*border:2px solid var\\(--(?:paper|ink)\\)`,
-        "u",
-      ),
-    );
-  }
+  assert.match(
+    renderedCss,
+    /\.public-service-state>p:not\(\.section-kicker\),\.public-empty-state>p:not\(\.section-kicker\)\{[^}]*color:var\(--ink-soft\)/u,
+  );
   assert.doesNotMatch(
     renderedCss,
     /color:#(?:68c4be|c8d0d6|91a0ad|9ba8b4|aeb8c0|d4dade|e1e6e8|78ccc5|92dfd9)/iu,
@@ -1053,12 +1068,12 @@ test("public form routes render editable fields immediately while secure send pr
         /<(?:input|select|textarea)[^>]*\bdisabled(?:="")?/iu,
         `${path} fields must be editable while secure send prepares`,
       );
-      assert.match(
+      assert.doesNotMatch(
         formSection,
         /<button(?=[^>]*\bdisabled="")(?=[^>]*\btype="submit")[^>]*>/u,
-        `${path} only send remains gated before protection is ready`,
+        `${path} send must not be disabled while protection loads`,
       );
-      assert.match(formSection, /Preparing send/u, `${path} compact send status`);
+      assert.doesNotMatch(formSection, /Preparing send/u, `${path} no blocking send status`);
       assert.doesNotMatch(
         formSection,
         /public-submission__(?:loading|skeleton)|aria-busy="true"/u,
@@ -1157,7 +1172,7 @@ test("the retired Community destination redirects to Contribute", async () => {
   assertNoPrivateSentinels(html);
 });
 
-test("Events is the single calendar-only discovery destination", async () => {
+test("Events defaults to Upcoming and exposes Calendar as an explicit view", async () => {
   const response = await fetchPath("/events");
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -1167,23 +1182,38 @@ test("Events is the single calendar-only discovery destination", async () => {
   );
   assert.match(html, /<title>Events · Vancouver Curiosity Club<\/title>/iu);
   assert.match(html, /Vancouver gatherings/u);
-  assert.match(html, /Month at a glance/u);
-  assert.match(html, /public-calendar__grid/u);
-  assert.equal((html.match(/<h1\b/gu) ?? []).length, 1);
+  assert.match(html, /aria-label="Event views"/u);
   assert.match(
     html,
-    /<h2(?=[^>]*class="public-calendar__title")(?=[^>]*id="public-calendar-title")[^>]*>/u,
+    /<a(?=[^>]*href="\/events")(?=[^>]*aria-current="page")[^>]*>Upcoming<\/a>/u,
   );
-  assert.match(html, /href="\/events\?month=\d{4}-\d{2}">Today<\/a>/u);
-  assert.match(html, /public-calendar__day-panel/u);
-  assert.doesNotMatch(html, /aria-label="Event views"|aria-label="Event timeframe"/u);
+  assert.match(
+    html,
+    /<a(?=[^>]*href="\/events\?view=calendar(?:&amp;[^"]*)?")[^>]*>Calendar<\/a>/u,
+  );
+  assert.match(html, /events-page__upcoming/u);
+  assert.match(html, /Apply filters/u);
+  assert.doesNotMatch(html, /public-calendar__grid/u);
+  assert.equal((html.match(/<h1\b/gu) ?? []).length, 1);
+  assert.doesNotMatch(html, /aria-label="Event timeframe"/u);
   assert.doesNotMatch(html, /href="\/events\?state=(?:upcoming|past)"/u);
   assert.doesNotMatch(html, /href="\/calendar"/u);
-  assert.doesNotMatch(html, /Find your next field note|Apply filters/u);
+  assert.doesNotMatch(html, /Find your next field note/u);
   assert.doesNotMatch(html, /public-export-actions|Download this public view/u);
-  assert.doesNotMatch(html, /class="event-list"|events-page__list/u);
   assertSharedChrome(html);
   assertNoPrivateSentinels(html);
+
+  const calendar = await fetchPath("/events?view=calendar");
+  assert.equal(calendar.status, 200);
+  const calendarHtml = await calendar.text();
+  assert.match(calendarHtml, /Month at a glance/u);
+  assert.match(calendarHtml, /public-calendar__grid/u);
+  assert.match(calendarHtml, /public-calendar__day-panel/u);
+  assert.match(
+    calendarHtml,
+    /href="\/events\?view=calendar&amp;month=\d{4}-\d{2}">Today<\/a>/u,
+  );
+  assert.doesNotMatch(calendarHtml, /events-page__upcoming/u);
 
   const past = await fetchPath("/events?state=past");
   assert.equal(past.status, 200);
@@ -1192,7 +1222,7 @@ test("Events is the single calendar-only discovery destination", async () => {
     "noindex, follow, noarchive",
   );
   const pastHtml = await past.text();
-  assert.match(pastHtml, /public-calendar__grid/u);
+  assert.match(pastHtml, /events-page__upcoming/u);
   assert.doesNotMatch(pastHtml, /aria-label="Event timeframe"|>Past<\/a>/u);
 });
 
@@ -1300,15 +1330,15 @@ test("a cancelled event detail renders only published facts and accurate structu
   assertNoPrivateSentinels(html);
 });
 
-test("Calendar permanently redirects to Events and preserves the month and lane", async () => {
+test("Calendar permanently redirects to the Events Calendar view and preserves month and lane", async () => {
   for (const [sourcePath, destinationPath] of [
-    ["/calendar", "/events"],
-    ["/calendar?month=2026-07", "/events?month=2026-07"],
+    ["/calendar", "/events?view=calendar"],
+    ["/calendar?month=2026-07", "/events?view=calendar&month=2026-07"],
     [
       "/calendar?month=2026-07&lane=reset-and-make",
-      "/events?month=2026-07&lane=reset-and-make",
+      "/events?view=calendar&month=2026-07&lane=reset-and-make",
     ],
-    ["/calendar?lane=bogus", "/events"],
+    ["/calendar?lane=bogus", "/events?view=calendar"],
   ]) {
     const response = await fetchPath(sourcePath, { redirect: "manual" });
     assert.equal(response.status, 308, sourcePath);
@@ -1808,6 +1838,12 @@ test("the owner workspace renders private records without public chrome or cachi
     }
     if (path === "/organizer/calendar") {
       assert.match(html, /matching record[\s\S]*from[\s\S]*total/iu);
+    }
+    if (path === "/organizer") {
+      assert.match(
+        await readRenderedStyles(html),
+        /body\[data-surface=organizer\]|\.meetup-controls|--ow-/u,
+      );
     }
   }
 });

@@ -7,10 +7,10 @@
 >
   <title id="title">Vancouver Curiosity Club Curiosity Prism</title>
   <desc id="description">
-    A three-sided mathematical prism made from interlocking violet, coral,
-    and cobalt bands on a midnight violet field.
+    A three-sided mathematical prism made from interlocking warm brick, teal,
+    and cream bands on a deep navy field.
   </desc>
-  <rect width="1024" height="1024" fill="#221C3D" />
+  <rect width="1024" height="1024" fill="#131C33" />
 
   <!--
     The mark is a Penrose-inspired triangular ribbon. Its broad faces and
@@ -20,32 +20,32 @@
   <g>
     <path
       d="M512 116 108 816 344 680 512 390Z"
-      fill="#5B2CC9"
+      fill="#B8402B"
     />
     <path
       d="M512 116 512 390 680 680 916 816Z"
-      fill="#FF7867"
+      fill="#F3EBDD"
     />
     <path
       d="M108 816 916 816 680 680 344 680Z"
-      fill="#2457D6"
+      fill="#1F5F5B"
     />
   </g>
 
   <!-- Cyclic over-under facets make the three joins an impossible turn. -->
   <path
     d="m512 116 82 142-82 142-82-142Z"
-    fill="#FF7867"
+    fill="#F3EBDD"
   />
   <path
     d="m916 816-164 0-82-136 164 0Z"
-    fill="#2457D6"
+    fill="#1F5F5B"
   />
   <path
     d="m108 816 82-142 164 0-82 142Z"
-    fill="#5B2CC9"
+    fill="#B8402B"
   />
 
   <!-- Reassert the dark central aperture after the overlap facets. -->
-  <path d="m512 390 168 290H344Z" fill="#221C3D" />
+  <path d="m512 390 168 290H344Z" fill="#131C33" />
 </svg>

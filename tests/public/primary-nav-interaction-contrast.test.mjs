@@ -1,16 +1,11 @@
+import { readPublicCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import postcss from "postcss";
 
-const projectRoot = new URL("../../", import.meta.url);
-
 test("non-current primary navigation labels stay visible on hover and keyboard focus", async () => {
-  const styles = await readFile(
-    new URL("app/globals.css", projectRoot),
-    "utf8",
-  );
+  const styles = await readPublicCss();
   const root = postcss.parse(styles);
 
   for (const interaction of ["hover", "focus-visible"]) {

@@ -168,9 +168,11 @@ async function PreviewEntityBody({
       const context = await loadPreviewEventsContext();
       return (
         <EventsPageRenderer
+          activeView="calendar"
           calendar={context.calendar}
           nowUtcMs={context.nowUtcMs}
           pageContent={page}
+          prefetchInternalLinks={false}
           siteOrigin={null}
           todayDate={context.todayDate}
         />
