@@ -347,38 +347,6 @@ test("production metadata, structured data, sharing, exports, robots, and sitema
   }
 });
 
-async function clearPublicEventsSnapshotCache() {
-  const database = await runtime.getD1Database("DB");
-  const snapshots = await database
-    .prepare(
-      `SELECT cache_key
-       FROM public_event_calendar_snapshots
-       WHERE organization_id = ?`,
-    )
-    .bind(ORGANIZATION_ID)
-    .all();
-  const cache = (await runtime.getCaches()).default;
-  await Promise.all(
-    snapshots.results.map((row) => {
-      assert.equal(typeof row.cache_key, "string");
-      const url = new URL(
-        "/.__vcc-cache/public-events",
-        "https://preview.example",
-      );
-      url.searchParams.set("key", row.cache_key);
-      return cache.delete(url.toString());
-    }),
-  );
-  await database
-    .prepare(
-      `DELETE FROM public_event_calendar_snapshots
-       WHERE organization_id = ?`,
-    )
-    .bind(ORGANIZATION_ID)
-    .run();
-  return snapshots.results.length;
-}
-
 async function readRenderedStyles(html) {
   const hrefs = [...html.matchAll(/<link\b[^>]*>/giu)].flatMap(
     ([linkTag]) => {
@@ -407,6 +375,22 @@ async function organizerMutation(path, method, body) {
     },
     method,
   });
+}
+
+async function materializeRenderedPublicEvents() {
+  const response = await organizerMutation(
+    "/api/organizer/meetup/materialize",
+    "POST",
+    {},
+  );
+  assert.equal(response.status, 200, await response.clone().text());
+  assertOrganizerPrivateResponse(response);
+  const report = await response.json();
+  assert.ok(
+    Number.isSafeInteger(report.counts.homeEventCount) &&
+      report.counts.homeEventCount >= 0,
+  );
+  assert.equal(report.counts.eventsSnapshotCount, 1);
 }
 
 async function createRenderedTimedDraft({
@@ -2275,10 +2259,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(workspace.event.publicationStatus, "published");
   assert.equal(workspace.publicPath, detailPath);
 
-  assert.ok(
-    (await clearPublicEventsSnapshotCache()) > 0,
-    "the lifecycle test must cross the bounded public Events snapshot boundary",
-  );
+  await materializeRenderedPublicEvents();
 
   const homeResponse = await fetchPath("/");
   assert.equal(homeResponse.status, 200);
@@ -2408,7 +2389,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(unpublished.outcome, "unpublished");
   workspace = unpublished.workspace;
   assert.equal(workspace.event.publicationStatus, "unpublished");
-  await clearPublicEventsSnapshotCache();
+  await materializeRenderedPublicEvents();
   await assertAbsentFromPublicSurfaces("explicitly unpublished event");
 
   const requestedPublicationAt = Date.now() + 4_000;
@@ -2453,7 +2434,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.ok(reconciledDetail, "the due publication did not reconcile");
   const reconciledHtml = await reconciledDetail.text();
   assert.match(reconciledHtml, new RegExp(escapeRegex(publicTitle), "u"));
-  await clearPublicEventsSnapshotCache();
+  await materializeRenderedPublicEvents();
   const postReconciliationEvents = await fetchPath("/events");
   assert.equal(postReconciliationEvents.status, 200);
   assert.match(
@@ -2514,7 +2495,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(cancelled.planningStatus, "cancelled");
   assert.equal(cancelled.publicationStatus, "published");
 
-  await clearPublicEventsSnapshotCache();
+  await materializeRenderedPublicEvents();
   const cancelledEventsResponse = await fetchPath("/events");
   assert.equal(cancelledEventsResponse.status, 200);
   const cancelledEventsHtml = await cancelledEventsResponse.text();
