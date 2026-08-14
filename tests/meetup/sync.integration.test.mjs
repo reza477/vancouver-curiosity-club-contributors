@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -615,6 +616,48 @@ async function runDueMeetupRefresh(
     refreshOptions,
   );
 }
+
+test("due refresh drains canonical groups before the alias-bearing main group", async (t) => {
+  const database = createDatabase({
+    clubs: ["club_a", "club_b", "club_c"],
+  });
+  t.after(() => database.close());
+  await configure(database, "club_a", FEED_A, 1_000);
+  await configure(database, "club_b", FEED_B, 1_001);
+  await configure(database, "club_c", FEED_C, 1_002);
+  database.exec(`
+    UPDATE sync_sources
+    SET last_attempt_at = CASE club_id
+          WHEN 'club_a' THEN 100
+          WHEN 'club_b' THEN 200
+          WHEN 'club_c' THEN 300
+        END,
+        next_refresh_at = NULL
+    WHERE organization_id = '${ORGANIZATION_ID}'
+      AND source_type = 'meetup_ics'
+  `);
+
+  const fetchedFeeds = [];
+  const fetcher = async (input) => {
+    fetchedFeeds.push(String(input));
+    return calendarResponse(calendar());
+  };
+  for (const nowUtcMs of [2_000, 2_001, 2_002]) {
+    const refreshed = await runDueMeetupRefresh(database, {
+      clock: () => nowUtcMs,
+      fetcher,
+      nowUtcMs,
+      organizationId: ORGANIZATION_ID,
+    });
+    assert.equal(refreshed.outcome, "completed");
+  }
+
+  assert.deepEqual(
+    fetchedFeeds,
+    [FEED_B, FEED_C, FEED_A],
+    "the main source stays behind canonical and independent programs even when it was attempted least recently",
+  );
+});
 
 function sourceOverlapDraftInput(title) {
   return {
@@ -1277,11 +1320,200 @@ test("exact cross-post aliases share canonical events and publish a later unique
   assert.equal(aliasAudits.results.length, 2);
   for (const row of aliasAudits.results) {
     assert.deepEqual(JSON.parse(row.metadata_json), {
-      aliasModel: "exact_url_v2",
+      aliasModel: "exact_url_v3",
       sourceType: "meetup_ics",
     });
     assert.equal(row.metadata_json.includes("meetup.com"), false);
   }
+});
+
+test("an exact alias safely adopts a legacy standalone mapping without exposing the displaced event", async (t) => {
+  const database = createDatabase({ clubs: ["club_a", "club_b"] });
+  t.after(() => database.close());
+  await configure(database, "club_b", FEED_B, 1_000);
+  await configure(database, "club_a", FEED_A, 1_001);
+
+  const canonicalUrl =
+    "https://www.meetup.com/vancouver-literature-and-film/events/315508432/";
+  const aliasUrl =
+    "https://www.meetup.com/vancouver-meetup-group/events/315511475/";
+  const start = "20260811T010000Z";
+  const end = "20260811T033000Z";
+  assert.equal(
+    (
+      await refresh(
+        database,
+        "club_b",
+        sequenceFetcher([
+          calendar(
+            meetupEvent({
+              uid: "legacy-adoption-canonical@meetup.com",
+              eventId: "315508432",
+              groupSlug: GROUP_B,
+              title: "Legacy adoption canonical",
+              start,
+              end,
+            }),
+          ),
+        ]),
+        2_000,
+      )
+    ).outcome,
+    "completed",
+  );
+  const canonicalEventId = await database
+    .prepare(
+      `SELECT entity_id
+       FROM external_source_links
+       WHERE organization_id = ?
+         AND source_type = 'meetup_ics'
+         AND external_url = ?
+         AND deleted_at IS NULL`,
+    )
+    .bind(ORGANIZATION_ID, canonicalUrl)
+    .first("entity_id");
+  assert.equal(typeof canonicalEventId, "string");
+
+  const legacyUrl =
+    "https://www.meetup.com/vancouver-meetup-group/events/315294577/";
+  assert.equal(
+    (
+      await refresh(
+        database,
+        "club_a",
+        sequenceFetcher([
+          calendar(
+            meetupEvent({
+              uid: "legacy-standalone-main@meetup.com",
+              eventId: "315294577",
+              groupSlug: GROUP_A,
+              title: "Displaced legacy standalone",
+              start,
+              end,
+            }),
+          ),
+        ]),
+        2_100,
+      )
+    ).outcome,
+    "completed",
+  );
+  const legacyMapping = await database
+    .prepare(
+      `SELECT link.id AS link_id, link.entity_id AS event_id,
+              link.sync_source_id AS source_id
+       FROM external_source_links AS link
+       WHERE link.organization_id = ?
+         AND link.source_type = 'meetup_ics'
+         AND link.external_url = ?
+         AND link.deleted_at IS NULL`,
+    )
+    .bind(ORGANIZATION_ID, legacyUrl)
+    .first();
+  assert.equal(typeof legacyMapping?.link_id, "string");
+  assert.equal(typeof legacyMapping?.event_id, "string");
+  assert.equal(typeof legacyMapping?.source_id, "string");
+  assert.notEqual(legacyMapping.event_id, canonicalEventId);
+
+  const aliasUid = "legacy-adoption-alias@meetup.com";
+  const aliasExternalId = createHash("sha256")
+    .update(
+      `meetup_ics\u0000${legacyMapping.source_id}\u0000${aliasUid}\u001F`,
+    )
+    .digest("hex");
+  await database
+    .prepare(
+      `UPDATE external_source_links
+       SET external_id = ?, external_url = ?, updated_at = ?
+       WHERE id = ?
+         AND organization_id = ?
+         AND entity_id = ?
+         AND deleted_at IS NULL`,
+    )
+    .bind(
+      aliasExternalId,
+      aliasUrl,
+      2_150,
+      legacyMapping.link_id,
+      ORGANIZATION_ID,
+      legacyMapping.event_id,
+    )
+    .run();
+
+  const aliasBudget = exactCountingDatabase(database);
+  const adopted = await refresh(
+    aliasBudget.binding,
+    "club_a",
+    sequenceFetcher([
+      calendar(
+        meetupEvent({
+          uid: aliasUid,
+          eventId: "315511475",
+          groupSlug: GROUP_A,
+          title: "Legacy adoption alias",
+          start,
+          end,
+        }),
+      ),
+    ]),
+    2_200,
+  );
+  assert.equal(adopted.outcome, "completed");
+  assert.ok(
+    aliasBudget.counts().statementCount < 50,
+    `legacy alias adoption used ${aliasBudget.counts().statementCount} D1 statements`,
+  );
+
+  const links = await database
+    .prepare(
+      `SELECT entity_id, external_id, deleted_at
+       FROM external_source_links
+       WHERE organization_id = ?
+         AND source_type = 'meetup_ics'
+         AND sync_source_id = ?
+         AND external_url = ?
+       ORDER BY deleted_at IS NULL DESC, id ASC`,
+    )
+    .bind(ORGANIZATION_ID, legacyMapping.source_id, aliasUrl)
+    .all();
+  assert.equal(links.results.length, 2);
+  assert.deepEqual(
+    {
+      deleted_at: links.results[0].deleted_at,
+      entity_id: links.results[0].entity_id,
+      external_id: links.results[0].external_id,
+    },
+    {
+      deleted_at: null,
+      entity_id: canonicalEventId,
+      external_id: aliasExternalId,
+    },
+  );
+  assert.equal(links.results[1].entity_id, legacyMapping.event_id);
+  assert.equal(links.results[1].deleted_at, 2_200);
+  assert.match(links.results[1].external_id, /^[a-f0-9]{64}$/u);
+  assert.notEqual(links.results[1].external_id, aliasExternalId);
+
+  const publicPage = await queryPublicEvents(database, {
+    nowUtcMs: Date.parse("2026-08-01T12:00:00.000Z"),
+    organizationId: ORGANIZATION_ID,
+    page: 1,
+    pageSize: 12,
+    todayDate: "2026-08-01",
+    view: "upcoming",
+  });
+  assert.equal(
+    publicPage.events.some(
+      (event) => event.title === "Displaced legacy standalone",
+    ),
+    false,
+  );
+  assert.equal(
+    publicPage.events.filter(
+      (event) => event.title === "Legacy adoption canonical",
+    ).length,
+    1,
+  );
 });
 
 test("an exact cross-post alias with a schedule mismatch preserves both active generations", async (t) => {

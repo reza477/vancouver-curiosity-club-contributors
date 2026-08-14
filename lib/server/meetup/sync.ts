@@ -45,6 +45,13 @@ import {
 
 const SOURCE_TYPE = "meetup_ics";
 const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v4";
+const ALIAS_SOURCE_GROUP_SLUGS = Object.freeze(
+  new Set(
+    MEETUP_EVENT_ALIASES.map(
+      (entry) => new URL(entry.aliasUrl).pathname.split("/")[1] ?? "",
+    ),
+  ),
+);
 /**
  * The mutable `events` row is only the stable content/relationship anchor for
  * a Meetup record. Source-native planning state is owned by the immutable
@@ -537,6 +544,14 @@ async function refreshSources(
   }
 
   const ordered = [...enabled].sort((left, right) => {
+    // Canonical/independent groups must be publishable before an alias-bearing
+    // group can safely resume or begin. Pending work still wins within the
+    // same dependency class, but cannot starve its canonical prerequisite.
+    const leftDependency = meetupSourceDependencyPriority(left);
+    const rightDependency = meetupSourceDependencyPriority(right);
+    if (leftDependency !== rightDependency) {
+      return leftDependency - rightDependency;
+    }
     const leftPending = left.pendingGenerationId === null ? 1 : 0;
     const rightPending = right.pendingGenerationId === null ? 1 : 0;
     if (leftPending !== rightPending) return leftPending - rightPending;
@@ -582,6 +597,11 @@ async function refreshSources(
     source,
     clock,
   });
+}
+
+function meetupSourceDependencyPriority(source: SourceRecord): number {
+  const { groupSlug } = parseMeetupGroupCalendarFeedUrl(source.sourceUrl);
+  return ALIAS_SOURCE_GROUP_SLUGS.has(groupSlug) ? 1 : 0;
 }
 
 async function refreshOrganizationSource(
@@ -1138,14 +1158,36 @@ async function importAliasedEventRow(
     input.sourceId,
     input.identityHash,
   );
+  const displacedEventId =
+    mapping?.eventId && mapping.eventId !== canonicalTarget.eventId
+      ? mapping.eventId
+      : null;
   if (
-    (mapping?.eventId && mapping.eventId !== canonicalTarget.eventId) ||
-    (mapping && isStaleSourceRevision(mapping, input.event, input.sourceId))
+    (mapping && isStaleSourceRevision(mapping, input.event, input.sourceId)) ||
+    (displacedEventId !== null &&
+      (mapping === null ||
+        mapping.externalUrl !== input.event.eventUrl ||
+        mapping.scheduleVersion === null ||
+        mapping.primaryOrganizerProfileId !== null ||
+        mapping.organizerScope.length !== 0 ||
+        !mappingScheduleMatchesEvent(mapping, input.event)))
   ) {
     throw new MeetupSyncError("calendar_invalid");
   }
 
   const linkId = mapping?.linkId ?? crypto.randomUUID();
+  const tombstone =
+    displacedEventId === null
+      ? null
+      : Object.freeze({
+          externalId: await legacyAliasTombstoneExternalId(
+            input.sourceId,
+            input.identityHash,
+            displacedEventId,
+          ),
+          id: crypto.randomUUID(),
+          oldEventId: displacedEventId,
+        });
   const externalReservationStatements =
     await stageExternalReservationStatements(database, {
       ...input,
@@ -1166,12 +1208,28 @@ async function importAliasedEventRow(
       status: "accepted",
     }),
     extendLeaseStatement(database, input),
+    ...(tombstone
+      ? [
+          insertLegacyAliasTombstoneStatement(database, {
+            ...input,
+            linkId,
+            tombstone,
+          }),
+        ]
+      : []),
     mapping
-      ? updateSourceLinkStatement(database, {
-          ...input,
-          eventId: canonicalTarget.eventId,
-          linkId,
-        })
+      ? tombstone
+        ? rebindLegacyAliasSourceLinkStatement(database, {
+            ...input,
+            eventId: canonicalTarget.eventId,
+            linkId,
+            tombstone,
+          })
+        : updateSourceLinkStatement(database, {
+            ...input,
+            eventId: canonicalTarget.eventId,
+            linkId,
+          })
       : insertSourceLinkStatement(database, {
           ...input,
           eventId: canonicalTarget.eventId,
@@ -2303,6 +2361,161 @@ function insertSourceLinkStatement(
       input.now,
       input.sourceId,
       input.organizationId,
+      input.leaseToken,
+      input.now,
+    );
+}
+
+function insertLegacyAliasTombstoneStatement(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    event: ParsedMeetupEvent;
+    identityHash: string;
+    leaseToken: string;
+    linkId: string;
+    now: number;
+    organizationId: string;
+    sourceId: string;
+    tombstone: Readonly<{
+      externalId: string;
+      id: string;
+      oldEventId: string;
+    }>;
+  }>,
+) {
+  return database
+    .prepare(
+      `INSERT INTO external_source_links (
+         id, organization_id, entity_type, entity_id, source_type,
+         sync_source_id, external_id, external_url, source_fingerprint,
+         source_sequence, source_last_modified_at, last_imported_at,
+         created_at, updated_at, deleted_at
+       )
+       SELECT ?, live.organization_id, 'event', live.entity_id,
+              live.source_type, live.sync_source_id, ?, live.external_url,
+              live.source_fingerprint, live.source_sequence,
+              live.source_last_modified_at, live.last_imported_at,
+              ?, ?, ?
+       FROM external_source_links AS live
+       JOIN sync_sources AS source
+         ON source.id = live.sync_source_id
+        AND source.organization_id = live.organization_id
+        AND source.lease_token = ?
+        AND source.lease_expires_at > ?
+        AND source.deleted_at IS NULL
+       WHERE live.id = ?
+         AND live.organization_id = ?
+         AND live.entity_type = 'event'
+         AND live.entity_id = ?
+         AND live.source_type = ?
+         AND live.sync_source_id = ?
+         AND live.external_id = ?
+         AND live.external_url = ?
+         AND live.deleted_at IS NULL`,
+    )
+    .bind(
+      input.tombstone.id,
+      input.tombstone.externalId,
+      input.now,
+      input.now,
+      input.now,
+      input.leaseToken,
+      input.now,
+      input.linkId,
+      input.organizationId,
+      input.tombstone.oldEventId,
+      SOURCE_TYPE,
+      input.sourceId,
+      input.identityHash,
+      input.event.eventUrl,
+    );
+}
+
+function rebindLegacyAliasSourceLinkStatement(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    event: ParsedMeetupEvent;
+    eventId: string;
+    fingerprint: string;
+    identityHash: string;
+    leaseToken: string;
+    linkId: string;
+    now: number;
+    organizationId: string;
+    sourceId: string;
+    tombstone: Readonly<{
+      externalId: string;
+      id: string;
+      oldEventId: string;
+    }>;
+  }>,
+) {
+  return database
+    .prepare(
+      `UPDATE external_source_links
+       SET entity_id = ?,
+           source_fingerprint = ?,
+           source_sequence = ?,
+           source_last_modified_at = ?,
+           last_imported_at = ?,
+           updated_at = ?
+       WHERE id = ?
+         AND organization_id = ?
+         AND entity_type = 'event'
+         AND entity_id = ?
+         AND source_type = ?
+         AND sync_source_id = ?
+         AND external_id = ?
+         AND external_url = ?
+         AND deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1
+           FROM organizer_events AS adopted
+           WHERE adopted.id = external_source_links.entity_id
+             AND adopted.organization_id =
+                 external_source_links.organization_id
+             AND adopted.deleted_at IS NULL
+         )
+         AND EXISTS (
+           SELECT 1
+           FROM external_source_links AS tombstone
+           WHERE tombstone.id = ?
+             AND tombstone.organization_id = external_source_links.organization_id
+             AND tombstone.entity_type = 'event'
+             AND tombstone.entity_id = ?
+             AND tombstone.source_type = external_source_links.source_type
+             AND tombstone.sync_source_id = external_source_links.sync_source_id
+             AND tombstone.external_id = ?
+             AND tombstone.deleted_at = ?
+         )
+         AND EXISTS (
+           SELECT 1
+           FROM sync_sources AS source
+           WHERE source.id = external_source_links.sync_source_id
+             AND source.organization_id = external_source_links.organization_id
+             AND source.lease_token = ?
+             AND source.lease_expires_at > ?
+             AND source.deleted_at IS NULL
+         )`,
+    )
+    .bind(
+      input.eventId,
+      input.fingerprint,
+      input.event.sequence,
+      input.event.lastModifiedUtcMs,
+      input.now,
+      input.now,
+      input.linkId,
+      input.organizationId,
+      input.tombstone.oldEventId,
+      SOURCE_TYPE,
+      input.sourceId,
+      input.identityHash,
+      input.event.eventUrl,
+      input.tombstone.id,
+      input.tombstone.oldEventId,
+      input.tombstone.externalId,
+      input.now,
       input.leaseToken,
       input.now,
     );
@@ -3852,7 +4065,6 @@ async function readAliasCanonicalTarget(
         AND generation.state = 'published'
         AND generation.published_at IS NOT NULL
         AND generation.processed_item_count = generation.expected_item_count
-        AND generation.rejected_item_count = 0
        JOIN meetup_event_snapshots AS snapshot
          ON snapshot.organization_id = source.organization_id
         AND snapshot.sync_source_id = source.id
@@ -4430,6 +4642,16 @@ async function sourceIdentityHash(
 ): Promise<string> {
   return sha256Hex(
     `${SOURCE_TYPE}\u0000${sourceId}\u0000${event.sourceKey}`,
+  );
+}
+
+async function legacyAliasTombstoneExternalId(
+  sourceId: string,
+  identityHash: string,
+  oldEventId: string,
+): Promise<string> {
+  return sha256Hex(
+    `meetup-alias-tombstone\u0000${sourceId}\u0000${identityHash}\u0000${oldEventId}`,
   );
 }
 

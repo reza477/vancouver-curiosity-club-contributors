@@ -14,7 +14,7 @@ const MAX_OWNER_REVIEWED_TIMED_END_DRIFT_MS = 30 * 60 * 1_000;
  * not; the inventory itself is also hashed so adding or removing a pair
  * restarts any in-flight generation deterministically.
  */
-export const MEETUP_EVENT_ALIAS_POLICY_VERSION = "exact_url_v2";
+export const MEETUP_EVENT_ALIAS_POLICY_VERSION = "exact_url_v3";
 
 const EXACT_EVENT_ALIASES = [
   {
