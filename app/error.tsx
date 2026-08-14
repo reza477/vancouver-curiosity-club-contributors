@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { useEffect } from "react";
 
 export default function RouteError({
@@ -35,4 +35,3 @@ export default function RouteError({
     </main>
   );
 }
-

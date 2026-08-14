@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
 import {
   discoveryArtworkCredit,

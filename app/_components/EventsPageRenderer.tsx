@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { EventCard } from "./EventCard";
 import { PublicMonthCalendar } from "./PublicMonthCalendar";
 import type { PublicEventLaneSlug } from "@/lib/public-event-lanes";

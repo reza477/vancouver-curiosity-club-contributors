@@ -28,7 +28,11 @@ test("one updater-owned dataset serves Home, arbitrary months, lanes, and date r
   );
 
   assert.equal(bundleCalls, 1, "production projection must run once");
-  assert.deepEqual(refreshed, { eventsSnapshotCount: 1, homeEventCount: 9 });
+  assert.deepEqual(refreshed, {
+    eventDetailCount: 14,
+    eventsSnapshotCount: 1,
+    homeEventCount: 9,
+  });
   const home = await materializations.readPublicHomeEventMaterialization(
     database,
     materializationInput(),
@@ -141,7 +145,11 @@ test("Events derives club intersections and bounded pages from one durable datas
     materializationInput(),
     {
       async projectBundle() {
-        return { calendarEvents: events, upcomingEvents: events };
+        return {
+          calendarEvents: events,
+          eventDetails: events.map(eventDetailFromCard),
+          upcomingEvents: events,
+        };
       },
     },
   );
@@ -269,7 +277,206 @@ test("Events derives club intersections and bounded pages from one durable datas
   assert.equal(invalidClub?.calendar.events.length, 15);
 });
 
-test("failed projection and failed atomic promotion preserve both prior rows", async (t) => {
+test("materialized ordering matches timed, all-day noon, title NOCASE, and slug SQL ties", async (t) => {
+  const materializations = await import(
+    "../../lib/server/public/event-materializations.ts"
+  );
+  const events = [
+    eventCard("Timed 1 p.m.", { ordinal: 430, startHour: 13 }),
+    eventCard("All day at noon", { allDay: true, ordinal: 431 }),
+    eventCard("Timed 11 a.m.", { ordinal: 432, startHour: 11 }),
+    eventCard("beta tie", { ordinal: 433 }),
+    eventCard("Alpha tie", { ordinal: 434 }),
+  ];
+  const database = await materializationDatabase(t);
+  await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    {
+      async projectBundle() {
+        return {
+          calendarEvents: events,
+          eventDetails: events.map(eventDetailFromCard),
+          upcomingEvents: events,
+        };
+      },
+    },
+  );
+
+  const loaded = await materializations.readPublicEventsPageMaterialization(
+    database,
+    {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    },
+  );
+  assert.deepEqual(
+    loaded?.upcoming.events.map((event) => event.title),
+    [
+      "Timed 11 a.m.",
+      "All day at noon",
+      "Timed 1 p.m.",
+      "Alpha tie",
+      "beta tie",
+    ],
+  );
+});
+
+test("one bounded detail row serves event, related, club, and program views without visitor writes", async (t) => {
+  const materializations = await import(
+    "../../lib/server/public/event-materializations.ts"
+  );
+  const database = await materializationDatabase(t);
+  const target = eventDetail("Target gathering", {
+    category: { name: "Ideas", slug: "ideas" },
+    clubName: "Alpha Club",
+    clubSlug: "alpha-club",
+    day: 20,
+    ordinal: 300,
+    program: { name: "Alpha Series", slug: "alpha-series" },
+  });
+  const sameClub = eventDetail("Same club gathering", {
+    clubName: "Alpha Club",
+    clubSlug: "alpha-club",
+    day: 21,
+    ordinal: 301,
+    program: { name: "Alpha Series", slug: "alpha-series" },
+  });
+  const sameCategory = eventDetail("Same category gathering", {
+    category: { name: "Ideas", slug: "ideas" },
+    clubName: "Beta Club",
+    clubSlug: "beta-club",
+    day: 22,
+    ordinal: 302,
+  });
+  const unrelated = eventDetail("Unrelated gathering", {
+    clubName: "Beta Club",
+    clubSlug: "beta-club",
+    day: 23,
+    ordinal: 303,
+  });
+  const pastProgram = eventDetail("Past program gathering", {
+    clubName: "Alpha Club",
+    clubSlug: "alpha-club",
+    day: 2,
+    ordinal: 304,
+    program: { name: "Alpha Series", slug: "alpha-series" },
+  });
+  const oldPastProgram = eventDetail("Older program gathering", {
+    clubName: "Alpha Club",
+    clubSlug: "alpha-club",
+    day: 2,
+    month: "2024-01",
+    ordinal: 305,
+    program: { name: "Alpha Series", slug: "alpha-series" },
+  });
+  const all = [
+    target,
+    sameClub,
+    sameCategory,
+    unrelated,
+    pastProgram,
+    oldPastProgram,
+  ];
+  const cards = all.slice(0, -1).map(eventCardFromDetail);
+
+  const refreshed = await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    {
+      async projectBundle() {
+        return {
+          calendarEvents: cards,
+          eventDetails: all,
+          upcomingEvents: cards.slice(0, 4),
+        };
+      },
+    },
+  );
+  assert.equal(refreshed.eventDetailCount, 6);
+
+  const counter = countDatabaseStatements(database);
+  const detail =
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        slug: target.slug,
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.equal(detail?.kind, "available");
+  assert.equal(detail?.event.title, "Target gathering");
+  assert.deepEqual(
+    detail?.related.map((event) => event.title),
+    ["Same club gathering", "Same category gathering"],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
+
+  counter.reset();
+  const club = await materializations.readPublicClubEventViewMaterialization(
+    counter.database,
+    {
+      clubSlug: "alpha-club",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      pageSize: 6,
+      todayDate: TODAY_DATE,
+    },
+  );
+  assert.deepEqual(
+    club?.upcoming.events.map((event) => event.title),
+    ["Target gathering", "Same club gathering"],
+  );
+  assert.deepEqual(
+    club?.past.events.map((event) => event.title),
+    ["Past program gathering", "Older program gathering"],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
+
+  counter.reset();
+  const program =
+    await materializations.readPublicClubEventViewMaterialization(
+      counter.database,
+      {
+        clubSlug: "alpha-club",
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        pageSize: 6,
+        programSlug: "alpha-series",
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.deepEqual(
+    program?.upcoming.events.map((event) => event.title),
+    ["Target gathering", "Same club gathering"],
+  );
+  assert.deepEqual(
+    program?.past.events.map((event) => event.title),
+    ["Past program gathering", "Older program gathering"],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
+});
+
+test("failed projection and failed atomic promotion preserve all prior rows", async (t) => {
   const materializations = await import(
     "../../lib/server/public/event-materializations.ts"
   );
@@ -295,6 +502,48 @@ test("failed projection and failed atomic promotion preserve both prior rows", a
   );
   assert.deepEqual(snapshots(database), before);
 
+  const missingDetails = materializationBundle("missing-details-v2", 8);
+  delete missingDetails.eventDetails;
+  await assert.rejects(
+    materializations.refreshPublicEventMaterializations(
+      database,
+      materializationInput({ nowUtcMs: NOW_UTC_MS + 90_000 }),
+      { async projectBundle() { return missingDetails; } },
+    ),
+    /event-detail projection was not supplied safely/iu,
+  );
+  assert.deepEqual(snapshots(database), before);
+
+  const emptyDetails = materializationBundle("empty-details-v2", 8);
+  emptyDetails.eventDetails = [];
+  await assert.rejects(
+    materializations.refreshPublicEventMaterializations(
+      database,
+      materializationInput({ nowUtcMs: NOW_UTC_MS + 95_000 }),
+      { async projectBundle() { return emptyDetails; } },
+    ),
+    /event-detail projection did not match/iu,
+  );
+  assert.deepEqual(snapshots(database), before);
+
+  const mismatchedDetails = materializationBundle(
+    "mismatched-details-v2",
+    8,
+  );
+  mismatchedDetails.eventDetails[0] = {
+    ...mismatchedDetails.eventDetails[0],
+    title: "Mismatched detail title",
+  };
+  await assert.rejects(
+    materializations.refreshPublicEventMaterializations(
+      database,
+      materializationInput({ nowUtcMs: NOW_UTC_MS + 100_000 }),
+      { async projectBundle() { return mismatchedDetails; } },
+    ),
+    /event-detail projection did not match/iu,
+  );
+  assert.deepEqual(snapshots(database), before);
+
   database.exec(`
     CREATE TRIGGER reject_atomic_materialization
     BEFORE UPDATE ON public_event_calendar_snapshots
@@ -314,7 +563,7 @@ test("failed projection and failed atomic promotion preserve both prior rows", a
   assert.deepEqual(
     snapshots(database),
     before,
-    "Home and Events must roll back together",
+    "Home, Events, and detail views must roll back together",
   );
 
   database.exec("DROP TRIGGER reject_atomic_materialization;");
@@ -324,6 +573,7 @@ test("failed projection and failed atomic promotion preserve both prior rows", a
       return [
         { meta: { changes: 1 }, success: true },
         { meta: { changes: 0 }, success: true },
+        { meta: { changes: 1 }, success: true },
       ];
     },
   };
@@ -336,6 +586,29 @@ test("failed projection and failed atomic promotion preserve both prior rows", a
     /could not be promoted/iu,
   );
   assert.deepEqual(snapshots(database), before);
+
+  const newest = await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput({ nowUtcMs: NOW_UTC_MS + 300_000 }),
+    bundleService("newest-v3"),
+  );
+  const newestRows = snapshots(database);
+  const superseded =
+    await materializations.refreshPublicEventMaterializations(
+      database,
+      materializationInput({ nowUtcMs: NOW_UTC_MS + 240_000 }),
+      bundleService("delayed-older-v2"),
+    );
+  assert.deepEqual(
+    superseded,
+    newest,
+    "a superseded refresh reports the active generation counts",
+  );
+  assert.deepEqual(
+    snapshots(database),
+    newestRows,
+    "a delayed older projection must not overwrite any active row",
+  );
 });
 
 test("production materialization stays below D1 limits and visitor reads never write", async (t) => {
@@ -354,7 +627,7 @@ test("production materialization stays below D1 limits and visitor reads never w
     `updater used ${counter.count()} D1 statements; expected < 50`,
   );
   assert.equal(counter.batchCount(), 1);
-  assert.equal(counter.runCount(), 2, "one atomic batch promotes two rows");
+  assert.equal(counter.runCount(), 3, "one atomic batch promotes three rows");
 
   counter.reset();
   await materializations.readPublicHomeEventMaterialization(
@@ -455,8 +728,7 @@ function materializationBundle(version, homeCount) {
   home.push(
     eventCard(`${version} reserve-later`, { day: 25, ordinal: 50 }),
   );
-  return {
-    calendarEvents: [
+  const calendarEvents = [
       eventCard(`${version} old-bound`, { month: "2025-08", ordinal: 60 }),
       eventCard(`${version} current-all`, { ordinal: 61 }),
       eventCard(`${version} current-explore`, {
@@ -465,7 +737,10 @@ function materializationBundle(version, homeCount) {
       }),
       eventCard(`${version} next-month`, { month: "2026-09", ordinal: 63 }),
       eventCard(`${version} future-bound`, { month: "2027-08", ordinal: 64 }),
-    ],
+    ];
+  return {
+    calendarEvents,
+    eventDetails: [...calendarEvents, ...home].map(eventDetailFromCard),
     upcomingEvents: home,
   };
 }
@@ -473,12 +748,16 @@ function materializationBundle(version, homeCount) {
 function eventCard(
   title,
   {
+    allDay = false,
+    category = null,
     clubName = "Materialization Club",
     clubSlug = "materialization-club",
     day = 20,
     laneSlug = null,
     month = "2026-08",
     ordinal = 1,
+    program = null,
+    startHour = 19,
   } = {},
 ) {
   const dayKey = String(day).padStart(2, "0");
@@ -489,26 +768,99 @@ function eventCard(
     artwork: null,
     availabilityState: "open",
     capacity: 20,
-    category: null,
+    category,
     club: { name: clubName, slug: clubSlug },
     costText: null,
     isCancelled: false,
     lane: laneSlug ? { name: "Explore", slug: laneSlug } : null,
-    program: null,
+    program,
     rsvpMode: "meetup",
     rsvpUrl: `https://www.meetup.com/vancouver-meetup-group/events/${900000000 + ordinal}/`,
-    schedule: {
-      endsAtUtc: `${month}-${dayKey}T21:00:00.000Z`,
-      kind: "timed",
-      startsAtUtc: `${month}-${dayKey}T19:00:00.000Z`,
-      timeZone: "America/Vancouver",
-    },
+    schedule: allDay
+      ? {
+          endDateExclusive: `${month}-${String(day + 1).padStart(2, "0")}`,
+          kind: "all_day",
+          startDate: `${month}-${dayKey}`,
+        }
+      : {
+          endsAtUtc: `${month}-${dayKey}T${String(startHour + 2).padStart(2, "0")}:00:00.000Z`,
+          kind: "timed",
+          startsAtUtc: `${month}-${dayKey}T${String(startHour).padStart(2, "0")}:00:00.000Z`,
+          timeZone: "America/Vancouver",
+        },
     slug: `materialized-event-${ordinal}`,
     status: "confirmed",
     summary: "A public materialized event.",
     title,
     venue: null,
     waitlistAvailable: false,
+  };
+}
+
+function eventDetail(title, options = {}) {
+  return {
+    ...eventCard(title, options),
+    description: `Details for ${title}.`,
+    descriptionBlocks: [
+      {
+        content: [{ text: `Details for ${title}.`, type: "text" }],
+        type: "paragraph",
+      },
+    ],
+    externalMapUrl: null,
+    metaDescription: null,
+    organizers: [],
+    preparationInformation: null,
+    publicAccessNote: null,
+    publicOnlineUrl: null,
+    seoTitle: null,
+    verifiedAccessibilityNotes: null,
+    weatherNote: null,
+    whatToBring: null,
+  };
+}
+
+function eventDetailFromCard(card) {
+  return {
+    ...card,
+    description: null,
+    descriptionBlocks: null,
+    externalMapUrl: null,
+    metaDescription: null,
+    organizers: [],
+    preparationInformation: null,
+    publicAccessNote: null,
+    publicOnlineUrl: null,
+    seoTitle: null,
+    verifiedAccessibilityNotes: null,
+    weatherNote: null,
+    whatToBring: null,
+  };
+}
+
+function eventCardFromDetail(detail) {
+  return {
+    agePolicyText: detail.agePolicyText,
+    arrivalInstructions: detail.arrivalInstructions,
+    attendanceMode: detail.attendanceMode,
+    artwork: detail.artwork,
+    availabilityState: detail.availabilityState,
+    capacity: detail.capacity,
+    category: detail.category,
+    club: detail.club,
+    costText: detail.costText,
+    isCancelled: detail.isCancelled,
+    lane: detail.lane,
+    program: detail.program,
+    rsvpMode: detail.rsvpMode,
+    rsvpUrl: detail.rsvpUrl,
+    schedule: detail.schedule,
+    slug: detail.slug,
+    status: detail.status,
+    summary: detail.summary,
+    title: detail.title,
+    venue: detail.venue,
+    waitlistAvailable: detail.waitlistAvailable,
   };
 }
 

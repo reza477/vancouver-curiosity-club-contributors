@@ -1122,6 +1122,7 @@ export type QueryPublicEventMaterializationBundleInput = Readonly<{
 
 export type PublicEventMaterializationBundleDto = Readonly<{
   calendarEvents: readonly PublicEventCardDto[];
+  eventDetails: readonly PublicEventDetailDto[];
   upcomingEvents: readonly PublicEventCardDto[];
 }>;
 
@@ -3792,6 +3793,21 @@ const PUBLIC_EVENT_DETAIL_COLUMNS_SQL = `
   public_event.verified_accessibility_notes AS verified_accessibility_notes
 `;
 
+const PUBLIC_EVENT_EMPTY_DETAIL_COLUMNS_SQL = `
+  NULL AS description,
+  NULL AS description_blocks_json,
+  NULL AS seo_title,
+  NULL AS meta_description,
+  NULL AS organizer_names_json,
+  NULL AS public_access_note,
+  NULL AS public_online_url,
+  NULL AS external_map_url,
+  NULL AS preparation_information,
+  NULL AS what_to_bring,
+  NULL AS weather_note,
+  NULL AS verified_accessibility_notes
+`;
+
 /**
  * This query is deliberately allowlisted and organization/id scoped. The
  * caller must still complete trusted SIWC membership and event authorization
@@ -4431,6 +4447,7 @@ export async function listNextPublicEventsByClub(
 
 const PUBLIC_CALENDAR_MONTH_EVENT_LIMIT = 96;
 const PUBLIC_EVENT_MATERIALIZATION_UPCOMING_LIMIT = 48;
+const PUBLIC_EVENT_MATERIALIZATION_DETAIL_LIMIT = 512;
 const PUBLIC_EVENT_MATERIALIZATION_CALENDAR_LIMIT =
   PUBLIC_CALENDAR_MONTH_EVENT_LIMIT * 27;
 
@@ -4438,13 +4455,13 @@ const PUBLIC_EVENT_MATERIALIZATION_CALENDAR_LIMIT =
  * Updater-only projection for durable Home and Events materializations.
  *
  * One materialized public-event CTE reads the complete supported calendar
- * window plus the global Home six and the nearest upcoming event for each
- * supported lane. The returned rows pass the same enrichment and current
- * publication revalidation boundary as every other public surface. The hard
- * calendar cap is intentionally large enough to retain 96 rows in each of
- * the 25 UI-reachable months; the materializer applies the stricter per-month
- * and per-lane bounds before publishing. An overflow rejects the refresh
- * instead of publishing a partial generation.
+ * window, the bounded Home reserve, and every bounded public detail DTO. The
+ * returned rows pass the same enrichment and current publication revalidation
+ * boundary as every other public surface. The hard calendar cap retains 96
+ * rows in each UI-reachable month, while the independent detail cap rejects a
+ * growing catalog instead of silently dropping public routes. The
+ * materializer applies the stricter per-month and payload-size bounds before
+ * atomically publishing all three rows.
  */
 export async function queryPublicEventMaterializationBundle(
   database: Pick<D1DatabaseLike, "prepare">,
@@ -4500,16 +4517,33 @@ export async function queryPublicEventMaterializationBundle(
               public_lane_ordinal = 1
               AND lane_slug IN (?, ?, ?, ?)
             )
+       ),
+       materialization_details AS (
+         SELECT public_event.*,
+                row_number() OVER (
+                  ORDER BY ${upcomingOrder}
+                ) AS public_result_ordinal
+         FROM materialization_public_events AS public_event
+         ORDER BY ${upcomingOrder}
+         LIMIT ?
        )
        SELECT 'calendar' AS public_result_kind,
               public_event.public_result_ordinal,
-              ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
+              ${PUBLIC_EVENT_CARD_COLUMNS_SQL},
+              ${PUBLIC_EVENT_EMPTY_DETAIL_COLUMNS_SQL}
        FROM materialization_calendar AS public_event
        UNION ALL
        SELECT 'upcoming' AS public_result_kind,
               public_event.public_result_ordinal,
-              ${PUBLIC_EVENT_CARD_COLUMNS_SQL}
+              ${PUBLIC_EVENT_CARD_COLUMNS_SQL},
+              ${PUBLIC_EVENT_EMPTY_DETAIL_COLUMNS_SQL}
        FROM materialization_upcoming AS public_event
+       UNION ALL
+       SELECT 'detail' AS public_result_kind,
+              public_event.public_result_ordinal,
+              ${PUBLIC_EVENT_CARD_COLUMNS_SQL},
+              ${PUBLIC_EVENT_DETAIL_COLUMNS_SQL}
+       FROM materialization_details AS public_event
        ORDER BY public_result_kind, public_result_ordinal`,
     )
     .bind(
@@ -4520,6 +4554,7 @@ export async function queryPublicEventMaterializationBundle(
       PUBLIC_EVENT_MATERIALIZATION_CALENDAR_LIMIT + 1,
       ...upcomingFilter.bindings,
       ...laneBindings,
+      PUBLIC_EVENT_MATERIALIZATION_DETAIL_LIMIT + 1,
     )
     .all<Record<string, unknown>>();
   assertSuccessfulResult(result);
@@ -4538,8 +4573,18 @@ export async function queryPublicEventMaterializationBundle(
   const upcomingRows = rows.filter(
     (row) => row.public_result_kind === "upcoming",
   );
+  const detailRows = rows.filter(
+    (row) => row.public_result_kind === "detail",
+  );
+  if (detailRows.length > PUBLIC_EVENT_MATERIALIZATION_DETAIL_LIMIT) {
+    throw new SafeApplicationError(
+      "service_unavailable",
+      503,
+      "The public event-detail materialization exceeds its safe row limit.",
+    );
+  }
   const uniqueRows = new Map<string, Record<string, unknown>>();
-  for (const row of [...calendarRows, ...upcomingRows]) {
+  for (const row of [...calendarRows, ...upcomingRows, ...detailRows]) {
     uniqueRows.set(publicEventResultIdentity(row), row);
   }
   const enrichedRows = await enrichPublicEventRows(
@@ -4547,6 +4592,18 @@ export async function queryPublicEventMaterializationBundle(
     calendar.organizationId,
     [...uniqueRows.values()],
   );
+  const enrichedRowByIdentity = new Map(
+    enrichedRows.map((row) => [publicEventResultIdentity(row), row]),
+  );
+  if (
+    enrichedRows.length !== uniqueRows.size ||
+    enrichedRowByIdentity.size !== uniqueRows.size ||
+    [...uniqueRows.keys()].some(
+      (identity) => !enrichedRowByIdentity.has(identity),
+    )
+  ) {
+    invalidProjection();
+  }
   const eventByIdentity = new Map(
     enrichedRows.map((row) => [
       publicEventResultIdentity(row),
@@ -4557,13 +4614,23 @@ export async function queryPublicEventMaterializationBundle(
     sourceRows: readonly Record<string, unknown>[],
   ): readonly PublicEventCardDto[] =>
     Object.freeze(
-      sourceRows.flatMap((row) => {
+      sourceRows.map((row) => {
         const event = eventByIdentity.get(publicEventResultIdentity(row));
-        return event ? [event] : [];
+        if (!event) return invalidProjection();
+        return event;
       }),
     );
   return Object.freeze({
     calendarEvents: eventsFor(calendarRows),
+    eventDetails: Object.freeze(
+      detailRows.map((row) => {
+        const enriched = enrichedRowByIdentity.get(
+          publicEventResultIdentity(row),
+        );
+        if (!enriched) return invalidProjection();
+        return toPublicEventDetailDto(enriched);
+      }),
+    ),
     upcomingEvents: eventsFor(upcomingRows),
   });
 }

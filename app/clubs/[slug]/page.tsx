@@ -8,22 +8,22 @@ import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import {
-  getPublicClubBySlug,
-  getPublicSiteContext,
-  getPublicSlugRedirect,
   listPublicProgramsForClub,
-  resolvePublicOrganization,
   type PublicClubDto,
 } from "@/lib/server/public/catalog";
-import {
-  queryPublicEvents,
-} from "@/lib/server/public/events";
 import {
   resolveMediaAssetsForRendering,
   type ResponsiveMediaAssetDto,
 } from "@/lib/server/media/usage";
 import { buildPublicPageMetadata } from "@/lib/server/public/metadata";
 import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
+import {
+  getRequestPublicClubBySlug,
+  getRequestPublicClubEventViewMaterialization,
+  getRequestPublicOrganization,
+  getRequestPublicSiteContext,
+  getRequestPublicSlugRedirect,
+} from "@/lib/server/public/request-cache";
 import {
   DEFAULT_TIME_ZONE,
   calendarDateInTimeZone,
@@ -133,7 +133,7 @@ async function loadProgramThumbnailMedia(
   if (assetIds.length === 0) return new Map();
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (!organization) return new Map();
     const media = await resolveMediaAssetsForRendering(database, {
       organizationId: organization.id,
@@ -163,7 +163,7 @@ async function loadClubCoverMedia(
   if (!club.coverAssetId) return null;
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (!organization) return null;
     const media = await resolveMediaAssetsForRendering(database, {
       organizationId: organization.id,
@@ -193,8 +193,8 @@ async function loadClubMetadataContext(
   try {
     const { database } = getRuntimeAuthConfiguration();
     const [organization, site] = await Promise.all([
-      resolvePublicOrganization(database),
-      getPublicSiteContext(database),
+      getRequestPublicOrganization(database),
+      getRequestPublicSiteContext(database),
     ]);
     if (!organization) return null;
     const media = await resolveMediaAssetsForRendering(database, {
@@ -251,9 +251,9 @@ async function loadPublicClub(
 > {
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const club = await getPublicClubBySlug(database, slug);
+    const club = await getRequestPublicClubBySlug(database, slug);
     if (club) return Object.freeze({ club, kind: "available" as const });
-    const redirect = await getPublicSlugRedirect(database, {
+    const redirect = await getRequestPublicSlugRedirect(database, {
       entityType: "club_public_profile",
       fromSlug: slug,
     });
@@ -277,7 +277,7 @@ async function loadClubEvents(
 ): Promise<ClubDetailEventsState> {
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (!organization) {
       return Object.freeze({ kind: "unavailable" as const });
     }
@@ -286,30 +286,23 @@ async function loadClubEvents(
       nowUtcMs,
       DEFAULT_TIME_ZONE,
     );
-    const [upcoming, past] = await Promise.all([
-      queryPublicEvents(database, {
+    const materialized = await getRequestPublicClubEventViewMaterialization(
+      database,
+      {
         clubSlug: club.slug,
         nowUtcMs,
         organizationId: organization.id,
-        page: 1,
         pageSize: 6,
         todayDate,
-        view: "upcoming",
-      }),
-      queryPublicEvents(database, {
-        clubSlug: club.slug,
-        nowUtcMs,
-        organizationId: organization.id,
-        page: 1,
-        pageSize: 6,
-        todayDate,
-        view: "past",
-      }),
-    ]);
+      },
+    );
+    if (!materialized) {
+      return Object.freeze({ kind: "unavailable" as const });
+    }
     return Object.freeze({
       kind: "available" as const,
-      past,
-      upcoming,
+      past: materialized.past,
+      upcoming: materialized.upcoming,
     });
   } catch {
     writeSafeLog("error", "public_club_events_unavailable", {

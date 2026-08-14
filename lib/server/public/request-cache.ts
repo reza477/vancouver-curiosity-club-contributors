@@ -1,8 +1,11 @@
 import { cacheForRequest } from "vinext/cache";
 import type { D1DatabaseLike } from "../auth";
 import {
+  getPublicClubBySlug,
   getPublicPageContent,
+  getPublicProgramBySlugs,
   getPublicSiteContext,
+  getPublicSlugRedirect,
   listPublicClubs,
   listPublicCommunityLinks,
   listPublicLanes,
@@ -10,18 +13,35 @@ import {
   resolvePublicOrganization,
   type PublicCatalogDto,
 } from "./catalog";
+import { getPublicEventBySlug } from "./events";
+import {
+  readPublicClubEventViewMaterialization,
+  readPublicEventDetailViewMaterialization,
+} from "./event-materializations";
 
 type PublicDatabase = Pick<D1DatabaseLike, "prepare">;
 
 type PublicRequestCache = Readonly<{
   catalog: Map<string, Promise<PublicCatalogDto | null>>;
+  clubDetails: Map<string, ReturnType<typeof getPublicClubBySlug>>;
+  clubEventViews: Map<
+    string,
+    ReturnType<typeof readPublicClubEventViewMaterialization>
+  >;
   clubs: Map<string, ReturnType<typeof listPublicClubs>>;
   communityLinks: Map<string, ReturnType<typeof listPublicCommunityLinks>>;
   lanes: Map<string, ReturnType<typeof listPublicLanes>>;
   navigation: Map<string, ReturnType<typeof listPublicNavigation>>;
   organization: Map<string, ReturnType<typeof resolvePublicOrganization>>;
   pages: Map<string, ReturnType<typeof getPublicPageContent>>;
+  programDetails: Map<string, ReturnType<typeof getPublicProgramBySlugs>>;
   siteContext: Map<string, ReturnType<typeof getPublicSiteContext>>;
+  eventDetails: Map<string, ReturnType<typeof getPublicEventBySlug>>;
+  eventMaterializedViews: Map<
+    string,
+    ReturnType<typeof readPublicEventDetailViewMaterialization>
+  >;
+  slugRedirects: Map<string, ReturnType<typeof getPublicSlugRedirect>>;
 }>;
 
 const requestDatabaseCaches = cacheForRequest(
@@ -34,6 +54,12 @@ function requestDatabaseCache(database: PublicDatabase): PublicRequestCache {
   if (existing) return existing;
   const created = Object.freeze({
     catalog: new Map<string, Promise<PublicCatalogDto | null>>(),
+    clubDetails:
+      new Map<string, ReturnType<typeof getPublicClubBySlug>>(),
+    clubEventViews: new Map<
+      string,
+      ReturnType<typeof readPublicClubEventViewMaterialization>
+    >(),
     clubs: new Map<string, ReturnType<typeof listPublicClubs>>(),
     communityLinks:
       new Map<string, ReturnType<typeof listPublicCommunityLinks>>(),
@@ -42,8 +68,18 @@ function requestDatabaseCache(database: PublicDatabase): PublicRequestCache {
     organization:
       new Map<string, ReturnType<typeof resolvePublicOrganization>>(),
     pages: new Map<string, ReturnType<typeof getPublicPageContent>>(),
+    programDetails:
+      new Map<string, ReturnType<typeof getPublicProgramBySlugs>>(),
     siteContext:
       new Map<string, ReturnType<typeof getPublicSiteContext>>(),
+    eventDetails:
+      new Map<string, ReturnType<typeof getPublicEventBySlug>>(),
+    eventMaterializedViews: new Map<
+      string,
+      ReturnType<typeof readPublicEventDetailViewMaterialization>
+    >(),
+    slugRedirects:
+      new Map<string, ReturnType<typeof getPublicSlugRedirect>>(),
   });
   caches.set(database, created);
   return created;
@@ -146,5 +182,97 @@ export function getRequestPublicPageContent(
 ) {
   return remember(requestDatabaseCache(database).pages, slug, () =>
     getPublicPageContent(database, slug),
+  );
+}
+
+export function getRequestPublicEventBySlug(
+  database: PublicDatabase,
+  input: Readonly<{ organizationId: string; slug: string }>,
+) {
+  const key = JSON.stringify([input.organizationId, input.slug]);
+  return remember(requestDatabaseCache(database).eventDetails, key, () =>
+    getPublicEventBySlug(database, input),
+  );
+}
+
+export function getRequestPublicEventDetailViewMaterialization(
+  database: PublicDatabase,
+  input: Readonly<{
+    limit?: number;
+    nowUtcMs: number;
+    organizationId: string;
+    slug: string;
+    todayDate: string;
+  }>,
+) {
+  // `nowUtcMs` intentionally is not part of this request-local key. Metadata
+  // and the page renderer can sample the clock a few milliseconds apart, but
+  // must share the same immutable snapshot read and related-event decision.
+  const key = JSON.stringify([
+    input.organizationId,
+    input.slug,
+    input.todayDate,
+    input.limit ?? 3,
+  ]);
+  return remember(
+    requestDatabaseCache(database).eventMaterializedViews,
+    key,
+    () => readPublicEventDetailViewMaterialization(database, input),
+  );
+}
+
+export function getRequestPublicClubEventViewMaterialization(
+  database: PublicDatabase,
+  input: Readonly<{
+    clubSlug: string;
+    nowUtcMs: number;
+    organizationId: string;
+    pageSize?: number;
+    programSlug?: string;
+    todayDate: string;
+  }>,
+) {
+  const key = JSON.stringify([
+    input.organizationId,
+    input.clubSlug,
+    input.programSlug ?? null,
+    input.todayDate,
+    input.pageSize ?? 6,
+  ]);
+  return remember(requestDatabaseCache(database).clubEventViews, key, () =>
+    readPublicClubEventViewMaterialization(database, input),
+  );
+}
+
+export function getRequestPublicClubBySlug(
+  database: PublicDatabase,
+  slug: string,
+) {
+  return remember(requestDatabaseCache(database).clubDetails, slug, () =>
+    getPublicClubBySlug(database, slug),
+  );
+}
+
+export function getRequestPublicProgramBySlugs(
+  database: PublicDatabase,
+  clubSlug: string,
+  programSlug: string,
+) {
+  const key = JSON.stringify([clubSlug, programSlug]);
+  return remember(requestDatabaseCache(database).programDetails, key, () =>
+    getPublicProgramBySlugs(database, clubSlug, programSlug),
+  );
+}
+
+export function getRequestPublicSlugRedirect(
+  database: PublicDatabase,
+  input: Readonly<{
+    entityType: "club_public_profile" | "page" | "program_public_profile";
+    fromSlug: string;
+  }>,
+) {
+  const key = JSON.stringify([input.entityType, input.fromSlug]);
+  return remember(requestDatabaseCache(database).slugRedirects, key, () =>
+    getPublicSlugRedirect(database, input),
   );
 }

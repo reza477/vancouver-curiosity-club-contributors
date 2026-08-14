@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
 import {
   buildEditorialMetadata,

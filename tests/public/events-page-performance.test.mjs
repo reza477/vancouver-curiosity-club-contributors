@@ -53,7 +53,7 @@ test("Events delegates its calendar to one indexed materialization loader", asyn
   );
 });
 
-test("public event discovery prefetches navigation and shows a pending state", async () => {
+test("public event discovery disables speculative work and shows a pending state", async () => {
   const pathsWithDirectEventLinks = [
     "app/page.tsx",
     "app/about/page.tsx",
@@ -71,22 +71,15 @@ test("public event discovery prefetches navigation and shows a pending state", a
     })),
   );
   for (const { path, source } of directSources) {
-    assert.doesNotMatch(
+    assert.match(
       source,
-      /prefetch=\{false\}/u,
-      `${path} must not opt public links out of prefetching`,
+      /import \{ PublicRouteLink as Link \} from ["']@\/app\/_components\/PublicRouteLink["'];/u,
+      `${path} must apply the selective public-route prefetch policy`,
     );
     const eventLinks = (source.match(/<Link\b[\s\S]*?>/gu) ?? []).filter(
       (link) => /\/events/u.test(link),
     );
     assert.ok(eventLinks.length > 0, `${path} must expose an Events link`);
-    for (const link of eventLinks) {
-      assert.doesNotMatch(
-        link,
-        /prefetch=\{false\}/u,
-        `${path} must allow the public Events route to prefetch`,
-      );
-    }
   }
 
   const [header, footer, calendar, breadcrumbs, loading] =
@@ -111,21 +104,21 @@ test("public event discovery prefetches navigation and shows a pending state", a
     ]);
   assert.match(
     header,
-    /prefetchInternalLinks = true[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
+    /PublicRouteLink as Link[\s\S]*?prefetchInternalLinks = true[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
   );
   assert.match(
     footer,
-    /prefetchInternalLinks = true[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
+    /PublicRouteLink as Link[\s\S]*?prefetchInternalLinks = true[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
   );
-  assert.doesNotMatch(
+  assert.match(
     calendar,
-    /prefetch=\{false\}/u,
-    "month and selected-event links must allow public prefetching",
+    /PublicRouteLink as Link/u,
+    "month and selected-event links must use the expensive-route policy",
   );
-  assert.doesNotMatch(
+  assert.match(
     breadcrumbs,
-    /prefetch=\{false\}|startsWith\("\/events"\)/u,
-    "event breadcrumbs must allow public prefetching",
+    /PublicRouteLink as Link/u,
+    "event breadcrumbs must use the expensive-route policy",
   );
   assert.match(loading, /aria-busy="true"/u);
   assert.match(loading, /role="status"/u);

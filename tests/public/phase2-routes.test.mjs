@@ -256,8 +256,8 @@ test("public editorial surfaces use D1 readers without dead forms or discussion 
 
   assert.match(joined, /getPublicPageContent|loadEditorialPage/u);
   assert.match(joined, /listPublicCommunityLinks|loadCommunityDestinations/u);
-  assert.match(joined, /getPublicClubBySlug/u);
-  assert.match(joined, /queryPublicEvents/u);
+  assert.match(joined, /getRequestPublicClubBySlug/u);
+  assert.match(joined, /getRequestPublicClubEventViewMaterialization/u);
   assert.match(joined, /notFound\(\)/u);
   assert.doesNotMatch(joined, /<form\b/iu);
   assert.doesNotMatch(joined, /discussion(?:\s+board|\s+forum|\s+link)?/iu);

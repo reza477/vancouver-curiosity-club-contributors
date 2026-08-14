@@ -21,10 +21,12 @@ generation.
 
 After a terminal all-current result, the updater runs one bounded unified
 public-event projection. It validates and atomically promotes a durable Home
-event rail and the full supported Events-calendar window. Home and Events
-visitor loaders perform indexed reads of that last-known-good materialization;
-they cannot call the Meetup importer, run the heavy public-event projection,
-or write a replacement snapshot.
+event rail, the full supported Events-calendar/club-card window, and a bounded
+public event-detail dataset. Home, Events, event-detail, Club, and Program
+visitor loaders perform indexed reads of those last-known-good
+materializations; related and club/program rails are derived in memory. They
+cannot call the Meetup importer, run the heavy public-event projection, or
+write a replacement snapshot.
 
 ## Reporting and failure behavior
 

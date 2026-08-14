@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import type { CSSProperties } from "react";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
 import { ClubEventList } from "@/app/_components/ClubEventList";

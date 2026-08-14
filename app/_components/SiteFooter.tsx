@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 type ExternalLink = Readonly<{

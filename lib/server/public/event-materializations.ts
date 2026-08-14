@@ -19,6 +19,8 @@ import type {
 import {
   queryPublicEventMaterializationBundle,
   type PublicEventCardDto,
+  type PublicEventDetailDto,
+  type PublicEventPageDto,
 } from "./events";
 import type {
   PublicEventsClubOption,
@@ -26,6 +28,7 @@ import type {
 } from "./events-page";
 import {
   parsePublicEventCardList,
+  parsePublicEventDetailList,
 } from "./event-calendar-snapshot";
 import { resolvePublicOrganization } from "./catalog";
 import { vancouverCalendarDate } from "./date";
@@ -38,12 +41,17 @@ import {
 } from "../../validation";
 import { parseCalendarDate } from "../../time";
 
+// Adding a new physical surface is backward-compatible with the existing
+// Home/Events envelopes. Keeping their version stable lets an already-warm
+// deployment continue serving those rows while the protected updater creates
+// the first detail row.
 const MATERIALIZATION_SCHEMA_VERSION = 1;
 const MATERIALIZATION_KEY_PREFIX = "public-event-materializations";
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const MAX_MATERIALIZATION_BYTES = 1_000_000;
 const MAX_EVENTS_PER_MONTH = 96;
 const MAX_HOME_EVENTS = 48;
+const MAX_DETAIL_EVENTS = 512;
 const DEFAULT_HOME_EVENT_READ_LIMIT = 6;
 const MATERIALIZED_MONTH_BUFFER = 1;
 const PUBLIC_MONTH_COUNT = 25;
@@ -65,6 +73,7 @@ export type RefreshPublicEventMaterializationsInput = Readonly<{
 }>;
 
 export type RefreshPublicEventMaterializationsResult = Readonly<{
+  eventDetailCount: number;
   eventsSnapshotCount: number;
   homeEventCount: number;
 }>;
@@ -88,6 +97,25 @@ type HomeEventMaterializationEnvelope = Readonly<{
   upcomingEvents: readonly PublicEventCardDto[];
 }>;
 
+type EventDetailMaterializationEnvelope = Readonly<{
+  eventDetails: readonly PublicEventDetailDto[];
+  generatedAtUtcMs: number;
+  schemaVersion: number;
+}>;
+
+export type PublicEventDetailMaterializedView =
+  | Readonly<{
+      event: PublicEventDetailDto;
+      kind: "available";
+      related: readonly PublicEventCardDto[];
+    }>
+  | Readonly<{ kind: "missing" }>;
+
+export type PublicClubEventMaterializedView = Readonly<{
+  past: PublicEventPageDto;
+  upcoming: PublicEventPageDto;
+}>;
+
 const READ_MATERIALIZATION_SQL = String.raw`
 SELECT snapshot_json
 FROM public_event_calendar_snapshots
@@ -104,12 +132,26 @@ INSERT INTO public_event_calendar_snapshots (
   created_at,
   updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?)
+SELECT ?, ?, ?, ?, ?, ?
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM public_event_calendar_snapshots AS newer_materialization
+  WHERE newer_materialization.organization_id = ?
+    AND newer_materialization.cache_key IN (?, ?, ?)
+    AND newer_materialization.updated_at > ?
+)
 ON CONFLICT(cache_key) DO UPDATE SET
   organization_id = excluded.organization_id,
   snapshot_json = excluded.snapshot_json,
   expires_at = excluded.expires_at,
-  updated_at = excluded.updated_at`;
+  updated_at = excluded.updated_at
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM public_event_calendar_snapshots AS newer_materialization
+  WHERE newer_materialization.organization_id = excluded.organization_id
+    AND newer_materialization.cache_key IN (?, ?, ?)
+    AND newer_materialization.updated_at > excluded.updated_at
+)`;
 
 /**
  * Projects one bounded public-event dataset, validates every derived public
@@ -177,13 +219,30 @@ export async function refreshPublicEventMaterializations(
     schemaVersion: MATERIALIZATION_SCHEMA_VERSION,
     upcomingEvents: normalizedUpcoming.slice(0, MAX_HOME_EVENTS),
   });
+  if (!Array.isArray(projected.eventDetails)) {
+    throw new Error(
+      "The public event-detail projection was not supplied safely.",
+    );
+  }
+  const detailEnvelope = validatedDetailEnvelope({
+    eventDetails: projected.eventDetails,
+    generatedAtUtcMs: nowUtcMs,
+    schemaVersion: MATERIALIZATION_SCHEMA_VERSION,
+  });
+  assertCardSurfacesHaveMatchingDetails(
+    [...envelope.calendarEvents, ...homeEnvelope.upcomingEvents],
+    detailEnvelope.eventDetails,
+  );
   assertEveryDerivedSurfaceIsBounded(envelope);
   const snapshotJson = JSON.stringify(envelope);
   const homeSnapshotJson = JSON.stringify(homeEnvelope);
+  const detailSnapshotJson = JSON.stringify(detailEnvelope);
   if (
     new TextEncoder().encode(snapshotJson).byteLength >
     MAX_MATERIALIZATION_BYTES ||
     new TextEncoder().encode(homeSnapshotJson).byteLength >
+      MAX_MATERIALIZATION_BYTES ||
+    new TextEncoder().encode(detailSnapshotJson).byteLength >
       MAX_MATERIALIZATION_BYTES
   ) {
     throw new Error("The public event materialization is too large.");
@@ -191,33 +250,201 @@ export async function refreshPublicEventMaterializations(
 
   const cacheKey = materializationKey(organizationId, "events");
   const homeCacheKey = materializationKey(organizationId, "home");
-  const results = await database.batch([
-    database
-      .prepare(UPSERT_MATERIALIZATION_SQL)
-      .bind(
-        cacheKey,
-        organizationId,
-        snapshotJson,
-        MAX_TIMESTAMP,
-        nowUtcMs,
-        nowUtcMs,
-      ),
-    database
-      .prepare(UPSERT_MATERIALIZATION_SQL)
-      .bind(
-        homeCacheKey,
-        organizationId,
-        homeSnapshotJson,
-        MAX_TIMESTAMP,
-        nowUtcMs,
-        nowUtcMs,
-      ),
-  ]);
-  assertSuccessfulWrites(results);
+  const detailCacheKey = materializationKey(organizationId, "details");
+  const materializationKeys = [cacheKey, homeCacheKey, detailCacheKey] as const;
+  const results = await database.batch(
+    [
+      [cacheKey, snapshotJson],
+      [homeCacheKey, homeSnapshotJson],
+      [detailCacheKey, detailSnapshotJson],
+    ].map(([surfaceCacheKey, surfaceJson]) =>
+      database
+        .prepare(UPSERT_MATERIALIZATION_SQL)
+        .bind(
+          surfaceCacheKey,
+          organizationId,
+          surfaceJson,
+          MAX_TIMESTAMP,
+          nowUtcMs,
+          nowUtcMs,
+          organizationId,
+          ...materializationKeys,
+          nowUtcMs,
+          ...materializationKeys,
+        ),
+    ),
+  );
+  const promotion = assertSuccessfulWrites(results);
+  if (promotion === "superseded") {
+    const [activeEvents, activeHome, activeDetails] = await Promise.all([
+      readEnvelope(database, organizationId),
+      readHomeEnvelope(database, organizationId),
+      readDetailEnvelope(database, organizationId),
+    ]);
+    if (!activeEvents || !activeHome || !activeDetails) {
+      throw new Error(
+        "The newer public event materialization could not be verified.",
+      );
+    }
+    if (
+      new Set([
+        activeEvents.generatedAtUtcMs,
+        activeHome.generatedAtUtcMs,
+        activeDetails.generatedAtUtcMs,
+      ]).size !== 1
+    ) {
+      throw new Error(
+        "The newer public event materialization was not coherent.",
+      );
+    }
+    return Object.freeze({
+      eventDetailCount: activeDetails.eventDetails.length,
+      eventsSnapshotCount: 1,
+      homeEventCount: activeHome.upcomingEvents.length,
+    });
+  }
 
   return Object.freeze({
+    eventDetailCount: detailEnvelope.eventDetails.length,
     eventsSnapshotCount: 1,
     homeEventCount: homeEnvelope.upcomingEvents.length,
+  });
+}
+
+/** One indexed read supplies both the detail DTO and its bounded related rail. */
+export async function readPublicEventDetailViewMaterialization(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: Readonly<{
+    limit?: number;
+    nowUtcMs: number;
+    organizationId: string;
+    slug: string;
+    todayDate: string;
+  }>,
+): Promise<PublicEventDetailMaterializedView | null> {
+  const organizationId = parseIdentifier(
+    input.organizationId,
+    "eventMaterializations.organizationId",
+  );
+  const slug = parseIdentifier(input.slug, "eventMaterializations.slug");
+  const nowUtcMs = parseFiniteInteger(input.nowUtcMs, {
+    path: "eventMaterializations.nowUtcMs",
+    minimum: 0,
+    maximum: MAX_TIMESTAMP - 1,
+  });
+  const todayDate = parseMaterializationDate(input.todayDate);
+  const limit = parseFiniteInteger(input.limit ?? 3, {
+    path: "eventMaterializations.related.limit",
+    minimum: 1,
+    maximum: 6,
+  });
+  const envelope = await readDetailEnvelope(database, organizationId);
+  if (!envelope) return null;
+  const event = envelope.eventDetails.find(
+    (candidate) => candidate.slug === slug,
+  );
+  if (!event) return Object.freeze({ kind: "missing" as const });
+  const related = event.isCancelled
+    ? []
+    : envelope.eventDetails
+        .filter(
+          (candidate) =>
+            candidate.slug !== event.slug &&
+            (candidate.status === "confirmed" ||
+              candidate.status === "tentative") &&
+            isPublicCalendarEventUpcoming(candidate, nowUtcMs, todayDate) &&
+            (candidate.club.slug === event.club.slug ||
+              (event.category !== null &&
+                candidate.category?.slug === event.category.slug)),
+        )
+        .sort((left, right) => {
+          const clubOrder =
+            Number(right.club.slug === event.club.slug) -
+            Number(left.club.slug === event.club.slug);
+          return clubOrder || comparePublicEventStart(left, right);
+        })
+        .slice(0, limit);
+  return Object.freeze({
+    event,
+    kind: "available" as const,
+    related: Object.freeze(related),
+  });
+}
+
+/** One indexed read derives the bounded Upcoming/Past rails for a club page. */
+export async function readPublicClubEventViewMaterialization(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: Readonly<{
+    clubSlug: string;
+    nowUtcMs: number;
+    organizationId: string;
+    pageSize?: number;
+    programSlug?: string;
+    todayDate: string;
+  }>,
+): Promise<PublicClubEventMaterializedView | null> {
+  const organizationId = parseIdentifier(
+    input.organizationId,
+    "eventMaterializations.organizationId",
+  );
+  const clubSlug = parseIdentifier(
+    input.clubSlug,
+    "eventMaterializations.clubSlug",
+  );
+  const programSlug = input.programSlug
+    ? parseIdentifier(
+        input.programSlug,
+        "eventMaterializations.programSlug",
+      )
+    : null;
+  const nowUtcMs = parseFiniteInteger(input.nowUtcMs, {
+    path: "eventMaterializations.nowUtcMs",
+    minimum: 0,
+    maximum: MAX_TIMESTAMP - 1,
+  });
+  const todayDate = parseMaterializationDate(input.todayDate);
+  const pageSize = parseFiniteInteger(input.pageSize ?? 6, {
+    path: "eventMaterializations.club.pageSize",
+    minimum: 1,
+    maximum: 12,
+  });
+  const detailEnvelope = await readDetailEnvelope(database, organizationId);
+  let events: readonly PublicEventCardDto[];
+  if (detailEnvelope) {
+    events = detailEnvelope.eventDetails;
+  } else {
+    // Backward-compatible first-deploy seam: the existing Events row remains
+    // usable until the protected updater creates the new detail row.
+    const envelope = await readEnvelope(database, organizationId);
+    if (!envelope) return null;
+    const currentMonth = resolvePublicCalendarMonth(undefined, todayDate).month;
+    if (!materializedMonthAvailable(envelope, currentMonth)) return null;
+    events = envelope.calendarEvents;
+  }
+  const matching = events.filter(
+    (event) =>
+      event.club.slug === clubSlug &&
+      (programSlug === null || event.program?.slug === programSlug),
+  );
+  const upcoming = matching
+    .filter(
+      (event) =>
+        (event.status === "confirmed" || event.status === "tentative") &&
+        isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
+    )
+    .sort(comparePublicEventStart);
+  const past = matching
+    .filter(
+      (event) =>
+        (event.status === "confirmed" ||
+          event.status === "tentative" ||
+          event.status === "completed") &&
+        !isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
+    )
+    .sort((left, right) => comparePublicEventStart(right, left));
+  return Object.freeze({
+    past: materializedEventPage(past, "past", pageSize),
+    upcoming: materializedEventPage(upcoming, "upcoming", pageSize),
   });
 }
 
@@ -443,6 +670,37 @@ async function readHomeEnvelope(
   }
 }
 
+async function readDetailEnvelope(
+  database: Pick<D1DatabaseLike, "prepare">,
+  rawOrganizationId: string,
+): Promise<EventDetailMaterializationEnvelope | null> {
+  const organizationId = parseIdentifier(
+    rawOrganizationId,
+    "eventMaterializations.organizationId",
+  );
+  let row: Record<string, unknown> | null;
+  try {
+    row = await database
+      .prepare(READ_MATERIALIZATION_SQL)
+      .bind(materializationKey(organizationId, "details"), organizationId)
+      .first<Record<string, unknown>>();
+  } catch {
+    return null;
+  }
+  if (!row || typeof row.snapshot_json !== "string") return null;
+  if (
+    new TextEncoder().encode(row.snapshot_json).byteLength >
+    MAX_MATERIALIZATION_BYTES
+  ) {
+    return null;
+  }
+  try {
+    return validatedDetailEnvelope(JSON.parse(row.snapshot_json));
+  } catch {
+    return null;
+  }
+}
+
 function validatedEnvelope(value: unknown): EventMaterializationEnvelope {
   const envelope = parseObject(value, "eventMaterialization");
   assertOnlyKeys(
@@ -520,6 +778,87 @@ function validatedHomeEnvelope(
       maximum: MAX_HOME_EVENTS,
       path: "homeEventMaterialization.upcomingEvents",
     }),
+  });
+}
+
+function validatedDetailEnvelope(
+  value: unknown,
+): EventDetailMaterializationEnvelope {
+  const envelope = parseObject(value, "eventDetailMaterialization");
+  assertOnlyKeys(
+    envelope,
+    ["eventDetails", "generatedAtUtcMs", "schemaVersion"],
+    "eventDetailMaterialization",
+  );
+  const eventDetails = parsePublicEventDetailList(envelope.eventDetails, {
+    maximum: MAX_DETAIL_EVENTS,
+    path: "eventDetailMaterialization.eventDetails",
+  });
+  const slugs = new Set(eventDetails.map((event) => event.slug));
+  if (slugs.size !== eventDetails.length) {
+    throw new Error("The public event-detail materialization is ambiguous.");
+  }
+  return Object.freeze({
+    eventDetails,
+    generatedAtUtcMs: parseFiniteInteger(envelope.generatedAtUtcMs, {
+      path: "eventDetailMaterialization.generatedAtUtcMs",
+      minimum: 0,
+      maximum: MAX_TIMESTAMP - 1,
+    }),
+    schemaVersion: parseFiniteInteger(envelope.schemaVersion, {
+      path: "eventDetailMaterialization.schemaVersion",
+      minimum: MATERIALIZATION_SCHEMA_VERSION,
+      maximum: MATERIALIZATION_SCHEMA_VERSION,
+    }),
+  });
+}
+
+function assertCardSurfacesHaveMatchingDetails(
+  cards: readonly PublicEventCardDto[],
+  details: readonly PublicEventDetailDto[],
+): void {
+  const detailBySlug = new Map(
+    details.map((event) => [event.slug, publicEventCardProjection(event)]),
+  );
+  for (const card of cards) {
+    const detailCard = detailBySlug.get(card.slug);
+    if (
+      !detailCard ||
+      JSON.stringify(detailCard) !==
+        JSON.stringify(publicEventCardProjection(card))
+    ) {
+      throw new Error(
+        "The public event-detail projection did not match its card surface.",
+      );
+    }
+  }
+}
+
+function publicEventCardProjection(
+  event: PublicEventCardDto,
+): PublicEventCardDto {
+  return Object.freeze({
+    agePolicyText: event.agePolicyText,
+    arrivalInstructions: event.arrivalInstructions,
+    attendanceMode: event.attendanceMode,
+    artwork: event.artwork,
+    availabilityState: event.availabilityState,
+    capacity: event.capacity,
+    category: event.category,
+    club: event.club,
+    costText: event.costText,
+    isCancelled: event.isCancelled,
+    lane: event.lane,
+    program: event.program,
+    rsvpMode: event.rsvpMode,
+    rsvpUrl: event.rsvpUrl,
+    schedule: event.schedule,
+    slug: event.slug,
+    status: event.status,
+    summary: event.summary,
+    title: event.title,
+    venue: event.venue,
+    waitlistAvailable: event.waitlistAvailable,
   });
 }
 
@@ -638,16 +977,47 @@ function comparePublicEventStart(
   left: PublicEventCardDto,
   right: PublicEventCardDto,
 ): number {
-  const leftStart =
-    left.schedule.kind === "timed"
-      ? left.schedule.startsAtUtc
-      : left.schedule.startDate;
-  const rightStart =
-    right.schedule.kind === "timed"
-      ? right.schedule.startsAtUtc
-      : right.schedule.startDate;
-  return leftStart.localeCompare(rightStart) ||
-    left.slug.localeCompare(right.slug);
+  const startOrder = publicEventStartSortValue(left) -
+    publicEventStartSortValue(right);
+  if (startOrder !== 0) return startOrder;
+  const titleOrder = compareSqliteNoCase(left.title, right.title);
+  return titleOrder || compareBinaryText(left.slug, right.slug);
+}
+
+function publicEventStartSortValue(event: PublicEventCardDto): number {
+  return event.schedule.kind === "timed"
+    ? Date.parse(event.schedule.startsAtUtc)
+    : Date.parse(`${event.schedule.startDate}T12:00:00.000Z`);
+}
+
+// SQLite's built-in NOCASE collation folds ASCII only, then uses binary text
+// order. Match that deterministic tie-break without locale-dependent browser
+// or Worker collation.
+function compareSqliteNoCase(left: string, right: string): number {
+  return compareBinaryText(asciiLower(left), asciiLower(right));
+}
+
+function asciiLower(value: string): string {
+  return value.replace(/[A-Z]/gu, (character) => character.toLowerCase());
+}
+
+function compareBinaryText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function materializedEventPage(
+  events: readonly PublicEventCardDto[],
+  view: "past" | "upcoming",
+  pageSize: number,
+): PublicEventPageDto {
+  return Object.freeze({
+    events: Object.freeze(events.slice(0, pageSize)),
+    hasMore: events.length > pageSize,
+    page: 1,
+    pageSize,
+    totalCount: events.length,
+    view,
+  });
 }
 
 function materializedMonthAvailable(
@@ -662,7 +1032,7 @@ function materializedMonthAvailable(
 
 function materializationKey(
   organizationId: string,
-  surface: "events" | "home",
+  surface: "details" | "events" | "home",
 ): string {
   return JSON.stringify([
     MATERIALIZATION_KEY_PREFIX,
@@ -707,16 +1077,14 @@ function countMonths(fromMonth: string, toMonth: string): number {
 
 function assertSuccessfulWrites(
   results: readonly D1ResultLike[] | undefined,
-): void {
-  if (
-    !results ||
-    results.length !== 2 ||
-    results.some(
-      (result) =>
-        result.success === false ||
-        result.meta?.changes !== 1,
-    )
-  ) {
+): "promoted" | "superseded" {
+  if (!results || results.length !== 3) {
     throw new Error("The public event materialization could not be promoted.");
   }
+  const changes = results.map((result) =>
+    result.success === false ? -1 : result.meta?.changes,
+  );
+  if (changes.every((change) => change === 1)) return "promoted";
+  if (changes.every((change) => change === 0)) return "superseded";
+  throw new Error("The public event materialization could not be promoted.");
 }

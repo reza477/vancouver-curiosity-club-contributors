@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { usePathname } from "next/navigation";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 

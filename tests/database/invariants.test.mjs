@@ -10,6 +10,7 @@ import {
   DATABASE_INVARIANT_TRIGGER_STATEMENTS,
   DATABASE_INVARIANT_VERSION,
   PRE_PHASE7_DATABASE_INVARIANT_TRIGGER_NAMES,
+  PUBLIC_DATABASE_INVARIANT_CERTIFIED_MARKER_STATEMENT_COUNT,
   ensureDatabaseInvariants,
   ensureDatabaseInvariantsForRequest,
   getExpectedDatabaseInvariantFingerprint,
@@ -46,6 +47,7 @@ function newDatabase() {
 function countedBinding(database) {
   let statementCount = 0;
   const batchLengths = [];
+  const preparedSql = [];
 
   function wrap(statement) {
     return {
@@ -76,15 +78,20 @@ function countedBinding(database) {
         return database.batch(statements.map((statement) => statement.inner));
       },
       prepare(sql) {
+        preparedSql.push(sql);
         return wrap(database.prepare(sql));
       },
     },
     counts() {
       return { batchLengths: [...batchLengths], statementCount };
     },
+    preparedSql() {
+      return [...preparedSql];
+    },
     resetCounts() {
       statementCount = 0;
       batchLengths.length = 0;
+      preparedSql.length = 0;
     },
   };
 }
@@ -214,10 +221,10 @@ test("the compile-time invariant fingerprint stays memoized", async () => {
   );
 });
 
-test("healthy public reads reuse five-second readiness while private and mutating requests reverify", async (t) => {
+test("public reads use one certified-marker statement while protected and mutating boundaries fully reverify", async (t) => {
   const database = newDatabase();
   t.after(() => database.close());
-  await ensureInvariantReadiness(database, "public readiness TTL setup");
+  await ensureInvariantReadiness(database, "public certification setup");
 
   const counter = countedBinding(database);
   assert.equal(
@@ -227,41 +234,307 @@ test("healthy public reads reuse five-second readiness while private and mutatin
     }),
     "ready",
   );
-  assert.equal(counter.counts().statementCount, 2);
+  assert.equal(
+    counter.counts().statementCount,
+    PUBLIC_DATABASE_INVARIANT_CERTIFIED_MARKER_STATEMENT_COUNT,
+  );
+  assert.equal(counter.preparedSql().length, 1);
+  assert.match(counter.preparedSql()[0], /database_invariant_state/u);
+  assert.doesNotMatch(counter.preparedSql()[0], /sqlite_(?:master|schema)/u);
 
   counter.resetCounts();
   assert.equal(
     await ensureDatabaseInvariantsForRequest(counter.binding, {
       method: "HEAD",
-      pathname: "/events",
+      pathname: "/events.rsc",
     }),
     "ready",
   );
   assert.equal(
     counter.counts().statementCount,
-    0,
-    "a healthy warm public read must not query D1 again within the TTL",
+    PUBLIC_DATABASE_INVARIANT_CERTIFIED_MARKER_STATEMENT_COUNT,
+    "every public request must observe the durable certification marker",
   );
 
-  counter.resetCounts();
+  for (const request of [
+    { method: "GET", pathname: "/organizer" },
+    { method: "HEAD", pathname: "/organizer/events.rsc" },
+    { method: "GET", pathname: "/api/maintenance/meetup/refresh" },
+    { method: "POST", pathname: "/events" },
+  ]) {
+    counter.resetCounts();
+    assert.equal(
+      await ensureDatabaseInvariantsForRequest(counter.binding, request),
+      "ready",
+    );
+    assert.equal(
+      counter.counts().statementCount,
+      2,
+      `${request.method} ${request.pathname} must fully verify definitions`,
+    );
+    assert.match(counter.preparedSql().join("\n"), /sqlite_master/u);
+  }
+});
+
+test("an overlapping protected request never reuses weaker public marker verification", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await ensureInvariantReadiness(database, "overlapping verification setup");
+  const gate = holdCertifiedMarkerRead(database);
+  t.after(() => gate.release());
+
+  const publicRead = ensureDatabaseInvariantsForRequest(gate.binding, {
+    method: "GET",
+    pathname: "/events",
+  });
+  await gate.markerReadStarted;
+  const protectedRead = ensureDatabaseInvariantsForRequest(gate.binding, {
+    method: "GET",
+    pathname: "/organizer/events",
+  });
+  for (
+    let attempt = 0;
+    attempt < 10 && gate.fullDefinitionReadCount() === 0;
+    attempt += 1
+  ) {
+    await Promise.resolve();
+  }
+  assert.equal(
+    gate.fullDefinitionReadCount(),
+    1,
+    "the protected request must start its own full sqlite_master read",
+  );
+  gate.release();
+  assert.deepEqual(
+    await Promise.all([publicRead, protectedRead]),
+    ["ready", "ready"],
+  );
+});
+
+test("missing or stale public certification repairs fail closed before Worker dispatch", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await ensureInvariantReadiness(database, "public fail-closed setup");
+  const expectedFingerprint =
+    await getExpectedDatabaseInvariantFingerprint();
+
+  for (const corruption of ["missing", "stale"]) {
+    if (corruption === "missing") {
+      database.exec(
+        `DELETE FROM database_invariant_state
+         WHERE singleton_key = '${DATABASE_INVARIANT_MARKER_KEY}'`,
+      );
+    } else {
+      database.exec(
+        `UPDATE database_invariant_state
+         SET trigger_fingerprint = '${"0".repeat(64)}'
+         WHERE singleton_key = '${DATABASE_INVARIANT_MARKER_KEY}'`,
+      );
+    }
+
+    const counter = countedBinding(database);
+    const status = await ensureDatabaseInvariantsForRequest(
+      counter.binding,
+      { method: "GET", pathname: "/events" },
+    );
+    let dispatchedAppQueries = 0;
+    if (status === "ready") {
+      dispatchedAppQueries += 1;
+      await counter.binding.prepare("SELECT 1").first();
+    }
+    assert.equal(status, "repaired", corruption);
+    assert.equal(dispatchedAppQueries, 0, corruption);
+    assertWithinD1StatementCap(counter, `${corruption} public marker repair`);
+    assert.ok(
+      counter.counts().statementCount >
+        PUBLIC_DATABASE_INVARIANT_CERTIFIED_MARKER_STATEMENT_COUNT,
+    );
+    assert.deepEqual(await marker(database), {
+      singleton_key: DATABASE_INVARIANT_MARKER_KEY,
+      trigger_fingerprint: expectedFingerprint,
+      version: DATABASE_INVARIANT_VERSION,
+    });
+
+    const verified = countedBinding(database);
+    assert.equal(
+      await ensureDatabaseInvariantsForRequest(verified.binding, {
+        method: "GET",
+        pathname: "/events",
+      }),
+      "ready",
+    );
+    assert.equal(
+      verified.counts().statementCount,
+      PUBLIC_DATABASE_INVARIANT_CERTIFIED_MARKER_STATEMENT_COUNT,
+    );
+  }
+
+  const workerSource = readFileSync(
+    join(process.cwd(), "worker", "index.ts"),
+    "utf8",
+  );
+  const invariantCheck = workerSource.indexOf(
+    "const invariantStatus = await ensureDatabaseInvariantsForRequest",
+  );
+  assert.match(
+    workerSource,
+    /ensureDatabaseInvariantsForRequest\(env\.DB, \{\s*method: request\.method,\s*pathname: requestPathname,/u,
+  );
+  const repairedGate = workerSource.indexOf(
+    'invariantStatus === "repaired"',
+    invariantCheck,
+  );
+  const handlerDispatch = workerSource.indexOf(
+    "const response = await handler.fetch(",
+    repairedGate,
+  );
+  assert.ok(invariantCheck >= 0);
+  assert.ok(repairedGate > invariantCheck);
+  assert.ok(handlerDispatch > repairedGate);
+});
+
+test("cold public certification converges with explicit statement headroom", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  const attempts = [];
+
+  for (
+    let index = 0;
+    index < MAX_DATABASE_INVARIANT_READY_ATTEMPTS;
+    index += 1
+  ) {
+    const counter = countedBinding(database);
+    const status = await ensureDatabaseInvariantsForRequest(
+      counter.binding,
+      { method: "GET", pathname: "/events" },
+    );
+    assertWithinD1StatementCap(
+      counter,
+      `cold public certification request ${index + 1}`,
+    );
+    attempts.push({ counts: counter.counts(), status });
+    if (status === "ready") break;
+  }
+
+  assert.deepEqual(attempts, [
+    ...Array.from(
+      { length: 6 },
+      () => ({
+        counts: { batchLengths: [38], statementCount: 46 },
+        status: "repaired",
+      }),
+    ),
+    {
+      counts: { batchLengths: [28], statementCount: 36 },
+      status: "repaired",
+    },
+    {
+      counts: { batchLengths: [25], statementCount: 35 },
+      status: "repaired",
+    },
+    {
+      counts: { batchLengths: [], statementCount: 1 },
+      status: "ready",
+    },
+  ]);
+  assert.equal(
+    Math.max(...attempts.map(({ counts }) => counts.statementCount)),
+    46,
+    "cold public repair keeps four statements of D1 headroom",
+  );
+});
+
+test("protected reads repair definition drift even while the public marker is current", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await ensureInvariantReadiness(database, "protected definition setup");
+  database.exec(`
+    DROP TRIGGER events_reservation_guard_before_insert;
+    CREATE TRIGGER events_reservation_guard_before_insert
+    BEFORE INSERT ON events
+    BEGIN
+      SELECT 1;
+    END;
+  `);
+
+  const counter = countedBinding(database);
   assert.equal(
     await ensureDatabaseInvariantsForRequest(counter.binding, {
       method: "GET",
-      pathname: "/organizer",
+      pathname: "/organizer/events",
     }),
-    "ready",
+    "repaired",
   );
-  assert.equal(counter.counts().statementCount, 2);
+  assertWithinD1StatementCap(counter, "protected definition repair");
+  assert.ok(counter.counts().statementCount > 2);
+  assert.match(counter.preparedSql().join("\n"), /sqlite_master/u);
+  assert.deepEqual(
+    await normalizedTriggerDefinitions(database),
+    expectedTriggerDefinitions(),
+  );
+});
 
-  counter.resetCounts();
-  assert.equal(
-    await ensureDatabaseInvariantsForRequest(counter.binding, {
-      method: "POST",
-      pathname: "/events",
-    }),
-    "ready",
+test("stale public certification keeps full definition repair within the D1 cap", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await ensureInvariantReadiness(database, "public full-mismatch setup");
+
+  for (const name of DATABASE_INVARIANT_TRIGGER_NAMES) {
+    database.exec(`
+      DROP TRIGGER "${name}";
+      CREATE TRIGGER "${name}"
+      BEFORE INSERT ON profiles
+      BEGIN
+        SELECT 1;
+      END;
+    `);
+  }
+  database.exec(
+    `DELETE FROM database_invariant_state
+     WHERE singleton_key = '${DATABASE_INVARIANT_MARKER_KEY}'`,
   );
-  assert.equal(counter.counts().statementCount, 2);
+
+  const attempts = [];
+  for (
+    let index = 0;
+    index < MAX_DATABASE_INVARIANT_READY_ATTEMPTS;
+    index += 1
+  ) {
+    const counter = countedBinding(database);
+    const status = await ensureDatabaseInvariantsForRequest(
+      counter.binding,
+      { method: "GET", pathname: "/events" },
+    );
+    assertWithinD1StatementCap(
+      counter,
+      `public full-mismatch request ${index + 1}`,
+    );
+    attempts.push({ counts: counter.counts(), status });
+    if (status === "ready") break;
+  }
+
+  assert.ok(attempts.length >= 2);
+  assert.ok(
+    attempts.slice(0, -1).every(({ status }) => status === "repaired"),
+  );
+  assert.deepEqual(attempts.at(-1), {
+    counts: { batchLengths: [], statementCount: 1 },
+    status: "ready",
+  });
+  assert.ok(
+    attempts.every(
+      ({ counts }) =>
+        counts.statementCount <= DATABASE_INVARIANT_STATEMENT_LIMIT &&
+        counts.batchLengths.every(
+          (length) => length <= DATABASE_INVARIANT_STATEMENT_LIMIT,
+        ),
+    ),
+  );
+  assert.deepEqual(
+    await normalizedTriggerDefinitions(database),
+    expectedTriggerDefinitions(),
+  );
+  assert.ok(await marker(database));
 });
 
 test("empty and twelve-record legacy-attribution upgrades converge to an observed ready request within the D1 cap", async (t) => {
@@ -1946,6 +2219,57 @@ function synchronizeFirstInvariantBatch(database, barrier) {
       return database.batch(statements);
     },
     prepare: (sql) => database.prepare(sql),
+  };
+}
+
+function holdCertifiedMarkerRead(database) {
+  let heldMarkerRead = false;
+  let releaseMarkerRead;
+  let markMarkerReadStarted;
+  let fullDefinitionReads = 0;
+  const markerReadStarted = new Promise((resolve) => {
+    markMarkerReadStarted = resolve;
+  });
+  const markerReadRelease = new Promise((resolve) => {
+    releaseMarkerRead = resolve;
+  });
+
+  function wrap(statement, sql) {
+    return {
+      inner: statement,
+      bind(...values) {
+        return wrap(statement.bind(...values), sql);
+      },
+      async first(...arguments_) {
+        if (
+          !heldMarkerRead &&
+          /SELECT 1 AS certified[\s\S]*database_invariant_state/u.test(sql)
+        ) {
+          heldMarkerRead = true;
+          markMarkerReadStarted();
+          await markerReadRelease;
+        }
+        return statement.first(...arguments_);
+      },
+      all: (...arguments_) => statement.all(...arguments_),
+      run: (...arguments_) => statement.run(...arguments_),
+    };
+  }
+
+  return {
+    binding: {
+      batch: (statements) =>
+        database.batch(statements.map((statement) => statement.inner)),
+      prepare(sql) {
+        if (/FROM sqlite_master\s+WHERE type = 'trigger'/u.test(sql)) {
+          fullDefinitionReads += 1;
+        }
+        return wrap(database.prepare(sql), sql);
+      },
+    },
+    fullDefinitionReadCount: () => fullDefinitionReads,
+    markerReadStarted,
+    release: () => releaseMarkerRead(),
   };
 }
 

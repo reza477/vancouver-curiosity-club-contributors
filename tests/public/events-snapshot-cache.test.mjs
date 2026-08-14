@@ -72,9 +72,10 @@ test("the updater atomically prebuilds DTO-only Home and Events materializations
 
   assert.equal(bundleCalls.length, 1);
   assert.equal(bundleCalls[0].database, database);
+  assert.equal(refreshed.eventDetailCount, 8);
   assert.equal(refreshed.eventsSnapshotCount, 1);
   assert.equal(refreshed.homeEventCount, 8);
-  assert.equal(snapshotCount(database), 2);
+  assert.equal(snapshotCount(database), 3);
   assert.ok(
     snapshotRows(database).every(
       (row) => row.expires_at === 8_640_000_000_000_000,
@@ -168,7 +169,11 @@ test("Upcoming pagination is chronological, filterable, and derived by one visit
     materializationInput(),
     {
       async projectBundle() {
-        return { calendarEvents, upcomingEvents: calendarEvents };
+        return {
+          calendarEvents,
+          eventDetails: calendarEvents.map(publicEventDetailFromCard),
+          upcomingEvents: calendarEvents,
+        };
       },
     },
   );
@@ -247,7 +252,7 @@ test("visitors never cold-project or write when a materialization is absent or i
   assert.equal(snapshotCount(database), 1);
 });
 
-test("failed projections, private DTO drift, and failed promotion preserve the complete last-known-good pair", async (t) => {
+test("failed projections, private DTO drift, and failed promotion preserve the complete last-known-good set", async (t) => {
   const database = await materializationDatabase(t);
   const {
     readPublicHomeEventMaterialization,
@@ -330,7 +335,7 @@ test("failed projections, private DTO drift, and failed promotion preserve the c
   );
 });
 
-test("the production materializer uses one bounded unified projection and two atomic writes", async (t) => {
+test("the production materializer uses one bounded unified projection and three atomic writes", async (t) => {
   const database = await materializationDatabase(t);
   const counter = countStatements(database);
   const { refreshPublicEventMaterializations } = await import(
@@ -343,12 +348,12 @@ test("the production materializer uses one bounded unified projection and two at
   );
 
   assert.equal(counter.materializationProjectionCount(), 1);
-  assert.equal(counter.batchStatementCount(), 2);
+  assert.equal(counter.batchStatementCount(), 3);
   assert.ok(
     counter.executedStatementCount() < 50,
     `the updater used ${counter.executedStatementCount()} D1 statements`,
   );
-  assert.equal(snapshotCount(database), 2);
+  assert.equal(snapshotCount(database), 3);
 });
 
 test("the durable DTO boundary stays separate from dynamic HTML and nonce handling", async () => {
@@ -440,7 +445,29 @@ function publicBundle(version) {
           startsAtUtc: `2026-09-${String(index + 10).padStart(2, "0")}T19:00:00.000Z`,
         }),
   );
-  return { calendarEvents, upcomingEvents };
+  return {
+    calendarEvents,
+    eventDetails: upcomingEvents.map(publicEventDetailFromCard),
+    upcomingEvents,
+  };
+}
+
+function publicEventDetailFromCard(card) {
+  return {
+    ...card,
+    description: null,
+    descriptionBlocks: null,
+    externalMapUrl: null,
+    metaDescription: null,
+    organizers: [],
+    preparationInformation: null,
+    publicAccessNote: null,
+    publicOnlineUrl: null,
+    seoTitle: null,
+    verifiedAccessibilityNotes: null,
+    weatherNote: null,
+    whatToBring: null,
+  };
 }
 
 function publicEventCard(slug, overrides = {}) {

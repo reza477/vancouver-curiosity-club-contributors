@@ -240,12 +240,13 @@ test("Phase 7 export controls keep explicit useful touch targets", () => {
   );
 });
 
-test("public navigation prefetches by default while private previews stay opted out", () => {
+test("public navigation uses selective prefetch while private previews stay opted out", () => {
   const header = source("app", "_components", "SiteHeader.tsx");
   const footer = source("app", "_components", "SiteFooter.tsx");
   const preview = source("app", "_organizer", "PublicPreviewShell.tsx");
 
   assert.match(header, /prefetchInternalLinks = true/u);
+  assert.match(header, /PublicRouteLink as Link/u);
   assert.match(
     header,
     /prefetch=\{prefetchInternalLinks\}/u,
@@ -264,6 +265,7 @@ test("public navigation prefetches by default while private previews stay opted 
     footer,
     /prefetch=\{prefetchInternalLinks\}/u,
   );
+  assert.match(footer, /PublicRouteLink as Link/u);
   assert.match(footer, /prefetchInternalLinks = true/u);
   assert.match(
     footer,

@@ -240,7 +240,6 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
   for (const viewportWidth of [390, 768, 1440]) {
     for (const selector of [
       ".home-hero__poster img",
-      ".event-card__artwork-frame",
       ".event-detail__artwork-frame",
     ]) {
       const ratio = horizontalRatio(
@@ -256,10 +255,7 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
         `${selector} should resolve to a horizontal frame at ${viewportWidth}px`,
       );
     }
-
-
     for (const selector of [
-      ".event-card__artwork--fallback",
       ".event-detail__lead > .event-detail__artwork--fallback",
       ".home-hero__poster--fallback",
     ]) {
@@ -288,7 +284,6 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
     }
 
     for (const selector of [
-      ".event-card__artwork img",
       ".event-detail__artwork img",
       ".home-hero__poster img",
       ".public-calendar-event__artwork img",
@@ -304,6 +299,54 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
         `${selector} must stay uncropped at ${viewportWidth}px`,
       );
     }
+  }
+
+  for (const viewportWidth of [320, 375, 768, 1024, 1440]) {
+    const ratio = horizontalRatio(
+      lastDeclarationAtViewport(
+        styles,
+        ".event-card__artwork-frame",
+        "aspect-ratio",
+        viewportWidth,
+      ),
+    );
+    assert.ok(
+      ratio !== null && ratio >= 1.5,
+      `EventCard artwork should resolve to a horizontal frame at ${viewportWidth}px`,
+    );
+
+    const fallbackRatio = horizontalRatio(
+      lastDeclarationAtViewport(
+        styles,
+        ".event-card__artwork--fallback",
+        "aspect-ratio",
+        viewportWidth,
+      ),
+    );
+    assert.ok(
+      fallbackRatio !== null && fallbackRatio >= 1.5,
+      `EventCard fallback should resolve to a horizontal frame at ${viewportWidth}px`,
+    );
+    assert.equal(
+      lastDeclarationAtViewport(
+        styles,
+        ".event-card__artwork--fallback",
+        "min-height",
+        viewportWidth,
+      ),
+      "0",
+      `EventCard fallback should not retain a portrait-making minimum height at ${viewportWidth}px`,
+    );
+    assert.equal(
+      lastDeclarationAtViewport(
+        styles,
+        ".event-card__artwork img",
+        "object-fit",
+        viewportWidth,
+      ),
+      "contain",
+      `EventCard poster lettering must stay uncropped at ${viewportWidth}px`,
+    );
   }
 
   for (const selector of [

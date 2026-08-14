@@ -10,6 +10,7 @@ import { SafeApplicationError } from "../../validation/server-observability";
 export const MAX_DAILY_MEETUP_REFRESH_PASSES = 1;
 
 type MaterializationCounts = Readonly<{
+  eventDetailCount: number;
   eventsSnapshotCount: number;
   homeEventCount: number;
 }>;
@@ -83,6 +84,10 @@ export async function runDailyMeetupRefresh(
       nowUtcMs: options.nowUtcMs,
     });
     materializations = Object.freeze({
+      eventDetailCount: safeCount(
+        refreshed.eventDetailCount,
+        "eventDetailCount",
+      ),
       eventsSnapshotCount: safeCount(
         refreshed.eventsSnapshotCount,
         "eventsSnapshotCount",

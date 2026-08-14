@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import {
   useMemo,
   useState,

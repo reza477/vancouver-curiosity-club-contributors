@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
 import { EventCard } from "@/app/_components/EventCard";
@@ -7,14 +7,10 @@ import { PublicEventDetailRenderer } from "@/app/_components/PublicEventDetailRe
 import { StructuredData } from "@/app/_components/StructuredData";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
-import {
-  getPublicSiteContext,
-  resolvePublicOrganization,
-} from "@/lib/server/public/catalog";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
 import {
-  getPublicEventBySlug,
   listRelatedPublicEvents,
+  type PublicEventCardDto,
   type PublicEventDetailDto,
 } from "@/lib/server/public/events";
 import { buildPublicEventJsonLd } from "@/lib/server/public/event-structured-data";
@@ -27,6 +23,12 @@ import {
   getTrustedRequestOrigin,
   publicUrl,
 } from "@/lib/server/public/origin";
+import {
+  getRequestPublicEventDetailViewMaterialization,
+  getRequestPublicEventBySlug,
+  getRequestPublicOrganization,
+  getRequestPublicSiteContext,
+} from "@/lib/server/public/request-cache";
 import { InputValidationError } from "@/lib/validation";
 import { usesShippedSocialArtwork } from "@/lib/brand";
 
@@ -76,17 +78,23 @@ export default async function EventDetailPage({
   const loaded = await loadEvent(slug);
   if (!loaded) notFound();
 
-  const { event, organizationId, database, siteName } = loaded;
-  const nowUtcMs = readServerUtcMs();
-  const related = event.isCancelled
+  const {
+    event,
+    organizationId,
+    database,
+    siteName,
+    nowUtcMs,
+    todayDate,
+  } = loaded;
+  const related = loaded.related ?? (event.isCancelled
     ? []
     : await listRelatedPublicEvents(database, {
         organizationId,
         slug: event.slug,
         nowUtcMs,
-        todayDate: vancouverCalendarDate(nowUtcMs),
+        todayDate,
         limit: 3,
-      });
+      }));
   const origin = await getTrustedRequestOrigin();
   const canonicalUrl = origin
     ? publicUrl(`/events/${event.slug}`, origin)
@@ -163,29 +171,54 @@ export default async function EventDetailPage({
 async function loadEvent(slug: string): Promise<{
   database: ReturnType<typeof getRuntimeAuthConfiguration>["database"];
   event: PublicEventDetailDto;
+  nowUtcMs: number;
   organizationId: string;
+  related: readonly PublicEventCardDto[] | null;
   siteName: string | null;
   siteOpenGraphAssetId: string | null;
+  todayDate: string;
   useShippedSocialFallback: boolean;
 } | null> {
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (!organization) return null;
-    const [event, site] = await Promise.all([
-      getPublicEventBySlug(database, {
+    const nowUtcMs = readServerUtcMs();
+    const todayDate = vancouverCalendarDate(nowUtcMs);
+    const [materialized, currentEvent, site] = await Promise.all([
+      getRequestPublicEventDetailViewMaterialization(database, {
+        limit: 3,
+        nowUtcMs,
+        organizationId: organization.id,
+        slug,
+        todayDate,
+      }),
+      getRequestPublicEventBySlug(database, {
         organizationId: organization.id,
         slug,
       }),
-      getPublicSiteContext(database),
+      getRequestPublicSiteContext(database),
     ]);
+    if (!currentEvent) return null;
+    const materializedIsCurrent =
+      materialized?.kind === "available" &&
+      JSON.stringify(materialized.event) === JSON.stringify(currentEvent);
+    const event = materializedIsCurrent
+      ? materialized.event
+      : currentEvent;
     return event
       ? {
           database,
           event,
+          nowUtcMs,
           organizationId: organization.id,
+          related:
+            materializedIsCurrent && materialized.kind === "available"
+              ? materialized.related
+              : null,
           siteName: site?.brandName ?? null,
           siteOpenGraphAssetId: site?.openGraphAssetId ?? null,
+          todayDate,
           useShippedSocialFallback: usesShippedSocialArtwork(site),
         }
       : null;

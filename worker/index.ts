@@ -20,7 +20,10 @@ import {
   canonicalPublicRedirectTarget,
   trustedPublicRequestOrigin,
 } from "../lib/public-domain";
-import { publicAssetCacheControl } from "../lib/public-asset-cache";
+import {
+  publicAssetCacheControl,
+  publicAssetOriginPath,
+} from "../lib/public-asset-cache";
 import {
   createPublicResponseFallback,
   type PublicResponseFallbackFailure,
@@ -543,15 +546,26 @@ const worker = {
     const requestPathname = safeRequestPathname(normalizedPathname);
     const canonicalUrl = new URL(url);
     canonicalUrl.pathname = normalizedPathname;
-    if (normalizedPathname.startsWith("/event-posters/")) {
-      const assetPoster = await env.ASSETS.fetch(request);
-      const poster =
-        assetPoster.status >= 400
-          ? responseWithNoStore(assetPoster)
-          : assetPoster;
+    const assetOriginPath = publicAssetOriginPath({
+      method: request.method,
+      pathname: normalizedPathname,
+    });
+    if (assetOriginPath) {
+      const assetUrl = new URL(request.url);
+      assetUrl.pathname = assetOriginPath;
+      const assetResponse = await env.ASSETS.fetch(
+        new Request(assetUrl, {
+          headers: request.headers,
+          method: request.method,
+        }),
+      );
+      const publicAsset =
+        assetResponse.status >= 400
+          ? responseWithNoStore(assetResponse)
+          : assetResponse;
       return secureResponse(
         request,
-        poster,
+        publicAsset,
         policy,
         normalizedPathname,
       );

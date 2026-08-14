@@ -73,6 +73,8 @@ export async function POST(request: Request): Promise<Response> {
             result.counts.materializations === null
               ? null
               : {
+                  eventDetailCount:
+                    result.counts.materializations.eventDetailCount,
                   eventsSnapshotCount:
                     result.counts.materializations.eventsSnapshotCount,
                   homeEventCount:

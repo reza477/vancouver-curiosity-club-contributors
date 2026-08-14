@@ -36,7 +36,7 @@ export const PRE_PHASE6_DATABASE_INVARIANT_VERSION = 5;
 export const PRE_PHASE7_DATABASE_INVARIANT_VERSION = 6;
 export const DATABASE_INVARIANT_VERSION = 7;
 export const DATABASE_INVARIANT_STATEMENT_LIMIT = 50;
-export const PUBLIC_DATABASE_INVARIANT_READY_TTL_MS = 5_000;
+export const PUBLIC_DATABASE_INVARIANT_CERTIFIED_MARKER_STATEMENT_COUNT = 1;
 
 export type DatabaseInvariantVersion =
   | typeof PRE_PHASE5_DATABASE_INVARIANT_VERSION
@@ -497,8 +497,10 @@ const MAX_EXTERNAL_SCAN = 5_000;
 
 type DatabaseInvariantInitializationEntry = {
   promise: Promise<DatabaseInvariantInitializationStatus>;
-  readyUntilUtcMs: number | null;
+  verificationMode: DatabaseInvariantVerificationMode;
 };
+
+type DatabaseInvariantVerificationMode = "certified-marker" | "full";
 
 const initializationByDatabase = new WeakMap<
   D1DatabaseLike,
@@ -525,19 +527,21 @@ export class DatabaseInvariantError extends Error {
 /**
  * Installs and verifies every database-enforced guard before application code
  * can access D1. Direct callers always revalidate the durable marker and exact
- * sqlite_master definitions; only `ensureDatabaseInvariantsForRequest` may
- * reuse a healthy public-read result for five seconds. The triggers themselves
- * remain the write-time enforcement, and private or mutating requests always
- * bypass the ready-result TTL. Repaired and rejected results are never cached.
+ * sqlite_master definitions. `ensureDatabaseInvariantsForRequest` uses one
+ * exact durable certification-marker read for a public GET/HEAD, while every
+ * private, API, organizer, maintenance, or mutating boundary retains the full
+ * definition verification. Missing or stale certification falls back to the
+ * existing fail-closed repair flow. Only concurrent checks may share an
+ * in-flight result; completed results are never cached across requests.
  */
 export function ensureDatabaseInvariants(
   database: D1DatabaseLike,
   expectedVersion: DatabaseInvariantVersion = DATABASE_INVARIANT_VERSION,
 ): Promise<DatabaseInvariantInitializationStatus> {
-  return ensureDatabaseInvariantsWithReadyCache(
+  return ensureDatabaseInvariantsWithVerification(
     database,
     expectedVersion,
-    false,
+    "full",
   );
 }
 
@@ -547,20 +551,22 @@ export function ensureDatabaseInvariantsForRequest(
   expectedVersion: DatabaseInvariantVersion = DATABASE_INVARIANT_VERSION,
 ): Promise<DatabaseInvariantInitializationStatus> {
   const method = request.method.toUpperCase();
-  const cacheReadyResult =
+  const verificationMode =
     (method === "GET" || method === "HEAD") &&
-    !isPrivateOrIdentityPath(request.pathname);
-  return ensureDatabaseInvariantsWithReadyCache(
+    !isPrivateOrIdentityPath(request.pathname)
+      ? "certified-marker"
+      : "full";
+  return ensureDatabaseInvariantsWithVerification(
     database,
     expectedVersion,
-    cacheReadyResult,
+    verificationMode,
   );
 }
 
-function ensureDatabaseInvariantsWithReadyCache(
+function ensureDatabaseInvariantsWithVerification(
   database: D1DatabaseLike,
   expectedVersion: DatabaseInvariantVersion,
-  cacheReadyResult: boolean,
+  verificationMode: DatabaseInvariantVerificationMode,
 ): Promise<DatabaseInvariantInitializationStatus> {
   const byVersion =
     initializationByDatabase.get(database) ??
@@ -569,11 +575,10 @@ function ensureDatabaseInvariantsWithReadyCache(
     initializationByDatabase.set(database, byVersion);
   }
   const existing = byVersion.get(expectedVersion);
-  if (existing?.readyUntilUtcMs === null) return existing.promise;
   if (
     existing &&
-    cacheReadyResult &&
-    existing.readyUntilUtcMs > Date.now()
+    (verificationMode === "certified-marker" ||
+      existing.verificationMode === "full")
   ) {
     return existing.promise;
   }
@@ -582,7 +587,7 @@ function ensureDatabaseInvariantsWithReadyCache(
   const contract = databaseInvariantContract(expectedVersion);
   const entry: DatabaseInvariantInitializationEntry = {
     promise: Promise.resolve("ready"),
-    readyUntilUtcMs: null,
+    verificationMode,
   };
   const clearInitialization = () => {
     if (byVersion.get(expectedVersion) === entry) {
@@ -590,14 +595,16 @@ function ensureDatabaseInvariantsWithReadyCache(
     }
     if (byVersion.size === 0) initializationByDatabase.delete(database);
   };
-  const initialization = initializeDatabaseInvariants(database, contract).then(
+  const verification =
+    verificationMode === "certified-marker"
+      ? initializeDatabaseInvariantsForCertifiedPublicRead(
+          database,
+          contract,
+        )
+      : initializeDatabaseInvariants(database, contract);
+  const initialization = verification.then(
     (status) => {
-      if (status === "ready" && cacheReadyResult) {
-        entry.readyUntilUtcMs =
-          Date.now() + PUBLIC_DATABASE_INVARIANT_READY_TTL_MS;
-      } else {
-        clearInitialization();
-      }
+      clearInitialization();
       return status;
     },
     (error: unknown) => {
@@ -653,13 +660,47 @@ export function normalizeTriggerDefinition(sql: string): string {
     .replace(/\s+/gu, " ");
 }
 
-async function initializeDatabaseInvariants(
+async function initializeDatabaseInvariantsForCertifiedPublicRead(
   database: D1DatabaseLike,
   contract: DatabaseInvariantContract,
 ): Promise<DatabaseInvariantInitializationStatus> {
   const fingerprint = await getExpectedDatabaseInvariantFingerprint(
     contract.version,
   );
+  const certified = await database
+    .prepare(
+      `SELECT 1 AS certified
+       FROM database_invariant_state
+       WHERE singleton_key = ?
+         AND version = ?
+         AND trigger_fingerprint = ?
+       LIMIT 1`,
+    )
+    .bind(
+      DATABASE_INVARIANT_MARKER_KEY,
+      contract.version,
+      fingerprint,
+    )
+    .first<number>("certified");
+  if (certified === 1) return "ready";
+
+  return initializeDatabaseInvariants(
+    database,
+    contract,
+    fingerprint,
+    PUBLIC_DATABASE_INVARIANT_CERTIFIED_MARKER_STATEMENT_COUNT,
+  );
+}
+
+async function initializeDatabaseInvariants(
+  database: D1DatabaseLike,
+  contract: DatabaseInvariantContract,
+  expectedFingerprint?: string,
+  precedingStatementCount = 0,
+): Promise<DatabaseInvariantInitializationStatus> {
+  const fingerprint =
+    expectedFingerprint ??
+    (await getExpectedDatabaseInvariantFingerprint(contract.version));
   const readiness = await inspectDatabaseInvariantReadiness(
     database,
     fingerprint,
@@ -667,6 +708,9 @@ async function initializeDatabaseInvariants(
   );
   if (readiness.ready) return "ready";
 
+  // A public marker miss has already spent one D1 statement. Reserve that
+  // statement from both repair paths so even pathological definition drift
+  // remains within the same per-invocation ceiling as a direct full check.
   if (
     readiness.markerVersion !== contract.version &&
     (await adoptMissingPhase4ConflictProjections(database))
@@ -721,15 +765,18 @@ async function initializeDatabaseInvariants(
    * Normal cold, missing-trigger, and ordinary mismatch repairs stay in one
    * atomic request. Every intermediate state has no readiness marker.
    */
-  if (dropNames.length + createStatements.length >
-      contract.maxAtomicRepairMutations) {
+  if (
+    dropNames.length + createStatements.length >
+      contract.maxAtomicRepairMutations - precedingStatementCount
+  ) {
     /*
      * More exact guards than a single install+probe+read-back request can
      * safely carry are staged while the durable readiness marker is absent.
      * The Worker returns its fail-closed repair response; the next request
      * completes the remaining definitions and only then writes the marker.
      */
-    const mutationBudget = contract.maxFailClosedDropCount;
+    const mutationBudget =
+      contract.maxFailClosedDropCount - precedingStatementCount;
     const stagedDrops = dropNames.slice(0, mutationBudget);
     const remainingBudget = mutationBudget - stagedDrops.length;
     const stagedCreates = createStatements.slice(0, remainingBudget);

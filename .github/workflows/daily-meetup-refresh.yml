@@ -124,6 +124,9 @@ jobs:
                 counts?.materializations === null
                   ? null
                   : {
+                      eventDetailCount: number(
+                        counts?.materializations?.eventDetailCount,
+                      ),
                       homeEventCount: number(
                         counts?.materializations?.homeEventCount,
                       ),
@@ -253,6 +256,7 @@ jobs:
             `- Rejected: ${rejected}`,
             `- Home snapshot events: ${materializations.homeEventCount}`,
             `- Durable Events datasets: ${materializations.eventsSnapshotCount}`,
+            `- Materialized event details: ${materializations.eventDetailCount}`,
             "- Durable response snapshots: 4 (Home/Events HTML + RSC)",
             `- Durable response bundle bytes: ${snapshotBytes}`,
             "",

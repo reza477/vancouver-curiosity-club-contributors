@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 
 export type BreadcrumbItem = Readonly<{
   href?: string;

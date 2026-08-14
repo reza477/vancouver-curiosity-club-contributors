@@ -728,7 +728,7 @@ test("the shared detail renderer supports a preview-safe discovery mode", async 
     eventPage,
     /<Link href="\/events">\s*All events\s*<\/Link>/u,
   );
-  assert.doesNotMatch(eventPage, /prefetch=\{false\}/u);
+  assert.match(eventPage, /PublicRouteLink as Link/u);
   assert.doesNotMatch(eventPage, /<article className="event-detail">/u);
   assert.doesNotMatch(eventPage, /<ShareControls/u);
 });

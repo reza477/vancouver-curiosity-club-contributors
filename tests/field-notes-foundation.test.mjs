@@ -311,8 +311,9 @@ test("the worker applies a security and noindex header foundation", async () => 
   assert.match(requestPathname, /"\/api"/);
   assert.match(
     requestPathname,
-    /pathname\.startsWith\(`\$\{path\}\/`\)/,
+    /routePathname\.startsWith\(`\$\{path\}\/`\)/,
   );
+  assert.match(requestPathname, /pathname\.endsWith\("\.rsc"\)/u);
   const invariantInitialization = worker.indexOf(
     "await ensureDatabaseInvariantsForRequest(env.DB, {",
   );

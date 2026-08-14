@@ -44,7 +44,6 @@ const localBindingConfig = {
   compatibility_flags: ["nodejs_compat"],
   assets: {
     binding: "ASSETS",
-    run_worker_first: ["/event-posters/*"],
   },
   d1_databases: d1
     ? [

@@ -15,7 +15,13 @@ import {
   PUBLIC_EVENT_ATTENDANCE_MODES,
   type PublicEventArtworkDto,
   type PublicEventCardDto,
+  type PublicEventDetailDto,
+  type PublicEventOrganizerDto,
 } from "@/lib/server/public/events";
+import {
+  meetupDescriptionBlocksToPlainText,
+  validateMeetupDescriptionBlocks,
+} from "@/lib/meetup-event-enrichment";
 import type { PublicMonthCalendarData } from "@/lib/server/public/month-calendar";
 import { parseOfficialMeetupEventUrl } from "@/lib/server/meetup/url";
 import { resolvePublicCalendarMonth } from "@/lib/public-calendar";
@@ -449,38 +455,77 @@ export function parsePublicEventCardList(
   );
 }
 
+export function parsePublicEventDetailList(
+  value: unknown,
+  options: Readonly<{ maximum: number; path: string }>,
+): readonly PublicEventDetailDto[] {
+  const maximum = parseFiniteInteger(options.maximum, {
+    path: `${options.path}.maximum`,
+    minimum: 0,
+    maximum: PUBLIC_EVENTS_MAX_MATERIALIZED_EVENTS,
+  });
+  if (!Array.isArray(value) || value.length > maximum) {
+    throw new Error(
+      `The cached public event details at ${options.path} are invalid.`,
+    );
+  }
+  return Object.freeze(
+    value.map((event, index) =>
+      parseEventDetail(event, index, options.path),
+    ),
+  );
+}
+
+const PUBLIC_EVENT_CARD_KEYS = [
+  "agePolicyText",
+  "arrivalInstructions",
+  "attendanceMode",
+  "artwork",
+  "availabilityState",
+  "capacity",
+  "category",
+  "club",
+  "costText",
+  "isCancelled",
+  "lane",
+  "program",
+  "rsvpMode",
+  "rsvpUrl",
+  "schedule",
+  "slug",
+  "status",
+  "summary",
+  "title",
+  "venue",
+  "waitlistAvailable",
+] as const;
+
+const PUBLIC_EVENT_DETAIL_KEYS = [
+  "description",
+  "descriptionBlocks",
+  "externalMapUrl",
+  "metaDescription",
+  "organizers",
+  "preparationInformation",
+  "publicAccessNote",
+  "publicOnlineUrl",
+  "seoTitle",
+  "verifiedAccessibilityNotes",
+  "weatherNote",
+  "whatToBring",
+] as const;
+
 function parseEventCard(
   value: unknown,
   index: number,
   basePath = "snapshot.data.calendar.events",
+  additionalKeys: readonly string[] = [],
 ): PublicEventCardDto {
   const path = `${basePath}.${index}`;
   const event = parseObject(value, path);
   assertOnlyKeys(
     event,
-    [
-      "agePolicyText",
-      "arrivalInstructions",
-      "attendanceMode",
-      "artwork",
-      "availabilityState",
-      "capacity",
-      "category",
-      "club",
-      "costText",
-      "isCancelled",
-      "lane",
-      "program",
-      "rsvpMode",
-      "rsvpUrl",
-      "schedule",
-      "slug",
-      "status",
-      "summary",
-      "title",
-      "venue",
-      "waitlistAvailable",
-    ],
+    [...PUBLIC_EVENT_CARD_KEYS, ...additionalKeys],
     path,
   );
   if (typeof event.isCancelled !== "boolean") {
@@ -581,6 +626,191 @@ function parseEventCard(
   });
 }
 
+function parseEventDetail(
+  value: unknown,
+  index: number,
+  basePath: string,
+): PublicEventDetailDto {
+  const path = `${basePath}.${index}`;
+  const detail = parseObject(value, path);
+  const card = parseEventCard(
+    value,
+    index,
+    basePath,
+    PUBLIC_EVENT_DETAIL_KEYS,
+  );
+  const description = parseOptionalBoundedString(detail.description, {
+    path: `${path}.description`,
+    maxLength: 20_000,
+  });
+  const descriptionBlocks = parseDescriptionBlocks(
+    detail.descriptionBlocks,
+    description,
+    `${path}.descriptionBlocks`,
+  );
+  return Object.freeze({
+    ...card,
+    description,
+    descriptionBlocks,
+    externalMapUrl: parseOptionalHttpsUrl(
+      detail.externalMapUrl,
+      `${path}.externalMapUrl`,
+    ),
+    metaDescription: parseOptionalBoundedString(detail.metaDescription, {
+      path: `${path}.metaDescription`,
+      maxLength: 160,
+    }),
+    organizers: parseEventOrganizers(
+      detail.organizers,
+      `${path}.organizers`,
+    ),
+    preparationInformation: parseOptionalBoundedString(
+      detail.preparationInformation,
+      { path: `${path}.preparationInformation`, maxLength: 4_000 },
+    ),
+    publicAccessNote: parseOptionalBoundedString(detail.publicAccessNote, {
+      path: `${path}.publicAccessNote`,
+      maxLength: 2_000,
+    }),
+    publicOnlineUrl: parseOptionalHttpsUrl(
+      detail.publicOnlineUrl,
+      `${path}.publicOnlineUrl`,
+    ),
+    seoTitle: parseOptionalBoundedString(detail.seoTitle, {
+      path: `${path}.seoTitle`,
+      maxLength: 60,
+    }),
+    verifiedAccessibilityNotes: parseOptionalBoundedString(
+      detail.verifiedAccessibilityNotes,
+      { path: `${path}.verifiedAccessibilityNotes`, maxLength: 4_000 },
+    ),
+    weatherNote: parseOptionalBoundedString(detail.weatherNote, {
+      path: `${path}.weatherNote`,
+      maxLength: 2_000,
+    }),
+    whatToBring: parseOptionalBoundedString(detail.whatToBring, {
+      path: `${path}.whatToBring`,
+      maxLength: 4_000,
+    }),
+  });
+}
+
+function parseDescriptionBlocks(
+  value: unknown,
+  description: string | null,
+  path: string,
+): PublicEventDetailDto["descriptionBlocks"] {
+  if (value === null) return null;
+  if (description === null) {
+    throw new Error(`The cached event description at ${path} is invalid.`);
+  }
+  const blocks = validateMeetupDescriptionBlocks(value);
+  if (meetupDescriptionBlocksToPlainText(blocks) !== description) {
+    throw new Error(`The cached event description at ${path} is invalid.`);
+  }
+  return blocks;
+}
+
+function parseOptionalHttpsUrl(value: unknown, path: string): string | null {
+  const candidate = parseOptionalBoundedString(value, {
+    path,
+    maxLength: 2_048,
+  });
+  if (candidate === null) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error(`The cached URL at ${path} is invalid.`);
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== ""
+  ) {
+    throw new Error(`The cached URL at ${path} is invalid.`);
+  }
+  return parsed.toString();
+}
+
+function parseEventOrganizers(
+  value: unknown,
+  path: string,
+): readonly PublicEventOrganizerDto[] {
+  if (!Array.isArray(value) || value.length > 24) {
+    throw new Error(`The cached event organizers at ${path} are invalid.`);
+  }
+  return Object.freeze(
+    value.map((candidate, index) => {
+      const organizerPath = `${path}.${index}`;
+      const organizer = parseObject(candidate, organizerPath);
+      assertOnlyKeys(
+        organizer,
+        ["biography", "displayName", "photo"],
+        organizerPath,
+      );
+      const biography = parseOptionalBoundedString(organizer.biography, {
+        path: `${organizerPath}.biography`,
+        maxLength: 800,
+      });
+      const photo = parseOrganizerPhoto(
+        organizer.photo,
+        `${organizerPath}.photo`,
+      );
+      return Object.freeze({
+        ...(biography === null ? {} : { biography }),
+        displayName: parseBoundedString(organizer.displayName, {
+          path: `${organizerPath}.displayName`,
+          maxLength: 120,
+        }),
+        ...(photo === null ? {} : { photo }),
+      });
+    }),
+  );
+}
+
+function parseOrganizerPhoto(
+  value: unknown,
+  path: string,
+): NonNullable<PublicEventOrganizerDto["photo"]> | null {
+  if (value === null || value === undefined) return null;
+  const photo = parseObject(value, path);
+  assertOnlyKeys(
+    photo,
+    ["altText", "credit", "height", "url", "width"],
+    path,
+  );
+  const url = parseBoundedString(photo.url, {
+    path: `${path}.url`,
+    maxLength: 700,
+    trim: false,
+  });
+  if (!/^\/media\/[A-Za-z0-9._~!$&'()*+,;=:@%+-]+\/webp_480$/u.test(url)) {
+    throw new Error(`The cached organizer photo at ${path} is invalid.`);
+  }
+  return Object.freeze({
+    altText: parseBoundedString(photo.altText, {
+      path: `${path}.altText`,
+      maxLength: 300,
+    }),
+    credit: parseBoundedString(photo.credit, {
+      path: `${path}.credit`,
+      maxLength: 300,
+    }),
+    height: parseFiniteInteger(photo.height, {
+      path: `${path}.height`,
+      minimum: 1,
+      maximum: 8_000,
+    }),
+    url,
+    width: parseFiniteInteger(photo.width, {
+      path: `${path}.width`,
+      minimum: 1,
+      maximum: 8_000,
+    }),
+  });
+}
+
 function parseNamedEntity(
   value: unknown,
   path: string,
@@ -634,7 +864,20 @@ function parseVenue(
 ): PublicEventCardDto["venue"] {
   if (value === null) return null;
   const venue = parseObject(value, path);
-  assertOnlyKeys(venue, ["address", "floor", "name", "room"], path);
+  assertOnlyKeys(
+    venue,
+    [
+      "address",
+      "addressCountry",
+      "addressLocality",
+      "addressRegion",
+      "floor",
+      "name",
+      "postalCode",
+      "room",
+    ],
+    path,
+  );
   const floor = parseOptionalBoundedString(venue.floor, {
     path: `${path}.floor`,
     maxLength: 120,
@@ -648,11 +891,43 @@ function parseVenue(
       path: `${path}.address`,
       maxLength: 544,
     }),
+    ...(Object.hasOwn(venue, "addressCountry")
+      ? {
+          addressCountry: parseOptionalBoundedString(venue.addressCountry, {
+            path: `${path}.addressCountry`,
+            maxLength: 80,
+          }),
+        }
+      : {}),
+    ...(Object.hasOwn(venue, "addressLocality")
+      ? {
+          addressLocality: parseOptionalBoundedString(venue.addressLocality, {
+            path: `${path}.addressLocality`,
+            maxLength: 200,
+          }),
+        }
+      : {}),
+    ...(Object.hasOwn(venue, "addressRegion")
+      ? {
+          addressRegion: parseOptionalBoundedString(venue.addressRegion, {
+            path: `${path}.addressRegion`,
+            maxLength: 200,
+          }),
+        }
+      : {}),
     floor,
     name: parseBoundedString(venue.name, {
       path: `${path}.name`,
       maxLength: 250,
     }),
+    ...(Object.hasOwn(venue, "postalCode")
+      ? {
+          postalCode: parseOptionalBoundedString(venue.postalCode, {
+            path: `${path}.postalCode`,
+            maxLength: 32,
+          }),
+        }
+      : {}),
     room,
   });
 }

@@ -1,8 +1,0 @@
-# Hashed build assets stay asset-first. Event posters also keep this static
-# fallback policy, while production routes them through the Worker so its
-# validated one-day policy is authoritative on every successful poster read.
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
-
-/event-posters/*
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800

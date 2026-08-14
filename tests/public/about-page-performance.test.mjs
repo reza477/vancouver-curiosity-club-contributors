@@ -41,7 +41,7 @@ test("About keeps its CMS gate without loading catalog or event projections", as
   assert.match(
     about,
     /<Link\s+className="primary-action"\s+href="\/events">[\s\S]*?See upcoming gatherings[\s\S]*?<\/Link>/u,
-    "About must retain a prefetched direct path to the live Events page",
+    "About must retain a direct path to the live Events page",
   );
 
   assert.doesNotMatch(
@@ -56,7 +56,7 @@ test("About keeps its CMS gate without loading catalog or event projections", as
   );
 });
 
-test("primary navigation prefetches public destinations by default", async () => {
+test("primary navigation applies selective public prefetching", async () => {
   const [header, ...publicRoutes] = await Promise.all([
     readFile(
       new URL("app/_components/SiteHeader.tsx", projectRoot),
@@ -109,22 +109,22 @@ test("primary navigation prefetches public destinations by default", async () =>
   assert.match(
     navigationLinks,
     /prefetch=\{prefetchInternalLinks\}/u,
-    "every public primary destination must use the shared prefetch setting",
+    "every public primary destination must preserve the preview opt-out switch",
   );
   assert.match(
     header,
     /prefetchInternalLinks = true/u,
-    "public primary navigation must default to prefetching",
+    "public primary navigation must default to allowing the route policy",
   );
-  assert.doesNotMatch(
-    navigationLinks,
-    /item\.href !== "\/events"/u,
-    "Events must not be excluded from public navigation prefetching",
+  assert.match(
+    header,
+    /import \{ PublicRouteLink as Link \} from "@\/app\/_components\/PublicRouteLink";/u,
+    "the route policy must decide which primary destinations are expensive",
   );
   assert.match(
     header,
     /className="wordmark"[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
-    "the wordmark and primary links must share the public prefetch default",
+    "the wordmark and primary links must share the preview opt-out switch",
   );
   assert.match(
     header,

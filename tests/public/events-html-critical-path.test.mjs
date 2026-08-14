@@ -17,10 +17,16 @@ test("public reads use vinext request scope across metadata, probes, and renderi
     "D1 promises must be keyed by the exact binding inside one request",
   );
   for (const publicRead of [
+    "clubDetails",
+    "clubEventViews",
+    "eventDetails",
+    "eventMaterializedViews",
     "siteContext",
     "navigation",
     "organization",
     "pages",
+    "programDetails",
+    "slugRedirects",
   ]) {
     assert.match(requestCache, new RegExp(`${publicRead}: Map<`, "u"));
   }
@@ -29,6 +35,270 @@ test("public reads use vinext request scope across metadata, probes, and renderi
     /from "react"/u,
     "React cache is not guaranteed to span vinext's pre-render probe",
   );
+});
+
+test("event and club detail lookups share one D1 read per request", async () => {
+  const [{ createRequestContext, runWithRequestContext }, requestCache] =
+    await Promise.all([
+      import(
+        "../../node_modules/vinext/dist/shims/unified-request-context.js"
+      ),
+      import("../../lib/server/public/request-cache.ts"),
+    ]);
+  const reads = {
+    club: 0,
+    event: 0,
+    materialized: 0,
+    redirect: 0,
+  };
+  const database = {
+    prepare(sql) {
+      if (sql.includes("FROM public_event_calendar_snapshots")) {
+        reads.materialized += 1;
+      } else if (sql.includes("FROM public_events AS public_event")) {
+        reads.event += 1;
+      } else if (sql.includes("FROM public_slug_redirects AS redirect")) {
+        reads.redirect += 1;
+      } else if (sql.includes("AND club.slug = ? LIMIT 1")) {
+        reads.club += 1;
+      } else {
+        assert.fail(`Unexpected detail lookup: ${sql.slice(0, 120)}`);
+      }
+      return {
+        bind() {
+          return this;
+        },
+        async first() {
+          return null;
+        },
+      };
+    },
+  };
+  const eventInput = {
+    organizationId: "organization-1",
+    slug: "event-one",
+  };
+  const redirectInput = {
+    entityType: "club_public_profile",
+    fromSlug: "old-club",
+  };
+  const materializedInput = {
+    nowUtcMs: Date.parse("2026-08-14T18:00:00.000Z"),
+    organizationId: "organization-1",
+    slug: "event-one",
+    todayDate: "2026-08-14",
+  };
+
+  await runWithRequestContext(createRequestContext(), async () => {
+    await Promise.all([
+      requestCache.getRequestPublicEventBySlug(database, eventInput),
+      requestCache.getRequestPublicEventBySlug(database, eventInput),
+      requestCache.getRequestPublicEventDetailViewMaterialization(
+        database,
+        materializedInput,
+      ),
+      requestCache.getRequestPublicEventDetailViewMaterialization(database, {
+        ...materializedInput,
+        nowUtcMs: materializedInput.nowUtcMs + 1,
+      }),
+      requestCache.getRequestPublicClubBySlug(database, "club-one"),
+      requestCache.getRequestPublicClubBySlug(database, "club-one"),
+      requestCache.getRequestPublicSlugRedirect(database, redirectInput),
+      requestCache.getRequestPublicSlugRedirect(database, redirectInput),
+    ]);
+    assert.deepEqual(reads, {
+      club: 1,
+      event: 1,
+      materialized: 1,
+      redirect: 1,
+    });
+  });
+
+  await runWithRequestContext(createRequestContext(), async () => {
+    await Promise.all([
+      requestCache.getRequestPublicEventBySlug(database, eventInput),
+      requestCache.getRequestPublicEventDetailViewMaterialization(
+        database,
+        materializedInput,
+      ),
+      requestCache.getRequestPublicClubBySlug(database, "club-one"),
+      requestCache.getRequestPublicSlugRedirect(database, redirectInput),
+    ]);
+  });
+  assert.deepEqual(
+    reads,
+    { club: 2, event: 2, materialized: 2, redirect: 2 },
+    "a later request must observe newly published event and club state",
+  );
+});
+
+test("program metadata and club/program event view loads deduplicate per request", async () => {
+  const [{ createRequestContext, runWithRequestContext }, requestCache] =
+    await Promise.all([
+      import(
+        "../../node_modules/vinext/dist/shims/unified-request-context.js"
+      ),
+      import("../../lib/server/public/request-cache.ts"),
+    ]);
+  const reads = {
+    materialized: 0,
+    organization: 0,
+    program: 0,
+    redirect: 0,
+    site: 0,
+  };
+  const database = {
+    prepare(sql) {
+      if (sql.includes("FROM public_event_calendar_snapshots")) {
+        reads.materialized += 1;
+      } else if (sql.includes("AND details.public_slug = ?")) {
+        reads.program += 1;
+      } else if (sql.includes("FROM public_slug_redirects AS redirect")) {
+        reads.redirect += 1;
+      } else if (sql.includes("identity_setting.value_json AS identity_json")) {
+        reads.site += 1;
+      } else if (/FROM organizations\s+WHERE slug = \?/u.test(sql)) {
+        reads.organization += 1;
+      } else {
+        assert.fail(`Unexpected program lookup: ${sql.slice(0, 120)}`);
+      }
+      return {
+        bind() {
+          return this;
+        },
+        async first() {
+          return null;
+        },
+      };
+    },
+  };
+  const commonView = {
+    clubSlug: "club-one",
+    nowUtcMs: Date.parse("2026-08-14T18:00:00.000Z"),
+    organizationId: "organization-1",
+    todayDate: "2026-08-14",
+  };
+  const programRedirect = {
+    entityType: "program_public_profile",
+    fromSlug: "old-program",
+  };
+
+  async function readEverySurfaceTwice() {
+    await Promise.all([
+      requestCache.getRequestPublicOrganization(database),
+      requestCache.getRequestPublicOrganization(database),
+      requestCache.getRequestPublicSiteContext(database),
+      requestCache.getRequestPublicSiteContext(database),
+      requestCache.getRequestPublicProgramBySlugs(
+        database,
+        "club-one",
+        "program-one",
+      ),
+      requestCache.getRequestPublicProgramBySlugs(
+        database,
+        "club-one",
+        "program-one",
+      ),
+      requestCache.getRequestPublicSlugRedirect(database, programRedirect),
+      requestCache.getRequestPublicSlugRedirect(database, programRedirect),
+      requestCache.getRequestPublicClubEventViewMaterialization(
+        database,
+        commonView,
+      ),
+      requestCache.getRequestPublicClubEventViewMaterialization(database, {
+        ...commonView,
+        nowUtcMs: commonView.nowUtcMs + 1,
+      }),
+      requestCache.getRequestPublicClubEventViewMaterialization(database, {
+        ...commonView,
+        programSlug: "program-one",
+      }),
+      requestCache.getRequestPublicClubEventViewMaterialization(database, {
+        ...commonView,
+        nowUtcMs: commonView.nowUtcMs + 1,
+        programSlug: "program-one",
+      }),
+    ]);
+  }
+
+  await runWithRequestContext(createRequestContext(), async () => {
+    await readEverySurfaceTwice();
+    assert.deepEqual(reads, {
+      // Each distinct view performs the bounded detail-row read plus the
+      // backward-compatible Events-row fallback when the test database is
+      // empty. Duplicate calls must not double either pair.
+      materialized: 4,
+      organization: 1,
+      program: 1,
+      redirect: 1,
+      site: 1,
+    });
+  });
+
+  await runWithRequestContext(createRequestContext(), async () => {
+    await readEverySurfaceTwice();
+  });
+  assert.deepEqual(
+    reads,
+    {
+      materialized: 8,
+      organization: 2,
+      program: 2,
+      redirect: 2,
+      site: 2,
+    },
+    "a later request must re-read program identity, metadata, and both event views",
+  );
+});
+
+test("event and club detail routes use request-scoped and materialized seams", async () => {
+  const [eventRoute, clubRoute, programRoute] = await Promise.all([
+    readFile(new URL("app/events/[slug]/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/clubs/[slug]/page.tsx", projectRoot), "utf8"),
+    readFile(
+      new URL(
+        "app/clubs/[slug]/programs/[programSlug]/page.tsx",
+        projectRoot,
+      ),
+      "utf8",
+    ),
+  ]);
+  assert.match(eventRoute, /getRequestPublicEventBySlug/u);
+  assert.match(
+    eventRoute,
+    /getRequestPublicEventDetailViewMaterialization/u,
+  );
+  assert.doesNotMatch(eventRoute, /\bgetPublicEventBySlug\b/u);
+  assert.match(clubRoute, /getRequestPublicClubBySlug/u);
+  assert.match(clubRoute, /getRequestPublicSlugRedirect/u);
+  assert.match(clubRoute, /getRequestPublicOrganization/u);
+  assert.match(clubRoute, /getRequestPublicSiteContext/u);
+  assert.match(
+    clubRoute,
+    /getRequestPublicClubEventViewMaterialization/u,
+  );
+  assert.doesNotMatch(clubRoute, /\bgetPublicClubBySlug\b/u);
+  assert.doesNotMatch(clubRoute, /\bgetPublicSlugRedirect\b/u);
+  assert.doesNotMatch(
+    clubRoute,
+    /\breadPublicClubEventViewMaterialization\b/u,
+  );
+  assert.doesNotMatch(clubRoute, /\bqueryPublicEvents\b/u);
+  assert.match(programRoute, /getRequestPublicProgramBySlugs/u);
+  assert.match(programRoute, /getRequestPublicSlugRedirect/u);
+  assert.match(programRoute, /getRequestPublicOrganization/u);
+  assert.match(programRoute, /getRequestPublicSiteContext/u);
+  assert.match(
+    programRoute,
+    /getRequestPublicClubEventViewMaterialization/u,
+  );
+  assert.doesNotMatch(programRoute, /\bgetPublicProgramBySlugs\b/u);
+  assert.doesNotMatch(programRoute, /\bgetPublicSlugRedirect\b/u);
+  assert.doesNotMatch(
+    programRoute,
+    /\breadPublicClubEventViewMaterialization\b/u,
+  );
+  assert.doesNotMatch(programRoute, /\bqueryPublicEvents\b/u);
 });
 
 test("Events metadata starts independent page and supporting reads together", async () => {

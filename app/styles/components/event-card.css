@@ -43,6 +43,7 @@
   flex-wrap: wrap;
   gap: 0.35rem 1rem;
   margin-bottom: 0.65rem;
+  font-size: 0.825rem;
   display: flex;
 }
 
@@ -95,6 +96,7 @@
   text-transform: none;
   flex-wrap: wrap;
   margin: 1.1rem 0 0;
+  font-size: 0.875rem;
 }
 
 .event-card__facts div, .event-card__facts dd {
@@ -365,11 +367,12 @@
   min-height: 0;
   margin-bottom: 1rem;
   padding: 0 0 0.75rem;
+  font-size: 0.825rem;
   display: flex;
 }
 
 .event-card__date strong {
-  font-size: clamp(2.25rem, 4vw, 3.75rem);
+  font-size: clamp(2.1rem, 2.8vw, 3rem);
 }
 
 .event-card__facts {
@@ -483,11 +486,6 @@
 
   .event-card__meta {
     gap: 0.3rem 0.6rem;
-    font-size: 0.75rem;
-  }
-
-  .event-card__facts {
-    font-size: 0.8rem;
   }
 
   .event-card__facts div {

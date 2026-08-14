@@ -780,7 +780,11 @@ test("active Meetup snapshots project only first-party synchronized poster URLs"
 test("poster-bearing Events data round-trips from updater projection to a durable visitor read", async (t) => {
   const database = await createFixture(t);
   const projections = countUnifiedPublicEventProjections(database);
-  const { refreshPublicEventMaterializations } = await import(
+  const {
+    readPublicClubEventViewMaterialization,
+    readPublicEventDetailViewMaterialization,
+    refreshPublicEventMaterializations,
+  } = await import(
     "../../lib/server/public/event-materializations.ts"
   );
   const { loadPublicEventsPageData } = await import(
@@ -799,6 +803,29 @@ test("poster-bearing Events data round-trips from updater projection to a durabl
     organizationId: ORGANIZATION_ID,
     todayDate: TODAY_DATE,
   });
+  const materializedDetail =
+    await readPublicEventDetailViewMaterialization(projections.database, {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      slug: "meetup-active-event",
+      todayDate: TODAY_DATE,
+    });
+  assert.equal(materializedDetail?.kind, "available");
+  assert.deepEqual(materializedDetail?.event.artwork, ACTIVE_MEETUP_ARTWORK);
+  const materializedClub = await readPublicClubEventViewMaterialization(
+    projections.database,
+    {
+      clubSlug: materializedDetail.event.club.slug,
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+    },
+  );
+  assert.ok(
+    materializedClub?.upcoming.events.some(
+      (event) => event.slug === "meetup-active-event",
+    ),
+  );
   const cold = await loadPublicEventsPageData(projections.database, input);
   const coldPosterEvent = cold.calendar.events.find(
     (event) => event.slug === "meetup-active-event",
@@ -826,6 +853,61 @@ test("poster-bearing Events data round-trips from updater projection to a durabl
     projections.count(),
     1,
     "visitor reads must not repeat the updater-owned projection",
+  );
+});
+
+test("materialization rejects a row dropped by final identity revalidation and preserves its last-known-good set", async (t) => {
+  const database = await createFixture(t);
+  const { refreshPublicEventMaterializations } = await import(
+    "../../lib/server/public/event-materializations.ts"
+  );
+  const input = {
+    nowUtcMs: NOW_UTC_MS,
+    organizationId: ORGANIZATION_ID,
+    todayDate: TODAY_DATE,
+  };
+  await refreshPublicEventMaterializations(database, input);
+  const before = database.sqlite
+    .prepare(
+      `SELECT cache_key, snapshot_json, updated_at
+       FROM public_event_calendar_snapshots
+       WHERE organization_id = ?
+       ORDER BY cache_key`,
+    )
+    .all(ORGANIZATION_ID);
+  let raced = false;
+  const racedDatabase = injectBeforeMatchingQuery(
+    database,
+    "requested_public_event AS (",
+    1,
+    async () => {
+      raced = true;
+      database.exec(`
+        UPDATE events
+        SET visibility = 'private', updated_at = updated_at + 1
+        WHERE id = 'event_manual_upcoming'
+      `);
+    },
+  );
+
+  await assert.rejects(
+    refreshPublicEventMaterializations(racedDatabase, {
+      ...input,
+      nowUtcMs: NOW_UTC_MS + 60_000,
+    }),
+    (error) => error?.code === "internal_error" && error?.status === 500,
+  );
+  assert.equal(raced, true);
+  assert.deepEqual(
+    database.sqlite
+      .prepare(
+        `SELECT cache_key, snapshot_json, updated_at
+         FROM public_event_calendar_snapshots
+         WHERE organization_id = ?
+         ORDER BY cache_key`,
+      )
+      .all(ORGANIZATION_ID),
+    before,
   );
 });
 

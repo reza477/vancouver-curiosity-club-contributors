@@ -486,7 +486,7 @@ test("About is concise, reassuring, and quick to navigate", async () => {
     /\bloadAboutData\b|\bloadPublicCatalog\b|\bqueryPublicEvents\b|\bEventCard\b|className="about-(?:facts|events)"/u,
   );
   assert.match(about, /href="\/events">/u);
-  assert.doesNotMatch(about, /prefetch=\{false\}/u);
+  assert.match(about, /PublicRouteLink as Link/u);
   assert.doesNotMatch(
     about,
     /FieldArtwork|PageMasthead|Meetup refresh|Last completed|sync failed/ui,
@@ -843,7 +843,7 @@ test("manual Meetup APIs derive authority server-side and restrict every mutatio
   assert.match(requestPathname, /"\/api"/);
   assert.match(
     requestPathname,
-    /pathname\.startsWith\(`\$\{path\}\/`\)/,
+    /routePathname\.startsWith\(`\$\{path\}\/`\)/,
   );
 });
 

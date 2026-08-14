@@ -85,6 +85,8 @@ test("one canonical classifier protects every private and identity namespace", (
     "/invitations/example",
     "/organizer",
     "/organizer/events",
+    "/organizer.rsc",
+    "/organizer/events.rsc",
     "/preview/example",
     "/signin-with-chatgpt",
     "/signout-with-chatgpt",
@@ -96,7 +98,9 @@ test("one canonical classifier protects every private and identity namespace", (
     "/apiary",
     "/calendar",
     "/events",
+    "/events.rsc",
     "/organizers",
+    "/organizers.rsc",
     "/previewing",
   ]) {
     assert.equal(isPrivateOrIdentityPath(pathname), false, pathname);

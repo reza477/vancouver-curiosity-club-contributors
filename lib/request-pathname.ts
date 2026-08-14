@@ -16,10 +16,14 @@ const PRIVATE_OR_IDENTITY_PATHS = [
 ] as const;
 
 export function isPrivateOrIdentityPath(pathname: string): boolean {
+  const routePathname = pathname.endsWith(".rsc")
+    ? pathname.slice(0, -".rsc".length)
+    : pathname;
   return (
-    isPrivateCalendarSubscriptionPath(pathname) ||
+    isPrivateCalendarSubscriptionPath(routePathname) ||
     PRIVATE_OR_IDENTITY_PATHS.some(
-      (path) => pathname === path || pathname.startsWith(`${path}/`),
+      (path) =>
+        routePathname === path || routePathname.startsWith(`${path}/`),
     )
   );
 }

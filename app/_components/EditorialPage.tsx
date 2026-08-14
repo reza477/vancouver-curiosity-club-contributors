@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import type { ReactNode } from "react";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
 import { EventCard } from "@/app/_components/EventCard";

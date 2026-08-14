@@ -74,6 +74,8 @@ Important boundaries:
 3. `lib/server/public/` owns privacy-safe public projections used by pages,
    feeds, metadata, and structured data.
 4. `lib/server/public/request-cache.ts` deduplicates only within one request.
+   Event/club route identity and the exact D1 binding are part of that boundary;
+   never turn it into a process-wide publication cache.
 5. `db/schema.ts` plus ordered `drizzle/` files are the data contract.
    Migrations are additive, retry-safe, and never rewritten after release.
 6. CMS content is generally data-backed; do not create a second route-specific
@@ -208,9 +210,10 @@ that value in source, an issue, a log, or a local environment template.
 
 The endpoint advances exactly one two-event import slice per Worker request;
 the workflow repeats fresh signed requests until every source is current. The
-terminal request atomically promotes last-known-good Home and Events
-materializations. Visitor routes read those saved projections only: they do
-not fetch or parse a Meetup group page and cannot advance synchronization.
+terminal request atomically promotes last-known-good Home, Events/club-card,
+and event-detail materializations. Visitor routes derive Home, Events,
+related-event, Club, and Program views from those indexed rows: they do not
+fetch or parse a Meetup group page and cannot advance synchronization.
 GitHub Actions supplies the success/failure record and a counts-only summary.
 The organizer Meetup screen retains the manual refresh for urgent changes.
 

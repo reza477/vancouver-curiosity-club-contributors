@@ -66,8 +66,10 @@ test("daily updater is POST-only and independent of cookies or owner identity", 
         cancelled: 0,
         created: 2,
         materializations: {
+          eventDetailCount: 29,
           eventsSnapshotCount: 3,
           homeEventCount: 6,
+          privateDetailKey: "PRIVATE_DETAIL_SENTINEL",
         },
         passes: 2,
         rejected: 0,
@@ -105,6 +107,7 @@ test("daily updater is POST-only and independent of cookies or owner identity", 
     cancelled: 0,
     created: 2,
     materializations: {
+      eventDetailCount: 29,
       eventsSnapshotCount: 3,
       homeEventCount: 6,
     },
@@ -127,7 +130,7 @@ test("daily updater is POST-only and independent of cookies or owner identity", 
   );
   assert.doesNotMatch(
     JSON.stringify(body),
-    /PRIVATE_EVENT_ID_SENTINEL/u,
+    /PRIVATE_(?:DETAIL|EVENT_ID)_SENTINEL/u,
   );
 });
 
@@ -340,6 +343,7 @@ function successResult() {
       cancelled: 0,
       created: 0,
       materializations: {
+        eventDetailCount: 29,
         eventsSnapshotCount: 3,
         homeEventCount: 6,
       },

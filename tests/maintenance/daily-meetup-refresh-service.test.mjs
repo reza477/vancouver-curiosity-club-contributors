@@ -71,7 +71,11 @@ test("one HTTP invocation performs exactly one bounded Meetup refresh pass", asy
   let materializationCalls = 0;
   materialize = async () => {
     materializationCalls += 1;
-    return { eventsSnapshotCount: 3, homeEventCount: 6 };
+    return {
+      eventDetailCount: 29,
+      eventsSnapshotCount: 3,
+      homeEventCount: 6,
+    };
   };
 
   const result = await runDailyMeetupRefresh(database, {
@@ -104,7 +108,11 @@ test("completed and unchanged source passes continue so later signed requests ca
       let materializationCalls = 0;
       materialize = async () => {
         materializationCalls += 1;
-        return { eventsSnapshotCount: 3, homeEventCount: 6 };
+        return {
+          eventDetailCount: 29,
+          eventsSnapshotCount: 3,
+          homeEventCount: 6,
+        };
       };
       const result = await runDailyMeetupRefresh({}, {
         nowUtcMs: NOW,
@@ -126,7 +134,11 @@ test("terminal source outcomes materialize durable public snapshots exactly once
       const materializationCalls = [];
       materialize = async (database, options) => {
         materializationCalls.push({ database, options });
-        return { eventsSnapshotCount: 3, homeEventCount: 6 };
+        return {
+          eventDetailCount: 29,
+          eventsSnapshotCount: 3,
+          homeEventCount: 6,
+        };
       };
 
       const database = {};
@@ -138,6 +150,7 @@ test("terminal source outcomes materialize durable public snapshots exactly once
       assert.equal(result.outcome, outcome);
       assert.equal(result.counts.passes, 1);
       assert.deepEqual(result.counts.materializations, {
+        eventDetailCount: 29,
         eventsSnapshotCount: 3,
         homeEventCount: 6,
       });
@@ -155,7 +168,11 @@ test("busy, failed, or invalid multi-pass requests fail without materializing", 
       let materializationCalls = 0;
       materialize = async () => {
         materializationCalls += 1;
-        return { eventsSnapshotCount: 3, homeEventCount: 6 };
+        return {
+          eventDetailCount: 29,
+          eventsSnapshotCount: 3,
+          homeEventCount: 6,
+        };
       };
       await assert.rejects(
         runDailyMeetupRefresh({}, {
@@ -197,7 +214,11 @@ test("not-due never materializes while aggregate source state remains unresolved
       let materializationCalls = 0;
       materialize = async () => {
         materializationCalls += 1;
-        return { eventsSnapshotCount: 3, homeEventCount: 6 };
+        return {
+          eventDetailCount: 29,
+          eventsSnapshotCount: 3,
+          homeEventCount: 6,
+        };
       };
       await assert.rejects(
         runDailyMeetupRefresh({}, {
@@ -209,6 +230,23 @@ test("not-due never materializes while aggregate source state remains unresolved
       assert.equal(materializationCalls, 0);
     });
   }
+});
+
+test("terminal source outcomes reject an unsafe event-detail count", async () => {
+  meetupRefresh = async () => refreshResult("not_due");
+  materialize = async () => ({
+    eventDetailCount: "29",
+    eventsSnapshotCount: 3,
+    homeEventCount: 6,
+  });
+
+  await assert.rejects(
+    runDailyMeetupRefresh({}, {
+      nowUtcMs: NOW,
+      requestId: crypto.randomUUID(),
+    }),
+    (error) => error?.status === 500,
+  );
 });
 
 function refreshResult(outcome, counts = {}) {

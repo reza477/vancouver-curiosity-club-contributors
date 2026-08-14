@@ -12,17 +12,17 @@ import {
   resolveMediaAssetsForRendering,
   type ResponsiveMediaAssetDto,
 } from "@/lib/server/media/usage";
-import {
-  getPublicProgramBySlugs,
-  getPublicSiteContext,
-  getPublicSlugRedirect,
-  resolvePublicOrganization,
-  type PublicProgramDto,
-} from "@/lib/server/public/catalog";
-import { queryPublicEvents } from "@/lib/server/public/events";
+import type { PublicProgramDto } from "@/lib/server/public/catalog";
 import { buildPublicPageMetadata } from "@/lib/server/public/metadata";
 import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
 import { isCompatibilityProgramAlias } from "@/lib/server/public/program-identity";
+import {
+  getRequestPublicClubEventViewMaterialization,
+  getRequestPublicOrganization,
+  getRequestPublicProgramBySlugs,
+  getRequestPublicSiteContext,
+  getRequestPublicSlugRedirect,
+} from "@/lib/server/public/request-cache";
 import {
   DEFAULT_TIME_ZONE,
   calendarDateInTimeZone,
@@ -127,7 +127,7 @@ async function loadPublicProgram(
 > {
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const program = await getPublicProgramBySlugs(
+    const program = await getRequestPublicProgramBySlugs(
       database,
       clubSlug,
       programSlug,
@@ -135,7 +135,7 @@ async function loadPublicProgram(
     if (program) {
       return Object.freeze({ kind: "available" as const, program });
     }
-    const redirect = await getPublicSlugRedirect(database, {
+    const redirect = await getRequestPublicSlugRedirect(database, {
       entityType: "program_public_profile",
       fromSlug: programSlug,
     });
@@ -159,7 +159,7 @@ async function loadProgramCoverMedia(
   if (!program.coverAssetId) return null;
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (!organization) return null;
     const media = await resolveMediaAssetsForRendering(database, {
       organizationId: organization.id,
@@ -189,8 +189,8 @@ async function loadProgramMetadataContext(
   try {
     const { database } = getRuntimeAuthConfiguration();
     const [organization, site] = await Promise.all([
-      resolvePublicOrganization(database),
-      getPublicSiteContext(database),
+      getRequestPublicOrganization(database),
+      getRequestPublicSiteContext(database),
     ]);
     if (!organization) return null;
     const media = await resolveMediaAssetsForRendering(database, {
@@ -238,38 +238,30 @@ async function loadProgramEvents(
 ): Promise<ClubDetailEventsState> {
   try {
     const { database } = getRuntimeAuthConfiguration();
-    const organization = await resolvePublicOrganization(database);
+    const organization = await getRequestPublicOrganization(database);
     if (!organization) {
       return Object.freeze({ kind: "unavailable" as const });
     }
     const nowUtcMs = readServerUtcMs();
     const todayDate = calendarDateInTimeZone(nowUtcMs, DEFAULT_TIME_ZONE);
-    const [upcoming, past] = await Promise.all([
-      queryPublicEvents(database, {
+    const materialized = await getRequestPublicClubEventViewMaterialization(
+      database,
+      {
         clubSlug: program.parentClub.slug,
         nowUtcMs,
         organizationId: organization.id,
-        page: 1,
         pageSize: 6,
         programSlug: program.slug,
         todayDate,
-        view: "upcoming",
-      }),
-      queryPublicEvents(database, {
-        clubSlug: program.parentClub.slug,
-        nowUtcMs,
-        organizationId: organization.id,
-        page: 1,
-        pageSize: 6,
-        programSlug: program.slug,
-        todayDate,
-        view: "past",
-      }),
-    ]);
+      },
+    );
+    if (!materialized) {
+      return Object.freeze({ kind: "unavailable" as const });
+    }
     return Object.freeze({
       kind: "available" as const,
-      past,
-      upcoming,
+      past: materialized.past,
+      upcoming: materialized.upcoming,
     });
   } catch {
     writeSafeLog("error", "public_program_events_unavailable", {

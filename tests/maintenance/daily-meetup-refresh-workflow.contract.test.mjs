@@ -103,6 +103,12 @@ test("workflow treats any HTTP or reporting failure as a failed run", () => {
   assert.match(workflow, /## Daily Meetup refresh failed/u);
   assert.match(workflow, /Home snapshot events/u);
   assert.match(workflow, /Durable Events datasets/u);
+  assert.match(workflow, /Materialized event details/u);
+  assert.match(
+    workflow,
+    /eventDetailCount:\s*number\([\s\S]*?materializations\?\.eventDetailCount/u,
+    "the workflow must normalize the detail count before reporting success",
+  );
   assert.match(workflow, /Created before failure/u);
   assert.match(workflow, /unsafe report shape/iu);
   assert.match(workflow, /exceeded its 64-invocation safety limit/iu);

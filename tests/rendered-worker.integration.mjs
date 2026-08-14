@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { Log, LogLevel, Miniflare } from "miniflare";
@@ -37,6 +37,10 @@ import { ensurePublicCatalog } from "../lib/server/public/catalog.ts";
 import {
   PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
 } from "../lib/server/public/warm-response-fallback.ts";
+import {
+  WORKER_ASSET_ORIGIN_PREFIX,
+  publicAssetOriginPath,
+} from "../lib/public-asset-cache.ts";
 import {
   applyD1MigrationBatches,
   MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
@@ -858,6 +862,49 @@ test("the built public root is indexable and carries the production security con
     );
   }
   assert.match(html, /self\.__VINEXT_RSC_DONE__=true/u);
+  assert.equal(
+    html.includes(WORKER_ASSET_ORIGIN_PREFIX),
+    false,
+    "internal asset-storage paths must never enter public HTML",
+  );
+
+  const moduleHrefs = [...html.matchAll(/<link\b[^>]*>/giu)].flatMap(
+    ([linkTag]) => {
+      if (!/\brel="modulepreload"/iu.test(linkTag)) return [];
+      const href = /\bhref="([^"]+\.js)"/iu.exec(linkTag)?.[1];
+      return href ? [href.replaceAll("&amp;", "&")] : [];
+    },
+  );
+  assert.ok(moduleHrefs.length > 0, "Home must preload a built JavaScript module");
+  let relativeImportHref = null;
+  for (const href of moduleHrefs) {
+    assert.match(href, /^\/assets\/[A-Za-z0-9_.-]+\.js$/u);
+    const response = await fetchPath(href);
+    assert.equal(response.status, 200, `unable to load built module ${href}`);
+    assert.equal(
+      response.headers.get("cache-control"),
+      "public, max-age=31536000, immutable",
+    );
+    assert.equal(response.headers.get("x-frame-options"), "DENY");
+    const source = await response.text();
+    assert.equal(source.includes(WORKER_ASSET_ORIGIN_PREFIX), false);
+    const relativeImport =
+      /(?:from\s*|import\()\s*["'](\.\/[^"']+\.js)["']/u.exec(source)?.[1];
+    if (relativeImport && relativeImportHref === null) {
+      relativeImportHref = new URL(
+        relativeImport,
+        `https://preview.example${href}`,
+      ).pathname;
+    }
+  }
+  assert.ok(relativeImportHref, "a built module must reference a relative chunk");
+  const relativeImportResponse = await fetchPath(relativeImportHref);
+  assert.equal(relativeImportResponse.status, 200);
+  assert.equal(
+    relativeImportResponse.headers.get("cache-control"),
+    "public, max-age=31536000, immutable",
+  );
+  assert.equal(relativeImportResponse.headers.get("x-frame-options"), "DENY");
 
   const publicStylesheetHrefs = renderedStylesheetHrefs(html);
   assert.ok(
@@ -867,8 +914,13 @@ test("the built public root is indexable and carries the production security con
   let publicStylesheetBytes = 0;
   for (const href of publicStylesheetHrefs) {
     assert.match(href, /^\/assets\/[A-Za-z0-9_.-]+\.css$/u);
+    const originHref = publicAssetOriginPath({
+      method: "GET",
+      pathname: href,
+    });
+    assert.ok(originHref, `stylesheet is not a relocated asset: ${href}`);
     publicStylesheetBytes += (
-      await stat(resolve("dist/client", `.${href}`))
+      await stat(resolve("dist/client", `.${originHref}`))
     ).size;
   }
   assert.ok(
@@ -1056,8 +1108,56 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
   assert.deepEqual(packagedWrangler.assets, {
     binding: "ASSETS",
     directory: "../client",
-    run_worker_first: ["/event-posters/*"],
   });
+  await assert.rejects(
+    stat(resolve("dist/client/_headers")),
+    (error) => error?.code === "ENOENT",
+  );
+  const relocatedAssetDirectory = resolve(
+    "dist/client",
+    WORKER_ASSET_ORIGIN_PREFIX.slice(1),
+    "assets",
+  );
+  const hashedAssetName = (await readdir(relocatedAssetDirectory)).find(
+    (name) => /-[A-Za-z0-9_-]{8,}\.css$/u.test(name),
+  );
+  assert.ok(hashedAssetName, "the build must emit a content-hashed stylesheet");
+  await assert.rejects(
+    stat(resolve("dist/client/assets", hashedAssetName)),
+    (error) => error?.code === "ENOENT",
+  );
+  await assert.rejects(
+    stat(
+      resolve(
+        "dist/client/event-posters/meetup-315294572-480.jpeg",
+      ),
+    ),
+    (error) => error?.code === "ENOENT",
+  );
+  assert.equal(
+    (
+      await stat(
+        resolve(
+          "dist/client",
+          WORKER_ASSET_ORIGIN_PREFIX.slice(1),
+          "assets",
+        ),
+      )
+    ).isDirectory(),
+    true,
+  );
+  assert.equal(
+    (
+      await stat(
+        resolve(
+          "dist/client",
+          WORKER_ASSET_ORIGIN_PREFIX.slice(1),
+          "event-posters",
+        ),
+      )
+    ).isDirectory(),
+    true,
+  );
 
   const posterRuntime = createBuiltRuntime(new Log(LogLevel.WARN), {
     includeDatabase: false,
@@ -1077,10 +1177,6 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
   assert.equal(response.headers.get("x-frame-options"), "DENY");
   assert.ok((await response.arrayBuffer()).byteLength > 1_000);
 
-  const hashedAssetName = clientAssetFiles
-    .map((path) => basename(path))
-    .find((name) => /-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$/u.test(name));
-  assert.ok(hashedAssetName, "the build must emit a content-hashed asset");
   const hashedResponse = await posterRuntime.dispatchFetch(
     `https://preview.example/assets/${hashedAssetName}`,
   );
@@ -1091,12 +1187,46 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
   );
   assert.equal(
     hashedResponse.headers.get("x-frame-options"),
+    "DENY",
+    "relocated hashed assets pass through the D1-free User Worker branch",
+  );
+
+  for (const [pathname, cacheControl] of [
+    [
+      "/event-posters/meetup-315294572-480.jpeg",
+      "public, max-age=86400, stale-while-revalidate=604800",
+    ],
+    [
+      `/assets/${hashedAssetName}`,
+      "public, max-age=31536000, immutable",
+    ],
+  ]) {
+    const headResponse = await posterRuntime.dispatchFetch(
+      `https://preview.example${pathname}`,
+      { method: "HEAD" },
+    );
+    assert.equal(headResponse.status, 200, `${pathname} HEAD status`);
+    assert.equal(
+      headResponse.headers.get("cache-control"),
+      cacheControl,
+      `${pathname} HEAD cache policy`,
+    );
+    assert.equal(headResponse.headers.get("x-frame-options"), "DENY");
+    assert.equal((await headResponse.arrayBuffer()).byteLength, 0);
+  }
+
+  const fontResponse = await posterRuntime.dispatchFetch(
+    "https://preview.example/fonts/inter-latin-400.woff2",
+  );
+  assert.equal(fontResponse.status, 200);
+  assert.equal(
+    fontResponse.headers.get("x-frame-options"),
     null,
-    "hashed assets remain asset-first instead of invoking the User Worker",
+    "non-relocated public assets remain asset-first",
   );
 
   const missingPoster = await posterRuntime.dispatchFetch(
-    "https://preview.example/event-posters/nested/missing.jpeg",
+    "https://preview.example/event-posters/missing-poster.jpeg",
   );
   assert.equal(missingPoster.status, 404);
   assert.equal(
@@ -1780,7 +1910,13 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
   assertNoPrivateSentinels(await backup.text());
 
   for (const file of clientAssetFiles) {
-    assertNoPrivateValues(await readFile(file, "utf8"));
+    const source = await readFile(file, "utf8");
+    assertNoPrivateValues(source);
+    assert.equal(
+      source.includes(WORKER_ASSET_ORIGIN_PREFIX),
+      false,
+      `${file} exposed the internal asset-storage prefix`,
+    );
   }
   assertNoPrivateValues(runtimeLog.output());
 });
@@ -2598,7 +2734,12 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   await assertAbsentFromPublicSurfaces("scheduled but not due event");
 
   let reconciledDetail = null;
-  const reconciliationDeadline = Date.now() + 12_000;
+  // The public reads above may have started the Worker's 15-second bounded
+  // maintenance cooldown while the scheduled publication is still four
+  // seconds in the future. Maintenance advances one bounded source per
+  // eligible request. Leave headroom for the cooldown, then perform one final
+  // observation after the last triggering response's waitUntil work settles.
+  const reconciliationDeadline = Date.now() + 20_000;
   while (Date.now() < reconciliationDeadline) {
     const candidate = await fetchPath(detailPath);
     if (candidate.status === 200) {
@@ -2608,6 +2749,16 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
     assert.equal(candidate.status, 404);
     await candidate.arrayBuffer();
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 200));
+  }
+  if (!reconciledDetail) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+    const candidate = await fetchPath(detailPath);
+    if (candidate.status === 200) {
+      reconciledDetail = candidate;
+    } else {
+      assert.equal(candidate.status, 404);
+      await candidate.arrayBuffer();
+    }
   }
   assert.ok(reconciledDetail, "the due publication did not reconcile");
   const reconciledHtml = await reconciledDetail.text();
@@ -3179,9 +3330,6 @@ function createBuiltRuntime(
       directory: resolve("dist/client"),
       routerConfig: {
         has_user_worker: true,
-        static_routing: {
-          user_worker: ["/event-posters/*"],
-        },
       },
     },
     log,

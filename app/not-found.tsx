@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { getTrustedRequestPathname } from "@/lib/server/public/origin";
 import {
   publicServiceSurfaceForPathname,

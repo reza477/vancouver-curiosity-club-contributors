@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { buildEditorialMetadata } from "@/app/_components/EditorialPage";
 import { HomePageRenderer } from "@/app/_components/HomePageRenderer";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
