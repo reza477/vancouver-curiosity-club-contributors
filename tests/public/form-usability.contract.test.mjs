@@ -55,7 +55,7 @@ const formCases = Object.freeze([
   Object.freeze({
     formKey: "partnership",
     primaryField: "organizationOrVenueName",
-    submitLabel: "Send partnership idea",
+    submitLabel: "Send partnership or support inquiry",
   }),
 ]);
 

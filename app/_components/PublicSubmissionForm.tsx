@@ -428,7 +428,7 @@ export function PublicSubmissionForm({
               <TextField
                 error={errors.organizationOrVenueName}
                 idPrefix={idPrefix}
-                label="Organization or venue name"
+                label="Organization, venue, or supporter name"
                 maxLength={160}
                 minLength={2}
                 name="organizationOrVenueName"
@@ -527,7 +527,7 @@ function submitButtonLabel(formKey: PublicFormKey): string {
     case "host_event":
       return "Send event idea";
     case "partnership":
-      return "Send partnership idea";
+      return "Send partnership or support inquiry";
   }
 }
 

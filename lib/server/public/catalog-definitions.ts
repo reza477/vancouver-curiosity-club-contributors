@@ -1,3 +1,8 @@
+import {
+  PUBLIC_ABOUT_MISSION_COPY,
+  PUBLIC_HOME_MISSION_COPY,
+} from "@/lib/public-mission-copy";
+
 export const PUBLIC_ORGANIZATION_SLUG =
   "vancouver-curiosity-and-education-society";
 
@@ -130,9 +135,9 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
   Object.freeze([
     page("home", "Vancouver Curiosity Club", [
       section("hero", "hero", 10, {
-        eyebrow: "Vancouver, British Columbia",
-        heading: "Follow a question somewhere interesting.",
-        text: "Thoughtful Vancouver events for people who like learning in company.",
+        eyebrow: PUBLIC_HOME_MISSION_COPY.eyebrow,
+        heading: PUBLIC_HOME_MISSION_COPY.heading,
+        text: PUBLIC_HOME_MISSION_COPY.body,
       }),
     ]),
     page("events", "Events", [
@@ -155,12 +160,12 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
     ]),
     page("about", "About", [
       section("intro", "intro", 10, {
-        eyebrow: "What is this club?",
-        heading: "Curiosity is better in company.",
-        text: "Vancouver Curiosity Club is a Vancouver community built around intelligent, approachable events, shared experiences, and substantive conversation.",
+        eyebrow: PUBLIC_ABOUT_MISSION_COPY.eyebrow,
+        heading: PUBLIC_ABOUT_MISSION_COPY.heading,
+        text: PUBLIC_ABOUT_MISSION_COPY.introduction,
         paragraphs: [
-          "Some gatherings begin with a book, film, philosophical question, new technology, or work of art. Others take us on walks, into neighbourhoods and restaurants, or into quieter practices such as journaling, meditation, poetry, and silent reading.",
-          "You do not need to arrive as an expert. Come with a question, an interest, or simply the willingness to join the conversation.",
+          "Our mission is to create welcoming, well-prepared spaces where curiosity becomes conversation, participation, and belonging.",
+          "We are building for the long term through recurring programs, clear public standards, and partnerships that can support steady growth.",
         ],
       }),
     ]),
@@ -169,7 +174,7 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: "Bring something to the club",
         text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
         paragraphs: [
-          "Attending a published event is the simplest way in. Use the forms below to tell the organizers how you would like to volunteer or to start a venue or community partnership conversation.",
+          "Attending a published event is the simplest way in. Use the forms below to tell the organizers how you would like to volunteer or to start a partnership, funding, or sponsorship conversation.",
         ],
       }),
     ]),

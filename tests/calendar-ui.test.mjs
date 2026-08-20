@@ -272,8 +272,8 @@ test("Meetup snapshot identity includes versioned aliases, editorial policy, and
   assert.match(editorialPolicy, /315823081/u);
 });
 
-test("homepage leads with the club purpose and eight distinct sections", async () => {
-  const [page, calendar, month, homeRenderer, homeData] =
+test("homepage leads with the mission and six focused sections", async () => {
+  const [page, calendar, month, homeRenderer, homeData, missionCopy] =
     await Promise.all([
       readFile(new URL("app/page.tsx", projectRoot), "utf8"),
       readFile(new URL("app/calendar/route.ts", projectRoot), "utf8"),
@@ -286,7 +286,9 @@ test("homepage leads with the club purpose and eight distinct sections", async (
         "utf8",
       ),
       readFile(new URL("lib/server/public/home.ts", projectRoot), "utf8"),
+      readFile(new URL("lib/public-mission-copy.ts", projectRoot), "utf8"),
     ]);
+  const homePositioning = `${homeRenderer}\n${missionCopy}`;
 
   assert.match(page, /import \{ HomePageRenderer \}/u);
   assert.match(page, /loadPublicHomeData/u);
@@ -296,13 +298,16 @@ test("homepage leads with the club purpose and eight distinct sections", async (
   assert.doesNotMatch(page, /CalendarPage|PublicMonthCalendar/u);
 
   for (const copy of [
-    "Books, films, ideas, walks & creative nights in Vancouver",
-    "Come curious. Leave knowing people.",
-    "Vancouver Curiosity Club is for people who miss conversations that go somewhere. Pick a gathering that pulls you in, show up as you are, and meet thoughtful people through books, films, big questions, city walks, creative practice, food, and play.",
-    "See upcoming gatherings",
-    "New here? Start here",
+    "A mission-led Vancouver community organization",
+    "Building a lasting home for curiosity.",
+    "Our mission is to make meaningful connection easier to find—and easier to return to.",
+    "Read our mission",
+    "See our work in action",
+    "Coming for the first time?",
+    "Connection grows when people have a reason to return.",
+    "Start a partnership conversation",
   ]) {
-    assert.ok(homeRenderer.includes(copy), copy);
+    assert.ok(homePositioning.includes(copy), copy);
   }
 
   const sectionClasses = [
@@ -310,18 +315,17 @@ test("homepage leads with the club purpose and eight distinct sections", async (
     "home-events",
     "home-newcomer attending-note",
     "lane-index",
-    "home-clubs",
     "home-mission home-community",
-    "home-proof home-community",
     "home-closing home-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 6);
   let priorSectionIndex = -1;
   for (const className of sectionClasses) {
     const sectionIndex = homeRenderer.indexOf(`className="${className}"`);
     assert.ok(sectionIndex > priorSectionIndex, className);
     priorSectionIndex = sectionIndex;
   }
+  assert.doesNotMatch(homeRenderer, /className="home-(?:clubs|proof)/u);
   assert.match(homeData, /readPublicHomeEventMaterialization/u);
   assert.match(homeData, /maximum: HOME_EVENT_SELECTION_RESERVE/u);
   assert.doesNotMatch(
@@ -454,11 +458,13 @@ test("the calendar switches to its named-event agenda at 768px", async () => {
   );
 });
 
-test("About is concise, reassuring, and quick to navigate", async () => {
-  const [about, styles] = await Promise.all([
+test("About presents a professional mission, impact, continuity, and partnership path", async () => {
+  const [about, missionCopy, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("lib/public-mission-copy.ts", projectRoot), "utf8"),
     readPublicCss(),
   ]);
+  const aboutPositioning = `${about}\n${missionCopy}`;
 
   assert.match(about, /<main className="about-page"/u);
   assert.match(
@@ -466,14 +472,15 @@ test("About is concise, reassuring, and quick to navigate", async () => {
     /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-closing"/u,
   );
   for (const phrase of [
-    "Curiosity is better in company.",
-    "What the community feels like",
-    "Who it is for",
-    "Your first event can be simple.",
-    "Follow the question that catches you.",
-    "See upcoming gatherings",
+    "Building belonging through curiosity.",
+    "Make meaningful community easier to find.",
+    "A shared interest can become a way into community.",
+    "A community designed to keep showing up.",
+    "Help create the conditions for connection.",
+    "Discuss a partnership",
+    "See the work in action",
   ]) {
-    assert.ok(about.includes(phrase), phrase);
+    assert.ok(aboutPositioning.includes(phrase), phrase);
   }
   assert.doesNotMatch(
     about,
@@ -485,11 +492,26 @@ test("About is concise, reassuring, and quick to navigate", async () => {
     about,
     /\bloadAboutData\b|\bloadPublicCatalog\b|\bqueryPublicEvents\b|\bEventCard\b|className="about-(?:facts|events)"/u,
   );
-  assert.match(about, /href="\/events">/u);
+  assert.match(
+    about,
+    /<Link\s+className="primary-action"\s+href="\/get-involved#partner">[\s\S]*?Discuss a partnership[\s\S]*?<\/Link>/u,
+  );
+  assert.match(
+    about,
+    /<Link\s+href="\/events">[\s\S]*?See the work in action[\s\S]*?<\/Link>/u,
+  );
   assert.match(about, /PublicRouteLink as Link/u);
   assert.doesNotMatch(
     about,
     /FieldArtwork|PageMasthead|Meetup refresh|Last completed|sync failed/ui,
+  );
+  assert.doesNotMatch(
+    about,
+    /\b(?:registered\s+)?(?:nonprofit|non-profit|charit(?:y|able)|tax[- ]deductible|tax receipt)\b/iu,
+  );
+  assert.doesNotMatch(
+    about,
+    /\b(?:members?|attendees?)\s+(?:say|said|report(?:ed)?|tell|told)\b|\btestimonial(?:s)?\b|<blockquote\b/iu,
   );
   assert.match(styles, /\.about-feel,/u);
 });

@@ -23,7 +23,7 @@
   gap: 0.72rem;
   max-width: 18rem;
   min-height: 2.75rem;
-  font-weight: 720;
+  font-weight: 600;
   line-height: 1.08;
   text-decoration: none;
   display: inline-flex;
@@ -72,7 +72,7 @@
   min-width: 0;
   min-height: 3rem;
   padding: 0.65rem 1rem;
-  font-weight: 800;
+  font-weight: 700;
   text-decoration: none;
   display: inline-flex;
 }
@@ -161,7 +161,7 @@ main, .site-footer {
   text-transform: uppercase;
   margin-bottom: 0.65rem;
   font-size: 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .footer-nav-group a {
@@ -259,11 +259,6 @@ main, .site-footer {
     width: 100%;
   }
 
-  .page-masthead {
-    grid-template-columns: 1fr;
-    min-height: auto;
-  }
-
   .site-footer {
     grid-template-columns: 1fr;
   }
@@ -288,10 +283,6 @@ main, .site-footer {
     width: 1.9rem;
     height: 1.9rem;
     display: block;
-  }
-
-  .page-masthead {
-    padding-top: 2.5rem;
   }
 
   .site-footer {
@@ -334,58 +325,25 @@ main, .site-footer {
 
 .site-header:after {
   content: "";
+  background: var(--forest);
+  height: 1px;
   position: absolute;
+  bottom: 0;
   left: 0;
   right: 0;
 }
 
 .wordmark-mark {
   border: 2px solid var(--ink);
-  transition: box-shadow 0.18s, transform 0.18s;
-}
-
-.primary-nav a[data-primary-destination="calendar"]:not([aria-current="page"]) {
-  color: var(--cobalt);
-}
-
-.primary-nav a[data-primary-destination="about"]:not([aria-current="page"]) {
-  color: var(--forest);
-}
-
-.primary-nav a[data-primary-destination="contribute"]:not([aria-current="page"]) {
-  color: color-mix(in srgb, var(--coral) 82%, var(--ink));
 }
 
 .page-masthead__copy h1 {
   text-wrap: balance;
 }
 
-@media (max-width: 52rem) {
-  .page-masthead {
-    min-height: 0;
-    padding-block: clamp(2rem, 8vw, 4rem);
-  }
-
-  .page-masthead__copy h1 {
-    font-size: clamp(3rem, 12vw, 5.8rem);
-    line-height: 0.9;
-  }
-}
-
 .site-content, .site-content > main {
   min-width: 0;
   overflow-x: clip;
-}
-
-.site-header:after {
-  background: var(--forest);
-  height: 1px;
-  bottom: 0;
-}
-
-.wordmark-mark, .wordmark:hover .wordmark-mark, .wordmark:focus-visible .wordmark-mark {
-  box-shadow: none;
-  transform: none;
 }
 
 .primary-nav {

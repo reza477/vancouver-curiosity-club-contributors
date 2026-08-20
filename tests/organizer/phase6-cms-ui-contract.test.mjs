@@ -346,7 +346,7 @@ test("published shell and editorial metadata use live media readiness and truthf
   );
   assert.match(
     routeBodies,
-    /What would you like to make happen\?[\s\S]*Offer a venue or partnership/u,
+    /What would you like to make happen\?[\s\S]*Offer a partnership or support/u,
   );
   assert.doesNotMatch(routeBodies, /CommunityDestinations/u);
   assert.doesNotMatch(home, /loadCommunityDestinations|sameAs:/u);

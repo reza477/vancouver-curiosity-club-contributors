@@ -14,6 +14,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     header,
     footer,
     catalog,
+    missionCopy,
     requestCache,
     css,
     packageJson,
@@ -38,6 +39,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
       new URL("lib/server/public/catalog-definitions.ts", projectRoot),
       "utf8",
     ),
+    readFile(new URL("lib/public-mission-copy.ts", projectRoot), "utf8"),
     readFile(
       new URL("lib/server/public/request-cache.ts", projectRoot),
       "utf8",
@@ -79,10 +81,18 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     homeData,
     /queryPublicEventSlice|queryPublicEventMaterializationBundle|refreshPublicEventMaterializations/u,
   );
-  assert.match(homeRenderer, /Books, films, ideas, walks & creative nights in Vancouver/u);
-  assert.match(homeRenderer, /Come curious\. Leave knowing people\./u);
+  assert.match(homeRenderer, /PUBLIC_HOME_MISSION_COPY/u);
+  assert.match(catalog, /PUBLIC_HOME_MISSION_COPY/u);
+  assert.match(catalog, /PUBLIC_ABOUT_MISSION_COPY/u);
+  assert.match(missionCopy, /A mission-led Vancouver community organization/u);
+  assert.match(missionCopy, /Building a lasting home for curiosity\./u);
+  assert.match(missionCopy, /make meaningful connection easier to find/u);
+  assert.match(homeRenderer, /Read our mission/u);
   assert.match(homeRenderer, /See upcoming gatherings/u);
-  assert.match(homeRenderer, /New here\? Start here/u);
+  assert.match(homeRenderer, /Coming for the first time\?/u);
+  assert.match(homeRenderer, /Connection grows when people have a reason to return\./u);
+  assert.match(homeRenderer, /recurring programs across three official Meetup groups/u);
+  assert.match(homeRenderer, /href="\/get-involved#partner"/u);
   assert.match(homeRenderer, /home-hero__featured-poster/u);
   assert.doesNotMatch(homeRenderer, /FieldArtwork/u);
   assert.match(catalog, /A social calendar with a brain\./);
@@ -123,17 +133,17 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     "home-events",
     "home-newcomer",
     "lane-index",
-    "home-clubs",
     "home-mission",
-    "home-proof",
     "home-closing",
   ];
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 6);
   let previousSection = -1;
   for (const className of homepageSections) {
     const section = homeRenderer.indexOf(`className="${className}`);
     assert.ok(section > previousSection, `${className} section order`);
     previousSection = section;
   }
+  assert.doesNotMatch(homeRenderer, /className="home-(?:clubs|proof)/u);
   assert.match(layout, /generateMetadata/);
   assert.match(layout, /const isUnknownPath = !isKnownApplicationPath/);
   assert.match(layout, /robots:\s*isUnknownPath/);
@@ -204,7 +214,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   );
   assert.match(
     css,
-    /\.event-card::?before[\s\S]{0,260}background:\s*var\(--paper-deep\)/u,
+    /\.event-card::?before[\s\S]{0,260}background:\s*color-mix\(in srgb,\s*var\(--event-accent\) 10%,\s*var\(--paper\)\)/u,
   );
   for (const selector of [".status-chip--tentative"]) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");

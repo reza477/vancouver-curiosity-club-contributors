@@ -33,7 +33,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
     requiredPublicRoutes.map((path) => access(new URL(path, projectRoot))),
   );
 
-  const [header, footer, layout, community, home, homeRenderer] =
+  const [header, footer, layout, community, home, homeRenderer, missionCopy] =
     await Promise.all([
       readFile(new URL("app/_components/SiteHeader.tsx", projectRoot), "utf8"),
       readFile(new URL("app/_components/SiteFooter.tsx", projectRoot), "utf8"),
@@ -44,7 +44,9 @@ test("Phase 2 exposes the complete public route contract", async () => {
         new URL("app/_components/HomePageRenderer.tsx", projectRoot),
         "utf8",
       ),
+      readFile(new URL("lib/public-mission-copy.ts", projectRoot), "utf8"),
     ]);
+  const homePositioning = `${homeRenderer}\n${missionCopy}`;
   const primaryDestinations = [
     ["/events", "Events"],
     ["/clubs", "Clubs"],
@@ -93,33 +95,42 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.doesNotMatch(community, /loadEditorialPage|loadCommunityDestinations/u);
   assert.match(home, /loadPublicHomeData/u);
   assert.match(home, /<HomePageRenderer/u);
+  assert.match(
+    home,
+    /descriptionOverride:\s*PUBLIC_HOME_MISSION_COPY\.metadataDescription/u,
+  );
   assert.doesNotMatch(home, /CalendarPage|PublicMonthCalendar/u);
   for (const copy of [
-    "Books, films, ideas, walks & creative nights in Vancouver",
-    "Come curious. Leave knowing people.",
-    "Vancouver Curiosity Club is for people who miss conversations that go somewhere. Pick a gathering that pulls you in, show up as you are, and meet thoughtful people through books, films, big questions, city walks, creative practice, food, and play.",
+    "A mission-led Vancouver community organization",
+    "Building a lasting home for curiosity.",
+    "Our mission is to make meaningful connection easier to find—and easier to return to.",
+    "Read our mission",
+    "Upcoming community programs",
+    "Coming for the first time?",
+    "Connection grows when people have a reason to return.",
+    "recurring programs across three official Meetup groups",
+    "Start a partnership conversation",
     "See upcoming gatherings",
-    "New here? Start here",
   ]) {
-    assert.ok(homeRenderer.includes(copy), copy);
+    assert.ok(homePositioning.includes(copy), copy);
   }
   const homepageSections = [
     "home-hero",
     "home-events",
     "home-newcomer attending-note",
     "lane-index",
-    "home-clubs",
     "home-mission home-community",
-    "home-proof home-community",
     "home-closing home-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 6);
   let priorSectionIndex = -1;
   for (const className of homepageSections) {
     const sectionIndex = homeRenderer.indexOf(`className="${className}"`);
     assert.ok(sectionIndex > priorSectionIndex, className);
     priorSectionIndex = sectionIndex;
   }
+  assert.doesNotMatch(homeRenderer, /className="home-(?:clubs|proof)/u);
+  assert.match(homeRenderer, /href="\/get-involved#partner"/u);
   assert.doesNotMatch(
     homeRenderer,
     /PublicMonthCalendar|public-calendar__grid|calendar-view-switcher/u,

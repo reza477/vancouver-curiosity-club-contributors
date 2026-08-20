@@ -88,7 +88,7 @@ test("Home has a useful zero-event state and no empty poster group", () => {
   assert.doesNotMatch(hero, /home-hero__featured-poster/u);
   assert.deepEqual(uniqueEventSlugs(hero), []);
   assert.deepEqual(uniqueEventSlugs(next), []);
-  assert.match(next, /<h2 id="home-events-title">More ways to join in<\/h2>/u);
+  assert.match(next, /<h2 id="home-events-title">Upcoming community programs<\/h2>/u);
   assert.match(next, /No upcoming event yet\./u);
   assert.match(next, /<a href="\/events">Open events<\/a>/u);
 });
@@ -138,7 +138,7 @@ test("Home event discovery keeps its accessible section and link architecture", 
     /class="home-hero__featured-poster" aria-label="Featured upcoming gathering" role="group"/u,
   );
   assert.match(next, /aria-labelledby="home-events-title"/u);
-  assert.match(next, /<h2 id="home-events-title">More ways to join in<\/h2>/u);
+  assert.match(next, /<h2 id="home-events-title">Upcoming community programs<\/h2>/u);
   assert.equal(countEventCards(next), 3);
   for (const event of upcomingEvents(6).slice(1, 4)) {
     assert.match(
@@ -148,16 +148,29 @@ test("Home event discovery keeps its accessible section and link architecture", 
   }
 });
 
-test("Home merges newcomer guidance, keeps its mission, and hides empty proof", () => {
+test("Home keeps newcomer guidance concise and makes impact and continuity explicit", () => {
   const markup = renderHome(Object.freeze([]));
+  const newcomer = sectionMarkup(markup, "home-newcomer attending-note");
+  const mission = sectionMarkup(markup, "home-mission home-community");
 
   assert.equal((markup.match(/class="home-newcomer attending-note"/gu) ?? []).length, 1);
   assert.doesNotMatch(markup, /home-community-feel/u);
-  assert.match(markup, /You can come on your own\./u);
-  assert.match(markup, /How a gathering begins depends on the event\./u);
-  assert.match(markup, /The point is not to perform expertise/u);
+  assert.equal(
+    (newcomer.match(/<p(?:\s[^>]*)?>/gu) ?? []).length,
+    2,
+    "the newcomer section must keep one kicker and one guidance paragraph",
+  );
+  assert.match(newcomer, /Coming for the first time\?/u);
+  assert.match(newcomer, /No prior expertise—or pre-existing social circle—is required\./u);
+  assert.doesNotMatch(newcomer, /How a gathering begins|perform expertise/u);
   assert.match(markup, /class="home-mission home-community"/u);
-  assert.match(markup, /A note from Reza/u);
+  assert.match(mission, /How the work helps/u);
+  assert.match(mission, /Arrive without an existing circle\./u);
+  assert.match(mission, /Connect through substance\./u);
+  assert.match(mission, /Return to something dependable\./u);
+  assert.match(mission, /recurring programs across three official Meetup groups/u);
+  assert.match(mission, /across seasons and years/u);
+  assert.doesNotMatch(markup, /class="home-clubs(?:\s|"|$)/u);
   assert.doesNotMatch(markup, /class="home-proof home-community"/u);
 
   const withOfficialLink = renderHome(Object.freeze([]), [
@@ -168,8 +181,12 @@ test("Home merges newcomer guidance, keeps its mission, and hides empty proof", 
       url: "https://www.meetup.com/vancouver-curiosity-club/",
     }),
   ]);
-  assert.match(withOfficialLink, /class="home-proof home-community"/u);
-  assert.match(withOfficialLink, /Official community links/u);
+  assert.doesNotMatch(withOfficialLink, /class="home-proof home-community"/u);
+  assert.doesNotMatch(withOfficialLink, /Official community links/u);
+  assert.match(
+    withOfficialLink,
+    /href="\/get-involved#partner"[^>]*>Start a partnership conversation<\/a>/u,
+  );
 });
 
 test("Home gives eager high-priority loading only to the featured poster", () => {
@@ -197,18 +214,9 @@ test("Home alternates section treatments and keeps motion preference-safe", asyn
 
   assert.match(styles, /\.home-newcomer\s*\{[^}]*background:\s*var\(--blue-surface\);/su);
   assert.match(styles, /\.lane-index\s*\{[^}]*background:\s*var\(--paper-deep\);/su);
-  const clubCardRules = [
-    ...styles.matchAll(/\.home-clubs__grid article\s*\{([^}]*)\}/gsu),
-  ].map((match) => match[1]);
-  assert.ok(
-    clubCardRules.some(
-      (rule) =>
-        /align-self:\s*start;/u.test(rule) &&
-        /background:\s*var\(--paper\);/u.test(rule),
-    ),
-  );
   assert.match(styles, /\.home-mission\s*\{[^}]*background:\s*var\(--amber-surface\);/su);
-  assert.match(styles, /\.home-proof\s*\{[^}]*background:\s*var\(--paper-deep\);/su);
+  assert.match(styles, /\.home-mission li strong\s*\{[^}]*display:\s*block;/su);
+  assert.doesNotMatch(styles, /\.home-(?:clubs__grid|proof)\b/u);
   assert.match(
     styles,
     /@media \(prefers-reduced-motion: no-preference\)\s*\{[\s\S]*?\.home-page > section\s*\{[^}]*animation:\s*[^;]*home-section-enter[^;]*;/su,

@@ -4,48 +4,45 @@ import test from "node:test";
 
 const projectRoot = new URL("../../", import.meta.url);
 
-test("Home labels official community links honestly instead of calling links community proof", async () => {
+test("Home describes designed impact without presenting links as community proof", async () => {
   const home = await source("app/_components/HomePageRenderer.tsx");
   const mission = sectionSource(home, "home-mission home-community");
-  const proof = sectionSource(home, "home-proof home-community");
 
-  assert.match(mission, /<OrganizerNote\b/u);
-  assert.doesNotMatch(proof, /<OrganizerNote\b/u);
+  assert.match(
+    mission,
+    /Our gatherings are designed to make three things easier/u,
+    "impact copy must describe the program design rather than claim measured outcomes",
+  );
+  assert.match(
+    mission,
+    /Arrive without an existing circle[\s\S]*?Connect through substance[\s\S]*?Return to something dependable/u,
+  );
+  assert.match(mission, /We are building for the long term/u);
+  assert.doesNotMatch(
+    home,
+    /className="home-proof home-community"|Official community links|>Community proof</u,
+    "removing the redundant proof section must not turn official links into attendee evidence",
+  );
   assert.match(
     home,
-    /catalog\.communityLinks\.length > 0 \? \([\s\S]*?className="home-proof home-community"/u,
-    "the proof-position section must stay hidden without real official content",
-  );
-  assert.match(
-    proof,
-    /<div(?=[^>]*(?:className="[^"]*(?:home-proof__links|home-official-links)[^"]*"|aria-labelledby="home-official-links-title"))[^>]*>[\s\S]*?Official community links/u,
-    "Meetup and social destinations must be labelled as links, not voices",
+    /sameAs:\s*catalog\.communityLinks[\s\S]*?\.map\(\(link\) => link\.url\)/u,
+    "confirmed destinations must remain available to Organization structured data",
   );
   assert.doesNotMatch(
-    proof,
-    />Community proof</u,
-    "official destinations alone are not attendee testimony",
-  );
-  assert.match(
-    proof,
-    /<ul[^>]*aria-label="Official Vancouver Curiosity Club destinations"/u,
-  );
-  assert.match(proof, /catalog\.communityLinks\.map/u);
-  assert.doesNotMatch(
-    proof,
+    mission,
     /attendee (?:voice|quote|testimonial)|member (?:voice|quote|testimonial)/iu,
-    "official links must not be presented as attendee testimony",
+    "the impact section must not be presented as attendee testimony",
   );
 });
 
-test("Home keeps the authorized self-authored Reza note while About omits it", async () => {
+test("Home and About omit the dormant self-authored Reza note", async () => {
   const [home, about, note] = await Promise.all([
     source("app/_components/HomePageRenderer.tsx"),
     source("app/about/page.tsx"),
     source("app/_components/OrganizerNote.tsx"),
   ]);
 
-  assert.match(home, /<OrganizerNote\b/u);
+  assert.doesNotMatch(home, /<OrganizerNote\b|A note from Reza/u);
   assert.doesNotMatch(
     about,
     /\bOrganizerNote\b|about-founder-note|A note from Reza|Curiosity is enough to begin|I want this to be a place|<cite>\s*Reza\s*<\/cite>/u,
@@ -70,6 +67,34 @@ test("Home keeps the authorized self-authored Reza note while About omits it", a
     "the note must not claim an unapproved role or expand private identity",
   );
   assert.ok(words(quote) <= 80, "the organizer introduction must stay concise");
+});
+
+test("mission positioning avoids unverified legal and testimonial claims", async () => {
+  const [home, about, formContract, missionCopy] = await Promise.all([
+    source("app/_components/HomePageRenderer.tsx"),
+    source("app/about/page.tsx"),
+    source("lib/server/phase7/public-form-contract.ts"),
+    source("lib/public-mission-copy.ts"),
+  ]);
+  const publicPositioning = `${home}\n${about}\n${missionCopy}`;
+
+  assert.match(publicPositioning, /mission-led/u);
+  assert.match(publicPositioning, /conversations about financial support/u);
+  assert.match(
+    formContract,
+    /PARTNERSHIP_TYPES[\s\S]*?"Funding or sponsorship"/u,
+    "the partnership path must let funders identify the purpose of their inquiry",
+  );
+  assert.doesNotMatch(
+    publicPositioning,
+    /\b(?:registered nonprofit|nonprofit organization|registered society|registered charity|charitable organization|tax[- ]deductible|tax receipt)\b/iu,
+    "legal status and donation-receipt language require confirmed legal evidence",
+  );
+  assert.doesNotMatch(
+    publicPositioning,
+    /members? (?:say|report|found|became)|attendees? (?:say|report|found|became)|changed (?:their|people's) lives/iu,
+    "impact language must not invent attendee outcomes",
+  );
 });
 
 test("organizer imagery stays absent or passes the confirmed attribution and media-rights boundary", async () => {

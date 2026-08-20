@@ -1,7 +1,5 @@
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
-import { OrganizerNote } from "@/app/_components/OrganizerNote";
-import type { CSSProperties } from "react";
 import { EventCard } from "./EventCard";
 import { StructuredData } from "./StructuredData";
 import {
@@ -10,18 +8,12 @@ import {
 } from "@/lib/media/presentation";
 import type {
   PublicCatalogDto,
-  PublicClubDto,
   PublicPageDto,
 } from "@/lib/server/public/catalog";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 import { publicUrl } from "@/lib/server/public/origin";
-
-const HERO_EYEBROW =
-  "Books, films, ideas, walks & creative nights in Vancouver";
-const HERO_HEADING = "Come curious. Leave knowing people.";
-const HERO_BODY =
-  "Vancouver Curiosity Club is for people who miss conversations that go somewhere. Pick a gathering that pulls you in, show up as you are, and meet thoughtful people through books, films, big questions, city walks, creative practice, food, and play.";
+import { PUBLIC_HOME_MISSION_COPY } from "@/lib/public-mission-copy";
 
 export function HomePageRenderer({
   catalog,
@@ -39,23 +31,19 @@ export function HomePageRenderer({
 }>) {
   const { heroEvent, upcomingEvents } = selectHomeDiscoveryEvents(events);
   const lanes = catalog.lanes.slice(0, 4);
-  const clubs = selectHomepageClubs(catalog.clubs);
 
   return (
     <main className="home-page" data-page-slug={page.slug}>
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero__copy">
-          <p className="eyebrow">{HERO_EYEBROW}</p>
-          <h1 id="home-title">{HERO_HEADING}</h1>
-          <p className="home-hero__deck">{HERO_BODY}</p>
+          <p className="eyebrow">{PUBLIC_HOME_MISSION_COPY.eyebrow}</p>
+          <h1 id="home-title">{PUBLIC_HOME_MISSION_COPY.heading}</h1>
+          <p className="home-hero__deck">{PUBLIC_HOME_MISSION_COPY.body}</p>
           <div className="home-hero__actions">
-            <Link
-              className="primary-action"
-              href="/events"
-            >
-              See upcoming gatherings
+            <Link className="primary-action" href="/about">
+              Read our mission
             </Link>
-            <Link href="#new-here">New here? Start here</Link>
+            <Link href="/events">See our work in action</Link>
           </div>
         </div>
 
@@ -73,12 +61,10 @@ export function HomePageRenderer({
       <section className="home-events" aria-labelledby="home-events-title">
         <div className="section-heading">
           <div>
-            <p className="section-kicker">Coming up next</p>
-            <h2 id="home-events-title">More ways to join in</h2>
+            <p className="section-kicker">Our work in action</p>
+            <h2 id="home-events-title">Upcoming community programs</h2>
           </div>
-          <Link href="/events">
-            See all upcoming gatherings
-          </Link>
+          <Link href="/events">View all events</Link>
         </div>
         {upcomingEvents.length > 0 ? (
           <div className="event-list">
@@ -91,18 +77,14 @@ export function HomePageRenderer({
             <p className="section-kicker">More gatherings</p>
             <h3>Those are the next gatherings.</h3>
             <p>See the complete events page as more dates are added.</p>
-            <Link href="/events">
-              Open events
-            </Link>
+            <Link href="/events">Open events</Link>
           </div>
         ) : (
           <div className="public-empty-state">
             <p className="section-kicker">Upcoming gatherings</p>
             <h3>No upcoming event yet.</h3>
             <p>Check the complete events page for the latest public listings.</p>
-            <Link href="/events">
-              Open events
-            </Link>
+            <Link href="/events">Open events</Link>
           </div>
         )}
       </section>
@@ -113,25 +95,14 @@ export function HomePageRenderer({
         aria-labelledby="home-newcomer-title"
       >
         <div>
-          <p className="section-kicker">New here?</p>
-          <h2 id="home-newcomer-title">Your first event can be simple.</h2>
+          <p className="section-kicker">For participants</p>
+          <h2 id="home-newcomer-title">Coming for the first time?</h2>
         </div>
         <div>
           <p>
-            You can come on your own. Pick the gathering that interests you,
-            read what to expect on its event page, and show up as you are.
-          </p>
-          <p>
-            How a gathering begins depends on the event. Its page tells you the
-            topic or activity, place, timing, preparation, arrival details, and
-            what to expect. Follow those specific details rather than assuming
-            every club uses the same routine.
-          </p>
-          <p>
-            You do not need to know anyone already, prepare a clever answer, or
-            be an expert in the topic. The point is not to perform expertise,
-            but to follow an interesting thread together and make room for
-            different perspectives.
+            Come on your own, choose a gathering that interests you, and use
+            the event page for the practical details. No prior expertise—or
+            pre-existing social circle—is required.
           </p>
         </div>
       </section>
@@ -139,8 +110,8 @@ export function HomePageRenderer({
       <section className="lane-index" aria-labelledby="lane-index-title">
         <div className="section-heading">
           <div>
-            <p className="section-kicker">Four activity lanes</p>
-            <h2 id="lane-index-title">Choose what pulls you in</h2>
+            <p className="section-kicker">What we do</p>
+            <h2 id="lane-index-title">Many interests. One purpose.</h2>
           </div>
         </div>
         <div className="lane-index__grid">
@@ -157,9 +128,7 @@ export function HomePageRenderer({
               </div>
               <h3>{lane.name}</h3>
               {lane.description ? <p>{lane.description}</p> : null}
-              <Link
-                href={`/events?lane=${encodeURIComponent(lane.slug)}`}
-              >
+              <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
                 See {lane.name} events
               </Link>
             </article>
@@ -167,84 +136,70 @@ export function HomePageRenderer({
         </div>
       </section>
 
-      <section className="home-clubs" aria-labelledby="home-clubs-title">
-        <div className="section-heading">
-          <div>
-            <p className="section-kicker">Clubs</p>
-            <h2 id="home-clubs-title">Find your recurring doorway</h2>
-          </div>
-          <Link href="/clubs">See all clubs</Link>
-        </div>
-        <div className="home-clubs__grid">
-          {clubs.map((club) => (
-            <article
-              data-event-lane={club.lane.slug}
-              key={club.slug}
-              style={
-                club.themeColor
-                  ? ({ "--club-accent": club.themeColor } as CSSProperties)
-                  : undefined
-              }
-            >
-              <p>{club.lane.name}</p>
-              <h3>
-                <Link href={`/clubs/${club.slug}`}>{club.name}</Link>
-              </h3>
-              {club.description ? <p>{club.description}</p> : null}
-            </article>
-          ))}
-        </div>
-      </section>
-
       <section
         className="home-mission home-community"
-        aria-labelledby="home-organizer-note-title"
+        aria-labelledby="home-impact-title"
       >
-        <OrganizerNote headingId="home-organizer-note-title" />
+        <div>
+          <p className="section-kicker">How the work helps</p>
+          <h2 id="home-impact-title">
+            Connection grows when people have a reason to return.
+          </h2>
+        </div>
+        <div>
+          <p>Our gatherings are designed to make three things easier:</p>
+          <ul aria-label="How Vancouver Curiosity Club gatherings help">
+            <li>
+              <strong>Arrive without an existing circle.</strong>
+              <p>
+                A shared question or activity gives people a natural place to
+                begin.
+              </p>
+            </li>
+            <li>
+              <strong>Connect through substance.</strong>
+              <p>
+                Books, films, ideas, creative practice, and city experiences
+                make room for genuine exchange.
+              </p>
+            </li>
+            <li>
+              <strong>Return to something dependable.</strong>
+              <p>
+                Recurring programs create continuity, helping unfamiliar faces
+                become familiar over time.
+              </p>
+            </li>
+          </ul>
+          <p>
+            We are building for the long term through an ongoing public
+            calendar, recurring programs across three official Meetup groups,
+            clear public standards, and partnerships that can support the work
+            across seasons and years.
+          </p>
+        </div>
       </section>
-
-      {catalog.communityLinks.length > 0 ? (
-        <section
-          className="home-proof home-community"
-          aria-labelledby="home-official-links-title"
-        >
-          <div className="home-official-links">
-            <p className="section-kicker">Official community links</p>
-            <h2 id="home-official-links-title">
-              Find the club beyond this website.
-            </h2>
-            <p>{catalog.site.mission}</p>
-            <ul aria-label="Official Vancouver Curiosity Club destinations">
-              {catalog.communityLinks.map((link) => (
-                <li key={`${link.linkType}:${link.url}`}>
-                  <a href={link.url} rel="noreferrer noopener">
-                    {link.label} <span aria-hidden="true">↗</span>
-                  </a>
-                  {link.description ? <p>{link.description}</p> : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      ) : null}
 
       <section
         className="home-closing home-invitation"
         aria-labelledby="home-closing-title"
       >
         <div>
-          <p className="section-kicker">Come to the next one</p>
-          <h2 id="home-closing-title">Follow the question that catches you.</h2>
-          <p>Choose a gathering and take the next small step.</p>
+          <p className="section-kicker">Work with us</p>
+          <h2 id="home-closing-title">
+            Help build a lasting home for curiosity in Vancouver.
+          </h2>
+          <p>
+            We welcome conversations with community organizations, venues,
+            funders, and supporters who believe thoughtful public gatherings
+            strengthen belonging.
+          </p>
         </div>
         <div className="home-invitation__actions">
-          <Link
-            className="primary-action"
-            href="/events"
-          >
-            See upcoming gatherings
+          <Link className="primary-action" href="/get-involved#partner">
+            Start a partnership conversation
           </Link>
-          <Link href="/get-involved">Get involved</Link>
+          <Link href="/events">See upcoming gatherings</Link>
         </div>
       </section>
 
@@ -376,14 +331,4 @@ function selectHomeDiscoveryEvents(
     heroEvent,
     upcomingEvents: Object.freeze(upcomingEvents),
   });
-}
-
-function selectHomepageClubs(
-  clubs: readonly PublicClubDto[],
-): readonly PublicClubDto[] {
-  const current = clubs.filter((club) => !club.archived);
-  return [
-    ...current.filter((club) => club.featured),
-    ...current.filter((club) => !club.featured),
-  ].slice(0, 6);
 }

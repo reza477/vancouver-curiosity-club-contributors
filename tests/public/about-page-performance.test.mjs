@@ -4,11 +4,13 @@ import test from "node:test";
 
 const projectRoot = new URL("../../", import.meta.url);
 
-test("About keeps its CMS gate without loading catalog or event projections", async () => {
-  const about = await readFile(
-    new URL("app/about/page.tsx", projectRoot),
-    "utf8",
-  );
+test("About keeps its CMS gate and a truthful institutional narrative without loading projections", async () => {
+  const [about, editorial, missionCopy] = await Promise.all([
+    readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/_components/EditorialPage.tsx", projectRoot), "utf8"),
+    readFile(new URL("lib/public-mission-copy.ts", projectRoot), "utf8"),
+  ]);
+  const aboutPositioning = `${about}\n${missionCopy}`;
 
   assert.match(
     about,
@@ -38,10 +40,39 @@ test("About keeps its CMS gate without loading catalog or event projections", as
     /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-closing"/u,
     "removing the organizer note must preserve the remaining About section order",
   );
+
+  for (const copy of [
+    "Mission-led community in Vancouver",
+    "Building belonging through curiosity.",
+    "Our mission",
+    "Make meaningful community easier to find.",
+    "How the work helps",
+    "A shared interest can become a way into community.",
+    "Built for continuity",
+    "A community designed to keep showing up.",
+    "Work with us",
+    "Help create the conditions for connection.",
+  ]) {
+    assert.ok(aboutPositioning.includes(copy), copy);
+  }
   assert.match(
     about,
-    /<Link\s+className="primary-action"\s+href="\/events">[\s\S]*?See upcoming gatherings[\s\S]*?<\/Link>/u,
-    "About must retain a direct path to the live Events page",
+    /descriptionOverride:\s*PUBLIC_ABOUT_MISSION_COPY\.metadataDescription/u,
+  );
+  assert.match(
+    editorial,
+    /descriptionOverride \?\?[\s\S]*?page\.metaDescription/u,
+    "product-owned mission metadata must take precedence after the CMS page gate succeeds",
+  );
+  assert.match(
+    about,
+    /<Link\s+className="primary-action"\s+href="\/get-involved#partner">[\s\S]*?Discuss a partnership[\s\S]*?<\/Link>/u,
+    "About must give prospective partners a focused next step",
+  );
+  assert.match(
+    about,
+    /<Link\s+href="\/events">[\s\S]*?See the work in action[\s\S]*?<\/Link>/u,
+    "About must let prospective supporters inspect the public program",
   );
 
   assert.doesNotMatch(
@@ -53,6 +84,16 @@ test("About keeps its CMS gate without loading catalog or event projections", as
     about,
     /className="about-(?:facts|events)"/u,
     "the two sections backed by live catalog and event queries must stay removed",
+  );
+  assert.doesNotMatch(
+    about,
+    /\b(?:registered\s+)?(?:nonprofit|non-profit|charit(?:y|able)|tax[- ]deductible|tax receipt)\b/iu,
+    "About must not claim an unverified legal or charitable status",
+  );
+  assert.doesNotMatch(
+    about,
+    /\b(?:members?|attendees?)\s+(?:say|said|report(?:ed)?|tell|told)\b|\btestimonial(?:s)?\b|<blockquote\b/iu,
+    "About must not present invented member testimony as impact evidence",
   );
 });
 

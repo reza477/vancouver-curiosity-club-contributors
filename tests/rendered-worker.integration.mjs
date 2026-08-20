@@ -771,36 +771,33 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(
     html,
-    /name="description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
+    /name="description" content="Vancouver Curiosity Club brings people together through thoughtful gatherings built around learning, culture, creativity, and shared experience\."/iu,
   );
   assert.match(
     html,
-    /Books, films, ideas, walks &amp; creative nights in Vancouver/u,
+    /A mission-led Vancouver community organization/u,
   );
-  assert.match(html, /Come curious\. Leave knowing people\./u);
+  assert.match(html, /Building a lasting home for curiosity\./u);
   assert.match(
     html,
-    /Vancouver Curiosity Club is for people who miss conversations that go somewhere\./u,
+    /Our mission is to make meaningful connection easier to find—and easier to return to\./u,
   );
-  assert.match(html, />See upcoming gatherings<\/a>/u);
-  assert.match(html, />New here\? Start here<\/a>/u);
+  assert.match(html, />Read our mission<\/a>/u);
+  assert.match(html, />See our work in action<\/a>/u);
   assert.match(html, /class="home-hero"/u);
   assert.match(html, /class="home-events"/u);
   assert.match(html, /class="home-newcomer attending-note"/u);
   assert.match(html, /class="lane-index"/u);
-  assert.match(html, /class="home-clubs"/u);
   assert.match(html, /class="home-mission home-community"/u);
-  assert.match(html, /class="home-proof home-community"/u);
   assert.match(html, /class="home-closing home-invitation"/u);
+  assert.doesNotMatch(html, /class="home-(?:clubs|proof)/u);
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
   const orderedHomeSections = [
     'class="home-hero"',
     'class="home-events"',
     'class="home-newcomer attending-note"',
     'class="lane-index"',
-    'class="home-clubs"',
     'class="home-mission home-community"',
-    'class="home-proof home-community"',
     'class="home-closing home-invitation"',
   ];
   for (let index = 1; index < orderedHomeSections.length; index += 1) {
@@ -831,11 +828,11 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(
     html,
-    /property="og:description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
+    /property="og:description" content="Vancouver Curiosity Club brings people together through thoughtful gatherings built around learning, culture, creativity, and shared experience\."/iu,
   );
   assert.match(
     html,
-    /name="twitter:description" content="Thoughtful Vancouver events for people who like learning in company\."/iu,
+    /name="twitter:description" content="Vancouver Curiosity Club brings people together through thoughtful gatherings built around learning, culture, creativity, and shared experience\."/iu,
   );
   assert.match(
     html,
@@ -1216,7 +1213,7 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
   }
 
   const fontResponse = await posterRuntime.dispatchFetch(
-    "https://preview.example/fonts/inter-latin-400.woff2",
+    "https://preview.example/fonts/inter-latin-400-700.woff2",
   );
   assert.equal(fontResponse.status, 200);
   assert.equal(
@@ -1420,7 +1417,7 @@ test("Feedback is consistent while contact and Host routes remain canonical", as
   const homeHtml = await homeResponse.text();
   assert.match(
     homeHtml,
-    /class="home-invitation__actions"[\s\S]*?<a[^>]*href="\/get-involved"[^>]*>Get involved<\/a>/u,
+    /class="home-invitation__actions"[\s\S]*?<a[^>]*href="\/get-involved#partner"[^>]*>Start a partnership conversation<\/a>/u,
   );
 
   const getInvolvedResponse = await fetchPath("/get-involved");

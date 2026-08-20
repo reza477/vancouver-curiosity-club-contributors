@@ -19,8 +19,8 @@ export function PublicFormPrivacyNotice() {
       <p>
         Host an Event collects a name, reply email, proposed event title or
         topic, short event idea, format, and optional preferred club or
-        program and timing. Venue or Community Partnership collects a
-        contact name, reply email, organization or venue name, partnership
+        program and timing. Partnership or Funding Support collects a contact
+        name, reply email, organization, venue, or supporter name, partnership
         type, message, and an optional HTTPS website.
       </p>
       <p>

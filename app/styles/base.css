@@ -168,7 +168,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .section-heading > a {
   align-items: center;
   min-height: 2.75rem;
-  font-weight: 750;
+  font-weight: 600;
   display: inline-flex;
 }
 
@@ -260,7 +260,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   text-transform: uppercase;
   margin: 0;
   font-size: 0.8rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .route-loading__skeleton, .route-loading__masthead, .route-loading__card {

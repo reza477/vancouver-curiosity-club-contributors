@@ -112,7 +112,7 @@
   align-items: center;
   min-width: 2.75rem;
   min-height: 2.75rem;
-  font-weight: 750;
+  font-weight: 600;
   display: inline-flex;
 }
 
@@ -127,7 +127,7 @@
   align-items: center;
   min-height: 2.75rem;
   padding: 0.68rem 0.9rem;
-  font-weight: 750;
+  font-weight: 600;
   text-decoration: none;
   display: inline-flex;
 }
@@ -136,6 +136,7 @@
   border-color: var(--forest);
   background: var(--forest);
   color: var(--paper);
+  box-shadow: 0.18rem 0.18rem 0 var(--ink);
 }
 
 .primary-action:hover, .primary-action:focus-visible, .home-hero__actions .primary-action:hover, .home-hero__actions .primary-action:focus-visible {
@@ -144,7 +145,7 @@
   color: var(--paper);
 }
 
-.home-events, .lane-index, .home-clubs, .related-events {
+.home-events, .lane-index, .related-events {
   border-bottom: 1px solid var(--line);
 }
 
@@ -153,9 +154,7 @@
   font-family: var(--display);
   letter-spacing: -0.055em;
   margin: 0;
-  font-size: clamp(2.2rem, 5vw, 5.5rem);
   font-weight: 400;
-  line-height: 0.95;
 }
 
 .event-card__date span, .event-card__meta, .event-card__facts, .event-detail__facts dt, .event-detail__stamp span {
@@ -163,7 +162,7 @@
   letter-spacing: 0.07em;
   text-transform: uppercase;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .event-card__date strong, .event-detail__stamp strong {
@@ -219,7 +218,7 @@
   border: 0;
   align-items: center;
   padding: 0.55rem 0.65rem;
-  font-weight: 750;
+  font-weight: 600;
   text-decoration: none;
   display: flex;
 }
@@ -265,4 +264,16 @@
 
 .event-card:hover, .event-card:focus-within, .home-hero__poster:hover, .home-hero__poster:focus-within, .club-directory__card:hover, .club-directory__card:focus-within {
   transform: translateY(-0.18rem);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .primary-action:hover, .primary-action:focus-visible {
+    box-shadow: 0.25rem 0.25rem 0 var(--ink);
+    transform: translateY(-1px);
+  }
+
+  .primary-action:active {
+    box-shadow: none;
+    transform: translateY(1px);
+  }
 }

@@ -120,9 +120,9 @@ export function GetInvolvedRouteBody({
           <p className="section-kicker">Choose a way to contribute</p>
           <h2 id="ways-heading">What would you like to make happen?</h2>
           <p>
-            Have an event idea, want to help at a gathering, or know a great
-            venue? Send the organizers the useful details in one of the forms
-            below.
+            Have an event idea, want to help at a gathering, know a great
+            venue, or want to support the work? Send the organizers the useful
+            details in one of the forms below.
           </p>
         </div>
         <div className="contribution-paths">
@@ -138,8 +138,8 @@ export function GetInvolvedRouteBody({
           </Link>
           <a data-contribution-path="partner" href="#partner">
             <span aria-hidden="true">03</span>
-            <strong>Offer a venue or partnership</strong>
-            <small>Start a practical conversation with the organizers.</small>
+            <strong>Offer a partnership or support</strong>
+            <small>Discuss space, collaboration, funding, or sponsorship.</small>
           </a>
         </div>
       </section>

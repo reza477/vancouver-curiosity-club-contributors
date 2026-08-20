@@ -229,7 +229,14 @@ export default async function RootLayout({
       <head>
         <link
           rel="preload"
-          href="/fonts/fraunces-72pt-latin-400.woff2"
+          href="/fonts/fraunces-72pt-latin-400-600.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/fonts/inter-latin-400-700.woff2"
           as="font"
           type="font/woff2"
           crossOrigin="anonymous"

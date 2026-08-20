@@ -119,7 +119,7 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
     {
       heading: "Bring something to the club",
       paragraphs: [
-        "Attending a published event is the simplest way in. Use the forms below to tell the organizers how you would like to volunteer or to start a venue or community partnership conversation.",
+        "Attending a published event is the simplest way in. Use the forms below to tell the organizers how you would like to volunteer or to start a partnership, funding, or sponsorship conversation.",
       ],
       text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
     },
@@ -1264,7 +1264,7 @@ test(
       "The Feedback form collects a name, reply email, topic, and message.",
       "Volunteer collects a name, reply email, one to five interest areas, how the visitor would like to help, and optional availability or relevant context.",
       "Host an Event collects a name, reply email, proposed event title or topic, short event idea, format, and optional preferred club or program and timing.",
-      "Venue or Community Partnership collects a contact name, reply email, organization or venue name, partnership type, message, and an optional HTTPS website.",
+      "Partnership or Funding Support collects a contact name, reply email, organization, venue, or supporter name, partnership type, message, and an optional HTTPS website.",
     ]) {
       assert.ok(
         privacyText.includes(exactEnumeration),
@@ -1398,7 +1398,7 @@ test(
     assert.match(getInvolvedHtml, /href="\/host-an-event"/u);
     assert.match(getInvolvedHtml, />Host an event</u);
     assert.match(getInvolvedHtml, /href="#partner"/u);
-    assert.match(getInvolvedHtml, />Offer a venue or partnership</u);
+    assert.match(getInvolvedHtml, />Offer a partnership or support</u);
     assert.doesNotMatch(
       getInvolvedHtml,
       /community-destinations|confirmed group|Choose a community destination/iu,
@@ -1445,7 +1445,7 @@ test(
       "Send feedback",
       "Send volunteer interest",
       "Send event idea",
-      "Send partnership idea",
+      "Send partnership or support inquiry",
     ]) {
       assert.match(formSource, new RegExp(escapeRegex(label), "u"));
     }

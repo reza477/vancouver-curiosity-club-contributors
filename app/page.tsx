@@ -13,12 +13,14 @@ import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
 import { getRequestPublicOrganization } from "@/lib/server/public/request-cache";
 import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
 import { writeSafeLog } from "@/lib/validation/server-observability";
+import { PUBLIC_HOME_MISSION_COPY } from "@/lib/public-mission-copy";
 
 export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return buildEditorialMetadata({
     absoluteTitle: true,
+    descriptionOverride: PUBLIC_HOME_MISSION_COPY.metadataDescription,
     fallbackTitle: "Vancouver Curiosity Club",
     path: "/",
     route: "/",

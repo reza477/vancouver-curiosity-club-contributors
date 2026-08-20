@@ -136,12 +136,14 @@ export async function loadCommunityDestinations(
 
 export async function buildEditorialMetadata({
   absoluteTitle = false,
+  descriptionOverride,
   fallbackTitle,
   path,
   route,
   slug,
 }: Readonly<{
   absoluteTitle?: boolean;
+  descriptionOverride?: string;
   fallbackTitle: string;
   path: string;
   route: string;
@@ -206,7 +208,10 @@ export async function buildEditorialMetadata({
   }
   const title = page?.seoTitle ?? page?.title ?? fallbackTitle;
   const description = page
-    ? (page.metaDescription ?? pageDescription(page) ?? page.title)
+    ? (descriptionOverride ??
+      page.metaDescription ??
+      pageDescription(page) ??
+      page.title)
     : undefined;
   return buildEditorialMetadataFromResolved({
     absoluteTitle,

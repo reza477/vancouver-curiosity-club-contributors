@@ -154,7 +154,7 @@ test("configured Contact footer copy is normalized to public Feedback", () => {
   assert.doesNotMatch(markup, /<a[^>]*href="\/contact"[^>]*>Contact<\/a>/u);
 });
 
-test("the homepage exposes Get involved while its destination retains Host", async () => {
+test("the homepage exposes the partnership path while Get involved retains Host", async () => {
   const routeBodies = await source("app/_components/EditorialRouteBodies.tsx");
   const markup = renderToStaticMarkup(
     createElement(HomePageRenderer, {
@@ -171,7 +171,10 @@ test("the homepage exposes Get involved while its destination retains Host", asy
   );
   const main = markup.match(/<main\b[\s\S]*<\/main>/u)?.[0];
   assert.ok(main, "the homepage main must render");
-  assert.match(main, /<a[^>]*href="\/get-involved"[^>]*>Get involved<\/a>/u);
+  assert.match(
+    main,
+    /<a[^>]*href="\/get-involved#partner"[^>]*>Start a partnership conversation<\/a>/u,
+  );
   assert.match(
     routeBodies,
     /data-contribution-path="host"[\s\S]*?href="\/host-an-event"[\s\S]*?<strong>Host an event<\/strong>/u,

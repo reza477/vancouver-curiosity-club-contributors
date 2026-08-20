@@ -37,6 +37,7 @@ export const PARTNERSHIP_TYPES = [
   "Venue",
   "Community collaboration",
   "Program collaboration",
+  "Funding or sponsorship",
   "Other",
 ] as const;
 
@@ -225,7 +226,7 @@ export function publicFormLabel(formKey: PublicFormKey): string {
     case "host_event":
       return "Host an Event";
     case "partnership":
-      return "Venue or Community Partnership";
+      return "Partnership or Funding Support";
   }
 }
 

@@ -55,7 +55,7 @@ test("the rendered Privacy notice explains the site's real data boundaries", () 
   );
   assert.match(
     text,
-    /(?:Venue|Community Partnership)[^.]*name[^.]*reply email[^.]*organization|organization[^.]*website/iu,
+    /Partnership or Funding Support[^.]*name[^.]*reply email[^.]*supporter[^.]*website/iu,
     "visitors must be told what the partnership form collects",
   );
   assert.match(

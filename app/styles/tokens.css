@@ -1,32 +1,32 @@
 @font-face {
   font-family: "Fraunces";
-  font-weight: 400;
+  font-weight: 400 600;
   font-display: swap;
-  src: url("/fonts/fraunces-72pt-latin-ext-400.woff2");
+  src: url("/fonts/fraunces-72pt-latin-ext-400-600.woff2");
   unicode-range: U+0100-02BA, U+02BD-036F, U+1D00-1EFF, U+2000-21FF, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
   font-family: "Fraunces";
-  font-weight: 400;
+  font-weight: 400 600;
   font-display: swap;
-  src: url("/fonts/fraunces-72pt-latin-400.woff2");
+  src: url("/fonts/fraunces-72pt-latin-400-600.woff2");
   unicode-range: U+0000-00FF, U+2000-22FF, U+FEFF, U+FFFD;
 }
 
 @font-face {
   font-family: "Inter";
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
-  src: url("/fonts/inter-latin-ext-400.woff2");
+  src: url("/fonts/inter-latin-ext-400-700.woff2");
   unicode-range: U+0100-02BA, U+02BD-036F, U+1D00-1EFF, U+2000-21FF, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
   font-family: "Inter";
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
-  src: url("/fonts/inter-latin-400.woff2");
+  src: url("/fonts/inter-latin-400-700.woff2");
   unicode-range: U+0000-00FF, U+2000-22FF, U+FEFF, U+FFFD;
 }
 
@@ -73,6 +73,7 @@ body[data-surface="public"] {
   --forest: var(--accent);
   --teal: var(--accent-quiet);
   --cobalt: var(--accent-quiet);
+  font-synthesis: none;
 }
 
 body[data-surface="public"][data-typography="humanist"] {

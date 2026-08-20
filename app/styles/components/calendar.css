@@ -41,7 +41,7 @@
   align-items: center;
   min-height: 2.75rem;
   padding: 0.55rem 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
   text-decoration: none;
   display: inline-flex;
 }
@@ -114,7 +114,7 @@
   height: 2rem;
   font-family: var(--mono);
   place-items: center;
-  font-weight: 800;
+  font-weight: 700;
   display: inline-grid;
 }
 
@@ -127,7 +127,7 @@
   letter-spacing: 0.02em;
   text-transform: uppercase;
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .public-calendar__event-dot {
@@ -225,7 +225,7 @@
   text-transform: uppercase;
   margin: 0;
   font-size: 0.75rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .public-calendar-event__copy h4 {
@@ -257,7 +257,7 @@
 }
 
 .public-calendar-event__location {
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .public-calendar-event__actions {
@@ -272,7 +272,7 @@
   align-items: center;
   min-height: 2.75rem;
   padding: 0.5rem 0.65rem;
-  font-weight: 750;
+  font-weight: 600;
   text-decoration: none;
   display: inline-flex;
 }
@@ -583,7 +583,7 @@
     font-family: var(--mono);
     text-transform: uppercase;
     font-size: 0.75rem;
-    font-weight: 800;
+    font-weight: 700;
   }
 
   .public-calendar__mobile-agenda-list strong {
@@ -602,7 +602,7 @@
     margin: 0.85rem 0 0;
     padding: 0.55rem 0.85rem;
     font-size: 0.88rem;
-    font-weight: 800;
+    font-weight: 700;
     display: inline-flex;
   }
 

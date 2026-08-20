@@ -9,7 +9,7 @@ const INTERNAL_PUBLICATION_COPY =
 
 const PRODUCT_OWNED_SURFACES = Object.freeze([
   Object.freeze({
-    anchor: /Follow the question that catches you\./u,
+    anchor: /Help create the conditions for connection\./u,
     label: "About closing invitation",
     path: "app/about/page.tsx",
     rejected: /live catalog/iu,
