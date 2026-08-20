@@ -5,6 +5,7 @@ import {
   MeetupSyncError,
   parseMeetupGroupEventsPage,
 } from "../../lib/server/meetup/index.ts";
+import { validateMeetupDescriptionBlocks } from "../../lib/meetup-event-enrichment.ts";
 
 const GROUP_SLUG = "vancouver-meetup-group";
 const GROUP_REF = "Group:38093975";
@@ -554,6 +555,34 @@ Free general admission — first come, first served.`;
   assert.doesNotMatch(cinema.description, /External resource/u);
 });
 
+test("keeps source spacing without emitting whitespace-only description inlines", () => {
+  const state = createApolloState();
+  state[EVENT_REF].description = `Quarry Rock sunset hike and dinner.
+
+- **What** **to bring**: water, sturdy shoes, and a light layer.`;
+
+  const publicContent = parseMeetupGroupEventsPage(
+    createHtml(state),
+    GROUP_SLUG,
+  ).events[0].publicContent;
+  const list = publicContent.descriptionBlocks.find(
+    (block) => block.type === "unordered-list",
+  );
+  assert.deepEqual(list.items[0], [
+    { text: "What ", type: "strong" },
+    { text: "to bring", type: "strong" },
+    { text: ": water, sturdy shoes, and a light layer.", type: "text" },
+  ]);
+  assert.equal(
+    list.items[0].some((inline) => inline.text.trim().length === 0),
+    false,
+  );
+  assert.doesNotThrow(() =>
+    validateMeetupDescriptionBlocks(publicContent.descriptionBlocks),
+  );
+  assert.match(publicContent.description, /What to bring: water/u);
+});
+
 test("new public-description hosts remain exact and fail closed", () => {
   for (const unsafeUrl of [
     "http://deepcovekayak.com/lesson/intro-to-sup/",
@@ -582,29 +611,204 @@ test("new public-description hosts remain exact and fail closed", () => {
   }
 });
 
-test("fetches the one canonical group page with bounded no-store semantics", async () => {
-  const html = createHtml(createApolloState());
-  let observedUrl = null;
-  let observedInit = null;
+test("fetches the canonical group page then the complete public GraphQL inventory", async () => {
+  const state = createApolloState();
+  setPrimaryConnectionPagination(state, {
+    endCursor: null,
+    hasNextPage: false,
+    totalCount: 1,
+  });
+  const html = createHtml(state);
+  const observed = [];
   const parsed = await fetchMeetupGroupEvents(GROUP_SLUG, {
     fetcher: async (url, init) => {
-      observedUrl = url;
-      observedInit = init;
-      return new Response(html, {
-        headers: { "content-type": "text/html; charset=utf-8" },
-        status: 200,
-      });
+      observed.push({ init, url });
+      return observed.length === 1
+        ? new Response(html, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+            status: 200,
+          })
+        : graphqlResponse({ events: [createGraphqlEventNode()] });
     },
   });
 
   assert.equal(
-    observedUrl,
+    observed[0].url,
     `https://www.meetup.com/${GROUP_SLUG}/events/`,
   );
-  assert.equal(observedInit.cache, "no-store");
-  assert.equal(observedInit.redirect, "manual");
-  assert.equal(observedInit.headers.get("accept"), "text/html,application/xhtml+xml");
+  assert.equal(observed[0].init.cache, "no-store");
+  assert.equal(observed[0].init.redirect, "manual");
+  assert.equal(
+    observed[0].init.headers.get("accept"),
+    "text/html,application/xhtml+xml",
+  );
+  assert.equal(observed[1].url, "https://api.meetup.com/gql-ext");
+  assert.equal(observed[1].init.method, "POST");
+  assert.equal(observed[1].init.redirect, "manual");
+  assert.equal(observed[1].init.headers.get("accept"), "application/json");
+  assert.equal(observed[1].init.headers.get("content-type"), "application/json");
+  assert.deepEqual(JSON.parse(observed[1].init.body).variables, {
+    after: null,
+    afterDateTime: FUTURE_AFTER,
+    urlname: GROUP_SLUG,
+  });
   assert.equal(parsed.events[0].eventUrl, EVENT_URL);
+  assert.equal(parsed.events[0].publicContent.capacity, 8);
+  assert.equal(parsed.events[0].publicContent.availabilityState, "waitlist");
+  assert.equal(parsed.events[0].publicContent.waitlistAvailable, true);
+});
+
+test("follows every GraphQL cursor with one fixed cutoff and stable totals", async () => {
+  const state = createApolloState();
+  setPrimaryConnectionPagination(state, {
+    endCursor: "html-cursor",
+    hasNextPage: true,
+    totalCount: 3,
+  });
+  const requests = [];
+  const parsed = await fetchMeetupGroupEvents(GROUP_SLUG, {
+    fetcher: async (url, init) => {
+      if (url !== "https://api.meetup.com/gql-ext") {
+        return new Response(createHtml(state), {
+          headers: { "content-type": "text/html" },
+          status: 200,
+        });
+      }
+      const variables = JSON.parse(init.body).variables;
+      requests.push(variables);
+      return variables.after === null
+        ? graphqlResponse({
+            endCursor: "cursor-one",
+            events: [
+              createGraphqlEventNode(),
+              createGraphqlEventNode({
+                dateTime: "2026-08-13T18:00:00-07:00",
+                endTime: "2026-08-13T20:00:00-07:00",
+                eventId: "316010051",
+              }),
+            ],
+            hasNextPage: true,
+            totalCount: 3,
+          })
+        : graphqlResponse({
+            events: [
+              createGraphqlEventNode({
+                dateTime: "2026-08-14T18:00:00-07:00",
+                endTime: "2026-08-14T20:00:00-07:00",
+                eventId: "316010052",
+              }),
+            ],
+            totalCount: 3,
+          });
+    },
+  });
+
+  assert.deepEqual(requests, [
+    { after: null, afterDateTime: FUTURE_AFTER, urlname: GROUP_SLUG },
+    { after: "cursor-one", afterDateTime: FUTURE_AFTER, urlname: GROUP_SLUG },
+  ]);
+  assert.deepEqual(
+    parsed.events.map((event) => event.uid),
+    [
+      `event_${EVENT_ID}@meetup.com`,
+      "event_316010051@meetup.com",
+      "event_316010052@meetup.com",
+    ],
+  );
+});
+
+test("does not advertise waitlists before RSVP opens or after RSVP closes", async () => {
+  const state = createApolloState();
+  setPrimaryConnectionPagination(state, {
+    endCursor: null,
+    hasNextPage: false,
+    totalCount: 3,
+  });
+  const parsed = await fetchMeetupGroupEvents(GROUP_SLUG, {
+    fetcher: async (url) =>
+      url === "https://api.meetup.com/gql-ext"
+        ? graphqlResponse({
+            events: [
+              createGraphqlEventNode({
+                description: "Public event description. Waitlist: available.",
+                rsvpState: "CLOSED",
+                waitlistCount: 4,
+              }),
+              createGraphqlEventNode({
+                dateTime: "2026-08-13T18:00:00-07:00",
+                endTime: "2026-08-13T20:00:00-07:00",
+                eventId: "316010051",
+                rsvpState: "NOT_OPEN_YET",
+              }),
+              createGraphqlEventNode({
+                dateTime: "2026-08-14T18:00:00-07:00",
+                description: "Public event description. Cap: 8.",
+                endTime: "2026-08-14T20:00:00-07:00",
+                eventId: "316010052",
+                maxTickets: 0,
+                waitlistCount: 0,
+              }),
+            ],
+          })
+        : new Response(createHtml(state), {
+            headers: { "content-type": "text/html" },
+            status: 200,
+          }),
+  });
+
+  for (const event of parsed.events.slice(0, 2)) {
+    assert.equal(event.publicContent.capacity, 8);
+    assert.equal(event.publicContent.availabilityState, null);
+    assert.equal(event.publicContent.waitlistAvailable, null);
+  }
+  assert.equal(parsed.events[2].publicContent.capacity, null);
+  assert.equal(parsed.events[2].publicContent.availabilityState, "open");
+  assert.equal(parsed.events[2].publicContent.waitlistAvailable, null);
+});
+
+test("rejects partial or drifting GraphQL pagination without returning a calendar", async () => {
+  const state = createApolloState();
+  setPrimaryConnectionPagination(state, {
+    endCursor: "html-cursor",
+    hasNextPage: true,
+    totalCount: 2,
+  });
+  for (const secondPage of [
+    graphqlResponse({ events: [], totalCount: 2 }),
+    graphqlResponse({
+      events: [createGraphqlEventNode({ eventId: "316010051" })],
+      totalCount: 3,
+    }),
+    new Response(JSON.stringify({ errors: [{ message: "source failure" }] }), {
+      headers: { "content-type": "application/json" },
+      status: 200,
+    }),
+  ]) {
+    let page = 0;
+    await assert.rejects(
+      fetchMeetupGroupEvents(GROUP_SLUG, {
+        fetcher: async (url) => {
+          if (url !== "https://api.meetup.com/gql-ext") {
+            return new Response(createHtml(state), {
+              headers: { "content-type": "text/html" },
+              status: 200,
+            });
+          }
+          page += 1;
+          return page === 1
+            ? graphqlResponse({
+                endCursor: "cursor-one",
+                events: [createGraphqlEventNode()],
+                hasNextPage: true,
+                totalCount: 2,
+              })
+            : secondPage;
+        },
+      }),
+      (error) =>
+        error instanceof MeetupSyncError && error.code === "calendar_invalid",
+    );
+  }
 });
 
 test("fetch rejects redirects, non-HTML responses, and oversized bodies", async () => {
@@ -740,6 +944,107 @@ function addEvent(
     status,
     title,
   };
+}
+
+function setPrimaryConnectionPagination(
+  state,
+  { endCursor, hasNextPage, totalCount },
+) {
+  const connectionKey = Object.keys(state[GROUP_REF]).find((key) =>
+    key.startsWith("events("),
+  );
+  assert.ok(connectionKey);
+  state[GROUP_REF][connectionKey].pageInfo = {
+    __typename: "PageInfo",
+    endCursor,
+    hasNextPage,
+  };
+  state[GROUP_REF][connectionKey].totalCount = totalCount;
+}
+
+function createGraphqlEventNode({
+  dateTime = "2026-08-12T18:00:00-07:00",
+  description = "## Why come?\n\nBring **curiosity** and join the public discussion.",
+  endTime = "2026-08-12T20:00:00-07:00",
+  eventId = EVENT_ID,
+  maxTickets = 8,
+  rsvpState = "JOIN_OPEN",
+  waitlistCount = 2,
+} = {}) {
+  return {
+    __typename: "Event",
+    dateTime,
+    description,
+    displayPhoto: {
+      __typename: "PhotoInfo",
+      highResUrl: POSTER_URL,
+      id: POSTER_ID,
+    },
+    endTime,
+    eventType: "PHYSICAL",
+    eventUrl: `https://www.meetup.com/${GROUP_SLUG}/events/${eventId}/`,
+    featuredEventPhoto: {
+      __typename: "PhotoInfo",
+      highResUrl: POSTER_URL,
+      id: POSTER_ID,
+    },
+    group: { __typename: "Group", id: GROUP_REF.split(":")[1] },
+    id: eventId,
+    maxTickets,
+    rsvpSettings: { rsvpsClosed: false },
+    rsvpState,
+    status: "ACTIVE",
+    title: "GraphQL source event",
+    venue: {
+      __typename: "Venue",
+      address: "350 West Georgia Street",
+      city: "Vancouver",
+      id: "25956902",
+      name: "Vancouver Central Library",
+      state: "BC",
+    },
+    waitlistMode: "AUTO",
+    waitlistRsvps: { totalCount: waitlistCount },
+    yesRsvps: { totalCount: 8 },
+  };
+}
+
+function graphqlResponse({
+  endCursor = null,
+  events,
+  hasNextPage = false,
+  totalCount = events.length,
+}) {
+  return new Response(
+    JSON.stringify({
+      data: {
+        groupByUrlname: {
+          __typename: "Group",
+          events: {
+            __typename: "GroupEventConnection",
+            edges: events.map((event) => ({
+              __typename: "EventEdge",
+              node: event,
+            })),
+            pageInfo: {
+              __typename: "PageInfo",
+              endCursor,
+              hasNextPage,
+            },
+            totalCount,
+          },
+          id: GROUP_REF.split(":")[1],
+          name: "Vancouver Curiosity Club",
+          timezone: "America/Vancouver",
+          urlname: GROUP_SLUG,
+        },
+      },
+    }),
+    {
+      headers: { "content-type": "application/json; charset=utf-8" },
+      status: 200,
+    },
+  );
 }
 
 function relabelPrimaryMeetupEvent(state, { eventId, groupSlug }) {

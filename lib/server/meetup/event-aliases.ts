@@ -87,6 +87,24 @@ const EXACT_EVENT_ALIASES = [
     canonicalUrl:
       "https://www.meetup.com/vancouver-literature-and-film/events/315777434/",
   },
+  {
+    aliasUrl:
+      "https://www.meetup.com/vancouver-meetup-group/events/316159366/",
+    canonicalUrl:
+      "https://www.meetup.com/vancouver-literature-and-film/events/316159440/",
+  },
+  {
+    aliasUrl:
+      "https://www.meetup.com/vancouver-meetup-group/events/316050934/",
+    canonicalUrl:
+      "https://www.meetup.com/vancouver-literature-and-film/events/316050915/",
+  },
+  {
+    aliasUrl:
+      "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/",
+    canonicalUrl:
+      "https://www.meetup.com/vancouver-literature-and-film/events/315776601/",
+  },
 ] as const;
 
 const NUMERIC_EVENT_URL = /\/events\/[0-9]+\/$/u;

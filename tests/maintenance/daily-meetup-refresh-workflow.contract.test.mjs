@@ -48,9 +48,16 @@ test("workflow signs the timestamp, UUID, and exact empty body without exposing 
   );
   assert.match(workflow, /randomUUID|\/proc\/sys\/kernel\/random\/uuid|uuidgen/iu);
   assert.match(workflow, /for invocation in \$\(seq 1 64\)/u);
+  assert.match(
+    workflow,
+    /for invariant_repair_attempt in \$\(seq 1 "\$max_invariant_repair_attempts"\)/u,
+  );
+  const repairLoop = workflow.indexOf("for invariant_repair_attempt");
   assert.ok(
-    workflow.indexOf("request_id=") > workflow.indexOf("for invocation"),
-    "every bounded invocation must generate a fresh replay-protected request ID",
+    workflow.indexOf("timestamp=", repairLoop) > repairLoop &&
+      workflow.indexOf("request_id=", repairLoop) > repairLoop &&
+      workflow.indexOf("signature=", repairLoop) > repairLoop,
+    "every invariant-repair attempt must regenerate its timestamp, request ID, and signature",
   );
   assert.match(workflow, /date\s+-u\s+\+%s/u);
   assert.match(workflow, /body=(?:["']\{\}["']|\$'\{\}')/u);
@@ -71,13 +78,39 @@ test("workflow signs the timestamp, UUID, and exact empty body without exposing 
   assert.doesNotMatch(workflow, /INITIAL_OWNER_EMAIL|cookie:|oai-authenticated-user/iu);
 });
 
-test("workflow treats any HTTP or reporting failure as a failed run", () => {
+test("workflow retries only deliberate invariant-repair 503 responses and hard-fails other HTTP errors", () => {
   const workflow = source(WORKFLOW_PATH);
   assert.match(workflow, /set\s+-euo\s+pipefail/u);
   assert.match(workflow, /curl[\s\S]*--request\s+POST/iu);
   assert.match(workflow, /--connect-timeout\s+15/u);
   assert.match(workflow, /--max-time\s+90/u);
   assert.match(workflow, /--fail(?:-with-body)?/u);
+  assert.match(workflow, /--dump-header\s+"\$header_file"/u);
+  assert.match(workflow, /--write-out\s+'%\{http_code\}'/u);
+  assert.match(workflow, /max_invariant_repair_attempts=16/u);
+  assert.match(workflow, /max_invariant_retry_after_seconds=30/u);
+  assert.match(
+    workflow,
+    /invariant_repair_detail='<p>The database safety checks were updated\. Please try again shortly so the fresh state can be verified\.<\/p>'/u,
+  );
+  assert.match(
+    workflow,
+    /\[ "\$curl_status" -ne 22 \] \|\|\s*\[ "\$http_status" != 503 \] \|\|\s*! grep --fixed-strings --quiet "\$invariant_repair_detail" "\$response_file"/u,
+  );
+  assert.match(
+    workflow,
+    /\[ "\$invariant_repair_attempt" -ge "\$max_invariant_repair_attempts" \][\s\S]{0,240}?exit 1/u,
+  );
+  assert.match(workflow, /sleep "\$retry_after"/u);
+  assert.match(
+    workflow,
+    /The invariant-repair response had an invalid Retry-After header\.[\s\S]{0,120}?exit 1/u,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /^\s+--retry(?:\s|=|-)/mu,
+    "curl-level retries would reuse the signed timestamp and request ID",
+  );
   assert.match(workflow, /vars\.PUBLIC_SITE_URL/iu);
   assert.match(workflow, /PUBLIC_SITE_URL[^\r\n]*vancouvercuriosityclub\.com/iu);
   assert.match(
@@ -112,6 +145,42 @@ test("workflow treats any HTTP or reporting failure as a failed run", () => {
   assert.match(workflow, /Created before failure/u);
   assert.match(workflow, /unsafe report shape/iu);
   assert.match(workflow, /exceeded its 64-invocation safety limit/iu);
+});
+
+test("Retry-After parsing honors bounded delay-seconds and rejects missing or invalid values", (t) => {
+  const workflow = source(WORKFLOW_PATH);
+  const parser =
+    /node - "\$header_file" "\$max_invariant_retry_after_seconds" <<'NODE'\r?\n([\s\S]*?)\r?\n\s+NODE/u.exec(
+      workflow,
+    );
+  assert.ok(parser, "the deliberate-503 branch must parse Retry-After itself");
+
+  const directory = mkdtempSync(join(tmpdir(), "vcc-retry-after-"));
+  t.after(() => rmSync(directory, { force: true, recursive: true }));
+  const headerPath = join(directory, "headers.txt");
+  const execute = (headers) => {
+    writeFileSync(headerPath, headers, "utf8");
+    return spawnSync(process.execPath, ["-", headerPath, "30"], {
+      encoding: "utf8",
+      input: parser[1],
+    });
+  };
+
+  const honored = execute("HTTP/2 503\r\nRetry-After: 7\r\n\r\n");
+  assert.equal(honored.status, 0, honored.stderr);
+  assert.equal(honored.stdout, "7");
+
+  const capped = execute("HTTP/2 503\r\nretry-after: 999999\r\n\r\n");
+  assert.equal(capped.status, 0, capped.stderr);
+  assert.equal(capped.stdout, "30");
+
+  for (const headers of [
+    "HTTP/2 503\r\n\r\n",
+    "HTTP/2 503\r\nRetry-After: eventually\r\n\r\n",
+  ]) {
+    const rejected = execute(headers);
+    assert.equal(rejected.status, 2, headers);
+  }
 });
 
 test("aggregate count extraction terminates with a newline for Bash read under errexit", (t) => {

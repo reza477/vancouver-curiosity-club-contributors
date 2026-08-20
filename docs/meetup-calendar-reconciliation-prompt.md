@@ -53,8 +53,8 @@ Use the established flow first:
 3. Reuse:
    - app/api/organizer/meetup/refresh/route.ts
    - lib/server/meetup/sync.ts
-   - lib/server/meetup/ics.ts
-   - lib/server/meetup/fetch.ts
+   - lib/server/meetup/group-events.ts
+   - lib/server/meetup/event-aliases.ts
    - lib/server/meetup/url.ts
    - lib/server/public/events.ts
 4. Preserve completed-generation publication, immutable source identity,
@@ -63,12 +63,15 @@ Use the established flow first:
 5. Do not write directly to hosted D1, mutate immutable snapshots, or create a
    parallel importer.
 
-The official iCalendar feed remains authoritative for title, date, start/end
-time, timezone, cancellation/status, and official Meetup event URL.
+The verified canonical group page plus its cursor-complete public GraphQL
+connection are authoritative for title, date, start/end time, timezone,
+cancellation/status, official Meetup event URL, attendee-visible venue,
+capacity/waitlist facts, description, and poster provenance. A group page with
+`hasNextPage: true` is not a complete inventory.
 
-Descriptions, public locations, and posters are not safely supplied by the
-current iCalendar contract. Reuse the existing bounded, source-controlled
-public enrichment workflow:
+Approved CMS copy and reviewed bundled posters retain precedence. The curated
+enrichment workflow remains a reviewed fallback rather than the ordinary source
+refresh path:
 
 - scripts/refresh-curated-meetup-enrichment.mjs
 - lib/meetup-event-enrichment.generated.json
@@ -121,9 +124,10 @@ Update only fields that are missing or differ from the current authoritative
 Meetup listing. If a field already matches, leave it untouched. Never overwrite
 an owner-authored website field with an older or empty value.
 
-Do not automatically merge two cross-posted Meetup IDs. If the same gathering
-appears under different group-specific event IDs, retain the existing
-fail-closed conflict behavior and report it for owner review.
+Consolidate only owner-reviewed exact cross-post URL pairs recorded in
+`lib/server/meetup/event-aliases.ts`. Never infer a merge from title or schedule
+similarity. An unrecorded pair retains fail-closed conflict behavior and must be
+reported for owner review.
 
 For events missing from a completed source generation, use the existing
 reconciliation/cancellation path. Never hard-delete an event or remove a

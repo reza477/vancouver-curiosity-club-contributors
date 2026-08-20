@@ -1020,6 +1020,9 @@ test("all exact cross-post aliases stay out of public projections while the cano
     "https://www.meetup.com/vancouver-meetup-group/events/315776403/",
     "https://www.meetup.com/vancouver-meetup-group/events/315511487/",
     "https://www.meetup.com/vancouver-meetup-group/events/315777485/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316159366/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316050934/",
+    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/",
   ];
   assert.deepEqual(MEETUP_EVENT_ALIAS_URLS, aliasUrls);
   const canonicalUrl =
@@ -2909,6 +2912,44 @@ test("protected legal claims are suppressed across legacy and Meetup public even
     JSON.stringify({ page, sitemapSlugs }),
     /registered nonprofit|incorporated society/iu,
   );
+});
+
+test("ordinary Meetup prose does not combine distant legal-family words into a protected claim", async (t) => {
+  const database = await createFixture(t);
+  const safeDescriptions = [
+    "Loaner binoculars are available at the gift shop. See the Official planning page before visiting.",
+    "What part of modern society feels like a bad game with bad incentives? Meet at the library in Vancouver, BC.",
+  ];
+
+  for (const description of safeDescriptions) {
+    await database
+      .prepare(
+        `UPDATE meetup_event_snapshot_public_contents
+         SET public_description = ?,
+             public_description_blocks_json = ?
+         WHERE snapshot_id = 'snapshot_active'`,
+      )
+      .bind(
+        description,
+        JSON.stringify([{
+          content: [{ text: description, type: "text" }],
+          type: "paragraph",
+        }]),
+      )
+      .run();
+
+    const page = await queryPublicEvents(database, upcomingInput());
+    assert.equal(
+      page.events.some(({ slug }) => slug === "meetup-active-event"),
+      true,
+      description,
+    );
+    const detail = await getPublicEventBySlug(database, {
+      organizationId: ORGANIZATION_ID,
+      slug: "meetup-active-event",
+    });
+    assert.equal(detail?.description, description);
+  }
 });
 
 test("combines validated filters and provides bounded stable pagination", async (t) => {

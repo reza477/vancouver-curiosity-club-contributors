@@ -20,6 +20,12 @@ export const MAX_MEETUP_GROUP_EVENTS_HTML_BYTES = 1_000_000;
 export const MAX_MEETUP_GROUP_EVENTS = 100;
 
 const FETCH_TIMEOUT_MS = 12_000;
+const MEETUP_GRAPHQL_URL = "https://api.meetup.com/gql-ext";
+const MEETUP_GRAPHQL_PAGE_SIZE = 30;
+const MAX_MEETUP_GRAPHQL_PAGES = Math.ceil(
+  MAX_MEETUP_GROUP_EVENTS / MEETUP_GRAPHQL_PAGE_SIZE,
+);
+const MAX_MEETUP_GRAPHQL_RESPONSE_BYTES = 1_000_000;
 const MAX_APOLLO_ENTITIES = 10_000;
 const MAX_DESCRIPTION_LENGTH = 20_000;
 const MAX_DESCRIPTION_BLOCKS = 400;
@@ -42,6 +48,59 @@ const ISO_INSTANT_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
 const POSTER_PATH_PATTERN =
   /^\/photos\/event\/[0-9a-f/]+\/highres_([0-9]+)\.jpe?g$/iu;
+const SOURCE_AVAILABILITY_FIELDS = Object.freeze([
+  "maxTickets",
+  "rsvpSettings",
+  "rsvpState",
+  "waitlistMode",
+  "waitlistRsvps",
+  "yesRsvps",
+] as const);
+
+const UPCOMING_GROUP_EVENTS_QUERY = String.raw`
+query getUpcomingGroupEvents($urlname: String!, $after: String, $afterDateTime: DateTime) {
+  groupByUrlname(urlname: $urlname) {
+    __typename
+    id
+    name
+    urlname
+    timezone
+    events(
+      filter: {status: [ACTIVE, PAST, CANCELLED], afterDateTime: $afterDateTime}
+      sort: ASC
+      first: 30
+      after: $after
+    ) {
+      __typename
+      totalCount
+      pageInfo { __typename endCursor hasNextPage }
+      edges {
+        __typename
+        node {
+          __typename
+          id
+          title
+          eventUrl
+          description
+          dateTime
+          endTime
+          status
+          eventType
+          maxTickets
+          rsvpState
+          waitlistMode
+          yesRsvps: rsvps(filter: {rsvpStatus: [YES]}) { totalCount }
+          waitlistRsvps: rsvps(filter: {rsvpStatus: [WAITLIST]}) { totalCount }
+          rsvpSettings { rsvpsClosed }
+          group { __typename id }
+          venue { __typename id name address city state }
+          featuredEventPhoto { __typename id highResUrl }
+          displayPhoto { __typename id highResUrl }
+        }
+      }
+    }
+  }
+}`;
 
 const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
   new Set([
@@ -97,6 +156,27 @@ type PublicVenue = Readonly<{
   city: string | null;
   name: string;
   state: string | null;
+}>;
+
+type ParsedGroupEventsPageSnapshot = Readonly<{
+  afterDateTimeUtcMs: number;
+  calendar: ParsedMeetupCalendar;
+  expectedTotalCount: number | null;
+  groupId: string;
+  timeZone: string;
+}>;
+
+type ParsedGraphqlPage = Readonly<{
+  endCursor: string | null;
+  events: readonly ParsedMeetupEvent[];
+  hasNextPage: boolean;
+  totalCount: number;
+}>;
+
+type SourceAvailabilityFacts = Readonly<{
+  availabilityState: "open" | "full" | "waitlist" | null;
+  capacity: number | null;
+  waitlistAvailable: boolean | null;
 }>;
 
 export async function fetchMeetupGroupEvents(
@@ -157,9 +237,23 @@ export async function fetchMeetupGroupEvents(
     }
 
     const html = await readBoundedUtf8Body(response, maxBytes);
-    return parseMeetupGroupEventsPage(html, source.groupSlug, {
-      maxBytes,
+    const pageSnapshot = parseMeetupGroupEventsPageSnapshot(
+      html,
+      source.groupSlug,
+      {
+        maxBytes,
+        maxEvents,
+      },
+    );
+    return await fetchCompleteMeetupGroupEvents({
+      afterDateTimeUtcMs: pageSnapshot.afterDateTimeUtcMs,
+      expectedTotalCount: pageSnapshot.expectedTotalCount,
+      fetcher,
+      groupId: pageSnapshot.groupId,
+      groupSlug: source.groupSlug,
       maxEvents,
+      signal: abortController.signal,
+      timeZone: pageSnapshot.timeZone,
     });
   } finally {
     clearTimeout(timeout);
@@ -174,6 +268,21 @@ export function parseMeetupGroupEventsPage(
     maxEvents?: number;
   }> = {},
 ): ParsedMeetupCalendar {
+  return parseMeetupGroupEventsPageSnapshot(
+    input,
+    expectedGroupSlug,
+    options,
+  ).calendar;
+}
+
+function parseMeetupGroupEventsPageSnapshot(
+  input: unknown,
+  expectedGroupSlug: unknown,
+  options: Readonly<{
+    maxBytes?: number;
+    maxEvents?: number;
+  }> = {},
+): ParsedGroupEventsPageSnapshot {
   try {
     const source = parseGroupEventsPageSource(expectedGroupSlug);
     const maxBytes = boundedLimit(
@@ -242,6 +351,7 @@ export function parseMeetupGroupEventsPage(
     const selectedConnections = selectFutureConnections(connectionCandidates);
 
     const events: ParsedMeetupEvent[] = [];
+    const totalCounts: number[] = [];
     const seenEventRefs = new Set<string>();
     for (const candidate of selectedConnections) {
       const connection = requiredRecord(candidate.value);
@@ -255,10 +365,12 @@ export function parseMeetupGroupEventsPage(
       }
       if (
         !Number.isSafeInteger(connection.totalCount) ||
-        (connection.totalCount as number) < connection.edges.length
+        (connection.totalCount as number) < connection.edges.length ||
+        (connection.totalCount as number) > maxEvents
       ) {
         invalidCalendar();
       }
+      totalCounts.push(connection.totalCount as number);
       const pageInfo = requiredRecord(connection.pageInfo);
       if (typeof pageInfo.hasNextPage !== "boolean") invalidCalendar();
 
@@ -298,14 +410,352 @@ export function parseMeetupGroupEventsPage(
             );
 
     return Object.freeze({
-      events: Object.freeze(orderedEvents),
-      method: "PUBLISH" as const,
-      rejectedEvents: Object.freeze([]),
+      afterDateTimeUtcMs: selectedConnections[0].arguments.afterDateTimeUtcMs,
+      calendar: Object.freeze({
+        events: Object.freeze(orderedEvents),
+        method: "PUBLISH" as const,
+        rejectedEvents: Object.freeze([]),
+      }),
+      expectedTotalCount:
+        selectedConnections.length === 1 ? totalCounts[0] : null,
+      groupId,
+      timeZone,
     });
   } catch (error) {
     if (error instanceof MeetupSyncError) throw error;
     throw new MeetupSyncError("calendar_invalid");
   }
+}
+
+async function fetchCompleteMeetupGroupEvents(input: Readonly<{
+  afterDateTimeUtcMs: number;
+  expectedTotalCount: number | null;
+  fetcher: typeof fetch;
+  groupId: string;
+  groupSlug: string;
+  maxEvents: number;
+  signal: AbortSignal;
+  timeZone: string;
+}>): Promise<ParsedMeetupCalendar> {
+  const afterDateTime = new Date(input.afterDateTimeUtcMs).toISOString();
+  const events: ParsedMeetupEvent[] = [];
+  const seenEventUrls = new Set<string>();
+  const seenCursors = new Set<string>();
+  let after: string | null = null;
+  let expectedTotalCount = input.expectedTotalCount;
+  let completed = false;
+
+  for (let pageIndex = 0; pageIndex < MAX_MEETUP_GRAPHQL_PAGES; pageIndex += 1) {
+    const page = await fetchMeetupGraphqlPage({
+      after,
+      afterDateTime,
+      componentOffset: events.length,
+      fetcher: input.fetcher,
+      groupId: input.groupId,
+      groupSlug: input.groupSlug,
+      maxEvents: input.maxEvents,
+      signal: input.signal,
+      timeZone: input.timeZone,
+    });
+    if (expectedTotalCount === null) expectedTotalCount = page.totalCount;
+    if (
+      page.totalCount !== expectedTotalCount ||
+      events.length + page.events.length > input.maxEvents
+    ) {
+      invalidCalendar();
+    }
+    for (const event of page.events) {
+      if (seenEventUrls.has(event.eventUrl)) invalidCalendar();
+      const previous = events.at(-1);
+      if (previous && compareFutureEvents(previous, event) > 0) {
+        invalidCalendar();
+      }
+      seenEventUrls.add(event.eventUrl);
+      events.push(event);
+    }
+
+    if (!page.hasNextPage) {
+      if (events.length !== page.totalCount) invalidCalendar();
+      completed = true;
+      break;
+    }
+    if (
+      page.events.length === 0 ||
+      page.endCursor === null ||
+      seenCursors.has(page.endCursor)
+    ) {
+      invalidCalendar();
+    }
+    seenCursors.add(page.endCursor);
+    after = page.endCursor;
+  }
+
+  if (!completed) invalidCalendar();
+  return Object.freeze({
+    events: Object.freeze(events),
+    method: "PUBLISH" as const,
+    rejectedEvents: Object.freeze([]),
+  });
+}
+
+async function fetchMeetupGraphqlPage(input: Readonly<{
+  after: string | null;
+  afterDateTime: string;
+  componentOffset: number;
+  fetcher: typeof fetch;
+  groupId: string;
+  groupSlug: string;
+  maxEvents: number;
+  signal: AbortSignal;
+  timeZone: string;
+}>): Promise<ParsedGraphqlPage> {
+  let response: Response;
+  try {
+    response = await input.fetcher(MEETUP_GRAPHQL_URL, {
+      body: JSON.stringify({
+        operationName: "getUpcomingGroupEvents",
+        query: UPCOMING_GROUP_EVENTS_QUERY,
+        variables: {
+          after: input.after,
+          afterDateTime: input.afterDateTime,
+          urlname: input.groupSlug,
+        },
+      }),
+      cache: "no-store",
+      headers: new Headers({
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Vancouver-Curiosity-Club-Calendar-Sync/1.0",
+      }),
+      method: "POST",
+      redirect: "manual",
+      signal: input.signal,
+    });
+  } catch {
+    throw new MeetupSyncError("network_error");
+  }
+
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    throw new MeetupSyncError("redirect_rejected");
+  }
+  if (response.status !== 200) {
+    throw new MeetupSyncError("upstream_rejected");
+  }
+  const contentType = response.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (contentType !== "application/json") {
+    throw new MeetupSyncError("upstream_rejected");
+  }
+  if (response.url && response.url !== MEETUP_GRAPHQL_URL) {
+    throw new MeetupSyncError("redirect_rejected");
+  }
+  const body = await readBoundedUtf8Body(
+    response,
+    MAX_MEETUP_GRAPHQL_RESPONSE_BYTES,
+  );
+  return parseMeetupGraphqlPage(body, input);
+}
+
+function parseMeetupGraphqlPage(
+  input: unknown,
+  expected: Readonly<{
+    componentOffset: number;
+    groupId: string;
+    groupSlug: string;
+    maxEvents: number;
+    timeZone: string;
+  }>,
+): ParsedGraphqlPage {
+  try {
+    if (typeof input !== "string" || input.length < 20) invalidCalendar();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(input);
+    } catch {
+      invalidCalendar();
+    }
+    const envelope = requiredRecord(parsed);
+    if (Object.prototype.hasOwnProperty.call(envelope, "errors")) {
+      if (!Array.isArray(envelope.errors) || envelope.errors.length > 0) {
+        invalidCalendar();
+      }
+    }
+    const data = requiredRecord(envelope.data);
+    const group = requiredRecord(data.groupByUrlname);
+    if (
+      group.__typename !== "Group" ||
+      group.id !== expected.groupId ||
+      group.urlname !== expected.groupSlug ||
+      parseIanaTimeZone(group.timezone, "group.timezone") !== expected.timeZone
+    ) {
+      invalidCalendar();
+    }
+    normalizePublicSafeSingleLine(group.name, 200, 1, false);
+    const connection = requiredRecord(group.events);
+    if (connection.__typename !== "GroupEventConnection") invalidCalendar();
+    if (
+      !Number.isSafeInteger(connection.totalCount) ||
+      (connection.totalCount as number) < 0 ||
+      (connection.totalCount as number) > expected.maxEvents ||
+      !Array.isArray(connection.edges) ||
+      connection.edges.length > MEETUP_GRAPHQL_PAGE_SIZE
+    ) {
+      invalidCalendar();
+    }
+    const pageInfo = requiredRecord(connection.pageInfo);
+    if (
+      pageInfo.__typename !== "PageInfo" ||
+      typeof pageInfo.hasNextPage !== "boolean"
+    ) {
+      invalidCalendar();
+    }
+    const endCursor = readOptionalCursor(pageInfo.endCursor);
+    if (pageInfo.hasNextPage && endCursor === null) invalidCalendar();
+
+    const events = connection.edges.map((rawEdge, index) => {
+      const edge = requiredRecord(rawEdge);
+      if (edge.__typename !== "EventEdge") invalidCalendar();
+      return parseGraphqlEventNode(edge.node, {
+        componentIndex: expected.componentOffset + index,
+        groupId: expected.groupId,
+        groupSlug: expected.groupSlug,
+        timeZone: expected.timeZone,
+      });
+    });
+    return Object.freeze({
+      endCursor,
+      events: Object.freeze(events),
+      hasNextPage: pageInfo.hasNextPage,
+      totalCount: connection.totalCount as number,
+    });
+  } catch (error) {
+    if (error instanceof MeetupSyncError) throw error;
+    throw new MeetupSyncError("calendar_invalid");
+  }
+}
+
+function parseGraphqlEventNode(
+  input: unknown,
+  expected: Readonly<{
+    componentIndex: number;
+    groupId: string;
+    groupSlug: string;
+    timeZone: string;
+  }>,
+): ParsedMeetupEvent {
+  const event = requiredRecord(input);
+  if (event.__typename !== "Event") invalidCalendar();
+  if (event.eventType !== "PHYSICAL" && event.eventType !== "ONLINE") {
+    invalidCalendar();
+  }
+  if (typeof event.id !== "string" || !EVENT_ID_PATTERN.test(event.id)) {
+    invalidCalendar();
+  }
+  if (
+    !SOURCE_AVAILABILITY_FIELDS.every((field) =>
+      Object.prototype.hasOwnProperty.call(event, field),
+    )
+  ) {
+    invalidCalendar();
+  }
+  const sourceGroup = requiredRecord(event.group);
+  if (
+    sourceGroup.__typename !== "Group" ||
+    sourceGroup.id !== expected.groupId
+  ) {
+    invalidCalendar();
+  }
+
+  const groupRef = `Group:${expected.groupId}`;
+  const eventRef = `Event:${event.id}`;
+  const apolloState: Record<string, unknown> = {
+    [groupRef]: {
+      __typename: "Group",
+      id: expected.groupId,
+      timezone: expected.timeZone,
+      urlname: expected.groupSlug,
+    },
+  };
+  const venueRef = registerGraphqlVenue(apolloState, event.venue);
+  const featuredPhotoRef = registerGraphqlPhoto(
+    apolloState,
+    event.featuredEventPhoto,
+  );
+  const displayPhotoRef = registerGraphqlPhoto(apolloState, event.displayPhoto);
+  apolloState[eventRef] = {
+    ...event,
+    featuredEventPhoto:
+      featuredPhotoRef === null && displayPhotoRef === null
+        ? null
+        : { __ref: featuredPhotoRef ?? displayPhotoRef },
+    group: { __ref: groupRef },
+    venue: venueRef === null ? null : { __ref: venueRef },
+  };
+  return parseApolloEvent({
+    apolloState,
+    componentIndex: expected.componentIndex,
+    eventRef,
+    groupRef,
+    groupSlug: expected.groupSlug,
+    timeZone: expected.timeZone,
+  });
+}
+
+function registerGraphqlVenue(
+  apolloState: Record<string, unknown>,
+  input: unknown,
+): string | null {
+  if (input === null || input === undefined) return null;
+  const venue = requiredRecord(input);
+  if (
+    venue.__typename !== "Venue" ||
+    typeof venue.id !== "string" ||
+    !ENTITY_ID_PATTERN.test(venue.id)
+  ) {
+    invalidCalendar();
+  }
+  const reference = `Venue:${venue.id}`;
+  apolloState[reference] = venue;
+  return reference;
+}
+
+function registerGraphqlPhoto(
+  apolloState: Record<string, unknown>,
+  input: unknown,
+): string | null {
+  if (input === null || input === undefined) return null;
+  const photo = requiredRecord(input);
+  if (
+    photo.__typename !== "PhotoInfo" ||
+    typeof photo.id !== "string" ||
+    !ENTITY_ID_PATTERN.test(photo.id)
+  ) {
+    invalidCalendar();
+  }
+  const reference = `PhotoInfo:${photo.id}`;
+  const previous = apolloState[reference];
+  if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(photo)) {
+    invalidCalendar();
+  }
+  apolloState[reference] = photo;
+  return reference;
+}
+
+function readOptionalCursor(input: unknown): string | null {
+  if (input === null || input === undefined) return null;
+  if (
+    typeof input !== "string" ||
+    input.length < 1 ||
+    input.length > 2_048 ||
+    UNSAFE_CONTROL_PATTERN.test(input) ||
+    /\s/u.test(input)
+  ) {
+    invalidCalendar();
+  }
+  return input;
 }
 
 function parseApolloEvent(input: Readonly<{
@@ -361,11 +811,24 @@ function parseApolloEvent(input: Readonly<{
     publicDescription.plainText,
     { hasPublicVenue: venue !== null },
   );
+  const sourceAvailabilityFacts = readSourceAvailabilityFacts(event);
   const publicEventFacts = Object.freeze({
     ...extractedPublicEventFacts,
+    availabilityState:
+      sourceAvailabilityFacts === null
+        ? extractedPublicEventFacts.availabilityState
+        : sourceAvailabilityFacts.availabilityState,
+    capacity:
+      sourceAvailabilityFacts === null
+        ? extractedPublicEventFacts.capacity
+        : sourceAvailabilityFacts.capacity,
     publicFloor:
       editorialProjection.approvedPublicFloor ??
       extractedPublicEventFacts.publicFloor,
+    waitlistAvailable:
+      sourceAvailabilityFacts === null
+        ? extractedPublicEventFacts.waitlistAvailable
+        : sourceAvailabilityFacts.waitlistAvailable,
   });
   const publicContent: ParsedMeetupPublicContent = Object.freeze({
     ...publicEventFacts,
@@ -404,6 +867,65 @@ function parseApolloEvent(input: Readonly<{
     title,
     uid,
   });
+}
+
+function readSourceAvailabilityFacts(
+  event: Record<string, unknown>,
+): SourceAvailabilityFacts | null {
+  if (
+    !SOURCE_AVAILABILITY_FIELDS.every((field) =>
+      Object.prototype.hasOwnProperty.call(event, field),
+    )
+  ) return null;
+  if (
+    !Number.isSafeInteger(event.maxTickets) ||
+    (event.maxTickets as number) < 0 ||
+    (event.maxTickets as number) > 100_000 ||
+    typeof event.rsvpState !== "string" ||
+    !/^[A-Z][A-Z_]{0,39}$/u.test(event.rsvpState) ||
+    typeof event.waitlistMode !== "string" ||
+    !/^[A-Z][A-Z_]{0,39}$/u.test(event.waitlistMode)
+  ) {
+    invalidCalendar();
+  }
+  const yesCount = readGraphqlTotalCount(event.yesRsvps);
+  const waitlistCount = readGraphqlTotalCount(event.waitlistRsvps);
+  const rsvpSettings = requiredRecord(event.rsvpSettings);
+  if (typeof rsvpSettings.rsvpsClosed !== "boolean") invalidCalendar();
+  const capacity = (event.maxTickets as number) || null;
+  const rsvpOpen =
+    event.rsvpState === "JOIN_OPEN" && !rsvpSettings.rsvpsClosed;
+  const waitlistAvailable =
+    rsvpOpen &&
+    (waitlistCount > 0 ||
+      (capacity !== null && event.waitlistMode === "AUTO"))
+      ? true
+      : null;
+  const availabilityState =
+    !rsvpOpen
+      ? null
+      : waitlistCount > 0
+      ? "waitlist"
+      : capacity !== null && yesCount >= capacity
+        ? "full"
+        : "open";
+  return Object.freeze({
+    availabilityState,
+    capacity,
+    waitlistAvailable,
+  });
+}
+
+function readGraphqlTotalCount(input: unknown): number {
+  const value = requiredRecord(input).totalCount;
+  if (
+    !Number.isSafeInteger(value) ||
+    (value as number) < 0 ||
+    (value as number) > 1_000_000
+  ) {
+    invalidCalendar();
+  }
+  return value as number;
 }
 
 function readFutureConnectionArguments(
@@ -754,6 +1276,14 @@ function pushPublicTextInline(
   const text = normalizeDescriptionInlineText(input);
   if (!text) return;
   const previous = inlines.at(-1);
+  if (text.trim().length === 0) {
+    if (!previous) return;
+    inlines[inlines.length - 1] = Object.freeze({
+      ...previous,
+      text: normalizeDescriptionInlineText(`${previous.text}${text}`),
+    });
+    return;
+  }
   if (previous?.type === "text") {
     inlines[inlines.length - 1] = Object.freeze({
       text: `${previous.text}${text}`,

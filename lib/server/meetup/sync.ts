@@ -45,7 +45,7 @@ import {
 } from "../organizer/conflict-domain";
 
 const SOURCE_TYPE = "meetup_ics";
-const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v4";
+const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v5";
 const ALIAS_SOURCE_GROUP_SLUGS = Object.freeze(
   new Set(
     MEETUP_EVENT_ALIASES.map(

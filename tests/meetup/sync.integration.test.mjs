@@ -405,6 +405,79 @@ function groupPageResponse(body) {
   });
 }
 
+function meetupGroupGraphqlResponse(groupSlug, events) {
+  const groupId = groupSlug === GROUP_A ? "38093975" : "38093976";
+  return new Response(
+    JSON.stringify({
+      data: {
+        groupByUrlname: {
+          __typename: "Group",
+          events: {
+            __typename: "GroupEventConnection",
+            edges: events.map((event, index) => {
+              const venueId = String(25_956_900 + index);
+              const photoId = String(535_545_400 + index);
+              const photo = {
+                __typename: "PhotoInfo",
+                highResUrl:
+                  `https://secure.meetupstatic.com/photos/event/b/1/9/6/highres_${photoId}.jpeg`,
+                id: photoId,
+              };
+              return {
+                __typename: "EventEdge",
+                node: {
+                  __typename: "Event",
+                  dateTime: event.startsAt,
+                  description:
+                    "## Why come?\n\nBring **curiosity**. [Buy your VIFF ticket here](https://viff.org/whats-on/princess-mononoke/).\n\n- Meet thoughtful people\n- Leave with a new question",
+                  displayPhoto: photo,
+                  endTime: event.endsAt,
+                  eventType: "PHYSICAL",
+                  eventUrl:
+                    `https://www.meetup.com/${groupSlug}/events/${event.id}/`,
+                  featuredEventPhoto: photo,
+                  group: { __typename: "Group", id: groupId },
+                  id: event.id,
+                  maxTickets: 0,
+                  rsvpSettings: { rsvpsClosed: false },
+                  rsvpState: "JOIN_OPEN",
+                  status: "ACTIVE",
+                  title: event.title,
+                  venue: {
+                    __typename: "Venue",
+                    address: "350 West Georgia Street",
+                    city: "Vancouver",
+                    id: venueId,
+                    name: "Vancouver Central Library",
+                    state: "BC",
+                  },
+                  waitlistMode: "AUTO",
+                  waitlistRsvps: { totalCount: 0 },
+                  yesRsvps: { totalCount: 0 },
+                },
+              };
+            }),
+            pageInfo: {
+              __typename: "PageInfo",
+              endCursor: null,
+              hasNextPage: false,
+            },
+            totalCount: events.length,
+          },
+          id: groupId,
+          name: "Fixture Meetup group",
+          timezone: "America/Vancouver",
+          urlname: groupSlug,
+        },
+      },
+    }),
+    {
+      headers: { "content-type": "application/json; charset=utf-8" },
+      status: 200,
+    },
+  );
+}
+
 function sequenceFetcher(responses) {
   let index = 0;
   return async () => {
@@ -617,7 +690,7 @@ async function runDueMeetupRefresh(
   );
 }
 
-test("due refresh drains canonical groups before the alias-bearing main group", async (t) => {
+test("due refresh drains the canonical group before alias-bearing groups", async (t) => {
   const database = createDatabase({
     clubs: ["club_a", "club_b", "club_c"],
   });
@@ -654,8 +727,8 @@ test("due refresh drains canonical groups before the alias-bearing main group", 
 
   assert.deepEqual(
     fetchedFeeds,
-    [FEED_B, FEED_C, FEED_A],
-    "the main source stays behind canonical and independent programs even when it was attempted least recently",
+    [FEED_B, FEED_A, FEED_C],
+    "the canonical source stays ahead of both exact-alias programs",
   );
 });
 
@@ -684,23 +757,17 @@ test("complete group pages automatically publish missing events, rich content, a
   await configure(database, "club_a", FEED_A, 1_001);
 
   let poetryTitle = "Poetry Night #4";
-  const groupPageFetcher = async (url) => {
-    const groupSlug = new URL(String(url)).pathname.split("/")[1];
-    if (groupSlug === GROUP_B) {
-      return groupPageResponse(
-        meetupGroupPageHtml(GROUP_B, [
+  const sourceEvents = (groupSlug) =>
+    groupSlug === GROUP_B
+      ? [
           {
             endsAt: "2026-08-09T15:00:00-07:00",
             id: "315772811",
             startsAt: "2026-08-09T13:00:00-07:00",
             title: poetryTitle,
           },
-        ]),
-      );
-    }
-    assert.equal(groupSlug, GROUP_A);
-    return groupPageResponse(
-      meetupGroupPageHtml(GROUP_A, [
+        ]
+      : [
         {
           endsAt: "2026-08-09T15:00:00-07:00",
           id: "315772829",
@@ -713,7 +780,17 @@ test("complete group pages automatically publish missing events, rich content, a
           startsAt: "2026-08-12T18:00:00-07:00",
           title: "Wednesday Night Reset",
         },
-      ]),
+      ];
+  const groupPageFetcher = async (url, init) => {
+    if (String(url) === "https://api.meetup.com/gql-ext") {
+      const groupSlug = JSON.parse(init.body).variables.urlname;
+      assert.ok(groupSlug === GROUP_A || groupSlug === GROUP_B);
+      return meetupGroupGraphqlResponse(groupSlug, sourceEvents(groupSlug));
+    }
+    const groupSlug = new URL(String(url)).pathname.split("/")[1];
+    assert.ok(groupSlug === GROUP_A || groupSlug === GROUP_B);
+    return groupPageResponse(
+      meetupGroupPageHtml(groupSlug, sourceEvents(groupSlug)),
     );
   };
 
@@ -980,9 +1057,15 @@ test("exact cross-post aliases share canonical events and publish a later unique
     "https://www.meetup.com/vancouver-meetup-group/events/315511480/";
   assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlOne), canonicalUrlOne);
   assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlTwo), canonicalUrlTwo);
-  assert.equal(MEETUP_EVENT_ALIASES.length, 11);
+  assert.equal(MEETUP_EVENT_ALIASES.length, 14);
   assert.deepEqual(
-    ["315776403", "315511487", "315777485"].map((aliasId) =>
+    [
+      "315776403",
+      "315511487",
+      "315777485",
+      "316159366",
+      "316050934",
+    ].map((aliasId) =>
       canonicalMeetupEventUrlForAlias(
         `https://www.meetup.com/vancouver-meetup-group/events/${aliasId}/`,
       ),
@@ -991,7 +1074,15 @@ test("exact cross-post aliases share canonical events and publish a later unique
       "https://www.meetup.com/vancouver-literature-and-film/events/315776148/",
       "https://www.meetup.com/vancouver-literature-and-film/events/315510890/",
       "https://www.meetup.com/vancouver-literature-and-film/events/315777434/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316159440/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316050915/",
     ],
+  );
+  assert.equal(
+    canonicalMeetupEventUrlForAlias(
+      "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/",
+    ),
+    "https://www.meetup.com/vancouver-literature-and-film/events/315776601/",
   );
   assert.equal(
     MEETUP_EVENT_ALIASES.find((entry) => entry.aliasUrl === aliasUrlTwo)
@@ -1328,15 +1419,15 @@ test("exact cross-post aliases share canonical events and publish a later unique
 });
 
 test("an exact alias safely adopts a legacy standalone mapping without exposing the displaced event", async (t) => {
-  const database = createDatabase({ clubs: ["club_a", "club_b"] });
+  const database = createDatabase({ clubs: ["club_b", "club_c"] });
   t.after(() => database.close());
   await configure(database, "club_b", FEED_B, 1_000);
-  await configure(database, "club_a", FEED_A, 1_001);
+  await configure(database, "club_c", FEED_C, 1_001);
 
   const canonicalUrl =
-    "https://www.meetup.com/vancouver-literature-and-film/events/315508432/";
+    "https://www.meetup.com/vancouver-literature-and-film/events/315776601/";
   const aliasUrl =
-    "https://www.meetup.com/vancouver-meetup-group/events/315511475/";
+    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/";
   const start = "20260811T010000Z";
   const end = "20260811T033000Z";
   assert.equal(
@@ -1348,7 +1439,7 @@ test("an exact alias safely adopts a legacy standalone mapping without exposing 
           calendar(
             meetupEvent({
               uid: "legacy-adoption-canonical@meetup.com",
-              eventId: "315508432",
+              eventId: "315776601",
               groupSlug: GROUP_B,
               title: "Legacy adoption canonical",
               start,
@@ -1375,18 +1466,18 @@ test("an exact alias safely adopts a legacy standalone mapping without exposing 
   assert.equal(typeof canonicalEventId, "string");
 
   const legacyUrl =
-    "https://www.meetup.com/vancouver-meetup-group/events/315294577/";
+    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315700000/";
   assert.equal(
     (
       await refresh(
         database,
-        "club_a",
+        "club_c",
         sequenceFetcher([
           calendar(
             meetupEvent({
               uid: "legacy-standalone-main@meetup.com",
-              eventId: "315294577",
-              groupSlug: GROUP_A,
+              eventId: "315700000",
+              groupSlug: GROUP_C,
               title: "Displaced legacy standalone",
               start,
               end,
@@ -1443,13 +1534,13 @@ test("an exact alias safely adopts a legacy standalone mapping without exposing 
   const aliasBudget = exactCountingDatabase(database);
   const adopted = await refresh(
     aliasBudget.binding,
-    "club_a",
+    "club_c",
     sequenceFetcher([
       calendar(
         meetupEvent({
           uid: aliasUid,
-          eventId: "315511475",
-          groupSlug: GROUP_A,
+          eventId: "315776566",
+          groupSlug: GROUP_C,
           title: "Legacy adoption alias",
           start,
           end,

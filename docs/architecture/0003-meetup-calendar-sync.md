@@ -24,9 +24,10 @@ parser for each exact configured group's canonical public events page.
 
 - Keep the exact official HTTPS group iCalendar export URL as private
   configuration and group-identity proof. Production refreshes derive its
-  validated group slug and fetch only that group's canonical public
-  `/events/` page; the iCalendar adapter remains for deterministic legacy
-  compatibility tests.
+  validated group slug, verify that group's canonical public `/events/` page,
+  then read its complete fixed-cutoff event connection from Meetup's documented
+  `https://api.meetup.com/gql-ext` endpoint. The iCalendar adapter remains for
+  deterministic legacy compatibility tests.
 - Keep the integration one-way. Import current title, schedule, explicit
   status, canonical official event URL, bounded public description structure,
   attendee-visible venue, and validated poster provenance from one source
@@ -69,13 +70,18 @@ parser for each exact configured group's canonical public events page.
   it as `confirmed` or `tentative`.
 - Reject stale sequence/last-modified replays, including attempted resurrection
   after a newer cancellation.
-- Fetch with no-store semantics, a 12-second timeout, bounded UTF-8 streaming,
-  exact HTML content type, redirect rejection, and strict canonical
-  group/event/image URL validation.
-- Parse only the page's exact Apollo future-events connection. Validate group,
-  event, venue, and image entity references; reject duplicate edges, malformed
-  or oversized state, raw HTML, email addresses, meeting credentials, and
-  unsafe external destinations.
+- Fetch with no-store semantics, a 12-second aggregate timeout, bounded UTF-8
+  streaming, exact HTML/JSON content types, redirect rejection, and strict
+  canonical group/event/image URL validation. Send no cookie or credential to
+  the public GraphQL read.
+- Parse the page's exact Apollo future-events connection as the group identity
+  and fixed-cutoff bootstrap, then follow every bounded GraphQL cursor from the
+  beginning. Require stable group identity, timezone, total count, unique event
+  IDs and cursors, monotonic ordering, and `count === totalCount` at the terminal
+  page. Any partial, drifting, malformed, redirected, oversized, or GraphQL-error
+  response fails the whole source refresh. Validate event, venue, image,
+  capacity, RSVP, and waitlist fields; reject raw HTML, email addresses, meeting
+  credentials, and unsafe external destinations.
 - Process one source and at most two calendar rows per request. Persist a
   snapshot hash, pending generation ID, and cursor for resumable partial
   imports. Stage public-safe facts in an isolated pending generation; its rows
@@ -88,9 +94,10 @@ parser for each exact configured group's canonical public events page.
   venue output, or poster provenance—not raw page bytes. A changed importer or
   alias policy is part of the hash so an older pending generation cannot resume
   under new rules.
-- Refetch the no-store page while a partial snapshot is pending so the cursor
-  resumes only when the complete normalized hash still matches. Conditional
-  ETag/Last-Modified behavior remains confined to the legacy iCalendar adapter.
+- Refetch the no-store page and cursor-complete GraphQL inventory while a
+  partial database generation is pending so its row cursor resumes only when
+  the complete normalized hash still matches. Conditional ETag/Last-Modified
+  behavior remains confined to the legacy iCalendar adapter.
 - Refresh on explicit Owner/Administrator request or through the protected
   daily maintenance endpoint. The scheduled caller signs each bounded request
   with a timestamp, UUID, and replay-protected HMAC. A complete source waits at
@@ -120,6 +127,12 @@ corresponding Vancouver Literature and Film listings:
 - `315976207` -> `315294587`
 - `315511485` -> `315510842`
 - `315851495` -> `315851485`
+- `315776403` -> `315776148`
+- `315511487` -> `315510890`
+- `315777485` -> `315777434`
+- `316159366` -> `316159440`
+- `316050934` -> `316050915`
+- Fantasy & Sci-Fi `315776566` -> Literature and Film `315776601`
 
 Both sides are stored in source as exact canonical HTTPS Meetup event URLs and
 must have numeric event IDs. Chains, cycles, same-group pairs, and duplicate
@@ -212,11 +225,32 @@ Meetup facts and to stop depending on a separate manual enrichment run.
 - This is a bounded exact-group parser, not a general crawler or write-back
   integration. Failure preserves the previous active generation and exposes
   diagnostics only to authorized organizers.
-- The current canonical HTML pages embed the owner-requested 42 listings
-  (30 main, 10 Literature, 2 Fantasy). The main page also advertises later
-  paginated occurrences that are not embedded. This adapter does not call
-  Meetup's private GraphQL pagination surface and therefore makes no claim to
-  ingest those later occurrences until they enter the canonical page snapshot.
+- The canonical HTML page is an identity/bootstrap surface, not a complete
+  inventory. Later occurrences must be followed to `hasNextPage: false` through
+  the bounded public GraphQL connection before the generation may reconcile
+  absence or publish.
+
+## 2026-08-18 cursor-complete amendment
+
+- The three official groups exposed 78 upcoming listings at the audit cutoff:
+  69 Vancouver Curiosity Club, 1 Fantasy & Sci-Fi, and 8 Literature and Film.
+  Eight exact cross-post pairs represented 70 gatherings; one listing was
+  explicitly cancelled.
+- The main canonical HTML page embedded 30 of its 69 listings and declared
+  `hasNextPage: true`. Treating that page as complete could therefore retire or
+  omit 39 valid later occurrences.
+- Meetup's documented `gql-ext` endpoint returned the same public connection
+  without cookies or authorization in this verified deployment. Anonymous
+  public-query availability is not assumed to be permanent: rejection fails
+  closed and preserves the prior active generation.
+- Source capacity comes from positive `maxTickets`; zero remains the unlimited
+  sentinel. Public waitlist/availability facts use the explicit RSVP state,
+  RSVP counts, waitlist mode, and closure flag. Description-derived facts remain
+  a fallback when those fields are absent from the HTML bootstrap.
+- Adjacent Markdown emphasis may contain separator whitespace. The importer
+  attaches that separator to a neighboring non-empty inline so its semantic
+  plain text is preserved while the public validator never receives a
+  whitespace-only node.
 
 ## Primary references
 

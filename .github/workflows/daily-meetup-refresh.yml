@@ -59,41 +59,99 @@ jobs:
           refresh_url="${public_site_origin}/api/maintenance/meetup/refresh"
           snapshot_url="${public_site_origin}/api/maintenance/public-snapshots/capture"
           completed=false
+          header_file="$(mktemp)"
           report_file="$(mktemp)"
           response_file="$(mktemp)"
+          max_invariant_repair_attempts=16
+          max_invariant_retry_after_seconds=30
+          invariant_repair_detail='<p>The database safety checks were updated. Please try again shortly so the fresh state can be verified.</p>'
           total_created=0
           total_updated=0
           total_cancelled=0
           total_removed=0
           total_rejected=0
           failed_invocation=0
-          trap 'rm -f "$report_file" "$response_file"; if [ "$completed" != true ]; then printf "## Daily Meetup refresh failed\n\n- Last invocation: %s\n- Created before failure: %s\n- Updated before failure: %s\n- Cancelled before failure: %s\n- Removed before failure: %s\n- Rejected before failure: %s\n" "$failed_invocation" "$total_created" "$total_updated" "$total_cancelled" "$total_removed" "$total_rejected" >> "$GITHUB_STEP_SUMMARY"; fi' EXIT
+          trap 'rm -f "$header_file" "$report_file" "$response_file"; if [ "$completed" != true ]; then printf "## Daily Meetup refresh failed\n\n- Last invocation: %s\n- Created before failure: %s\n- Updated before failure: %s\n- Cancelled before failure: %s\n- Removed before failure: %s\n- Rejected before failure: %s\n" "$failed_invocation" "$total_created" "$total_updated" "$total_cancelled" "$total_removed" "$total_rejected" >> "$GITHUB_STEP_SUMMARY"; fi' EXIT
 
           for invocation in $(seq 1 64); do
             failed_invocation="$invocation"
-            timestamp="$(date -u +%s)"
-            request_id="$(node -e 'const { randomUUID } = require("node:crypto"); process.stdout.write(randomUUID());')"
             body='{}'
-            signature="$(
-              TIMESTAMP="$timestamp" REQUEST_ID="$request_id" BODY="$body" \
-                node -e 'const { createHmac } = require("node:crypto"); process.stdout.write(createHmac("sha256", process.env.DAILY_MEETUP_REFRESH_SECRET).update(`${process.env.TIMESTAMP}.${process.env.REQUEST_ID}.${process.env.BODY}`).digest("hex"));'
-            )"
+            for invariant_repair_attempt in $(seq 1 "$max_invariant_repair_attempts"); do
+              timestamp="$(date -u +%s)"
+              request_id="$(node -e 'const { randomUUID } = require("node:crypto"); process.stdout.write(randomUUID());')"
+              signature="$(
+                TIMESTAMP="$timestamp" REQUEST_ID="$request_id" BODY="$body" \
+                  node -e 'const { createHmac } = require("node:crypto"); process.stdout.write(createHmac("sha256", process.env.DAILY_MEETUP_REFRESH_SECRET).update(`${process.env.TIMESTAMP}.${process.env.REQUEST_ID}.${process.env.BODY}`).digest("hex"));'
+              )"
+              : > "$header_file"
+              : > "$response_file"
 
-            if ! curl --silent --show-error --fail-with-body \
-              --connect-timeout 15 \
-              --max-time 90 \
-              --request POST \
-              --header 'content-type: application/json' \
-              --header "x-maintenance-timestamp: $timestamp" \
-              --header "x-maintenance-request-id: $request_id" \
-              --header "x-maintenance-signature: sha256=$signature" \
-              --data-binary "$body" \
-              --output "$response_file" \
-              "$refresh_url"
-            then
-              echo "Signed refresh request failed on invocation $invocation." >&2
-              exit 1
-            fi
+              set +e
+              http_status="$(
+                curl --silent --show-error --fail-with-body \
+                  --connect-timeout 15 \
+                  --max-time 90 \
+                  --request POST \
+                  --header 'content-type: application/json' \
+                  --header "x-maintenance-timestamp: $timestamp" \
+                  --header "x-maintenance-request-id: $request_id" \
+                  --header "x-maintenance-signature: sha256=$signature" \
+                  --data-binary "$body" \
+                  --dump-header "$header_file" \
+                  --output "$response_file" \
+                  --write-out '%{http_code}' \
+                  "$refresh_url"
+              )"
+              curl_status=$?
+              set -e
+
+              if [ "$curl_status" -eq 0 ] && [[ "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+                break
+              fi
+              if [ "$curl_status" -ne 22 ] ||
+                [ "$http_status" != 503 ] ||
+                ! grep --fixed-strings --quiet "$invariant_repair_detail" "$response_file"
+              then
+                echo "Signed refresh request failed on invocation $invocation (HTTP $http_status, curl $curl_status)." >&2
+                exit 1
+              fi
+              if [ "$invariant_repair_attempt" -ge "$max_invariant_repair_attempts" ]; then
+                echo "Database invariant repair did not converge within $max_invariant_repair_attempts attempts." >&2
+                exit 1
+              fi
+              if ! retry_after="$(
+                node - "$header_file" "$max_invariant_retry_after_seconds" <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const [headerPath, maximumText] = process.argv.slice(2);
+          const maximum = Number(maximumText);
+          const matches = [
+            ...readFileSync(headerPath, "utf8").matchAll(
+              /^retry-after\s*:\s*([^\r\n]+?)\s*$/gimu,
+            ),
+          ];
+          const raw = matches.at(-1)?.[1]?.trim();
+          if (!Number.isSafeInteger(maximum) || maximum < 0 || !raw) {
+            process.exit(2);
+          }
+          let seconds;
+          if (/^\d+$/u.test(raw)) {
+            const numeric = BigInt(raw);
+            seconds = numeric > BigInt(maximum) ? maximum : Number(numeric);
+          } else {
+            const date = Date.parse(raw);
+            if (!Number.isFinite(date)) process.exit(2);
+            seconds = Math.max(0, Math.ceil((date - Date.now()) / 1_000));
+          }
+          process.stdout.write(String(Math.min(seconds, maximum)));
+          NODE
+              )"
+              then
+                echo "The invariant-repair response had an invalid Retry-After header." >&2
+                exit 1
+              fi
+              echo "Database guards were repaired; retrying invocation $invocation in ${retry_after}s (attempt $invariant_repair_attempt/$max_invariant_repair_attempts)."
+              sleep "$retry_after"
+            done
 
             set +e
             node - "$response_file" "$invocation" > "$report_file" <<'NODE'
