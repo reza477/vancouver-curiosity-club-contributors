@@ -41,7 +41,7 @@ function isSharedServerModule(moduleId: string): boolean {
 
 const localBindingConfig = {
   main: "./worker/index.ts",
-  compatibility_flags: ["nodejs_compat"],
+  compatibility_flags: ["nodejs_compat", "global_fetch_strictly_public"],
   assets: {
     binding: "ASSETS",
   },

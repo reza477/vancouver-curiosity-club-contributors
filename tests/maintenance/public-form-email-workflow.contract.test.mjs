@@ -10,6 +10,7 @@ const runner = readFileSync(
   "scripts/run-form-email-maintenance.mjs",
   "utf8",
 );
+const viteConfig = readFileSync("vite.config.ts", "utf8");
 
 test("daily maintenance runs organizer email delivery independently of Meetup", () => {
   const emailJob = workflow.indexOf("  form-email:");
@@ -42,5 +43,13 @@ test("email maintenance signs an exact bounded request and hard-fails delivery e
   assert.doesNotMatch(
     runner,
     /set\s+-x|continue-on-error|dotenv|--env-file|readFile[^\n]*\.env/iu,
+  );
+});
+
+test("production routes third-party email API calls through the public network", () => {
+  assert.match(
+    viteConfig,
+    /compatibility_flags:\s*\["nodejs_compat",\s*"global_fetch_strictly_public"\]/u,
+    "Resend is a public Worker endpoint, so the production Worker must use public fetch routing",
   );
 });
