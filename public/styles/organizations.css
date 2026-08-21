@@ -4,15 +4,16 @@
 }
 
 .for-organizations-page .page-masthead__copy h1 {
-  font-size: clamp(3.5rem, 6vw, 5rem);
+  max-width: 13ch;
+  font-size: clamp(3.25rem, 5.6vw, 4.85rem);
 }
 
 .organizations-introduction,
-.organizations-programs,
-.organizations-communities,
+.organizations-evidence,
+.organizations-footprint,
 .organizations-collaboration,
-.organizations-information,
-.organizations-reference,
+.organizations-conversation,
+.organizations-standards,
 .organizations-contact {
   padding: clamp(2.75rem, 5vw, 5rem)
     max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right))
@@ -21,125 +22,234 @@
 }
 
 .organizations-introduction,
-.organizations-information,
-.organizations-reference,
+.organizations-standards,
 .organizations-contact {
-  grid-template-columns: minmax(18rem, 0.95fr) minmax(0, 1.05fr);
-  gap: clamp(2rem, 7vw, 8rem);
+  grid-template-columns: minmax(15rem, 0.74fr) minmax(0, 1.26fr);
+  gap: clamp(2rem, 6vw, 6rem);
   display: grid;
 }
 
 .organizations-introduction h2,
 .organizations-heading h2,
-.organizations-information h2,
-.organizations-reference h2,
+.organizations-standards h2,
 .organizations-contact h2 {
   max-width: 19ch;
+  margin: 0;
   font-family: var(--display);
-  font-size: clamp(2rem, 2.75vw, 2.85rem);
+  font-size: clamp(2.1rem, 3.15vw, 3.25rem);
   font-weight: 400;
   letter-spacing: -0.05em;
-  line-height: 1;
-  margin: 0;
+  line-height: 1.02;
   text-wrap: balance;
 }
 
 .organizations-introduction > div:last-child {
-  max-width: 48rem;
+  max-width: 50rem;
 }
 
 .organizations-introduction > div:last-child p {
+  max-width: 58ch;
   line-height: 1.65;
 }
 
-.organizations-introduction > div:last-child a {
+.organizations-introduction .organizations-lead {
+  color: var(--ink);
+  font-size: clamp(1.05rem, 1.35vw, 1.2rem);
+}
+
+.organizations-introduction > div:last-child a,
+.organizations-heading--split a {
   min-height: 2.75rem;
   align-items: center;
   font-weight: 700;
   display: inline-flex;
 }
 
-.organizations-programs {
-  background: var(--paper-deep);
-}
-
 .organizations-heading {
-  max-width: 58rem;
+  max-width: 64rem;
   margin-bottom: clamp(1.75rem, 3.5vw, 3rem);
 }
 
+.organizations-heading--split {
+  max-width: none;
+  grid-template-columns: minmax(15rem, 0.74fr) minmax(0, 1.26fr);
+  align-items: end;
+  gap: clamp(2rem, 6vw, 6rem);
+  display: grid;
+}
+
+.organizations-heading--split > div:last-child p,
 .organizations-heading > p:not(.section-kicker) {
   max-width: 55ch;
   color: var(--ink-soft);
   line-height: 1.6;
 }
 
-.organizations-programs__grid {
-  border-top: 1px solid var(--ink);
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.organizations-evidence__gallery {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.75rem, 1.5vw, 1.25rem);
   display: grid;
 }
 
-.organizations-programs__grid article {
-  border-right: 1px solid var(--ink);
-  padding: 1.25rem;
+.organizations-activity-card {
+  min-width: 0;
 }
 
-.organizations-programs__grid article:last-child {
-  border-right: 0;
-}
-
-.organizations-programs h3,
-.organizations-communities h3,
-.organizations-collaboration h3 {
+.organizations-activity-card__artwork {
   margin: 0;
-  font-size: 1rem;
-  line-height: 1.3;
 }
 
-.organizations-programs article p,
-.organizations-collaboration article p {
+.organizations-activity-card__artwork-frame,
+.organizations-activity-card__artwork:not(figure) {
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  background: var(--paper-deep);
+  display: block;
+  overflow: hidden;
+}
+
+.organizations-activity-card__artwork picture {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.organizations-activity-card__artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.organizations-activity-card__artwork figcaption {
+  margin-top: 0.45rem;
   color: var(--ink-soft);
-  font-size: 0.95rem;
-  line-height: 1.55;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
-.organizations-programs article a {
-  min-height: 2.75rem;
-  align-items: center;
-  font-size: 0.92rem;
-  font-weight: 700;
-  display: inline-flex;
+.organizations-activity-card__body {
+  padding-top: 0.85rem;
 }
 
-.organizations-communities ul,
-.organizations-information ul {
+.organizations-activity-card__body .section-kicker {
+  margin-bottom: 0.45rem;
+}
+
+.organizations-activity-card__body h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.3rem, 2vw, 1.75rem);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.organizations-activity-card__body time {
+  margin-top: 0.7rem;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  display: block;
+}
+
+.organizations-evidence__empty {
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--line);
+  background: var(--paper-deep);
+}
+
+.organizations-evidence__empty h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.organizations-evidence__empty p {
+  margin: 0.5rem 0 0;
+  color: var(--ink-soft);
+}
+
+.organizations-evidence__facts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: clamp(2rem, 4vw, 3rem) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  list-style: none;
+  display: grid;
+}
+
+.organizations-evidence__facts li {
+  min-height: 7.25rem;
+  padding: 1rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.organizations-evidence__facts strong,
+.organizations-evidence__facts span {
+  display: block;
+}
+
+.organizations-evidence__facts strong {
+  margin-bottom: 0.45rem;
+}
+
+.organizations-evidence__facts span {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.organizations-footprint {
+  background: var(--paper-deep);
+}
+
+.organizations-footprint__columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(2rem, 5vw, 5rem);
+  display: grid;
+}
+
+.organizations-footprint__columns > section > h3 {
+  margin: 0 0 0.9rem;
+  font-size: clamp(1.15rem, 1.6vw, 1.4rem);
+}
+
+.organizations-footprint ul {
   margin: 0;
   padding: 0;
+  border-top: 1px solid var(--line);
   list-style: none;
 }
 
-.organizations-communities ul {
-  border-top: 1px solid var(--ink);
-}
-
-.organizations-communities li {
-  border-bottom: 1px solid var(--ink);
+.organizations-footprint li {
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 1.5rem;
-  padding: 1.15rem 0;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
   display: grid;
 }
 
-.organizations-communities li p {
-  color: var(--ink-soft);
-  margin: 0.35rem 0 0;
+.organizations-footprint li strong,
+.organizations-footprint li span {
+  display: block;
 }
 
-.organizations-communities li a {
+.organizations-footprint li span {
+  max-width: 50ch;
+  margin-top: 0.35rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.organizations-footprint li > a {
   min-height: 2.75rem;
   align-items: center;
+  font-size: 0.9rem;
   font-weight: 700;
   display: inline-flex;
 }
@@ -149,57 +259,93 @@
 }
 
 .organizations-collaboration__grid {
-  border-top: 1px solid var(--ink);
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
   display: grid;
 }
 
 .organizations-collaboration article {
-  border-right: 1px solid var(--ink);
-  border-bottom: 1px solid var(--ink);
   min-width: 0;
+  min-height: 12.5rem;
   padding: 1.25rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
-.organizations-collaboration article:nth-child(3n) {
-  border-right: 0;
-}
-
-.organizations-collaboration article > span {
+.organizations-collaboration article > span,
+.organizations-conversation li > span {
+  color: var(--accent);
   font-family: var(--mono);
   font-size: 0.75rem;
+  font-weight: 700;
   letter-spacing: 0.07em;
 }
 
-.organizations-collaboration h3 {
-  margin-top: 1.5rem;
+.organizations-collaboration h3,
+.organizations-conversation h3 {
+  margin: 1.25rem 0 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
 }
 
-.organizations-information {
-  background: var(--paper-deep);
-}
-
-.organizations-information li {
-  border-bottom: 1px solid var(--ink);
-  padding: 0.8rem 0;
-  font-weight: 600;
-}
-
-.organizations-information > div:last-child > p {
+.organizations-collaboration article p,
+.organizations-conversation li p {
+  max-width: 42ch;
+  margin-bottom: 0;
   color: var(--ink-soft);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   line-height: 1.55;
 }
 
-.organizations-reference nav {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 1.5rem;
+.organizations-conversation {
+  grid-template-columns: minmax(15rem, 0.74fr) minmax(0, 1.26fr);
+  gap: clamp(2rem, 6vw, 6rem);
   display: grid;
 }
 
-.organizations-reference nav a {
-  border-bottom: 1px solid var(--ink);
-  min-height: 3.25rem;
+.organizations-conversation ol {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.organizations-conversation li {
+  grid-template-columns: 3rem minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+}
+
+.organizations-conversation h3 {
+  margin-top: 0;
+}
+
+.organizations-standards {
+  background: var(--paper-deep);
+}
+
+.organizations-standards > div:last-child > p {
+  max-width: 58ch;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.organizations-standards nav {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  display: grid;
+}
+
+.organizations-standards nav a {
+  min-height: 4.25rem;
+  padding: 0.9rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   align-items: center;
   font-weight: 700;
   display: flex;
@@ -222,66 +368,55 @@
 
 @media (max-width: 64rem) {
   .for-organizations-page .page-masthead__copy h1 {
-    font-size: clamp(3.25rem, 6.5vw, 4.25rem);
+    font-size: clamp(3.1rem, 6.3vw, 4.25rem);
   }
 
-  .organizations-programs__grid {
+  .organizations-evidence__facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .organizations-programs__grid article:nth-child(2) {
-    border-right: 0;
-  }
-
-  .organizations-programs__grid article:nth-child(n + 3) {
-    border-top: 1px solid var(--ink);
   }
 }
 
 @media (max-width: 52rem) {
   .organizations-introduction,
-  .organizations-information,
-  .organizations-reference,
+  .organizations-heading--split,
+  .organizations-footprint__columns,
+  .organizations-conversation,
+  .organizations-standards,
   .organizations-contact {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .organizations-collaboration__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .organizations-collaboration article:nth-child(3n) {
-    border-right: 1px solid var(--ink);
-  }
-
-  .organizations-collaboration article:nth-child(2n) {
-    border-right: 0;
-  }
 }
 
-@media (max-width: 38rem) {
-  .organizations-programs__grid,
+@media (max-width: 42rem) {
+  .organizations-introduction,
+  .organizations-evidence,
+  .organizations-footprint,
+  .organizations-collaboration,
+  .organizations-conversation,
+  .organizations-standards,
+  .organizations-contact {
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .organizations-evidence__gallery,
+  .organizations-evidence__facts,
   .organizations-collaboration__grid,
-  .organizations-reference nav {
-    grid-template-columns: 1fr;
+  .organizations-standards nav {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .organizations-programs__grid article,
-  .organizations-programs__grid article:nth-child(2),
-  .organizations-collaboration article,
-  .organizations-collaboration article:nth-child(2n),
-  .organizations-collaboration article:nth-child(3n) {
-    border-right: 0;
-    border-top: 1px solid var(--ink);
+  .organizations-evidence__facts li,
+  .organizations-collaboration article {
+    min-height: 0;
   }
 
-  .organizations-programs__grid article:first-child,
-  .organizations-collaboration article:first-child {
-    border-top: 0;
-  }
-
-  .organizations-communities li {
-    grid-template-columns: 1fr;
+  .organizations-footprint li {
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.25rem;
   }
 }

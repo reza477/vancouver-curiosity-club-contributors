@@ -1,20 +1,81 @@
 /* eslint-disable @next/next/no-css-tags -- This route owns a bounded stylesheet that must not inflate Home. */
 import type { Metadata } from "next";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
+import {
+  EventArtworkFallback,
+  formatEventSchedule,
+} from "@/app/_components/EventCard";
+import { EventPosterImage } from "@/app/_components/EventPosterImage";
 import { PageMasthead } from "@/app/_components/PageMasthead";
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
-import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
-import type { PublicCatalogDto } from "@/lib/server/public/catalog";
-import { getRequestPublicCatalog } from "@/lib/server/public/request-cache";
+import {
+  discoveryArtworkCredit,
+  responsiveImageSrcSet,
+} from "@/lib/media/presentation";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
+import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
+import { readServerUtcMs } from "@/lib/server/clock";
+import type { PublicCatalogDto } from "@/lib/server/public/catalog";
+import { readPublicHomeEventMaterialization } from "@/lib/server/public/event-materializations";
+import type { PublicEventCardDto } from "@/lib/server/public/events";
 import { buildPublicPageMetadataForOrigin } from "@/lib/server/public/metadata";
 import { getTrustedRequestOrigin } from "@/lib/server/public/origin";
+import {
+  getRequestPublicCatalog,
+  getRequestPublicOrganization,
+} from "@/lib/server/public/request-cache";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
 export const dynamic = "force-dynamic";
 
 const metadataDescription =
-  "Ways organizations, venues, funders, and supporters can work with Vancouver Curiosity Club.";
+  "Partnership, funding, venue, and collaboration information for organizations interested in Vancouver Curiosity Club's public programs.";
+
+const collaborationOptions = Object.freeze([
+  Object.freeze({
+    body: "Support the practical costs behind thoughtful, publicly accessible programming.",
+    title: "Program funding or sponsorship",
+  }),
+  Object.freeze({
+    body: "Help make suitable gathering spaces available for talks, workshops, discussions, and activities.",
+    title: "Venue and space partnerships",
+  }),
+  Object.freeze({
+    body: "Develop a public event around a subject or experience that fits both organizations.",
+    title: "Co-presented public programs",
+  }),
+  Object.freeze({
+    body: "Connect relevant expertise, facilitators, collections, or learning opportunities with the public.",
+    title: "Educational or cultural collaboration",
+  }),
+  Object.freeze({
+    body: "Help appropriate audiences discover public programs that may interest them.",
+    title: "Community outreach and referrals",
+  }),
+  Object.freeze({
+    body: "Contribute materials, services, or practical resources suited to a confirmed program need.",
+    title: "Appropriate in-kind support",
+  }),
+]);
+
+const FIRST_CONVERSATION_TOPICS = Object.freeze([
+  Object.freeze({
+    body: "What your organization hopes to make possible and how the idea could benefit the public.",
+    title: "Shared objective",
+  }),
+  Object.freeze({
+    body: "The audience, subject, activity, and level of structure that would make the program useful.",
+    title: "Program fit",
+  }),
+  Object.freeze({
+    body: "Possible roles, space, expertise, materials, funding, timing, and decision points.",
+    title: "Practical scope",
+  }),
+  Object.freeze({
+    body: "Accessibility, participant expectations, public communications, and how success would be understood.",
+    title: "Responsible delivery",
+  }),
+]);
 
 export async function generateMetadata(): Promise<Metadata> {
   const [catalog, origin] = await Promise.all([
@@ -39,36 +100,9 @@ export async function generateMetadata(): Promise<Metadata> {
   );
 }
 
-const collaborationOptions = [
-  {
-    title: "Program funding or sponsorship",
-    body: "Support the practical costs behind thoughtful, publicly accessible programming.",
-  },
-  {
-    title: "Venue and space partnerships",
-    body: "Help make suitable gathering spaces available for talks, workshops, discussions, and activities.",
-  },
-  {
-    title: "Co-presented public programs",
-    body: "Develop a public event around a subject or experience that fits both organizations.",
-  },
-  {
-    title: "Educational or cultural collaboration",
-    body: "Connect relevant expertise, facilitators, collections, or learning opportunities with the public.",
-  },
-  {
-    title: "Community outreach and referrals",
-    body: "Help appropriate audiences find programs that may interest them.",
-  },
-  {
-    title: "Appropriate in-kind support",
-    body: "Contribute materials, services, or practical resources suited to a confirmed program need.",
-  },
-] as const;
-
 export default async function ForOrganizationsPage() {
-  const catalog = await loadCatalog();
-  if (!catalog) {
+  const loaded = await loadOrganizationPageData();
+  if (!loaded) {
     return (
       <main className="for-organizations-page">
         <link
@@ -96,6 +130,7 @@ export default async function ForOrganizationsPage() {
     );
   }
 
+  const { catalog, events } = loaded;
   const lanes = catalog.lanes.slice(0, 4);
   const clubs = selectCanonicalPublicCommunities(catalog.clubs);
 
@@ -114,78 +149,180 @@ export default async function ForOrganizationsPage() {
       />
       <PageMasthead
         eyebrow="For organizations"
-        title="Work with Vancouver Curiosity Club"
-        deck="We create thoughtful public programs across learning, culture, creativity, and shared experience—and welcome conversations about how this work can grow."
+        title="Build thoughtful public programs with us"
+        deck="Vancouver Curiosity Club creates recurring gatherings across learning, culture, creativity, and shared experience. We welcome organizations that can strengthen access, space, expertise, outreach, or sustainable program support."
       />
 
       <section
         className="organizations-introduction"
-        aria-labelledby="organizations-who-title"
+        aria-labelledby="organizations-purpose-title"
       >
         <div>
-          <p className="section-kicker">Who we are</p>
-          <h2 id="organizations-who-title">
-            A Vancouver community organization built around public participation.
+          <p className="section-kicker">Mission and public need</p>
+          <h2 id="organizations-purpose-title">
+            Thoughtful programs can make local connection easier to begin.
           </h2>
         </div>
         <div>
-          <p>
-            Vancouver Curiosity Club brings people together through prepared,
-            approachable gatherings. Shared subjects and activities make
-            conversation easier to begin, while recurring programs give people
-            reasons to return.
+          <p className="organizations-lead">
+            Vancouver Curiosity Club is a Vancouver-based community
+            organization. We use shared subjects and activities to give people
+            a natural reason to gather, enough structure to start talking, and
+            recurring opportunities to take part.
           </p>
           <p>
-            This website is the umbrella public home for several communities
-            with different programming interests. Event listings remain open
-            for anyone who wants to see the work in action.
+            Organizations can help this work reach more people and become more
+            durable through suitable space, aligned expertise, materials,
+            referrals, co-presented programs, sponsorship, or funding.
           </p>
-          <Link href="/about">Read about our mission</Link>
+          <Link href="/about">Read about our mission and model</Link>
         </div>
       </section>
 
       <section
-        className="organizations-programs"
-        aria-labelledby="organizations-programs-title"
+        className="organizations-evidence"
+        aria-labelledby="organizations-evidence-title"
       >
-        <div className="organizations-heading">
-          <p className="section-kicker">Public programs</p>
-          <h2 id="organizations-programs-title">Subjects and formats with several ways in.</h2>
+        <div className="organizations-heading organizations-heading--split">
+          <div>
+            <p className="section-kicker">Current public activity</p>
+            <h2 id="organizations-evidence-title">
+              A program partners can review.
+            </h2>
+          </div>
+          <div>
+            <p>
+              Public event materials show the range of subjects and formats.
+              The calendar and community pages provide current program details.
+            </p>
+            <Link href="/events">View the public event calendar</Link>
+          </div>
         </div>
-        <div className="organizations-programs__grid">
-          {lanes.map((lane) => (
-            <article key={lane.slug}>
-              <h3>{lane.name}</h3>
-              {lane.description ? <p>{lane.description}</p> : null}
-              <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
-                View {lane.name} events
-              </Link>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section
-        className="organizations-communities"
-        aria-labelledby="organizations-communities-title"
-      >
-        <div className="organizations-heading">
-          <p className="section-kicker">Communities we serve</p>
-          <h2 id="organizations-communities-title">
-            {clubs.length === 3 ? "Three public communities." : "Public communities."}
-          </h2>
-        </div>
-        <ul>
-          {clubs.map((club) => (
-            <li key={club.slug}>
-              <div>
-                <h3>{club.name}</h3>
-                {club.description ? <p>{club.description}</p> : null}
-              </div>
-              <Link href={`/clubs/${club.slug}`}>View community</Link>
+        {events === null ? (
+          <div className="organizations-evidence__empty" aria-live="polite">
+            <h3>Current event details are temporarily unavailable.</h3>
+            <p>Please use the public calendar to try again shortly.</p>
+          </div>
+        ) : events.length > 0 ? (
+          <div
+            className="organizations-evidence__gallery"
+            aria-label="Current public event examples"
+          >
+            {events.map((event) => (
+              <OrganizationActivityCard event={event} key={event.slug} />
+            ))}
+          </div>
+        ) : (
+          <div className="organizations-evidence__empty">
+            <h3>The next public listings are being prepared.</h3>
+            <p>The public calendar will show the next confirmed programs.</p>
+          </div>
+        )}
+        <ul className="organizations-evidence__facts">
+          {catalog.site.locationLabel ? (
+            <li>
+              <strong>{catalog.site.locationLabel}</strong>
+              <span>Local base</span>
             </li>
-          ))}
+          ) : null}
+          <li>
+            <strong>{lanes.length} program streams</strong>
+            <span>Several formats and interests</span>
+          </li>
+          <li>
+            <strong>{clubs.length} public communities</strong>
+            <span>One organizational home</span>
+          </li>
+          <li>
+            <strong>Current public calendar</strong>
+            <span>Program details available to review</span>
+          </li>
+          {catalog.site.legalName ? (
+            <li>
+              <strong>{catalog.site.legalName}</strong>
+              <span>Legal name</span>
+            </li>
+          ) : null}
+          {catalog.site.institutionalFacts.foundedYear !== null ? (
+            <li>
+              <strong>{catalog.site.institutionalFacts.foundedYear}</strong>
+              <span>Established</span>
+            </li>
+          ) : null}
+          {catalog.site.institutionalFacts.attendanceTotal !== null &&
+          catalog.site.institutionalFacts.attendanceTotalAsOf ? (
+            <li>
+              <strong>
+                {new Intl.NumberFormat("en-CA").format(
+                  catalog.site.institutionalFacts.attendanceTotal,
+                )}
+              </strong>
+              <span>
+                Recorded participation through{" "}
+                {catalog.site.institutionalFacts.attendanceTotalAsOf}
+              </span>
+            </li>
+          ) : null}
+          {catalog.site.institutionalFacts.memberTotal !== null &&
+          catalog.site.institutionalFacts.memberTotalAsOf ? (
+            <li>
+              <strong>
+                {new Intl.NumberFormat("en-CA").format(
+                  catalog.site.institutionalFacts.memberTotal,
+                )}
+              </strong>
+              <span>
+                Recorded community size as of{" "}
+                {catalog.site.institutionalFacts.memberTotalAsOf}
+              </span>
+            </li>
+          ) : null}
         </ul>
+      </section>
+
+      <section
+        className="organizations-footprint"
+        aria-labelledby="organizations-footprint-title"
+      >
+        <div className="organizations-heading">
+          <p className="section-kicker">Program footprint</p>
+          <h2 id="organizations-footprint-title">
+            Several ways into the same community mission.
+          </h2>
+        </div>
+        <div className="organizations-footprint__columns">
+          <section aria-labelledby="organizations-streams-title">
+            <h3 id="organizations-streams-title">Four program streams</h3>
+            <ul>
+              {lanes.map((lane) => (
+                <li key={lane.slug}>
+                  <div>
+                    <strong>{lane.name}</strong>
+                    {lane.description ? <span>{lane.description}</span> : null}
+                  </div>
+                  <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
+                    View events
+                    <span className="sr-only"> in {lane.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section aria-labelledby="organizations-communities-title">
+            <h3 id="organizations-communities-title">Three public communities</h3>
+            <ul>
+              {clubs.map((club) => (
+                <li key={club.slug}>
+                  <div>
+                    <strong>{club.name}</strong>
+                    {club.description ? <span>{club.description}</span> : null}
+                  </div>
+                  <Link href={`/clubs/${club.slug}`}>View community</Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
       </section>
 
       <section
@@ -193,8 +330,10 @@ export default async function ForOrganizationsPage() {
         aria-labelledby="organizations-collaboration-title"
       >
         <div className="organizations-heading">
-          <p className="section-kicker">Ways to collaborate</p>
-          <h2 id="organizations-collaboration-title">Possible forms of support and partnership.</h2>
+          <p className="section-kicker">Collaboration pathways</p>
+          <h2 id="organizations-collaboration-title">
+            Practical ways to strengthen the work.
+          </h2>
           <p>
             Each conversation starts with shared objectives, practical fit,
             and public benefit.
@@ -212,68 +351,51 @@ export default async function ForOrganizationsPage() {
       </section>
 
       <section
-        className="organizations-information"
-        aria-labelledby="organizations-information-title"
+        className="organizations-conversation"
+        aria-labelledby="organizations-conversation-title"
       >
-        <div>
-          <p className="section-kicker">Verified public information</p>
-          <h2 id="organizations-information-title">What is available now.</h2>
+        <div className="organizations-heading">
+          <p className="section-kicker">A useful first conversation</p>
+          <h2 id="organizations-conversation-title">
+            Start with fit before designing the details.
+          </h2>
         </div>
-        <div>
-          <ul>
-            <li>Based in {catalog.site.locationLabel}</li>
-            <li>{lanes.length} published program streams</li>
-            <li>{clubs.length} public event communities</li>
-            <li>A current public event calendar</li>
-            <li>Published conduct, accessibility, and privacy information</li>
-            {catalog.site.legalName ? (
-              <li>Verified legal name: {catalog.site.legalName}</li>
-            ) : null}
-            {catalog.site.institutionalFacts.foundedYear !== null ? (
-              <li>
-                Verified founding year:{" "}
-                {catalog.site.institutionalFacts.foundedYear}
-              </li>
-            ) : null}
-            {catalog.site.institutionalFacts.attendanceTotal !== null &&
-            catalog.site.institutionalFacts.attendanceTotalAsOf ? (
-              <li>
-                Verified attendance total:{" "}
-                {new Intl.NumberFormat("en-CA").format(
-                  catalog.site.institutionalFacts.attendanceTotal,
-                )}{" "}
-                through {catalog.site.institutionalFacts.attendanceTotalAsOf}
-              </li>
-            ) : null}
-            {catalog.site.institutionalFacts.memberTotal !== null &&
-            catalog.site.institutionalFacts.memberTotalAsOf ? (
-              <li>
-                Verified member total:{" "}
-                {new Intl.NumberFormat("en-CA").format(
-                  catalog.site.institutionalFacts.memberTotal,
-                )}{" "}
-                as of {catalog.site.institutionalFacts.memberTotalAsOf}
-              </li>
-            ) : null}
-          </ul>
-        </div>
+        <ol>
+          {FIRST_CONVERSATION_TOPICS.map((topic, index) => (
+            <li key={topic.title}>
+              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <div>
+                <h3>{topic.title}</h3>
+                <p>{topic.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section
-        className="organizations-reference"
-        aria-labelledby="organizations-reference-title"
+        className="organizations-standards"
+        aria-labelledby="organizations-standards-title"
       >
         <div>
-          <p className="section-kicker">Review the public work</p>
-          <h2 id="organizations-reference-title">Events, standards, and access information.</h2>
+          <p className="section-kicker">Public operating standards</p>
+          <h2 id="organizations-standards-title">
+            Clear expectations are part of the program.
+          </h2>
         </div>
-        <nav aria-label="Organization reference links">
-          <Link href="/events">Public events</Link>
-          <Link href="/about">About</Link>
-          <Link href="/conduct">Code of Conduct</Link>
-          <Link href="/accessibility">Accessibility</Link>
-          <Link href="/privacy">Privacy</Link>
-        </nav>
+        <div>
+          <p>
+            Prospective partners can review how the website communicates
+            respectful conduct, accessibility, privacy, and current event
+            information before beginning a conversation.
+          </p>
+          <nav aria-label="Public operating standards">
+            <Link href="/conduct">Code of Conduct</Link>
+            <Link href="/accessibility">Accessibility</Link>
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/events">Current public events</Link>
+          </nav>
+        </div>
       </section>
 
       <section
@@ -283,11 +405,11 @@ export default async function ForOrganizationsPage() {
         <div>
           <p className="section-kicker">Start a conversation</p>
           <h2 id="organizations-contact-title">
-            Tell us what kind of partnership you have in mind.
+            Tell us what your organization wants to make possible.
           </h2>
           <p>
-            Tell us about your organization, what you are working on, and the
-            kind of collaboration you have in mind.
+            Share your organization, objective, audience, and the kind of
+            collaboration or support you have in mind.
           </p>
         </div>
         <Link
@@ -314,4 +436,105 @@ async function loadCatalog(): Promise<PublicCatalogDto | null> {
     });
     return null;
   }
+}
+
+async function loadOrganizationPageData(): Promise<{
+  catalog: PublicCatalogDto;
+  events: readonly PublicEventCardDto[] | null;
+} | null> {
+  try {
+    const { database } = getRuntimeAuthConfiguration();
+    const catalog = await getRequestPublicCatalog(database);
+    if (!catalog) return null;
+    const organization = await getRequestPublicOrganization(database);
+    if (!organization) return null;
+    const events = await readPublicHomeEventMaterialization(database, {
+      maximum: 3,
+      nowUtcMs: readServerUtcMs(),
+      organizationId: organization.id,
+    });
+    return Object.freeze({ catalog, events });
+  } catch {
+    writeSafeLog("error", "public_organizations_page_unavailable", {
+      code: "service_unavailable",
+      operation: "read_public_catalog_and_activity",
+      route: "/for-organizations",
+      status: 503,
+    });
+    return null;
+  }
+}
+
+function OrganizationActivityCard({
+  event,
+}: Readonly<{ event: PublicEventCardDto }>) {
+  const artworkCredit = event.artwork
+    ? discoveryArtworkCredit(event.artwork.credit)
+    : null;
+
+  return (
+    <article className="organizations-activity-card">
+      {event.artwork ? (
+        <figure className="organizations-activity-card__artwork">
+          <div className="organizations-activity-card__artwork-frame">
+            <EventPosterImage
+              alt={event.artwork.altText ?? ""}
+              decoding="async"
+              fallback={
+                <EventArtworkFallback
+                  className="organizations-activity-card__artwork-frame"
+                  lane={event.lane}
+                />
+              }
+              height={event.artwork.dimensions.large.height}
+              loading="lazy"
+              sizes="(max-width: 42rem) calc(100vw - 2rem), 31vw"
+              src={event.artwork.url}
+              srcSet={responsiveImageSrcSet([
+                {
+                  url: event.artwork.srcSet.small,
+                  width: event.artwork.dimensions.small.width,
+                },
+                {
+                  url: event.artwork.srcSet.medium,
+                  width: event.artwork.dimensions.medium.width,
+                },
+                {
+                  url: event.artwork.srcSet.large,
+                  width: event.artwork.dimensions.large.width,
+                },
+              ])}
+              style={{
+                objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+              }}
+              width={event.artwork.dimensions.large.width}
+            />
+          </div>
+          {artworkCredit ? (
+            <figcaption>Artwork: {artworkCredit}</figcaption>
+          ) : null}
+        </figure>
+      ) : (
+        <EventArtworkFallback
+          className="organizations-activity-card__artwork"
+          lane={event.lane}
+        />
+      )}
+      <div className="organizations-activity-card__body">
+        <p className="section-kicker">{event.club.name}</p>
+        <h3>
+          <Link href={`/events/${event.slug}`}>{event.title}</Link>
+        </h3>
+        <time dateTime={eventDateTime(event)}>
+          {formatEventSchedule(event).label}
+        </time>
+      </div>
+    </article>
+  );
+}
+
+function eventDateTime(event: PublicEventCardDto): string {
+  return event.schedule.kind === "timed"
+    ? event.schedule.startsAtUtc
+    : event.schedule.startDate;
 }
