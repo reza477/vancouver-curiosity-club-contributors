@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import type { ReactNode } from "react";
 import { ClubDirectory } from "./ClubDirectory";
 import {
@@ -128,8 +128,8 @@ export function GetInvolvedRouteBody({
           <h2 id="ways-heading">What would you like to make happen?</h2>
           <p>
             Have an event idea, want to help at a gathering, know a great
-            venue, or want to support the work? Share the useful details with
-            our team in one of the forms below.
+            venue, or want to support the work? Choose the path that best fits
+            what you have in mind.
           </p>
         </div>
         <div className="contribution-paths">
@@ -143,11 +143,14 @@ export function GetInvolvedRouteBody({
             <strong>Host an event</strong>
             <small>Share a topic, activity, or gathering idea.</small>
           </Link>
-          <a data-contribution-path="partner" href="#partner">
+          <Link
+            data-contribution-path="partner"
+            href="/contact?topic=partnerships#contact-form"
+          >
             <span aria-hidden="true">03</span>
             <strong>Offer a partnership or support</strong>
             <small>Discuss space, collaboration, funding, or sponsorship.</small>
-          </a>
+          </Link>
         </div>
       </section>
       <PublicFormPageGuidance />
@@ -159,17 +162,25 @@ export function GetInvolvedRouteBody({
 export function ContactRouteBody({
   children,
   page,
+  partnershipMode = false,
   ...preview
 }: EditorialRoutePreviewProps &
   Readonly<{
     page: PublicPageDto;
+    partnershipMode?: boolean;
   }>) {
   return (
     <EditorialPage
-      displayDeck="Send a private message to our team about partnerships, events, accessibility, media, or another question."
-      displayEyebrow="Contact"
+      displayDeck={
+        partnershipMode
+          ? "Tell us about your organization, what you are working on, and the kind of collaboration you have in mind."
+          : "Send a private message to our team about events, accessibility, media, privacy, or another question."
+      }
+      displayEyebrow={partnershipMode ? "Partnership inquiry" : "Contact"}
       displayParagraphs={[]}
-      displayTitle="Contact"
+      displayTitle={
+        partnershipMode ? "Start a conversation with our team." : "Contact"
+      }
       page={page}
       tone="community"
       {...preview}

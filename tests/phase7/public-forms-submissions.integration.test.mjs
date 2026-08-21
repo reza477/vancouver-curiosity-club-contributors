@@ -379,7 +379,7 @@ test("the durable email outbox sends one private organizer copy and records no f
   assert.equal(requests.length, 1);
   assert.equal(requests[0].input, "https://api.resend.com/emails");
   assert.equal(requests[0].init.method, "POST");
-  assert.equal(requests[0].init.redirect, "error");
+  assert.equal(requests[0].init.redirect, "manual");
   assert.equal(
     requests[0].init.headers["Idempotency-Key"],
     `vcc-form/${stored.submissionId}`,
@@ -393,6 +393,8 @@ test("the durable email outbox sends one private organizer copy and records no f
   );
   assert.match(body.subject, new RegExp(stored.publicReference, "u"));
   assert.match(body.text, /Please share the accessible entrance information\./u);
+  assert.match(body.text, /Organization: Not provided/u);
+  assert.match(body.text, /Role: Not provided/u);
 
   const receipt = await data.database
     .prepare(
@@ -430,6 +432,55 @@ test("the durable email outbox sends one private organizer copy and records no f
   ]) {
     assert.doesNotMatch(serializedReceipt, new RegExp(sentinel, "u"));
   }
+});
+
+test("partnership Contact email delivery accepts blank optional organization and role", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const payload = {
+    collaborationInterest: "General partnership question",
+    message: "I would like to discuss a possible public-program collaboration.",
+    name: "Partnership Contact Visitor",
+    replyEmail: "partnership-contact@public-visitor.invalid",
+    topic: "Partnerships",
+  };
+  const stored = await submitPublicForm(
+    data.database,
+    formInput(
+      "contact",
+      "partnership-email-optional".padEnd(32, "x"),
+      data.now,
+      payload,
+      { organizationId: data.organizationId },
+    ),
+  );
+  let providerBody = null;
+  const delivery = await deliverPublicFormEmail(
+    data.database,
+    stored.submissionId,
+    {
+      configuration: {
+        apiKey: "synthetic-partnership-api-key",
+        fromEmail: "website-sender@example.invalid",
+        toEmail: "organizer-inbox@example.invalid",
+      },
+      fetcher: async (_input, init) => {
+        providerBody = JSON.parse(init.body);
+        return Response.json({ id: "provider_partnership_optional" });
+      },
+      nowUtcMs: data.now + 1_000,
+    },
+  );
+
+  assert.equal(delivery, "sent");
+  assert.ok(providerBody);
+  assert.equal(providerBody.reply_to, payload.replyEmail);
+  assert.match(providerBody.text, /Organization: Not provided/u);
+  assert.match(providerBody.text, /Role: Not provided/u);
+  assert.match(
+    providerBody.text,
+    /Collaboration interest: General partnership question/u,
+  );
 });
 
 test("retryable provider failure keeps the D1 submission and maintenance later delivers it", async (t) => {

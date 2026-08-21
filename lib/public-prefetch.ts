@@ -14,6 +14,7 @@ export function isExpensivePublicRouteHref(href: PublicLinkHref): boolean {
   if (!pathname) return false;
   return (
     pathname === "/" ||
+    pathname === "/contact" ||
     pathname === "/calendar" ||
     pathname.startsWith("/calendar/") ||
     pathname === "/events" ||

@@ -46,25 +46,79 @@ test("For Organizations is emphasized without becoming an application button", a
   );
 });
 
-test("the public Contact form keeps the private contact key and safe partnership preselection", async () => {
+test("Contact safely switches between general and partnership inquiry contracts", async () => {
   const [contactSource, routeBodies] = await Promise.all([
     source("app/contact/page.tsx"),
     source("app/_components/EditorialRouteBodies.tsx"),
   ]);
-  const markup = renderToStaticMarkup(
+  const contactMarkup = renderToStaticMarkup(
+    createElement(PublicSubmissionForm, {
+      formKey: "contact",
+      id: "contact-form",
+    }),
+  );
+  const partnershipMarkup = renderToStaticMarkup(
     createElement(PublicSubmissionForm, {
       formKey: "contact",
       id: "contact-form",
       initialContactTopic: "Partnerships",
+      initialInstanceToken: "signed-page-token",
     }),
   );
 
   assert.equal(publicFormLabel("contact"), "Contact");
-  assert.match(markup, /data-form-key="contact"/u);
-  assert.match(markup, /<h2[^>]*>Contact<\/h2>/u);
-  assert.match(markup, />Send message<\/button>/u);
-  assert.match(markup, /<option value="Partnerships" selected="">Partnerships<\/option>/u);
-  assert.match(contactSource, /params\.topic === "partnerships" \? "Partnerships" : undefined/u);
+  assert.match(contactMarkup, /data-form-key="contact"/u);
+  assert.match(contactMarkup, /<h2[^>]*>Contact<\/h2>/u);
+  assert.match(contactMarkup, />Send message<\/button>/u);
+  assert.match(partnershipMarkup, /data-form-key="contact"/u);
+  assert.match(partnershipMarkup, /data-partnership-selected="true"/u);
+  assert.match(partnershipMarkup, /<h2[^>]*>Partnership inquiry<\/h2>/u);
+  assert.match(
+    partnershipMarkup,
+    /<option value="Partnerships" selected="">Partnerships<\/option>/u,
+  );
+  assert.match(
+    partnershipMarkup,
+    />Organization \(optional\)<[\s\S]*\bname="organization"[\s\S]*>Role \(optional\)<[\s\S]*\bname="role"[\s\S]*\bname="collaborationInterest"/u,
+  );
+  assert.match(
+    partnershipMarkup,
+    /<input(?=[^>]*\bname="organization")(?![^>]*\brequired)[^>]*>/u,
+  );
+  assert.match(
+    partnershipMarkup,
+    /<input(?=[^>]*\bname="role")(?![^>]*\brequired)[^>]*>/u,
+  );
+  assert.match(
+    partnershipMarkup,
+    /<select(?=[^>]*\bname="collaborationInterest")(?=[^>]*\brequired)[^>]*>/u,
+  );
+  for (const option of [
+    "Program funding or sponsorship",
+    "Venue or space",
+    "Co-presented program",
+    "Educational or cultural collaboration",
+    "Community outreach",
+    "In-kind support",
+    "General partnership question",
+  ]) {
+    assert.match(partnershipMarkup, new RegExp(`>${option}<`, "u"));
+  }
+  assert.match(
+    partnershipMarkup,
+    /data-native-ready="true"[\s\S]*<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="signed-page-token")[^>]*>/u,
+  );
+  assert.match(partnershipMarkup, />Send inquiry<\/button>/u);
+  assert.match(contactSource, /const partnershipMode = params\.topic === "partnerships"/u);
+  assert.match(
+    contactSource,
+    /formKey="contact"/u,
+  );
+  assert.match(contactSource, /preparePublicFormInstance\("contact"\)/u);
+  assert.match(
+    contactSource,
+    /initialContactTopic=\{partnershipMode \? "Partnerships" : undefined\}/u,
+  );
   assert.match(contactSource, /id="contact-form"/u);
   assert.doesNotMatch(
     contactSource,
@@ -79,8 +133,22 @@ test("the public Contact form keeps the private contact key and safe partnership
     routeBodies.indexOf("export function GetInvolvedRouteBody"),
     routeBodies.indexOf("export function ContactRouteBody"),
   );
-  assert.match(contactBody, /displayTitle="Contact"/u);
-  assert.match(contactBody, /displayEyebrow="Contact"/u);
+  assert.match(
+    contactBody,
+    /partnershipMode \? "Start a conversation with our team\." : "Contact"/u,
+  );
+  assert.match(
+    contactBody,
+    /displayEyebrow=\{partnershipMode \? "Partnership inquiry" : "Contact"\}/u,
+  );
+  assert.match(
+    contactBody,
+    /Tell us about your organization, what you are working on, and the kind of collaboration you have in mind\./u,
+  );
+  assert.match(
+    getInvolvedBody,
+    /href="\/contact\?topic=partnerships#contact-form"/u,
+  );
   assert.doesNotMatch(getInvolvedBody, /displayTitle="Contact"/u);
 });
 

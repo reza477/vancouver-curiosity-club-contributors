@@ -566,9 +566,18 @@ function formPayloadLines(
     `Reply email: ${readReplyEmail(payload)}`,
   ];
   if (formKey === "contact") {
+    const partnershipDetails =
+      readPayloadText(payload, "topic") === "Partnerships"
+        ? [
+            `Collaboration interest: ${readPayloadText(payload, "collaborationInterest")}`,
+          ]
+        : [];
     return [
       ...base,
       `Topic: ${readPayloadText(payload, "topic")}`,
+      `Organization: ${readOptionalPayloadText(payload, "organization")}`,
+      `Role: ${readOptionalPayloadText(payload, "role")}`,
+      ...partnershipDetails,
       "",
       "Message:",
       readPayloadText(payload, "message"),

@@ -33,7 +33,6 @@ export default async function GetInvolvedPage() {
   return (
     <GetInvolvedRouteBody page={loaded.page}>
       <PublicSubmissionForm formKey="volunteer" id="volunteer" />
-      <PublicSubmissionForm formKey="partnership" id="partner" />
     </GetInvolvedRouteBody>
   );
 }

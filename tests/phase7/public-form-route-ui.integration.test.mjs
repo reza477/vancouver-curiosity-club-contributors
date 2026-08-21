@@ -119,7 +119,7 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
     {
       heading: "Bring something to the community",
       paragraphs: [
-        "Attending a published event is the simplest way in. Use the forms below to tell our team how you would like to volunteer or to start a partnership, funding, or sponsorship conversation.",
+        "Attending a published event is the simplest way in. Use the Volunteer form below, or choose the partnership path above to start a collaboration, funding, or sponsorship conversation.",
       ],
       text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
     },
@@ -145,7 +145,7 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
 });
 
 test(
-  "every public form has an explicit POST fallback, native validation, and a no-script safety notice",
+  "every public form has an explicit POST fallback while Contact supports protected no-script submission",
   routeTestOptions,
   () => {
     const formSource = source("app/_components/PublicSubmissionForm.tsx");
@@ -178,8 +178,8 @@ test(
     );
     assert.match(
       globalCss,
-      /@media\s*\(scripting:\s*none\)\s*\{[\s\S]*\.public-submission__form\s*\{[\s\S]*display:\s*none;/u,
-      "a no-script visitor must see the safety notice instead of an unusable form",
+      /@media\s*\(scripting:\s*none\)\s*\{[\s\S]*\.public-submission\[data-native-ready="false"\] \.public-submission__form\s*\{[\s\S]*display:\s*none;/u,
+      "only a form without a server-issued token is hidden from a no-script visitor",
     );
     assert.doesNotMatch(
       globalCss,
@@ -210,10 +210,19 @@ test(
       "server validation errors must remain keyboard and screen-reader accessible",
     );
 
+    const contactPage = source("app/contact/page.tsx");
+    assert.match(
+      contactPage,
+      /const partnershipMode = params\.topic === "partnerships"/u,
+    );
+    assert.match(
+      contactPage,
+      /<PublicSubmissionForm[\s\S]*?formKey="contact"[\s\S]*?initialContactTopic=\{partnershipMode \? "Partnerships" : undefined\}[\s\S]*?initialInstanceToken=\{initialInstanceToken\}/u,
+    );
     const publicFormSurfaces = [
       ["app/contact/page.tsx", ["contact"]],
       ["app/host-an-event/page.tsx", ["host_event"]],
-      ["app/get-involved/page.tsx", ["volunteer", "partnership"]],
+      ["app/get-involved/page.tsx", ["volunteer"]],
     ];
     const surfacedFormKeys = [];
     for (const [path, expectedFormKeys] of publicFormSurfaces) {
@@ -233,9 +242,13 @@ test(
     assert.deepEqual(surfacedFormKeys.sort(), [
       "contact",
       "host_event",
-      "partnership",
       "volunteer",
     ]);
+    assert.doesNotMatch(
+      source("app/get-involved/page.tsx"),
+      /formKey="partnership"/u,
+      "the legacy partnership form must not remain a second public route",
+    );
 
     const { parsePublicFormPayload, PublicFormValidationError } =
       routeModules[6];
@@ -417,6 +430,175 @@ test(
         1,
       );
     }
+  },
+);
+
+test(
+  "the server-rendered Contact token supports a first no-script POST and replay across network changes",
+  routeTestOptions,
+  async (t) => {
+    const data = await fixture();
+    t.after(() => data.database.close());
+    const [, { POST }] = routeModules;
+    const instanceToken = await pastInstanceToken(data.database, "contact");
+    const payload = {
+      message: "Please share the accessible entrance instructions.",
+      name: "No-script Contact Person",
+      replyEmail: "no-script-contact@visitor.invalid",
+      topic: "Accessibility",
+    };
+    const fields = new URLSearchParams([
+      ["instanceToken", instanceToken],
+      ["companyFax", ""],
+      ["name", payload.name],
+      ["replyEmail", payload.replyEmail],
+      ["topic", payload.topic],
+      ["message", payload.message],
+    ]);
+    const nativeResponse = await POST(
+      nativeFormRequest("/api/forms/contact", {
+        cookie: null,
+        fields,
+        headers: {
+          "accept-language": "en-CA",
+          "user-agent": "first-network-agent",
+          "x-forwarded-for": "192.0.2.10",
+        },
+      }),
+      routeContext("contact"),
+    );
+    assert.equal(nativeResponse.status, 201);
+    const nativeHtml = await assertPrivateNativeHtml(nativeResponse, {
+      title: "Submission received",
+    });
+    const publicReference = /\bVCC-[A-Z0-9-]+\b/u.exec(nativeHtml)?.[0];
+    assert.ok(publicReference);
+
+    const nativeReplay = await POST(
+      nativeFormRequest("/api/forms/contact", {
+        cookie: null,
+        fields,
+        headers: {
+          "accept-language": "fr-CA",
+          "user-agent": "changed-network-agent",
+          "x-forwarded-for": "198.51.100.20",
+        },
+      }),
+      routeContext("contact"),
+    );
+    assert.equal(nativeReplay.status, 201);
+    const replayHtml = await assertPrivateNativeHtml(nativeReplay, {
+      title: "Submission received",
+    });
+    assert.match(
+      replayHtml,
+      new RegExp(escapeRegex(publicReference), "u"),
+    );
+    assert.equal(await tableCount(data.database, "form_submissions"), 1);
+    const storedPayload = await data.database
+      .prepare(
+        `SELECT payload_json
+         FROM form_submissions
+         WHERE json_extract(payload_json, '$.replyEmail') = ?
+         LIMIT 1`,
+      )
+      .bind(payload.replyEmail)
+      .first("payload_json");
+    assert.deepEqual(JSON.parse(storedPayload), payload);
+  },
+);
+
+test(
+  "the server-rendered Contact token supports the cookie-less JSON hydration path",
+  routeTestOptions,
+  async (t) => {
+    const data = await fixture();
+    t.after(() => data.database.close());
+    const [, { POST }] = routeModules;
+    const instanceToken = await pastInstanceToken(data.database, "contact");
+    const payload = {
+      collaborationInterest: "Venue or space",
+      message: "We would like to discuss accessible space for a public program.",
+      name: "Hydrated Partnership Person",
+      organization: "Example Community Organization",
+      replyEmail: "hydrated-partnership@visitor.invalid",
+      role: "Program lead",
+      topic: "Partnerships",
+    };
+
+    const response = await POST(
+      jsonRequest("/api/forms/contact", {
+        cookie: null,
+        instanceToken,
+        payload,
+      }),
+      routeContext("contact"),
+    );
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.match(body.publicReference, /^VCC-[A-Z0-9-]+$/u);
+    const storedPayload = await data.database
+      .prepare(
+        `SELECT payload_json
+         FROM form_submissions
+         WHERE json_extract(payload_json, '$.replyEmail') = ?
+         LIMIT 1`,
+      )
+      .bind(payload.replyEmail)
+      .first("payload_json");
+    assert.deepEqual(JSON.parse(storedPayload), payload);
+  },
+);
+
+test(
+  "no-script partnership validation preserves escaped values in a private accessible retry form",
+  routeTestOptions,
+  async (t) => {
+    const data = await fixture();
+    t.after(() => data.database.close());
+    const [, { POST }] = routeModules;
+    const instanceToken = await pastInstanceToken(data.database, "contact");
+    const fields = new URLSearchParams([
+      ["instanceToken", instanceToken],
+      ["companyFax", ""],
+      ["name", "Safe Retry Person"],
+      ["replyEmail", "not-an-email"],
+      ["topic", "Partnerships"],
+      ["organization", '<script>alert("private")</script>'],
+      ["role", 'Director "Community"'],
+      ["collaborationInterest", "Venue or space"],
+      ["message", "short"],
+    ]);
+
+    const response = await POST(
+      nativeFormRequest("/api/forms/contact", {
+        cookie: null,
+        fields,
+      }),
+      routeContext("contact"),
+    );
+    assert.equal(response.status, 422);
+    const html = await assertPrivateNativeHtml(response, {
+      title: "Please check the form",
+    });
+    assert.equal(
+      response.headers.get("x-robots-tag"),
+      "noindex, nofollow, noarchive",
+    );
+    assert.match(
+      response.headers.get("content-security-policy") ?? "",
+      /form-action 'self'/u,
+    );
+    assert.match(html, /class="error-summary" role="alert" tabindex="-1" autofocus/u);
+    assert.match(html, /href="#field-replyEmail"/u);
+    assert.match(html, /href="#field-message"/u);
+    assert.match(html, /&lt;script&gt;alert\(&quot;private&quot;\)&lt;\/script&gt;/u);
+    assert.doesNotMatch(html, /<script>alert/u);
+    assert.match(html, /Director &quot;Community&quot;/u);
+    assert.match(html, />Organization \(optional\)</u);
+    assert.match(html, />Role \(optional\)</u);
+    assert.match(html, />Send inquiry<\/button>/u);
+    assert.equal(await tableCount(data.database, "form_submissions"), 0);
   },
 );
 
@@ -1220,8 +1402,9 @@ test(
           id: "volunteer",
         }),
         React.createElement(PublicSubmissionForm, {
-          formKey: "partnership",
-          id: "partner",
+          formKey: "contact",
+          id: "contact-form",
+          initialContactTopic: "Partnerships",
         }),
       ),
     );
@@ -1230,7 +1413,7 @@ test(
     ].map((match) => match[1]);
     assert.equal(ids.length, new Set(ids).size);
     assert.ok(ids.some((id) => id.startsWith("volunteer-")));
-    assert.ok(ids.some((id) => id.startsWith("partnership-")));
+    assert.ok(ids.some((id) => id.startsWith("contact-")));
     for (const reference of attributeTokens(
       sharedFormsHtml,
       /(?:aria-describedby|aria-labelledby|for)="([^"]+)"/gu,
@@ -1242,7 +1425,8 @@ test(
       2,
     );
     assert.match(sharedFormsHtml, /data-form-key="volunteer"/u);
-    assert.match(sharedFormsHtml, /data-form-key="partnership"/u);
+    assert.match(sharedFormsHtml, /data-form-key="contact"/u);
+    assert.doesNotMatch(sharedFormsHtml, /data-form-key="partnership"/u);
     assert.equal(
       PUBLIC_FORM_PURPOSE_COPY,
       "Our team reviews each submission and may use your reply email to follow up.",
@@ -1301,9 +1485,6 @@ test(
           },
           React.createElement(PublicSubmissionForm, {
             formKey: "volunteer",
-          }),
-          React.createElement(PublicSubmissionForm, {
-            formKey: "partnership",
           }),
         ),
       ],
@@ -1374,7 +1555,10 @@ test(
     assert.match(getInvolvedHtml, />Volunteer</u);
     assert.match(getInvolvedHtml, /href="\/host-an-event"/u);
     assert.match(getInvolvedHtml, />Host an event</u);
-    assert.match(getInvolvedHtml, /href="#partner"/u);
+    assert.match(
+      getInvolvedHtml,
+      /href="\/contact\?topic=partnerships#contact-form"/u,
+    );
     assert.match(getInvolvedHtml, />Offer a partnership or support</u);
     assert.doesNotMatch(
       getInvolvedHtml,
@@ -1414,15 +1598,27 @@ test(
       formSource,
       /requestAnimationFrame\(\(\) => errorSummaryRef\.current\?\.focus\(\)\)/u,
     );
+    assert.match(
+      formSource,
+      /if \(instanceState !== "error"\) return;\s*instanceErrorRef\.current\?\.focus\(\);/u,
+    );
+    assert.match(
+      formSource,
+      /if \(!noticeIsError \|\| !notice\) return;\s*submissionErrorRef\.current\?\.focus\(\);/u,
+    );
+    assert.match(
+      formSource,
+      /ref=\{noticeIsError \? submissionErrorRef : undefined\}[\s\S]*role=\{noticeIsError \? "alert" : "status"\}[\s\S]*tabIndex=\{noticeIsError \? -1 : undefined\}/u,
+    );
     assert.match(formSource, /href=\{`#\$\{errorTargetId/u);
     assert.doesNotMatch(formSource, /<Link href="\/privacy">/u);
     assert.match(formSource, /data-form-key=\{formKey\}/u);
     assert.match(formSource, /Send an inquiry/u);
     for (const label of [
       "Send message",
+      "Send inquiry",
       "Send volunteer interest",
       "Send event idea",
-      "Send partnership or support inquiry",
     ]) {
       assert.match(formSource, new RegExp(escapeRegex(label), "u"));
     }
@@ -1465,7 +1661,15 @@ test(
     );
     assert.doesNotMatch(formSource, /role="alert"[\s\S]*aria-live="polite"/u);
     assert.match(formSource, /payload:\s*values/u);
-    assert.equal(countMatches(formSource, /\bsetValues\(/gu), 1);
+    assert.equal(
+      countMatches(formSource, /\bsetValues\(/gu),
+      2,
+      "controlled edits and allowlisted server-normalized validation values are the only state writes",
+    );
+    assert.match(
+      formSource,
+      /const normalizedValues = body\.values;[\s\S]*safelyPreservedValues\(formKey, current, normalizedValues\)/u,
+    );
 
     const relevantSource = [
       formSource,
@@ -1501,6 +1705,16 @@ test(
         );
       }
     }
+
+    const publicPageSources = pageSourcesUnder(join(PROJECT_ROOT, "app"))
+      .filter(({ path }) => !path.includes(`${join("app", "organizer")}`))
+      .map(({ contents }) => contents)
+      .join("\n");
+    assert.doesNotMatch(
+      publicPageSources,
+      /formKey="partnership"/u,
+      "no public page may surface the retired standalone partnership form",
+    );
 
     const routeBodiesSource = source(
       "app/_components/EditorialRouteBodies.tsx",
@@ -1629,30 +1843,40 @@ function routeContext(formKey) {
   return { params: Promise.resolve({ formKey }) };
 }
 
-function jsonRequest(path, { cookie, instanceToken, payload }) {
+function jsonRequest(
+  path,
+  { cookie, headers: extraHeaders = {}, instanceToken, payload },
+) {
+  const headers = {
+    "content-type": "application/json",
+    origin: TEST_ORIGIN,
+    ...extraHeaders,
+  };
+  if (cookie) headers.cookie = cookie;
   return new Request(`${TEST_ORIGIN}${path}`, {
     body: JSON.stringify({
       companyFax: "",
       instanceToken,
       payload,
     }),
-    headers: {
-      "content-type": "application/json",
-      cookie,
-      origin: TEST_ORIGIN,
-    },
+    headers,
     method: "POST",
   });
 }
 
-function nativeFormRequest(path, { cookie, fields }) {
+function nativeFormRequest(
+  path,
+  { cookie, fields, headers: extraHeaders = {} },
+) {
+  const headers = {
+    "content-type": "application/x-www-form-urlencoded",
+    origin: TEST_ORIGIN,
+    ...extraHeaders,
+  };
+  if (cookie) headers.cookie = cookie;
   const request = new Request(`${TEST_ORIGIN}${path}`, {
     body: fields.toString(),
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      cookie,
-      origin: TEST_ORIGIN,
-    },
+    headers,
     method: "POST",
   });
   assert.equal(new URL(request.url).search, "");
@@ -1820,11 +2044,29 @@ async function assertPrivateNativeHtml(response, { title }) {
     html,
     new RegExp(`<h1>${escapeRegex(title)}</h1>`, "u"),
   );
+  assert.match(
+    html,
+    /<(?:main|div)(?=[^>]*\btabindex="-1")(?=[^>]*\bautofocus)[^>]*>/u,
+    "native success and error pages must move focus to their status",
+  );
   return html;
 }
 
 function source(path) {
   return readFileSync(join(PROJECT_ROOT, path), "utf8");
+}
+
+function pageSourcesUnder(directory) {
+  const files = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...pageSourcesUnder(path));
+    } else if (entry.isFile() && entry.name === "page.tsx") {
+      files.push({ contents: readFileSync(path, "utf8"), path });
+    }
+  }
+  return files;
 }
 
 function countMatches(value, pattern) {

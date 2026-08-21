@@ -52,11 +52,6 @@ const formCases = Object.freeze([
     primaryField: "eventIdea",
     submitLabel: "Send event idea",
   }),
-  Object.freeze({
-    formKey: "partnership",
-    primaryField: "organizationOrVenueName",
-    submitLabel: "Send partnership or support inquiry",
-  }),
 ]);
 
 test("each form page uses one quiet privacy sentence and one truthful process sentence", directImportOptions, async () => {
@@ -197,6 +192,40 @@ test("all fields are editable immediately while only secure submission prepares"
   }
 });
 
+test("Contact can render a protected no-JavaScript partnership inquiry", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PublicSubmissionForm, {
+      formKey: "contact",
+      initialContactTopic: "Partnerships",
+      initialInstanceToken: "signed-contact-token",
+    }),
+  );
+
+  assert.match(markup, /data-native-ready="true"/u);
+  assert.doesNotMatch(markup, /<noscript>/u);
+  assert.doesNotMatch(markup, /without JavaScript/iu);
+  assert.match(
+    markup,
+    /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="signed-contact-token")[^>]*>/u,
+  );
+  assert.match(markup, /name="organization"/u);
+  assert.match(markup, /name="role"/u);
+  assert.match(markup, /name="collaborationInterest"/u);
+  assert.match(
+    markup,
+    /<input(?=[^>]*\bname="organization")(?![^>]*\brequired)[^>]*>/u,
+  );
+  assert.match(
+    markup,
+    /<input(?=[^>]*\bname="role")(?![^>]*\brequired)[^>]*>/u,
+  );
+  assert.match(
+    markup,
+    /<select(?=[^>]*\bname="collaborationInterest")(?=[^>]*\brequired)[^>]*>/u,
+  );
+  assert.match(markup, />Send inquiry<\/button>/u);
+});
+
 test("secure-send preparation reports slowness within one second without weakening transport", async () => {
   const [formSource, instanceRoute, postRoute, protection, submissionService] =
     await Promise.all([
@@ -267,6 +296,11 @@ test("secure-send preparation reports slowness within one second without weakeni
     /if \(busy \|\| instanceState === "error"\) return;/u,
   );
   assert.match(formSource, /await instanceGateRef\.current\?\.promise/u);
+  assert.match(
+    formSource,
+    /initialInstanceToken &&[\s\S]*instanceRequest === 0[\s\S]*instanceReceivedAtRef\.current = Date\.now\(\);[\s\S]*instanceGateRef\.current\?\.resolve\(initialInstanceToken\);[\s\S]*return;/u,
+    "a server-issued Contact token must avoid a duplicate instance request",
+  );
   assert.match(formSource, /role="alert"/u);
   assert.match(formSource, /errorSummaryRef\.current\?\.focus\(\)/u);
   assert.match(formSource, /successRef\.current\?\.focus\(\)/u);
@@ -346,10 +380,6 @@ async function formPageMarkups() {
           createElement(PublicSubmissionForm, {
             formKey: "volunteer",
             id: "volunteer",
-          }),
-          createElement(PublicSubmissionForm, {
-            formKey: "partnership",
-            id: "partner",
           }),
         ),
       ),

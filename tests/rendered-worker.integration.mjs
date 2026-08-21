@@ -1265,13 +1265,7 @@ test("public form routes render editable fields immediately while secure send pr
     ],
     [
       "/get-involved",
-      [
-        ["volunteer", ["name", "replyEmail", "interestAreas", "howToHelp"]],
-        [
-          "partnership",
-          ["name", "replyEmail", "organizationOrVenueName", "message"],
-        ],
-      ],
+      [["volunteer", ["name", "replyEmail", "interestAreas", "howToHelp"]]],
     ],
   ]) {
     const response = await fetchPath(path);
@@ -1312,11 +1306,19 @@ test("public form routes render editable fields immediately while secure send pr
         new RegExp(`\\bdata-form-key="${escapeRegex(formKey)}"`, "u"),
         `${path} form key`,
       );
-      assert.match(
-        formSection,
-        /<noscript>[\s\S]*form is unavailable in this browser[\s\S]*Your information has not been sent\.[\s\S]*Please try again later\.[\s\S]*<\/noscript>/u,
-        `${path} no-script safety notice`,
-      );
+      if (path === "/contact") {
+        assert.doesNotMatch(
+          formSection,
+          /<noscript>|without JavaScript/iu,
+          `${path} protected no-script form must not expose transport details`,
+        );
+      } else {
+        assert.match(
+          formSection,
+          /<noscript>[\s\S]*form is unavailable in this browser[\s\S]*Your information has not been sent\.[\s\S]*Please try again later\.[\s\S]*<\/noscript>/u,
+          `${path} no-script safety notice`,
+        );
+      }
       assert.match(
         formSection,
         new RegExp(
@@ -1327,8 +1329,10 @@ test("public form routes render editable fields immediately while secure send pr
       );
       assert.match(
         formSection,
-        /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="")[^>]*>/u,
-        `${path} initially empty protected instance token`,
+        path === "/contact"
+          ? /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="[^"]+")[^>]*>/u
+          : /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="")[^>]*>/u,
+        `${path} protected instance token state`,
       );
       for (const fieldName of expectedFields) {
         assert.match(
@@ -1359,8 +1363,8 @@ test("public form routes render editable fields immediately while secure send pr
 
   assert.match(
     renderedCss,
-    /@media\s*\(scripting:none\)\{\.public-submission__form\{[^}]*display:none/iu,
-    "the rendered no-script view must show the safety notice instead of an unusable form",
+    /@media\s*\(scripting:none\)\{\.public-submission\[data-native-ready=false\] \.public-submission__form\{[^}]*display:none/iu,
+    "only forms without a server token are hidden in the rendered no-script view",
   );
   assert.doesNotMatch(
     renderedCss,
@@ -1372,6 +1376,22 @@ test("public form routes render editable fields immediately while secure send pr
 test("Contact is consistent while partnership and Host routes remain canonical", async () => {
   const contactResponse = await fetchPath("/contact");
   assert.equal(contactResponse.status, 200);
+  assert.equal(
+    contactResponse.headers.get("cache-control"),
+    "private, no-store, max-age=0",
+  );
+  assert.equal(contactResponse.headers.get("pragma"), "no-cache");
+  const contactRscResponse = await fetchPath("/contact.rsc?_rsc", {
+    headers: {
+      accept: "text/x-component",
+      rsc: "1",
+    },
+  });
+  assert.equal(contactRscResponse.status, 200);
+  assert.equal(
+    contactRscResponse.headers.get("cache-control"),
+    "private, no-store, max-age=0",
+  );
   const contactHtml = await contactResponse.text();
   assert.match(
     contactHtml,
@@ -1413,6 +1433,53 @@ test("Contact is consistent while partnership and Host routes remain canonical",
   assert.match(contactHtml, />Send message<\/button>/u);
   assertNoPrivateSentinels(contactHtml);
 
+  const partnershipResponse = await fetchPath(
+    "/contact?topic=partnerships",
+  );
+  assert.equal(partnershipResponse.status, 200);
+  assert.equal(
+    partnershipResponse.headers.get("cache-control"),
+    "private, no-store, max-age=0",
+  );
+  const partnershipHtml = await partnershipResponse.text();
+  assert.match(partnershipHtml, /<p class="eyebrow">Partnership inquiry<\/p>/u);
+  assert.match(
+    partnershipHtml,
+    /<h1>Start a conversation with our team\.<\/h1>/u,
+  );
+  assert.match(
+    partnershipHtml,
+    /Tell us about your organization, what you are working on, and the kind of collaboration you have in mind\./u,
+  );
+  assert.match(
+    partnershipHtml,
+    /rel="canonical" href="https:\/\/preview\.example\/contact"/u,
+  );
+  assert.match(partnershipHtml, /data-form-key="contact"/u);
+  assert.doesNotMatch(partnershipHtml, /data-form-key="partnership"/u);
+  assert.match(
+    partnershipHtml,
+    /<form(?=[^>]*\baction="\/api\/forms\/contact")(?=[^>]*\bmethod="post")[^>]*>/u,
+  );
+  assert.match(
+    partnershipHtml,
+    /<option value="Partnerships" selected="">Partnerships<\/option>/u,
+  );
+  assert.match(
+    partnershipHtml,
+    /<input(?=[^>]*\bname="organization")(?![^>]*\brequired)[^>]*>/u,
+  );
+  assert.match(
+    partnershipHtml,
+    /<input(?=[^>]*\bname="role")(?![^>]*\brequired)[^>]*>/u,
+  );
+  assert.match(
+    partnershipHtml,
+    /<select(?=[^>]*\bname="collaborationInterest")(?=[^>]*\brequired)[^>]*>/u,
+  );
+  assert.match(partnershipHtml, />Send inquiry<\/button>/u);
+  assertNoPrivateSentinels(partnershipHtml);
+
   const homeResponse = await fetchPath("/");
   assert.equal(homeResponse.status, 200);
   const homeHtml = await homeResponse.text();
@@ -1428,6 +1495,11 @@ test("Contact is consistent while partnership and Host routes remain canonical",
     getInvolvedHtml,
     /<a(?=[^>]*data-contribution-path="host")(?=[^>]*href="\/host-an-event")[^>]*>[\s\S]*?<strong>Host an event<\/strong>/u,
   );
+  assert.match(
+    getInvolvedHtml,
+    /<a(?=[^>]*data-contribution-path="partner")(?=[^>]*href="\/contact\?topic=partnerships#contact-form")[^>]*>[\s\S]*?<strong>Offer a partnership or support<\/strong>/u,
+  );
+  assert.doesNotMatch(getInvolvedHtml, /data-form-key="partnership"/u);
 });
 
 test("the retired Community destination redirects to Contribute", async () => {

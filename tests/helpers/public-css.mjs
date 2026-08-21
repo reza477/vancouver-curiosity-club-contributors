@@ -15,11 +15,11 @@ export const publicCssModulePaths = Object.freeze([
   "app/styles/components/forms.css",
   "app/styles/pages/home.css",
   "app/styles/pages/event-detail.css",
-  "app/styles/pages/about.css",
   "app/styles/components/responsive-overrides.css",
 ]);
 
 const publicRouteCssPaths = Object.freeze({
+  about: "public/styles/about.css",
   events: "public/styles/events.css",
   organizations: "public/styles/organizations.css",
 });

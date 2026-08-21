@@ -2,10 +2,16 @@ import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import { resolvePublicOrganization } from "@/lib/server/public/catalog";
 import {
+  COLLABORATION_INTERESTS,
+  CONTACT_TOPICS,
+  PARTNERSHIP_TYPES,
   PUBLIC_FORM_SUCCESS_COPY,
   PublicFormValidationError,
   parsePublicFormKey,
+  publicFormLabel,
+  type PublicFormFieldErrors,
   type PublicFormKey,
+  type PublicFormPayload,
 } from "@/lib/server/phase7/public-form-contract";
 import {
   PUBLIC_FORM_CLIENT_COOKIE,
@@ -35,6 +41,7 @@ export async function POST(
   const routeLabel = "/api/forms/[formKey]";
   const nativeSubmission = isNativeFormSubmission(request);
   let formKey: PublicFormKey | null = null;
+  let instanceToken: unknown = null;
   try {
     requirePublicFormSameOrigin(request);
     const { formKey: rawFormKey } = await context.params;
@@ -42,12 +49,15 @@ export async function POST(
     const body = nativeSubmission
       ? await readBoundedNativeForm(request, formKey, 16_384)
       : await readBoundedJson(request, 16_384);
-    const instanceToken = body.instanceToken;
-    const anonymousClientId = readCookie(
+    instanceToken = body.instanceToken;
+    const anonymousClientCookie = readCookie(
       request.headers.get("cookie"),
       PUBLIC_FORM_CLIENT_COOKIE,
     );
-    if (!isAnonymousFormClientId(anonymousClientId)) {
+    if (
+      !isAnonymousFormClientId(anonymousClientCookie) &&
+      formKey !== "contact"
+    ) {
       throw new SafeApplicationError(
         "authorization_denied",
         403,
@@ -69,6 +79,10 @@ export async function POST(
       organization.id,
       nowUtcMs,
     );
+    const networkFacts = boundedNetworkFacts(request);
+    const anonymousClientId = isAnonymousFormClientId(anonymousClientCookie)
+      ? anonymousClientCookie
+      : "contact-no-cookie-v1";
     const formInstance = await verifyPublicFormInstanceToken(
       keyHex,
       instanceToken,
@@ -81,7 +95,7 @@ export async function POST(
       formKey,
       honeypot: body.companyFax,
       keyHex,
-      networkFacts: boundedNetworkFacts(request),
+      networkFacts,
       nowUtcMs,
       organizationId: organization.id,
       payload: body.payload,
@@ -119,13 +133,22 @@ export async function POST(
   } catch (error) {
     if (error instanceof PublicFormValidationError) {
       return nativeSubmission
-        ? publicFormHtml({
-            backPath: publicFormBackPath(formKey),
-            message:
-              "The form could not be validated. Go back, review the required fields, and try again. Your information is not shown on this page or in its address.",
-            status: 422,
-            title: "Please check the form",
-          })
+        ? formKey &&
+          (formKey === "contact" || formKey === "partnership") &&
+          typeof instanceToken === "string"
+          ? publicFormValidationHtml({
+              errors: error.fieldErrors,
+              formKey,
+              instanceToken,
+              values: error.values,
+            })
+          : publicFormHtml({
+              backPath: publicFormBackPath(formKey),
+              message:
+                "The form could not be validated. Return to the form, review the required fields, and try again.",
+              status: 422,
+              title: "Please check the form",
+            })
         : publicFormJson(
             {
               error: {
@@ -172,7 +195,15 @@ export async function POST(
 }
 
 const PUBLIC_FORM_NATIVE_FIELDS = Object.freeze({
-  contact: ["name", "replyEmail", "topic", "message"],
+  contact: [
+    "name",
+    "replyEmail",
+    "topic",
+    "organization",
+    "role",
+    "collaborationInterest",
+    "message",
+  ],
   host_event: [
     "name",
     "replyEmail",
@@ -323,7 +354,7 @@ function publicFormHtml(input: Readonly<{
   const title = escapeHtml(input.title);
   const message = escapeHtml(input.message);
   return new Response(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} | Vancouver Curiosity Club</title></head><body><main><h1>${title}</h1><p>${message}</p><p><a href="${input.backPath}">Return to the form</a></p></main></body></html>`,
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} | Vancouver Curiosity Club</title><link rel="stylesheet" href="/styles/native-form.css"></head><body><a class="skip-link" href="#main-content">Skip to main content</a><header><a href="/">Vancouver Curiosity Club</a></header><main id="main-content" tabindex="-1" autofocus><p class="eyebrow">Inquiry status</p><h1>${title}</h1><p>${message}</p><p><a class="action-link" href="${input.backPath}">Return to the form</a></p></main></body></html>`,
     {
       status: input.status,
       headers: {
@@ -337,11 +368,235 @@ function publicFormHtml(input: Readonly<{
   );
 }
 
+function publicFormValidationHtml(input: Readonly<{
+  errors: PublicFormFieldErrors;
+  formKey: "contact" | "partnership";
+  instanceToken: string;
+  values: PublicFormPayload;
+}>): Response {
+  const label = publicFormLabel(input.formKey);
+  const errorItems = Object.entries(input.errors)
+    .map(
+      ([field, message]) =>
+        `<li><a href="#field-${escapeHtml(field)}">${escapeHtml(message)}</a></li>`,
+    )
+    .join("");
+  const fields = nativeValidationFields(
+    input.formKey,
+    input.values,
+    input.errors,
+  );
+  return new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Please check the form | Vancouver Curiosity Club</title><link rel="stylesheet" href="/styles/native-form.css"></head><body><a class="skip-link" href="#main-content">Skip to main content</a><header><a href="/">Vancouver Curiosity Club</a></header><main id="main-content"><p class="eyebrow">${escapeHtml(label)}</p><h1>Please check the form</h1><div class="error-summary" role="alert" tabindex="-1" autofocus><h2>Check the following fields</h2><ul>${errorItems}</ul></div><form accept-charset="UTF-8" action="/api/forms/${input.formKey}" method="post"><input name="instanceToken" type="hidden" value="${escapeHtml(input.instanceToken)}"><div class="honeypot" aria-hidden="true"><label for="companyFax">Leave this field blank</label><input autocomplete="off" id="companyFax" name="companyFax" tabindex="-1" type="text"></div>${fields}<button type="submit">${escapeHtml(submitLabel(input.formKey, nativeValue(input.values.topic) === "Partnerships"))}</button></form><p><a href="${publicFormBackPath(input.formKey)}">Return without resubmitting</a></p></main></body></html>`,
+    {
+      status: 422,
+      headers: privateNativeHtmlHeaders(),
+    },
+  );
+}
+
+function nativeValidationFields(
+  formKey: "contact" | "partnership",
+  values: PublicFormPayload,
+  errors: PublicFormFieldErrors,
+): string {
+  const common = [
+    nativeTextField({
+      autoComplete: "name",
+      errors,
+      label: formKey === "partnership" ? "Contact name" : "Name",
+      maxLength: 100,
+      minLength: 2,
+      name: "name",
+      required: true,
+      value: nativeValue(values.name),
+    }),
+    nativeTextField({
+      autoComplete: "email",
+      errors,
+      label: "Reply email",
+      maxLength: 254,
+      minLength: 3,
+      name: "replyEmail",
+      required: true,
+      type: "email",
+      value: nativeValue(values.replyEmail),
+    }),
+  ];
+  if (formKey === "contact") {
+    const contactFields = [
+      nativeTextField({
+        autoComplete: "organization",
+        errors,
+        label: "Organization (optional)",
+        maxLength: 160,
+        name: "organization",
+        value: nativeValue(values.organization),
+      }),
+      nativeTextField({
+        autoComplete: "organization-title",
+        errors,
+        label: "Role (optional)",
+        maxLength: 160,
+        name: "role",
+        value: nativeValue(values.role),
+      }),
+      nativeSelectField({
+        errors,
+        label: "Topic",
+        name: "topic",
+        options: CONTACT_TOPICS,
+        required: true,
+        value: nativeValue(values.topic),
+      }),
+    ];
+    const partnershipFields =
+      nativeValue(values.topic) === "Partnerships"
+        ? [
+            nativeSelectField({
+              errors,
+              label: "Collaboration interest",
+              name: "collaborationInterest",
+              options: COLLABORATION_INTERESTS,
+              required: true,
+              value: nativeValue(values.collaborationInterest),
+            }),
+          ]
+        : [];
+    return [
+      ...common,
+      ...contactFields,
+      ...partnershipFields,
+      nativeTextField({
+        errors,
+        label: "Message",
+        maxLength: 4_000,
+        minLength: 10,
+        multiline: true,
+        name: "message",
+        required: true,
+        value: nativeValue(values.message),
+      }),
+    ].join("");
+  }
+  return [
+    ...common,
+    nativeTextField({
+      errors,
+      label: "Organization, venue, or supporter name",
+      maxLength: 160,
+      minLength: 2,
+      name: "organizationOrVenueName",
+      required: true,
+      value: nativeValue(values.organizationOrVenueName),
+    }),
+    nativeSelectField({
+      errors,
+      label: "Partnership type",
+      name: "partnershipType",
+      options: PARTNERSHIP_TYPES,
+      required: true,
+      value: nativeValue(values.partnershipType),
+    }),
+    nativeTextField({
+      errors,
+      label: "Website (HTTPS)",
+      maxLength: 500,
+      name: "website",
+      pattern: "[Hh][Tt][Tt][Pp][Ss]://.*",
+      type: "url",
+      value: nativeValue(values.website),
+    }),
+    nativeTextField({
+      errors,
+      label: "Message",
+      maxLength: 4_000,
+      minLength: 10,
+      multiline: true,
+      name: "message",
+      required: true,
+      value: nativeValue(values.message),
+    }),
+  ].join("");
+}
+
+function nativeTextField(input: Readonly<{
+  autoComplete?: string;
+  errors: PublicFormFieldErrors;
+  label: string;
+  maxLength: number;
+  minLength?: number;
+  multiline?: boolean;
+  name: string;
+  pattern?: string;
+  required?: boolean;
+  type?: string;
+  value: string;
+}>): string {
+  const id = `field-${input.name}`;
+  const error = input.errors[input.name];
+  const errorId = `${id}-error`;
+  const shared = `id="${id}" name="${input.name}" maxlength="${input.maxLength}"${input.minLength ? ` minlength="${input.minLength}"` : ""}${input.required ? " required" : ""}${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}`;
+  const control = input.multiline
+    ? `<textarea ${shared} rows="6">${escapeHtml(input.value)}</textarea>`
+    : `<input ${shared}${input.autoComplete ? ` autocomplete="${input.autoComplete}"` : ""}${input.pattern ? ` pattern="${escapeHtml(input.pattern)}"` : ""} type="${input.type ?? "text"}" value="${escapeHtml(input.value)}">`;
+  return `<label for="${id}"><span>${escapeHtml(input.label)}${input.required ? " *" : ""}</span>${control}${error ? `<small id="${errorId}">${escapeHtml(error)}</small>` : ""}</label>`;
+}
+
+function nativeSelectField(input: Readonly<{
+  errors: PublicFormFieldErrors;
+  label: string;
+  name: string;
+  options: readonly string[];
+  required?: boolean;
+  value: string;
+}>): string {
+  const id = `field-${input.name}`;
+  const error = input.errors[input.name];
+  const errorId = `${id}-error`;
+  const options = ["", ...input.options]
+    .map((option) => {
+      const label = option || "Choose an option";
+      return `<option value="${escapeHtml(option)}"${option === input.value ? " selected" : ""}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  return `<label for="${id}"><span>${escapeHtml(input.label)}${input.required ? " *" : ""}</span><select id="${id}" name="${input.name}"${input.required ? " required" : ""}${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}>${options}</select>${error ? `<small id="${errorId}">${escapeHtml(error)}</small>` : ""}</label>`;
+}
+
+function nativeValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function submitLabel(
+  formKey: "contact" | "partnership",
+  partnershipContact = false,
+): string {
+  return formKey === "partnership"
+    ? "Send partnership or support inquiry"
+    : partnershipContact
+      ? "Send inquiry"
+      : "Send message";
+}
+
+function privateNativeHtmlHeaders(): Headers {
+  return new Headers({
+    "Cache-Control": "private, no-store",
+    "Content-Security-Policy":
+      "default-src 'self'; style-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "Content-Type": "text/html; charset=utf-8",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Robots-Tag": "noindex, nofollow, noarchive",
+  });
+}
+
 function publicFormBackPath(formKey: PublicFormKey | null): string {
   if (formKey === "contact") return "/contact";
   if (formKey === "host_event") return "/host-an-event";
   if (formKey === "volunteer") return "/get-involved#volunteer";
-  if (formKey === "partnership") return "/get-involved#partner";
+  if (formKey === "partnership") {
+    return "/contact?topic=partnerships#contact-form";
+  }
   return "/";
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  COLLABORATION_INTERESTS,
   CONTACT_TOPICS,
   HOST_FORMATS,
   PARTNERSHIP_TYPES,
@@ -32,19 +33,27 @@ export function PublicSubmissionForm({
   formKey,
   id,
   initialContactTopic,
+  initialInstanceToken = null,
 }: Readonly<{
   choices?: readonly PublicFormChoice[];
   formKey: PublicFormKey;
   id?: string;
   initialContactTopic?: ContactTopic;
+  initialInstanceToken?: string | null;
 }>) {
-  const [instanceToken, setInstanceToken] = useState("");
+  const initialInstanceReady = Boolean(initialInstanceToken);
+  const [instanceToken, setInstanceToken] = useState(
+    initialInstanceToken ?? "",
+  );
   const [instanceState, setInstanceState] =
-    useState<FormInstanceState>("loading");
+    useState<FormInstanceState>(
+      initialInstanceReady ? "ready" : "loading",
+    );
   const [instanceRequest, setInstanceRequest] = useState(0);
   const [instanceNotice, setInstanceNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [noticeIsError, setNoticeIsError] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [values, setValues] = useState<FormState>(() =>
@@ -52,8 +61,10 @@ export function PublicSubmissionForm({
   );
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const instanceErrorRef = useRef<HTMLDivElement>(null);
   const instanceGateRef = useRef<FormInstanceGate | null>(null);
   const instanceReceivedAtRef = useRef(0);
+  const submissionErrorRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   if (instanceGateRef.current === null) {
     instanceGateRef.current = createFormInstanceGate();
@@ -62,6 +73,15 @@ export function PublicSubmissionForm({
   const idPrefix = `${formKey}-${reactInstanceId}`;
 
   useEffect(() => {
+    if (
+      initialInstanceReady &&
+      initialInstanceToken &&
+      instanceRequest === 0
+    ) {
+      instanceReceivedAtRef.current = Date.now();
+      instanceGateRef.current?.resolve(initialInstanceToken);
+      return;
+    }
     const controller = new AbortController();
     let active = true;
     const instanceGate =
@@ -70,7 +90,7 @@ export function PublicSubmissionForm({
     const slowTimer = window.setTimeout(() => {
       if (!active) return;
       setInstanceState((current) =>
-        current === "loading" ? "slow" : current,
+        current === "error" ? current : "slow",
       );
     }, FORM_INSTANCE_SLOW_MS);
     const timeout = window.setTimeout(
@@ -123,25 +143,38 @@ export function PublicSubmissionForm({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [formKey, instanceRequest]);
+  }, [
+    formKey,
+    initialInstanceReady,
+    initialInstanceToken,
+    instanceRequest,
+  ]);
 
   useEffect(() => {
     if (!success) return;
     successRef.current?.focus();
   }, [success]);
 
+  useEffect(() => {
+    if (instanceState !== "error") return;
+    instanceErrorRef.current?.focus();
+  }, [instanceState]);
+
+  useEffect(() => {
+    if (!noticeIsError || !notice) return;
+    submissionErrorRef.current?.focus();
+  }, [notice, noticeIsError]);
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy || instanceState === "error") return;
     setBusy(true);
     setNotice("");
+    setNoticeIsError(false);
     setErrors({});
     const formData = new FormData(event.currentTarget);
     try {
-      const token =
-        instanceToken ||
-        (await instanceGateRef.current?.promise) ||
-        null;
+      const token = (await instanceGateRef.current?.promise) || null;
       if (!token) {
         throw new Error("The form is temporarily unavailable. Try again.");
       }
@@ -167,7 +200,14 @@ export function PublicSubmissionForm({
         isStringRecord(body.error.fieldErrors)
       ) {
         setErrors(body.error.fieldErrors);
+        if (isRecord(body.values)) {
+          const normalizedValues = body.values;
+          setValues((current) =>
+            safelyPreservedValues(formKey, current, normalizedValues),
+          );
+        }
         setNotice("Check the marked fields and try again.");
+        setNoticeIsError(false);
         requestAnimationFrame(() => errorSummaryRef.current?.focus());
         return;
       }
@@ -187,7 +227,9 @@ export function PublicSubmissionForm({
       }
       setSuccess(true);
       setNotice(body.message);
+      setNoticeIsError(false);
     } catch (error) {
+      setNoticeIsError(true);
       setNotice(
         error instanceof Error
           ? error.message
@@ -211,11 +253,17 @@ export function PublicSubmissionForm({
     setInstanceRequest((current) => current + 1);
   }
 
-  const title = publicFormLabel(formKey);
+  const partnershipSelected =
+    formKey === "contact" && values.topic === "Partnerships";
+  const title = partnershipSelected
+    ? "Partnership inquiry"
+    : publicFormLabel(formKey);
   return (
     <section
       className="public-submission"
       data-form-key={formKey}
+      data-native-ready={initialInstanceToken ? "true" : "false"}
+      data-partnership-selected={partnershipSelected ? "true" : "false"}
       id={id}
       aria-labelledby={`${idPrefix}-title`}
     >
@@ -224,17 +272,19 @@ export function PublicSubmissionForm({
         <h2 id={`${idPrefix}-title`}>{title}</h2>
       </div>
 
-      <noscript>
-        <div
-          className="public-submission__load-error public-submission__noscript"
-          role="status"
-        >
-          <p>
-            The form is unavailable in this browser. Your information has not
-            been sent. Please try again later.
-          </p>
-        </div>
-      </noscript>
+      {!initialInstanceToken ? (
+        <noscript>
+          <div
+            className="public-submission__load-error public-submission__noscript"
+            role="status"
+          >
+            <p>
+              The form is unavailable in this browser. Your information has not
+              been sent. Please try again later.
+            </p>
+          </div>
+        </noscript>
+      ) : null}
 
       {success ? (
         <div
@@ -307,6 +357,26 @@ export function PublicSubmissionForm({
 
           {formKey === "contact" ? (
             <>
+              <TextField
+                autoComplete="organization"
+                error={errors.organization}
+                idPrefix={idPrefix}
+                label="Organization (optional)"
+                maxLength={160}
+                name="organization"
+                onChange={(value) => update("organization", value)}
+                value={stringValue(values.organization)}
+              />
+              <TextField
+                autoComplete="organization-title"
+                error={errors.role}
+                idPrefix={idPrefix}
+                label="Role (optional)"
+                maxLength={160}
+                name="role"
+                onChange={(value) => update("role", value)}
+                value={stringValue(values.role)}
+              />
               <SelectField
                 error={errors.topic}
                 idPrefix={idPrefix}
@@ -317,6 +387,20 @@ export function PublicSubmissionForm({
                 required
                 value={stringValue(values.topic)}
               />
+              {partnershipSelected ? (
+                <SelectField
+                  error={errors.collaborationInterest}
+                  idPrefix={idPrefix}
+                  label="Collaboration interest"
+                  name="collaborationInterest"
+                  onChange={(value) =>
+                    update("collaborationInterest", value)
+                  }
+                  options={COLLABORATION_INTERESTS.map(choice)}
+                  required
+                  value={stringValue(values.collaborationInterest)}
+                />
+              ) : null}
               <TextField
                 error={errors.message}
                 idPrefix={idPrefix}
@@ -488,7 +572,12 @@ export function PublicSubmissionForm({
           </div>
 
           {instanceState === "error" ? (
-            <div className="public-submission__load-error" role="alert">
+            <div
+              className="public-submission__load-error"
+              ref={instanceErrorRef}
+              role="alert"
+              tabIndex={-1}
+            >
               <p>{instanceNotice}</p>
               <button onClick={retryInstance} type="button">
                 Try loading the form again
@@ -505,25 +594,34 @@ export function PublicSubmissionForm({
             disabled={busy || instanceState === "error"}
             type="submit"
           >
-            {busy ? "Sending..." : submitButtonLabel(formKey)}
+            {busy
+              ? "Sending..."
+              : submitButtonLabel(formKey, partnershipSelected)}
           </button>
-          <p
-            className="public-submission__notice"
-            id={`${idPrefix}-notice`}
-            role="status"
-          >
-            {notice}
-          </p>
+          {notice ? (
+            <div
+              className="public-submission__notice"
+              id={`${idPrefix}-notice`}
+              ref={noticeIsError ? submissionErrorRef : undefined}
+              role={noticeIsError ? "alert" : "status"}
+              tabIndex={noticeIsError ? -1 : undefined}
+            >
+              <p>{notice}</p>
+            </div>
+          ) : null}
         </form>
       )}
     </section>
   );
 }
 
-function submitButtonLabel(formKey: PublicFormKey): string {
+function submitButtonLabel(
+  formKey: PublicFormKey,
+  partnershipSelected = false,
+): string {
   switch (formKey) {
     case "contact":
-      return "Send message";
+      return partnershipSelected ? "Send inquiry" : "Send message";
     case "volunteer":
       return "Send volunteer interest";
     case "host_event":
@@ -738,6 +836,9 @@ function initialValues(
     return {
       ...base,
       topic: initialContactTopic ?? "",
+      organization: "",
+      role: "",
+      collaborationInterest: "",
       message: "",
     };
   }
@@ -766,6 +867,62 @@ function initialValues(
     website: "",
     message: "",
   };
+}
+
+function safelyPreservedValues(
+  formKey: PublicFormKey,
+  current: FormState,
+  serverValues: Readonly<Record<string, unknown>>,
+): FormState {
+  const fieldNames = {
+    contact: [
+      "name",
+      "replyEmail",
+      "topic",
+      "organization",
+      "role",
+      "collaborationInterest",
+      "message",
+    ],
+    host_event: [
+      "name",
+      "replyEmail",
+      "proposedTitle",
+      "eventIdea",
+      "preferredClubOrProgram",
+      "format",
+      "preferredTiming",
+    ],
+    partnership: [
+      "name",
+      "replyEmail",
+      "organizationOrVenueName",
+      "partnershipType",
+      "website",
+      "message",
+    ],
+    volunteer: [
+      "name",
+      "replyEmail",
+      "interestAreas",
+      "howToHelp",
+      "availabilityContext",
+    ],
+  } as const;
+  const next: Record<string, string | readonly string[]> = { ...current };
+  for (const fieldName of fieldNames[formKey]) {
+    const value = serverValues[fieldName];
+    if (typeof value === "string") {
+      next[fieldName] = value;
+    } else if (
+      fieldName === "interestAreas" &&
+      Array.isArray(value) &&
+      value.every((item) => typeof item === "string")
+    ) {
+      next[fieldName] = value;
+    }
+  }
+  return next;
 }
 
 function choice(value: string): PublicFormChoice {

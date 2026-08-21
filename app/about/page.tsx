@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-css-tags -- About owns a bounded stylesheet that must not inflate other public routes. */
 import { notFound } from "next/navigation";
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
@@ -81,6 +82,7 @@ export default async function AboutPage() {
 
   return (
     <main className="about-page" data-page-slug={loaded.page.slug}>
+      <link rel="stylesheet" href="/styles/about.css" precedence="about" />
       <Breadcrumbs
         items={[
           { href: "/", label: "Home" },

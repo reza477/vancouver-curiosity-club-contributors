@@ -12,6 +12,8 @@ const projectRoot = new URL("../../", import.meta.url);
 test("only data-heavy public route families disable speculative prefetch", () => {
   for (const href of [
     "/",
+    "/contact",
+    "/contact?topic=partnerships#contact-form",
     "/calendar",
     "/calendar/",
     "/calendar?month=2026-08",
@@ -29,7 +31,6 @@ test("only data-heavy public route families disable speculative prefetch", () =>
 
   for (const href of [
     "/about",
-    "/contact",
     "/get-involved",
     "/conduct",
     "/accessibility",
@@ -68,6 +69,7 @@ test("every public component that can emit an expensive href uses the policy lin
     "app/_components/ClubDetailRenderer.tsx",
     "app/_components/ClubDirectory.tsx",
     "app/_components/ClubEventList.tsx",
+    "app/_components/EditorialRouteBodies.tsx",
     "app/_components/EditorialPage.tsx",
     "app/_components/EventCard.tsx",
     "app/_components/EventFilters.tsx",
@@ -94,15 +96,6 @@ test("every public component that can emit an expensive href uses the policy lin
     );
   }
 
-  const cheapOnly = await readFile(
-    new URL("app/_components/EditorialRouteBodies.tsx", projectRoot),
-    "utf8",
-  );
-  assert.match(
-    cheapOnly,
-    /import Link from ["']next\/link["'];/u,
-    "cheap editorial links may keep the framework's ordinary automatic prefetch",
-  );
 });
 
 test("pending Vinext RSC prefetch duplication is removed for expensive destinations", async () => {

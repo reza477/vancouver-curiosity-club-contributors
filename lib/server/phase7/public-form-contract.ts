@@ -21,6 +21,16 @@ export const CONTACT_TOPICS = [
 
 export type ContactTopic = (typeof CONTACT_TOPICS)[number];
 
+export const COLLABORATION_INTERESTS = [
+  "Program funding or sponsorship",
+  "Venue or space",
+  "Co-presented program",
+  "Educational or cultural collaboration",
+  "Community outreach",
+  "In-kind support",
+  "General partnership question",
+] as const;
+
 export const VOLUNTEER_INTERESTS = [
   "Event support",
   "Welcoming",
@@ -99,21 +109,52 @@ export function parsePublicFormPayload(
 
   let payload: Record<string, unknown>;
   if (formKey === "contact") {
-    payload = {
-      ...base,
-      topic: allowlisted(
-        input.topic,
-        CONTACT_TOPICS,
-        "topic",
-        fieldErrors,
-      ),
-      message: boundedText(input.message, "message", fieldErrors, {
-        minimum: 10,
-        maximum: 4_000,
-        required: true,
-        multiline: true,
-      }),
-    };
+    const topic = allowlisted(
+      input.topic,
+      CONTACT_TOPICS,
+      "topic",
+      fieldErrors,
+    );
+    const message = boundedText(input.message, "message", fieldErrors, {
+      minimum: 10,
+      maximum: 4_000,
+      required: true,
+      multiline: true,
+    });
+    const organization = boundedText(
+      input.organization,
+      "organization",
+      fieldErrors,
+      { maximum: 160, required: false },
+    );
+    const role = boundedText(input.role, "role", fieldErrors, {
+      maximum: 160,
+      required: false,
+    });
+    const optionalOrganization = organization ? { organization } : {};
+    const optionalRole = role ? { role } : {};
+    payload =
+      topic === "Partnerships"
+        ? {
+            ...base,
+            ...optionalOrganization,
+            ...optionalRole,
+            topic,
+            collaborationInterest: allowlisted(
+              input.collaborationInterest,
+              COLLABORATION_INTERESTS,
+              "collaborationInterest",
+              fieldErrors,
+            ),
+            message,
+          }
+        : {
+            ...base,
+            ...optionalOrganization,
+            ...optionalRole,
+            topic,
+            message,
+          };
   } else if (formKey === "volunteer") {
     payload = {
       ...base,

@@ -15,6 +15,7 @@ const organizationsCss = new URL(
   "public/styles/organizations.css",
   projectRoot,
 );
+const aboutCss = new URL("public/styles/about.css", projectRoot);
 const eventsCss = new URL("public/styles/events.css", projectRoot);
 
 test("the public stylesheet entrypoint owns only an explicit layered module graph", async () => {
@@ -54,10 +55,12 @@ test("route and component selectors stay in their named modules", async () => {
     ["app/styles/components/forms.css", ".public-submission"],
     ["app/styles/pages/home.css", ".home-hero"],
     ["app/styles/pages/event-detail.css", ".event-detail"],
-    ["app/styles/pages/about.css", ".about-hero"],
   ]) {
     assert.ok(styles.get(modulePath).includes(selector), `${selector} must stay in ${modulePath}`);
   }
+
+  const about = await readFile(aboutCss, "utf8");
+  assert.ok(about.includes(".about-hero"), ".about-hero must stay in the About route module");
 
   const events = await readFile(eventsCss, "utf8");
   for (const selector of [
@@ -74,6 +77,10 @@ test("route and component selectors stay in their named modules", async () => {
   const organizations = await readFile(organizationsCss, "utf8");
   assert.match(organizations, /\.for-organizations-page\b/u);
   assert.match(organizations, /\.organizations-collaboration\b/u);
+  assert.ok(
+    (await stat(aboutCss)).size < 30_000,
+    "the route-scoped About stylesheet must remain bounded",
+  );
   assert.ok(
     (await stat(organizationsCss)).size < 30_000,
     "the route-scoped organizations stylesheet must remain bounded",

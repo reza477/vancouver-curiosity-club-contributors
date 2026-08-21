@@ -74,15 +74,15 @@
 }
 
 .public-submission {
-  border: 1px solid var(--line, currentColor);
-  background: var(--paper, #fff9f5);
-  width: min(100%, 62rem);
+  border: 0;
+  border-top: 1px solid var(--line, currentColor);
+  background: transparent;
+  width: min(calc(100% - 2rem), 70rem);
   color: var(--ink, #221c3d);
-  box-shadow: 0.5rem 0.5rem 0 var(--ink, #221c3d);
-  border-top-width: 0.55rem;
-  border-radius: 0.8rem;
-  margin: clamp(2.5rem, 7vw, 6rem) auto;
-  padding: clamp(1.25rem, 4vw, 3rem);
+  box-shadow: none;
+  border-radius: 0;
+  margin: clamp(2rem, 5vw, 4rem) auto;
+  padding: clamp(1.5rem, 4vw, 3rem) 0 0;
   scroll-margin-top: 2rem;
 }
 
@@ -95,6 +95,10 @@
 }
 
 .public-submission[data-form-key="partnership"] {
+  border-top-color: var(--coral);
+}
+
+.public-submission[data-partnership-selected="true"] {
   border-top-color: var(--coral);
 }
 
@@ -135,14 +139,14 @@
 }
 
 @media (scripting: none) {
-  .public-submission__form {
+  .public-submission[data-native-ready="false"] .public-submission__form {
     display: none;
   }
 }
 
 .public-form-guidance {
   border-left: 0.25rem solid var(--forest);
-  width: min(100%, 62rem);
+  width: min(calc(100% - 2rem), 70rem);
   color: var(--ink-soft);
   margin: clamp(2rem, 5vw, 4rem) auto 0;
   padding: 1rem 1.25rem;
@@ -177,7 +181,7 @@
   min-height: 3rem;
   color: var(--ink, #221c3d);
   font: inherit;
-  border-radius: 0.45rem;
+  border-radius: 0;
   padding: 0.72rem 0.8rem;
 }
 
@@ -242,7 +246,8 @@
   min-height: 3rem;
   color: var(--paper, #fff9f5);
   font: inherit;
-  border-radius: 999px;
+  border-radius: 0;
+  box-shadow: 0.2rem 0.2rem 0 var(--ink, #221c3d);
   justify-self: start;
   padding: 0.75rem 1.15rem;
   font-weight: 700;

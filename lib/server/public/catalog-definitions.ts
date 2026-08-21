@@ -174,7 +174,7 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: "Bring something to the community",
         text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
         paragraphs: [
-          "Attending a published event is the simplest way in. Use the forms below to tell our team how you would like to volunteer or to start a partnership, funding, or sponsorship conversation.",
+          "Attending a published event is the simplest way in. Use the Volunteer form below, or choose the partnership path above to start a collaboration, funding, or sponsorship conversation.",
         ],
       }),
     ]),

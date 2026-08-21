@@ -228,6 +228,8 @@ function secureResponse(
   const isPrivateRequest =
     requestPathname === null ||
     isPrivateOrIdentityPath(requestPathname);
+  const containsPublicFormInstance =
+    requestPathname === "/contact" || requestPathname === "/contact.rsc";
 
   headers.set("Content-Security-Policy", contentSecurityPolicyValue);
   headers.delete("Content-Security-Policy-Report-Only");
@@ -263,7 +265,11 @@ function secureResponse(
   ) {
     headers.set("X-Robots-Tag", "noindex, follow, noarchive");
   }
-  if (isPrivateRequest || response.status >= 500) {
+  if (
+    isPrivateRequest ||
+    containsPublicFormInstance ||
+    response.status >= 500
+  ) {
     headers.set("Cache-Control", "private, no-store, max-age=0");
     headers.set("Pragma", "no-cache");
   } else if (requestPathname !== null) {
