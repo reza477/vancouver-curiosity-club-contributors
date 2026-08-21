@@ -23,7 +23,7 @@ const CLUB_COVER_ARTWORK: Readonly<Record<string, ClubCoverArtwork>> =
     }),
     "vancouver-literature-and-film": clubCoverArtwork({
       altText:
-        "Readers beside an open book and film projector on a rainy Vancouver evening.",
+        "A discussion group sharing books and storyboard pages in a warm cinema-library on a rainy Vancouver evening.",
       credit: "Original artwork for Vancouver Literature and Film",
       fileStem: "vancouver-literature-and-film",
     }),
