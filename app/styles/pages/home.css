@@ -24,6 +24,14 @@
   display: flex;
 }
 
+.home-hero__events-link {
+  display: inline-flex;
+  margin-top: 1rem;
+  min-height: 2.75rem;
+  align-items: center;
+  font-weight: 600;
+}
+
 .home-events {
   padding-top: clamp(2rem, 5vw, 4rem);
 }
@@ -138,7 +146,7 @@
 
 .home-hero {
   min-height: 0;
-  padding: clamp(3rem, 7vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(3rem, 7vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  padding: clamp(2rem, 4.5vw, 4rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(2rem, 4.5vw, 4rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
   background: var(--paper);
   grid-template-columns: minmax(0, 1.15fr) minmax(20rem, 0.85fr);
   align-items: center;
@@ -147,8 +155,8 @@
 
 .home-hero h1 {
   max-width: 11ch;
-  font-size: clamp(4.5rem, 7vw, 5.5rem);
-  line-height: 0.92;
+  font-size: clamp(3.25rem, 5.6vw, 5rem);
+  line-height: 0.96;
 }
 
 .home-hero__deck {
@@ -177,9 +185,8 @@
 }
 
 .home-hero__poster img {
-  aspect-ratio: 16 / 9;
-  background: var(--ink);
-  object-fit: contain;
+  height: auto;
+  object-fit: cover;
   width: 100%;
   display: block;
 }

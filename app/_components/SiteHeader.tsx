@@ -9,7 +9,8 @@ const requiredNavigation = [
   { href: "/events", label: "Events" },
   { href: "/clubs", label: "Clubs" },
   { href: "/about", label: "About" },
-  { href: "/contact", label: "Feedback" },
+  { href: "/for-organizations", label: "For Organizations" },
+  { href: "/contact", label: "Contact" },
 ] as const;
 
 export function SiteHeader({
@@ -86,7 +87,11 @@ function NavigationLinks({
                 ? "page"
                 : undefined
             }
-            className="primary-nav__link"
+            className={
+              item.href === "/for-organizations"
+                ? "primary-nav__link primary-nav__link--organizations"
+                : "primary-nav__link"
+            }
             data-primary-destination={item.label.toLowerCase()}
             href={item.href}
             key={item.href}

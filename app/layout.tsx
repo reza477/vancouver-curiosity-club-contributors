@@ -43,6 +43,7 @@ const exactApplicationPaths = new Set([
   "/conduct",
   "/contact",
   "/events",
+  "/for-organizations",
   "/get-involved",
   "/host-an-event",
   "/organizer",

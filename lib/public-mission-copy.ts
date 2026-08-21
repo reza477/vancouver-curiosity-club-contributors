@@ -1,10 +1,10 @@
 export const PUBLIC_HOME_MISSION_COPY = Object.freeze({
   body:
-    "Vancouver Curiosity Club brings people together through thoughtful gatherings built around learning, culture, creativity, and shared experience. Our mission is to make meaningful connection easier to find—and easier to return to.",
-  eyebrow: "A mission-led Vancouver community organization",
-  heading: "Building a lasting home for curiosity.",
+    "Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience. Our gatherings are open to the public, while partnerships with organizations, venues, and supporters help this work grow.",
+  eyebrow: "A Vancouver community organization",
+  heading: "Building community through curiosity.",
   metadataDescription:
-    "Vancouver Curiosity Club brings people together through thoughtful gatherings built around learning, culture, creativity, and shared experience.",
+    "Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience.",
 });
 
 export const PUBLIC_ABOUT_MISSION_COPY = Object.freeze({

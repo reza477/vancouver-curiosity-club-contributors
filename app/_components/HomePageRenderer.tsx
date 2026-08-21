@@ -40,11 +40,14 @@ export function HomePageRenderer({
           <h1 id="home-title">{PUBLIC_HOME_MISSION_COPY.heading}</h1>
           <p className="home-hero__deck">{PUBLIC_HOME_MISSION_COPY.body}</p>
           <div className="home-hero__actions">
-            <Link className="primary-action" href="/about">
-              Read our mission
+            <Link className="primary-action" href="#our-work">
+              Explore our work
             </Link>
-            <Link href="/events">See our work in action</Link>
+            <Link href="/for-organizations">Partner with us</Link>
           </div>
+          <Link className="home-hero__events-link" href="/events">
+            View upcoming events
+          </Link>
         </div>
 
         {heroEvent ? (
@@ -107,7 +110,11 @@ export function HomePageRenderer({
         </div>
       </section>
 
-      <section className="lane-index" aria-labelledby="lane-index-title">
+      <section
+        className="lane-index"
+        id="our-work"
+        aria-labelledby="lane-index-title"
+      >
         <div className="section-heading">
           <div>
             <p className="section-kicker">What we do</p>
