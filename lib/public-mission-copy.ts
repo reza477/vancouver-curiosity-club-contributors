@@ -11,7 +11,7 @@ export const PUBLIC_ABOUT_MISSION_COPY = Object.freeze({
   eyebrow: "Mission-led community in Vancouver",
   heading: "Building belonging through curiosity.",
   introduction:
-    "Vancouver Curiosity Club creates thoughtful, approachable gatherings where people can learn together, move beyond small talk, and build meaningful connection around shared interests.",
+    "Vancouver Curiosity Club is a Vancouver-based community organization creating recurring public gatherings around ideas, culture, creativity, play, and shared experience.",
   metadataDescription:
-    "Vancouver Curiosity Club creates approachable gatherings where people learn together and build meaningful connection around shared interests.",
+    "Learn how Vancouver Curiosity Club creates recurring public gatherings and structured ways for people to connect around shared interests.",
 });

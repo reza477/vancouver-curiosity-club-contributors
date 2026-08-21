@@ -5,52 +5,39 @@ import test from "node:test";
 const projectRoot = new URL("../../", import.meta.url);
 
 test("About keeps its CMS gate and a truthful institutional narrative without loading projections", async () => {
-  const [about, editorial, missionCopy] = await Promise.all([
+  const [about, editorial, missionCopy, catalogDefinitions] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/_components/EditorialPage.tsx", projectRoot), "utf8"),
     readFile(new URL("lib/public-mission-copy.ts", projectRoot), "utf8"),
+    readFile(
+      new URL("lib/server/public/catalog-definitions.ts", projectRoot),
+      "utf8",
+    ),
   ]);
-  const aboutPositioning = `${about}\n${missionCopy}`;
+  const aboutPositioning = `${about}\n${missionCopy}\n${catalogDefinitions}`;
 
   assert.match(
     about,
     /await\s+loadEditorialPage\(slug, route\)/u,
     "About must still fail closed against its published CMS page",
   );
-  assert.doesNotMatch(
-    about,
-    /\bOrganizerNote\b|about-founder-note(?:-title)?/u,
-    "About must not import, wrap, or render the removed organizer note",
-  );
-  for (const className of [
-    "about-hero",
-    "about-feel",
-    "about-audience",
-    "about-solo",
-    "about-closing",
-  ]) {
-    assert.match(
-      about,
-      new RegExp(`className="${className}"`, "u"),
-      `${className} must remain on the useful static About page`,
-    );
-  }
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-closing"/u,
-    "removing the organizer note must preserve the remaining About section order",
+    /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    "About must keep the approved institutional narrative order",
   );
-
   for (const copy of [
     "Mission-led community in Vancouver",
     "Building belonging through curiosity.",
-    "Our mission",
-    "Make meaningful community easier to find.",
-    "How the work helps",
-    "A shared interest can become a way into community.",
-    "Built for continuity",
-    "A community designed to keep showing up.",
-    "Work with us",
+    "Organization at a glance",
+    "How the model works",
+    "What we organize",
+    "Think",
+    "Reset & Make",
+    "Explore",
+    "Eat & Play",
+    "Three public communities",
+    "Public standards",
     "Help create the conditions for connection.",
   ]) {
     assert.ok(aboutPositioning.includes(copy), copy);
@@ -66,24 +53,29 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     about,
-    /<Link[\s\S]*?className="primary-action"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?>[\s\S]*?Discuss a partnership[\s\S]*?<\/Link>/u,
+    /href="\/for-organizations"[\s\S]*?Explore organizational collaboration/u,
     "About must give prospective partners a focused next step",
   );
   assert.match(
     about,
-    /<Link\s+href="\/events">[\s\S]*?See the work in action[\s\S]*?<\/Link>/u,
+    /href="\/events"[\s\S]*?View public events/u,
     "About must let prospective supporters inspect the public program",
   );
-
+  assert.equal(
+    [...about.matchAll(/file: "meetup-[0-9]+"/gu)].length,
+    3,
+    "About must reuse three genuine bundled event posters",
+  );
+  assert.match(about, /loading="lazy"/u);
   assert.doesNotMatch(
     about,
     /\bloadAboutData\b|\bloadPublicCatalog\b|\bqueryPublicEvents\b|\bEventCard\b/u,
-    "About must not load its former catalog and event-card projection",
+    "About must not add another public data projection",
   );
   assert.doesNotMatch(
     about,
-    /className="about-(?:facts|events)"/u,
-    "the two sections backed by live catalog and event queries must stay removed",
+    /\bOrganizerNote\b|about-founder-note(?:-title)?/u,
+    "About must not import or render unverified leadership copy",
   );
   assert.doesNotMatch(
     about,

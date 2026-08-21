@@ -463,26 +463,36 @@ test("the calendar switches to its named-event agenda at 768px", async () => {
 });
 
 test("About presents a professional mission, impact, continuity, and partnership path", async () => {
-  const [about, missionCopy, styles] = await Promise.all([
+  const [about, missionCopy, catalogDefinitions, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
     readFile(new URL("lib/public-mission-copy.ts", projectRoot), "utf8"),
+    readFile(
+      new URL("lib/server/public/catalog-definitions.ts", projectRoot),
+      "utf8",
+    ),
     readPublicCss(),
   ]);
-  const aboutPositioning = `${about}\n${missionCopy}`;
+  const aboutPositioning = `${about}\n${missionCopy}\n${catalogDefinitions}`;
 
   assert.match(about, /<main className="about-page"/u);
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-feel"[\s\S]*?className="about-audience"[\s\S]*?className="about-solo"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
   );
   for (const phrase of [
     "Building belonging through curiosity.",
     "Make meaningful community easier to find.",
-    "A shared interest can become a way into community.",
-    "A community designed to keep showing up.",
+    "Structure creates room for belonging.",
+    "What we organize",
+    "Think",
+    "Reset & Make",
+    "Explore",
+    "Eat & Play",
+    "Three public communities",
+    "Clear expectations support good participation.",
     "Help create the conditions for connection.",
-    "Discuss a partnership",
-    "See the work in action",
+    "Explore organizational collaboration",
+    "Start a conversation",
   ]) {
     assert.ok(aboutPositioning.includes(phrase), phrase);
   }
@@ -494,15 +504,15 @@ test("About presents a professional mission, impact, continuity, and partnership
   assert.match(about, /await\s+loadEditorialPage\(slug, route\)/u);
   assert.doesNotMatch(
     about,
-    /\bloadAboutData\b|\bloadPublicCatalog\b|\bqueryPublicEvents\b|\bEventCard\b|className="about-(?:facts|events)"/u,
+    /\bloadAboutData\b|\bloadPublicCatalog\b|\bqueryPublicEvents\b|\bEventCard\b/u,
   );
   assert.match(
     about,
-    /<Link[\s\S]*?className="primary-action"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?>[\s\S]*?Discuss a partnership[\s\S]*?<\/Link>/u,
+    /<Link[\s\S]*?className="primary-action"[\s\S]*?href="\/for-organizations"[\s\S]*?>[\s\S]*?Explore organizational collaboration[\s\S]*?<\/Link>/u,
   );
   assert.match(
     about,
-    /<Link\s+href="\/events">[\s\S]*?See the work in action[\s\S]*?<\/Link>/u,
+    /<Link\s+href="\/contact\?topic=partnerships#contact-form">[\s\S]*?Start a conversation[\s\S]*?<\/Link>/u,
   );
   assert.match(about, /PublicRouteLink as Link/u);
   assert.doesNotMatch(
@@ -517,7 +527,26 @@ test("About presents a professional mission, impact, continuity, and partnership
     about,
     /\b(?:members?|attendees?)\s+(?:say|said|report(?:ed)?|tell|told)\b|\btestimonial(?:s)?\b|<blockquote\b/iu,
   );
-  assert.match(styles, /\.about-feel,/u);
+  for (const poster of [
+    "meetup-315723559",
+    "meetup-315823022",
+    "meetup-315560589",
+  ]) {
+    assert.match(about, new RegExp(`file: "${poster}"`, "u"));
+    await readFile(
+      new URL(`public/event-posters/${poster}-960.jpeg`, projectRoot),
+    );
+  }
+  assert.match(about, /poster\.file\}-960\.jpeg/u);
+  assert.match(about, /poster\.file\}-480\.avif/u);
+  assert.match(about, /<picture>[\s\S]*?loading="lazy"/u);
+  assert.match(about, />\s*Organization at a glance\s*<\/h3>/u);
+  assert.match(about, /aria-labelledby="about-at-a-glance-title"/u);
+  assert.match(about, /href: "\/clubs\/vancouver-curiosity-club"/u);
+  assert.match(about, /href: "\/clubs\/vancouver-literature-and-film"/u);
+  assert.match(about, /href: "\/clubs\/vancouver-fantasy-scifi-group"/u);
+  assert.match(about, /<Link href=\{program\.href\}>/u);
+  assert.match(styles, /\.about-overview,/u);
   assert.match(
     styles,
     /\.about-page h2, \.event-detail h2,[^{]*\{[^}]*margin:\s*0;/u,
@@ -525,13 +554,13 @@ test("About presents a professional mission, impact, continuity, and partnership
   );
   assert.match(
     styles,
-    /\.about-page h2\s*\{[^}]*font-size:\s*clamp\(2\.75rem, 3\.6vw, 3\.75rem\);[^}]*line-height:\s*1;/u,
+    /\.about-page h2\s*\{[^}]*font-size:\s*clamp\(2\.15rem, 3\.4vw, 3\.45rem\);[^}]*line-height:\s*1\.02;/u,
     "About section headings must stay balanced against their supporting copy",
   );
   assert.match(
     styles,
-    /\.about-feel, \.about-audience, \.about-solo, \.about-closing\s*\{[^}]*padding-block:\s*clamp\(2\.5rem, 4vw, 4\.5rem\);[^}]*gap:\s*clamp\(1\.5rem, 4vw, 4rem\);/u,
-    "About sections must keep compact vertical rhythm and a bounded column gap",
+    /\.about-hero,[\s\S]*?\.about-closing\s*\{[^}]*padding:\s*clamp\(2\.5rem, 5vw, 4\.75rem\)/u,
+    "About sections must keep compact, responsive page padding",
   );
 });
 

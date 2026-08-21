@@ -80,7 +80,10 @@ test("mission positioning avoids unverified legal and testimonial claims", async
   const publicPositioning = `${home}\n${about}\n${organizations}\n${missionCopy}`;
 
   assert.match(publicPositioning, /community organization/u);
-  assert.match(publicPositioning, /conversations about financial support/u);
+  assert.match(
+    publicPositioning,
+    /conversations[\s\S]{0,250}financial support/u,
+  );
   assert.match(
     formContract,
     /PARTNERSHIP_TYPES[\s\S]*?"Funding or sponsorship"/u,
