@@ -530,14 +530,14 @@ async function fetchWithTimeout(
         text: renderPlainTextEmail(submission),
         to: [configuration.toEmail],
       }),
-      cache: "no-store",
       headers: {
         Authorization: `Bearer ${configuration.apiKey}`,
         "Content-Type": "application/json",
         "Idempotency-Key": `vcc-form/${submission.submissionId}`,
+        "User-Agent": "vancouver-curiosity-club-website/1.0",
       },
       method: "POST",
-      redirect: "error",
+      redirect: "manual",
       signal: controller.signal,
     });
   } finally {

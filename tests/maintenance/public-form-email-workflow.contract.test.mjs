@@ -77,3 +77,13 @@ test("email fetch exceptions emit only bounded operational classifications", () 
     /writeSafeLog\([\s\S]*?(?:message|stack):\s*error/u,
   );
 });
+
+test("email delivery uses a portable non-cached POST request", () => {
+  assert.match(
+    delivery,
+    /"User-Agent": "vancouver-curiosity-club-website\/1\.0"/u,
+  );
+  assert.match(delivery, /method: "POST"/u);
+  assert.match(delivery, /redirect: "manual"/u);
+  assert.doesNotMatch(delivery, /cache: "no-store"/u);
+});
