@@ -52,7 +52,7 @@ export function EventFilters({
         <div className="filter-heading">
           <div>
             <p className="section-kicker">Refine the calendar</p>
-            <h2 id="event-filter-heading">Find your next field note</h2>
+            <h2 id="event-filter-heading">Find a gathering</h2>
           </div>
           <p aria-live="polite">
             {resultCount} {resultCount === 1 ? "result" : "results"}

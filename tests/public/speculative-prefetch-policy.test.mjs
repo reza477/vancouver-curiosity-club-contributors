@@ -77,6 +77,7 @@ test("every public component that can emit an expensive href uses the policy lin
     "app/_components/HomePageRenderer.tsx",
     "app/_components/ProgramDetailRenderer.tsx",
     "app/_components/PublicEventDetailRenderer.tsx",
+    "app/_components/PublicFormPrivacyNotice.tsx",
     "app/_components/PublicMonthCalendar.tsx",
     "app/_components/SiteFooter.tsx",
     "app/_components/SiteHeader.tsx",

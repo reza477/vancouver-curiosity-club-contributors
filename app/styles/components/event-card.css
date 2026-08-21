@@ -177,7 +177,7 @@
 }
 
 .cancellation-banner {
-  padding: 1.25rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  padding: 1.25rem max(var(--public-gutter), env(safe-area-inset-left));
   border-block: 1px solid var(--ink);
   background: var(--paper-deep);
   color: var(--ink);

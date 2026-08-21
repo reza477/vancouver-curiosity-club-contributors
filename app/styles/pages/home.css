@@ -75,7 +75,7 @@
 
 .home-hero__actions a,
 .home-partnerships__actions a {
-  border-radius: 0.2rem;
+  border-radius: var(--public-button-radius);
 }
 
 .home-hero__events-link,
@@ -565,7 +565,7 @@
 }
 
 .home-public-invitation .primary-action {
-  border-radius: 0.2rem;
+  border-radius: var(--public-button-radius);
 }
 
 @media (max-width: 70rem) {

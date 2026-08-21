@@ -1,10 +1,10 @@
 /* Events discovery route, view switcher, filters, and upcoming list. */
 .events-page > .event-list, .events-page > .public-empty-state {
-  margin-inline: max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left)) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right));
+  margin-inline: max(var(--public-gutter), env(safe-area-inset-left)) max(var(--public-gutter), env(safe-area-inset-right));
 }
 
 .events-page-masthead {
-  padding: clamp(2.75rem, 5vw, 5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(2rem, 4vw, 3.5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  padding: clamp(2.5rem, 4.5vw, 4rem) max(var(--public-gutter), env(safe-area-inset-right)) clamp(2.25rem, 4vw, 3.5rem) max(var(--public-gutter), env(safe-area-inset-left));
   border-bottom: 1px solid var(--ink);
 }
 
@@ -13,16 +13,16 @@
   font-family: var(--display);
   letter-spacing: -0.06em;
   margin: 0;
-  font-size: clamp(4.5rem, 7vw, 5.5rem);
+  font-size: var(--public-page-title);
   font-weight: 400;
-  line-height: 0.94;
+  line-height: 0.98;
 }
 
 .events-page-masthead > p:last-child {
-  max-width: 58ch;
+  max-width: var(--public-copy-measure);
   color: var(--ink-soft);
   margin: 1.25rem 0 0;
-  font-size: clamp(1.05rem, 1.5vw, 1.25rem);
+  font-size: clamp(1.02rem, 1.3vw, 1.2rem);
 }
 
 .events-page__discovery, .events-page__calendar {
@@ -30,7 +30,7 @@
 }
 
 .events-page__controls {
-  padding: 1rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) 1rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  padding: 1rem max(var(--public-gutter), env(safe-area-inset-right)) 1rem max(var(--public-gutter), env(safe-area-inset-left));
   border-bottom: 1px solid var(--ink);
   background: var(--paper-raised, var(--paper-deep));
   grid-template-columns: auto minmax(0, 1fr);
@@ -113,7 +113,7 @@
 }
 
 .events-page__upcoming {
-  padding: clamp(1.5rem, 3vw, 2.5rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) clamp(3rem, 6vw, 5rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  padding: clamp(1.5rem, 3vw, 2.5rem) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
 }
 
 .events-upcoming__summary {
@@ -145,7 +145,7 @@
 }
 
 .events-upcoming__empty {
-  min-height: 18rem;
+  min-height: 0;
   margin: 0;
 }
 

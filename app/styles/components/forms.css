@@ -2,8 +2,8 @@
 .contribution-hub {
   border: 1px solid var(--ink);
   width: min(100% - 2rem, 82rem);
-  margin: clamp(2rem, 6vw, 5rem) auto;
-  padding: clamp(1.25rem, 4vw, 3rem);
+  margin: clamp(2rem, 4vw, 3.5rem) auto;
+  padding: clamp(1.25rem, 3vw, 2.5rem);
 }
 
 .contribution-hub__intro {
@@ -23,8 +23,13 @@
 }
 
 .contribution-hub__intro h2 {
-  font-size: clamp(2.2rem, 5vw, 4.5rem);
-  line-height: 0.96;
+  max-width: 18ch;
+  font-family: var(--display);
+  font-size: var(--public-section-title);
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  text-wrap: balance;
 }
 
 .contribution-paths {
@@ -39,7 +44,7 @@
   grid-template-rows: auto auto 1fr;
   gap: 0.45rem;
   min-width: 0;
-  min-height: 12rem;
+  min-height: 10rem;
   padding: 1.1rem;
   text-decoration: none;
   transition: transform 0.16s, box-shadow 0.16s;
@@ -109,6 +114,10 @@
 
 .public-submission__heading h2 {
   margin: 0.25rem 0 0.75rem;
+  font-family: var(--display);
+  font-size: clamp(1.8rem, 2.6vw, 2.35rem);
+  font-weight: 400;
+  line-height: 1.05;
 }
 
 .public-submission__form {
@@ -120,7 +129,7 @@
 .public-submission__load-error {
   border: 2px solid var(--ink, #221c3d);
   background: var(--paper-deep, #f2edff);
-  border-radius: 0.6rem;
+  border-radius: 0;
   grid-column: 1 / -1;
   align-content: start;
   justify-items: start;
@@ -201,7 +210,7 @@
 
 .public-submission__choices {
   border: 1px solid var(--line, currentColor);
-  border-radius: 0.45rem;
+  border-radius: 0;
   padding: 1rem;
 }
 
@@ -226,7 +235,7 @@
 
 .public-submission__error-summary {
   border: 2px solid var(--ink, #221c3d);
-  border-radius: 0.6rem;
+  border-radius: 0;
   padding: 1rem 1.15rem;
 }
 
@@ -246,8 +255,8 @@
   min-height: 3rem;
   color: var(--paper, #fff9f5);
   font: inherit;
-  border-radius: 0;
-  box-shadow: 0.2rem 0.2rem 0 var(--ink, #221c3d);
+  border-radius: var(--public-button-radius);
+  box-shadow: var(--public-button-shadow);
   justify-self: start;
   padding: 0.75rem 1.15rem;
   font-weight: 700;
@@ -278,7 +287,7 @@
 .public-submission__success {
   border: 2px solid var(--ink, #221c3d);
   background: var(--paper-deep, #f2edff);
-  border-radius: 0.6rem;
+  border-radius: 0;
   padding: 1.25rem;
 }
 
@@ -312,24 +321,24 @@
 
 .contribution-hub {
   background: var(--paper);
-  box-shadow: 0.6rem 0.6rem 0 var(--ink);
-  border-width: 2px;
-  border-radius: 1.2rem;
+  box-shadow: none;
+  border-width: 1px;
+  border-radius: 0;
 }
 
 .contribution-paths a {
-  border-width: 2px;
-  border-radius: 0.85rem;
+  border-width: 1px;
+  border-radius: 0;
 }
 
 .contribution-paths a[data-contribution-path="volunteer"] {
-  background: color-mix(in srgb, var(--teal) 20%, var(--paper));
+  background: var(--paper-deep);
 }
 
 .contribution-paths a[data-contribution-path="host"] {
-  background: color-mix(in srgb, var(--cobalt) 16%, var(--paper));
+  background: var(--paper-deep);
 }
 
 .contribution-paths a[data-contribution-path="partner"] {
-  background: color-mix(in srgb, var(--coral) 22%, var(--paper));
+  background: var(--paper-deep);
 }

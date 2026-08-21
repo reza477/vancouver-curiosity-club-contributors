@@ -60,6 +60,15 @@
   --display: "Fraunces", Georgia, "Times New Roman", Times, serif;
   --sans: "Inter", "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --public-page-width: 108rem;
+  --public-gutter: clamp(1rem, 4vw, 4rem);
+  --public-section-space: clamp(2.5rem, 4.5vw, 4.5rem);
+  --public-page-title: clamp(3.25rem, 5.5vw, 4.75rem);
+  --public-section-title: clamp(2.05rem, 3.4vw, 3.4rem);
+  --public-copy-measure: 62ch;
+  --public-control-height: 2.75rem;
+  --public-button-radius: 0;
+  --public-button-shadow: 0.18rem 0.18rem 0 var(--ink);
 }
 
 body[data-surface="public"] {

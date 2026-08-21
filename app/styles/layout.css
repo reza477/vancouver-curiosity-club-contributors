@@ -4,9 +4,9 @@
 
 .site-header {
   z-index: 20;
-  max-width: 108rem;
+  max-width: var(--public-page-width);
   min-height: 4.8rem;
-  padding: max(1rem, env(safe-area-inset-top)) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) 1rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  padding: max(1rem, env(safe-area-inset-top)) max(var(--public-gutter), env(safe-area-inset-right)) 1rem max(var(--public-gutter), env(safe-area-inset-left));
   border-bottom: 1px solid var(--line);
   background: var(--paper);
   justify-content: space-between;
@@ -65,7 +65,7 @@
   white-space: normal;
   letter-spacing: 0.01em;
   border: 1px solid #0000;
-  border-radius: 0.2rem;
+  border-radius: var(--public-button-radius);
   justify-content: center;
   align-items: center;
   min-width: 0;
@@ -102,12 +102,12 @@
 }
 
 main, .site-footer {
-  max-width: 108rem;
+  max-width: var(--public-page-width);
   margin-inline: auto;
 }
 
 .site-footer {
-  padding: clamp(2.5rem, 5vw, 4.5rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) max(clamp(2.5rem, 5vw, 4.5rem), env(safe-area-inset-bottom)) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) max(var(--public-section-space), env(safe-area-inset-bottom)) max(var(--public-gutter), env(safe-area-inset-left));
   background: var(--cobalt);
   color: var(--paper);
   grid-template-columns: minmax(15rem, 0.72fr) minmax(0, 1.28fr);
@@ -204,7 +204,7 @@ main, .site-footer {
 }
 
 .breadcrumbs {
-  padding: 1rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) 0 max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  padding: 1rem max(var(--public-gutter), env(safe-area-inset-right)) 0 max(var(--public-gutter), env(safe-area-inset-left));
 }
 
 .breadcrumbs ol {
@@ -288,8 +288,8 @@ main, .site-footer {
 
   .wordmark {
     gap: 0.5rem;
-    max-width: 10.2rem;
-    font-size: 0.75rem;
+    max-width: 18rem;
+    font-size: 0.92rem;
   }
 
   .wordmark-mark {
@@ -315,11 +315,6 @@ main, .site-footer {
 @media (max-width: 30rem) {
   .site-header {
     padding-inline: max(0.75rem, env(safe-area-inset-left)) max(0.75rem, env(safe-area-inset-right));
-  }
-
-  .wordmark {
-    max-width: 100%;
-    font-size: 0.92rem;
   }
 
   .primary-nav {
@@ -385,32 +380,36 @@ main, .site-footer {
 
 .page-masthead {
   min-height: 0;
-  padding: clamp(2.75rem, 6vw, 5.5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(2.5rem, 5vw, 4.5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  padding: clamp(2.5rem, 4.5vw, 4rem) max(var(--public-gutter), env(safe-area-inset-right)) clamp(2.25rem, 4vw, 3.5rem) max(var(--public-gutter), env(safe-area-inset-left));
   background: var(--paper);
   grid-template-columns: minmax(0, 1fr);
-  gap: 1.5rem;
+  gap: 1rem;
   display: grid;
 }
 
 .page-masthead__copy {
-  max-width: 76rem;
+  max-width: 68rem;
 }
 
 .page-masthead__copy h1 {
-  max-width: 16ch;
-  font-size: clamp(4.5rem, 7vw, 5.5rem);
-  line-height: 0.94;
+  max-width: 18ch;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+  font-size: var(--public-page-title);
+  line-height: 0.98;
 }
 
 .page-masthead__deck {
-  max-width: 58ch;
-  font-size: clamp(1.05rem, 1.5vw, 1.3rem);
+  max-width: var(--public-copy-measure);
+  margin-top: clamp(1.35rem, 2.5vw, 2rem);
+  font-size: clamp(1.02rem, 1.3vw, 1.2rem);
 }
 
 .page-masthead__accent {
   background: var(--coral);
-  width: clamp(4rem, 10vw, 8rem);
-  height: 0.35rem;
+  width: clamp(4rem, 8vw, 6rem);
+  height: 0.28rem;
 }
 
 .wordmark, .primary-nav a, .footer-nav-group a {

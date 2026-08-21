@@ -158,6 +158,8 @@ test("curated Meetup descriptions render semantic headings, lists, and links", (
   );
   assert.match(markup, /rel="noreferrer noopener"/u);
   assert.match(markup, /class="event-detail__rich-description"/u);
+  assert.match(markup, />Event information<\/p>/u);
+  assert.doesNotMatch(markup, />Field notes?<\/p>/iu);
   assert.doesNotMatch(markup, /dangerouslySetInnerHTML/u);
 });
 
@@ -634,7 +636,7 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
   const mobileStart = detailStyles.lastIndexOf("@media (max-width: 38rem)");
   const mobileEnd = detailStyles.length;
   const tabletStart = detailStyles.lastIndexOf(
-    "@media (max-width: 52rem)",
+    "@media (max-width: 64rem)",
     mobileStart,
   );
   const tabletStyles = detailStyles.slice(tabletStart, mobileStart);

@@ -49,16 +49,17 @@
 
 .editorial-sections {
   background: var(--line);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex-wrap: wrap;
   gap: 1px;
   padding: clamp(1rem, 2vw, 1.75rem);
-  display: grid;
+  display: flex;
 }
 
 .editorial-section {
   background: var(--paper-deep);
-  min-height: 24rem;
-  padding: clamp(2rem, 5vw, 5rem);
+  flex: 1 1 32rem;
+  min-height: 0;
+  padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
 }
 
 .editorial-section:nth-child(2n) {
@@ -71,13 +72,13 @@
 }
 
 .editorial-section h2, .community-destinations h2, .club-directory h2, .club-detail__destination h2, .club-event-list h2, .public-service-state h1, .public-service-state h2, .public-empty-state h2 {
-  max-width: 15ch;
+  max-width: 19ch;
   font-family: var(--display);
   letter-spacing: -0.05em;
   margin: 0 0 1.4rem;
-  font-size: clamp(2rem, 4.5vw, 4.8rem);
+  font-size: var(--public-section-title);
   font-weight: 400;
-  line-height: 0.96;
+  line-height: 1;
 }
 
 .editorial-section > p:not(.section-kicker) {
@@ -96,8 +97,8 @@
 }
 
 .public-service-state, .public-empty-state {
-  min-height: 24rem;
-  padding: clamp(3rem, 7vw, 7rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) clamp(3rem, 7vw, 7rem) max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  min-height: 16rem;
+  padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   background: var(--paper-deep);
@@ -125,7 +126,7 @@
   border: 1px solid var(--ink);
   justify-content: center;
   align-items: center;
-  min-height: 2.75rem;
+  min-height: var(--public-control-height);
   padding: 0.68rem 0.9rem;
   font-weight: 600;
   text-decoration: none;
@@ -136,7 +137,32 @@
   border-color: var(--forest);
   background: var(--forest);
   color: var(--paper);
-  box-shadow: 0.18rem 0.18rem 0 var(--ink);
+  border-radius: var(--public-button-radius);
+  box-shadow: var(--public-button-shadow);
+}
+
+.notice-card {
+  border: 1px solid var(--line);
+  background: var(--paper-deep);
+  width: min(calc(100% - 2rem), 78rem);
+  margin: clamp(1.5rem, 3vw, 2.5rem) auto;
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+}
+
+.notice-card h2 {
+  max-width: 19ch;
+  font-family: var(--display);
+  margin: 0 0 1rem;
+  font-size: var(--public-section-title);
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.notice-card > p:last-child {
+  max-width: var(--public-copy-measure);
+  color: var(--ink-soft);
+  margin-bottom: 0;
 }
 
 .primary-action:hover, .primary-action:focus-visible, .home-hero__actions .primary-action:hover, .home-hero__actions .primary-action:focus-visible {
@@ -176,6 +202,7 @@
 .event-card__artwork, .event-detail__artwork {
   border: 1px solid var(--line);
   background: var(--paper-deep);
+  border-radius: 0;
   position: relative;
   overflow: hidden;
 }
@@ -224,17 +251,17 @@
 }
 
 .home-events, .lane-index, .home-clubs, .related-events {
-  padding: clamp(3rem, 6vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(3rem, 6vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
 }
 
 .attending-note, .home-invitation, .home-community, .about-feel, .about-audience, .about-solo, .about-closing {
-  padding: clamp(3rem, 6vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(3rem, 6vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
   gap: clamp(1.5rem, 5vw, 5rem);
 }
 
 .section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .about-page h2, .event-detail h2, .related-events h2, .public-empty-state :is(h2, h3) {
-  font-size: clamp(2.4rem, 4.5vw, 4.5rem);
-  line-height: 0.98;
+  font-size: var(--public-section-title);
+  line-height: 1;
 }
 
 .home-closing, .about-closing {

@@ -105,8 +105,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 
 .error-shell {
   place-items: center;
-  min-height: 80svh;
-  padding: clamp(1.25rem, 6vw, 5rem);
+  min-height: clamp(24rem, 52svh, 36rem);
+  padding: var(--public-section-space) var(--public-gutter);
   display: grid;
 }
 
@@ -122,7 +122,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   font-family: var(--display);
   letter-spacing: -0.055em;
   margin: 0 0 1.25rem;
-  font-size: clamp(2.6rem, 7vw, 6rem);
+  font-size: var(--public-page-title);
   font-weight: 400;
   line-height: 0.95;
 }
@@ -173,7 +173,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 
 .pagination {
-  margin: 2rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-right)) 5rem max(clamp(1rem, 4vw, 3.25rem), env(safe-area-inset-left));
+  margin: 2rem max(var(--public-gutter), env(safe-area-inset-right)) 5rem max(var(--public-gutter), env(safe-area-inset-left));
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 1rem;
@@ -240,9 +240,9 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  max-width: 108rem;
-  min-height: clamp(34rem, 72svh, 52rem);
-  padding: clamp(2rem, 5vw, 4.5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(3rem, 6vw, 5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  max-width: var(--public-page-width);
+  min-height: clamp(26rem, 58svh, 40rem);
+  padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
   contain: layout paint;
   gap: clamp(1.5rem, 4vw, 3rem);
   margin-inline: auto;
@@ -275,7 +275,7 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
 .route-loading__masthead {
   align-content: start;
   gap: 0.9rem;
-  min-height: 14rem;
+  min-height: 10rem;
 }
 
 .route-loading__shape {

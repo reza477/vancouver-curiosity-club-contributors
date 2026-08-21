@@ -4,8 +4,8 @@
 }
 
 .for-organizations-page .page-masthead__copy h1 {
-  max-width: 13ch;
-  font-size: clamp(3.25rem, 5.6vw, 4.85rem);
+  max-width: 16ch;
+  font-size: var(--public-page-title);
 }
 
 .organizations-introduction,
@@ -15,10 +15,10 @@
 .organizations-conversation,
 .organizations-standards,
 .organizations-contact {
-  padding: clamp(2.75rem, 5vw, 5rem)
-    max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right))
-    clamp(2.75rem, 5vw, 5rem)
-    max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  padding: var(--public-section-space)
+    max(var(--public-gutter), env(safe-area-inset-right))
+    var(--public-section-space)
+    max(var(--public-gutter), env(safe-area-inset-left));
 }
 
 .organizations-introduction,
@@ -36,7 +36,7 @@
   max-width: 19ch;
   margin: 0;
   font-family: var(--display);
-  font-size: clamp(2.1rem, 3.15vw, 3.25rem);
+  font-size: var(--public-section-title);
   font-weight: 400;
   letter-spacing: -0.05em;
   line-height: 1.02;
@@ -267,7 +267,7 @@
 
 .organizations-collaboration article {
   min-width: 0;
-  min-height: 12.5rem;
+  min-height: 10rem;
   padding: 1.25rem;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -363,14 +363,10 @@
 
 .organizations-contact .primary-action {
   justify-self: start;
-  border-radius: 0.2rem;
+  border-radius: 0;
 }
 
 @media (max-width: 64rem) {
-  .for-organizations-page .page-masthead__copy h1 {
-    font-size: clamp(3.1rem, 6.3vw, 4.25rem);
-  }
-
   .organizations-evidence__facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

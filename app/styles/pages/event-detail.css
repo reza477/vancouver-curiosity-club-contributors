@@ -11,11 +11,11 @@
 }
 
 .event-detail-page {
-  padding-bottom: clamp(4rem, 8vw, 8rem);
+  padding-bottom: var(--public-section-space);
 }
 
 .event-detail {
-  padding: clamp(3.5rem, 8vw, 8rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(4rem, 8vw, 8rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
+  padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
   color: var(--ink);
   font-size: 1rem;
 }
@@ -57,7 +57,7 @@
 }
 
 .event-detail__facts h2, .event-detail__story h2 {
-  font-size: clamp(2rem, 4vw, 4.5rem);
+  font-size: var(--public-section-title);
 }
 
 .event-detail__facts dl {
@@ -143,7 +143,7 @@
 }
 
 .event-detail {
-  padding-top: clamp(2rem, 5vw, 5rem);
+  padding-top: clamp(2.25rem, 4vw, 3.75rem);
 }
 
 .event-detail__lead {
@@ -172,8 +172,8 @@
 }
 
 .event-detail__header h1 {
-  font-size: clamp(4.5rem, 7vw, 5.5rem);
-  line-height: 0.94;
+  font-size: var(--public-page-title);
+  line-height: 0.98;
 }
 
 .event-detail__facts {
@@ -189,15 +189,15 @@
 .event-detail__story {
   border-top: 1px solid var(--ink);
   max-width: 72rem;
-  margin-top: clamp(3rem, 7vw, 7rem);
-  padding-top: clamp(2rem, 5vw, 4rem);
+  margin-top: clamp(2.5rem, 5vw, 4.5rem);
+  padding-top: clamp(2rem, 4vw, 3.5rem);
 }
 
 .event-detail__story > :is(p, section, .event-detail__rich-description) {
   max-width: 50rem;
 }
 
-@media (max-width: 52rem) {
+@media (max-width: 64rem) {
   .event-detail__lead {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -388,7 +388,7 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   assert.match(imageRule, /width:\s*100%/u);
   assert.match(imageRule, /aspect-ratio:\s*16\s*\/\s*9/u);
   assert.match(imageRule, /object-fit:\s*cover/u);
-  const tabletCss = mediaRules(css, "52rem").join("\n");
+  const tabletCss = mediaRules(css, "64rem").join("\n");
   assert.match(
     cssRule(tabletCss, ".club-directory--clubs .club-directory__card"),
     /grid-template-columns:[^;]*minmax\(0,\s*1fr\)/u,
@@ -431,7 +431,7 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   );
 });
 
-test("the Clubs-index internal header keeps the first card well inside the desktop fold without changing shared directories", async () => {
+test("the Clubs-index internal header keeps the first card well inside the desktop fold within the shared visual system", async () => {
   const css = await readPublicCss();
   const sharedDirectoryRule = cssRule(css, ".club-directory");
   const sharedHeaderRule = cssRule(css, ".club-directory > header");
@@ -441,18 +441,18 @@ test("the Clubs-index internal header keeps the first card well inside the deskt
   );
   assert.match(
     sharedDirectoryRule,
-    /padding:\s*clamp\(3rem,\s*7vw,\s*7rem\)/u,
-    "program and detail directories must retain their shared vertical rhythm",
+    /padding:\s*var\(--public-section-space\)/u,
+    "program and detail directories must use the shared vertical rhythm",
   );
   assert.match(
     sharedHeaderRule,
     /grid-template-columns:\s*minmax\(12rem,\s*0\.7fr\)\s+minmax\(0,\s*1\.3fr\)/u,
   );
   assert.match(sharedHeaderRule, /margin-bottom:\s*2rem/u);
-  assert.match(sharedHeadingRule, /max-width:\s*15ch/u);
+  assert.match(sharedHeadingRule, /max-width:\s*19ch/u);
   assert.match(
     sharedHeadingRule,
-    /font-size:\s*clamp\(2rem,\s*4\.5vw,\s*4\.8rem\)/u,
+    /font-size:\s*var\(--public-section-title\)/u,
   );
 
   const clubsRule = cssRule(css, ".club-directory--clubs");

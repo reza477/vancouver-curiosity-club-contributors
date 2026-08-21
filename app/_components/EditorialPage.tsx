@@ -328,6 +328,11 @@ export async function EditorialPage({
     displayTitle ?? introduction?.content.heading ?? page.title;
   const introductionParagraphs =
     displayParagraphs ?? introduction?.content.paragraphs ?? [];
+  const configuredEyebrow = displayEyebrow ?? introduction?.content.eyebrow;
+  const publicEyebrow =
+    configuredEyebrow && /^field notes?$/iu.test(configuredEyebrow.trim())
+      ? publicPageCategory(page.slug)
+      : configuredEyebrow ?? publicPageCategory(page.slug);
   const sections = page.sections.filter(
     (section) => section !== introduction,
   );
@@ -353,11 +358,7 @@ export async function EditorialPage({
           introduction?.content.text ??
           "Stories and information from Vancouver Curiosity Club."
         }
-        eyebrow={
-          displayEyebrow ??
-          introduction?.content.eyebrow ??
-          "Field notes"
-        }
+        eyebrow={publicEyebrow}
         title={publicTitle}
         tone={tone}
       />
@@ -412,6 +413,24 @@ export async function EditorialPage({
       ) : null}
     </main>
   );
+}
+
+function publicPageCategory(slug: string): string {
+  switch (slug) {
+    case "about":
+      return "About";
+    case "clubs":
+      return "Public communities";
+    case "conduct":
+    case "accessibility":
+    case "privacy":
+      return "Community information";
+    case "host-an-event":
+    case "resources":
+      return "Public programs";
+    default:
+      return "Community information";
+  }
 }
 
 export async function loadEditorialRenderContext({

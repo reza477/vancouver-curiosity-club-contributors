@@ -80,7 +80,7 @@ test("arrow and primary-action movement exists only for visitors who allow motio
   assert.deepEqual(found, new Set(expectedTransforms.keys()));
   assert.equal(
     lastDeclaration(root, ".primary-action", "box-shadow"),
-    "0.18rem 0.18rem 0 var(--ink)",
+    "var(--public-button-shadow)",
   );
   assert.ok(
     [...root.nodes].some(

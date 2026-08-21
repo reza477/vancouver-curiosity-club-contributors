@@ -24,7 +24,7 @@ export default async function NotFound() {
   return (
     <main className="error-shell public-not-found">
       <section className="error-panel" aria-labelledby="not-found-title">
-        <p className="section-kicker">Field note 404</p>
+        <p className="section-kicker">Page not found</p>
         <h1 id="not-found-title">This trail ends here.</h1>
         <p>
           The address may have changed, or the page may not be publicly

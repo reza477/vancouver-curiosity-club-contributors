@@ -19,11 +19,11 @@ export default function RouteError({
   return (
     <main className="error-shell">
       <section className="error-panel" aria-labelledby="route-error-title">
-        <p className="section-kicker">A field note went missing</p>
+        <p className="section-kicker">Something went wrong</p>
         <h1 id="route-error-title">This page could not be prepared.</h1>
         <p>
           Nothing was submitted. Try the page again, or return to the public
-          foundation.
+          homepage.
         </p>
         <div className="error-actions">
           <button type="button" onClick={reset}>

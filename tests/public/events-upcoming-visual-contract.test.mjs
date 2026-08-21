@@ -239,6 +239,12 @@ function compareSpecificity(left, right) {
 function resolveLengthPx(value, viewportWidth) {
   const normalized = value.trim();
   if (normalized === "0" || /^env\(/u.test(normalized)) return 0;
+  if (normalized === "var(--public-gutter)") {
+    return Math.max(
+      ROOT_FONT_SIZE_PX,
+      Math.min(viewportWidth * 0.04, ROOT_FONT_SIZE_PX * 4),
+    );
+  }
 
   const scalar = normalized.match(/^(-?[\d.]+)(px|rem|vw)$/u);
   if (scalar) {
