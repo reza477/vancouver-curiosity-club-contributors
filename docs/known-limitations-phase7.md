@@ -7,6 +7,9 @@
 - Public forms may send one private organizer email copy after the durable inbox
   record commits. The application sends no visitor confirmation, import,
   export, invitation, calendar, or notification-digest email.
+- Owner redaction removes site-held personal content and suppresses a queued
+  organizer email copy, but it cannot remove a copy already delivered to the
+  organizer inbox or retained by the email provider.
 - There is no newsletter enrollment.
 - Backups are Owner-run downloads. There is no scheduler, automatic backup,
   automatic restore, or complete infrastructure-backup claim.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -7,9 +8,16 @@ import {
   trustedIdentityFromSites,
 } from "../../lib/server/auth/index.ts";
 import {
+  DATABASE_INVARIANT_STATEMENT_LIMIT,
+  ensureDatabaseInvariantsForRequest,
+} from "../../lib/server/database/invariants.ts";
+import {
   PHASE7_INVARIANT_COUNT_SQL,
   PHASE7_INVARIANT_TRIGGER_STATEMENTS,
 } from "../../lib/server/database/phase7-invariant-sql.ts";
+import {
+  authenticateMaintenanceRequest,
+} from "../../lib/server/maintenance/request-signature.ts";
 import {
   submitPublicForm,
 } from "../../lib/server/phase7/public-forms.ts";
@@ -28,6 +36,7 @@ import {
   countD1Statements,
   interceptD1Statements,
 } from "../auth/intercept-d1.mjs";
+import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 
 const OWNER_EMAIL = "phase7-inbox-owner@vcc-tests.invalid";
 const ORGANIZER_EMAIL =
@@ -485,6 +494,7 @@ test("retryable provider failure keeps the D1 submission and maintenance later d
     attempted: 1,
     blocked: 0,
     configurationMissing: 0,
+    hasMoreDue: false,
     retried: 0,
     sent: 1,
     suppressed: 0,
@@ -504,6 +514,154 @@ test("retryable provider failure keeps the D1 submission and maintenance later d
       .first("state"),
     "sent",
   );
+});
+
+test("provider rejection remains queued and delivers after configuration is corrected", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const stored = await submitPublicForm(
+    data.database,
+    formInput(
+      "contact",
+      "email-provider-config-recovery".padEnd(32, "x"),
+      data.now,
+      PAYLOADS.contact,
+      { organizationId: data.organizationId },
+    ),
+  );
+  const configuration = {
+    apiKey: "synthetic-corrected-api-key",
+    fromEmail: "website-sender@example.invalid",
+    toEmail: "organizer-inbox@example.invalid",
+  };
+
+  assert.equal(
+    await deliverPublicFormEmail(data.database, stored.submissionId, {
+      configuration,
+      fetcher: async () => new Response("sender not permitted", { status: 403 }),
+      nowUtcMs: data.now + 1_000,
+    }),
+    "provider_retry",
+  );
+  const pending = await data.database
+    .prepare(
+      `SELECT state, attempt_count, next_attempt_at, last_error_code
+       FROM form_submission_email_outbox
+       WHERE submission_id = ?`,
+    )
+    .bind(stored.submissionId)
+    .first();
+  assert.deepEqual(
+    {
+      attemptCount: pending.attempt_count,
+      error: pending.last_error_code,
+      state: pending.state,
+    },
+    {
+      attemptCount: 1,
+      error: "provider_rejected",
+      state: "pending",
+    },
+  );
+
+  const drained = await drainPublicFormEmailOutbox(data.database, {
+    configuration,
+    fetcher: async () => Response.json({ id: "provider_message_corrected" }),
+    nowUtcMs: pending.next_attempt_at,
+  });
+  assert.deepEqual(drained, {
+    attempted: 1,
+    blocked: 0,
+    configurationMissing: 0,
+    hasMoreDue: false,
+    retried: 0,
+    sent: 1,
+    suppressed: 0,
+  });
+  assert.equal(
+    await data.database
+      .prepare(
+        `SELECT state
+         FROM form_submission_email_outbox
+         WHERE submission_id = ?`,
+      )
+      .bind(stored.submissionId)
+      .first("state"),
+    "sent",
+  );
+});
+
+test("a six-row signed maintenance slice stays below the full Worker D1 statement cap", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  await ensureDatabaseInvariantsReady(data.database);
+  for (let index = 0; index < 6; index += 1) {
+    await submitPublicForm(
+      data.database,
+      formInput(
+        "contact",
+        `email-budget-${index}`.padEnd(32, "x"),
+        data.now + index,
+        PAYLOADS.contact,
+        { organizationId: data.organizationId },
+      ),
+    );
+  }
+
+  const counter = countD1Statements(data.database);
+  const pathname = "/api/maintenance/forms/email";
+  assert.equal(
+    await ensureDatabaseInvariantsForRequest(counter.database, {
+      method: "POST",
+      pathname,
+    }),
+    "ready",
+  );
+  const nowUtcMs = data.now + 10_000;
+  const timestamp = String(Math.floor(nowUtcMs / 1_000));
+  const requestId = crypto.randomUUID();
+  const body = "{}";
+  const secret = "form-email-budget-secret-that-is-long-enough";
+  const signature = createHmac("sha256", secret)
+    .update(JSON.stringify([timestamp, requestId, pathname, body]))
+    .digest("hex");
+  await authenticateMaintenanceRequest(
+    new Request(`https://vancouvercuriosityclub.com${pathname}`, {
+      body,
+      headers: {
+        "content-type": "application/json",
+        "x-maintenance-request-id": requestId,
+        "x-maintenance-signature": `sha256=${signature}`,
+        "x-maintenance-timestamp": timestamp,
+      },
+      method: "POST",
+    }),
+    counter.database,
+    { nowUtcMs, secret },
+  );
+  let providerCall = 0;
+  const delivery = await drainPublicFormEmailOutbox(counter.database, {
+    configuration: {
+      apiKey: "synthetic-budget-api-key",
+      fromEmail: "website-sender@example.invalid",
+      toEmail: "organizer-inbox@example.invalid",
+    },
+    fetcher: async () =>
+      Response.json({ id: `provider_budget_${++providerCall}` }),
+    limit: 6,
+    nowUtcMs,
+  });
+  assert.deepEqual(delivery, {
+    attempted: 6,
+    blocked: 0,
+    configurationMissing: 0,
+    hasMoreDue: false,
+    retried: 0,
+    sent: 6,
+    suppressed: 0,
+  });
+  assert.equal(counter.count(), 41);
+  assert.ok(counter.count() < DATABASE_INVARIANT_STATEMENT_LIMIT);
 });
 
 test("missing configuration and concurrent drains never lose or duplicate a queued email", async (t) => {

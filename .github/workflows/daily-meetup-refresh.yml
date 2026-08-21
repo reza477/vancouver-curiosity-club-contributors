@@ -14,6 +14,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  form-email:
+    name: Deliver queued organizer form emails
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the exact maintenance runner
+        uses: actions/checkout@v6
+
+      - name: Run independent signed email maintenance
+        env:
+          DAILY_MEETUP_REFRESH_SECRET: ${{ secrets.DAILY_MEETUP_REFRESH_SECRET }}
+          PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL || 'https://vancouvercuriosityclub.com' }}
+        run: node scripts/run-form-email-maintenance.mjs
+
   refresh:
     name: Refresh Meetup and public event snapshots
     runs-on: ubuntu-latest
@@ -80,8 +95,8 @@ jobs:
               timestamp="$(date -u +%s)"
               request_id="$(node -e 'const { randomUUID } = require("node:crypto"); process.stdout.write(randomUUID());')"
               signature="$(
-                TIMESTAMP="$timestamp" REQUEST_ID="$request_id" BODY="$body" \
-                  node -e 'const { createHmac } = require("node:crypto"); process.stdout.write(createHmac("sha256", process.env.DAILY_MEETUP_REFRESH_SECRET).update(`${process.env.TIMESTAMP}.${process.env.REQUEST_ID}.${process.env.BODY}`).digest("hex"));'
+                TIMESTAMP="$timestamp" REQUEST_ID="$request_id" PATHNAME='/api/maintenance/meetup/refresh' BODY="$body" \
+                  node -e 'const { createHmac } = require("node:crypto"); const payload = JSON.stringify([process.env.TIMESTAMP, process.env.REQUEST_ID, process.env.PATHNAME, process.env.BODY]); process.stdout.write(createHmac("sha256", process.env.DAILY_MEETUP_REFRESH_SECRET).update(payload).digest("hex"));'
               )"
               : > "$header_file"
               : > "$response_file"
@@ -237,8 +252,8 @@ jobs:
                 request_id="$(node -e 'const { randomUUID } = require("node:crypto"); process.stdout.write(randomUUID());')"
                 body="$(BATCH_ID="$snapshot_batch_id" SLOT="$snapshot_slot" node -e 'process.stdout.write(JSON.stringify({ batchId: process.env.BATCH_ID, slot: process.env.SLOT }));')"
                 signature="$(
-                  TIMESTAMP="$timestamp" REQUEST_ID="$request_id" BODY="$body" \
-                    node -e 'const { createHmac } = require("node:crypto"); process.stdout.write(createHmac("sha256", process.env.DAILY_MEETUP_REFRESH_SECRET).update(`${process.env.TIMESTAMP}.${process.env.REQUEST_ID}.${process.env.BODY}`).digest("hex"));'
+                  TIMESTAMP="$timestamp" REQUEST_ID="$request_id" PATHNAME='/api/maintenance/public-snapshots/capture' BODY="$body" \
+                    node -e 'const { createHmac } = require("node:crypto"); const payload = JSON.stringify([process.env.TIMESTAMP, process.env.REQUEST_ID, process.env.PATHNAME, process.env.BODY]); process.stdout.write(createHmac("sha256", process.env.DAILY_MEETUP_REFRESH_SECRET).update(payload).digest("hex"));'
                 )"
 
                 if ! curl --silent --show-error --fail-with-body \

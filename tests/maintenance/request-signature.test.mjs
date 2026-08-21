@@ -15,7 +15,7 @@ const NOW = 2_000_000_000_000;
 const REQUEST_ID = "da21e286-a8a7-48c8-a2e9-c22aa92f0c65";
 const RAW_BODY = "{}";
 
-test("maintenance request authentication covers method, timestamp, UUID, raw body, and a durable replay claim", async (t) => {
+test("maintenance request authentication covers method, timestamp, UUID, pathname, raw body, and a durable replay claim", async (t) => {
   const database = createReplayDatabase();
   t.after(() => database.close());
   const timestamp = String(Math.floor(NOW / 1_000));
@@ -208,6 +208,17 @@ test("invalid method, timestamp, request ID, signature, or raw body never earns 
         timestamp: String(Math.floor(NOW / 1_000)),
       }),
     },
+    {
+      label: "request path changed after signing",
+      request: await signedRequest({
+        body: RAW_BODY,
+        pathname: "/api/maintenance/forms/email",
+        requestId: REQUEST_ID,
+        secret: SECRET,
+        signedPathname: PATHNAME,
+        timestamp: String(Math.floor(NOW / 1_000)),
+      }),
+    },
   ];
 
   for (const invalidCase of invalidCases) {
@@ -268,16 +279,18 @@ function createReplayDatabase() {
 async function signedRequest({
   body,
   method = "POST",
+  pathname = PATHNAME,
   requestBody = body,
   requestId,
   secret,
+  signedPathname = pathname,
   timestamp,
 }) {
   const signature = await hmacHex(
     secret,
-    `${timestamp}.${requestId}.${body ?? ""}`,
+    JSON.stringify([timestamp, requestId, signedPathname, body ?? ""]),
   );
-  return new Request(`${ORIGIN}${PATHNAME}`, {
+  return new Request(`${ORIGIN}${pathname}`, {
     body: method === "GET" || method === "HEAD" ? undefined : requestBody,
     headers: {
       "content-type": "application/json",

@@ -67,8 +67,14 @@ export async function authenticateMaintenanceRequest(
     throw authorizationDenied();
   }
 
+  const requestUrl = readExactRequestUrl(request.url);
   const rawBody = await readBoundedUtf8Body(request, MAX_BODY_BYTES);
-  const signedPayload = `${timestampHeader}.${requestId}.${rawBody}`;
+  const signedPayload = JSON.stringify([
+    timestampHeader,
+    requestId,
+    requestUrl.pathname,
+    rawBody,
+  ]);
   const verified = await verifyHmacSha256(
     options.secret,
     signedPayload,
@@ -115,6 +121,26 @@ export async function authenticateMaintenanceRequest(
   }
 
   return Object.freeze({ rawBody, requestId, timestamp });
+}
+
+function readExactRequestUrl(value: string): URL {
+  let requestUrl: URL;
+  try {
+    requestUrl = new URL(value);
+  } catch {
+    throw authorizationDenied();
+  }
+  if (
+    requestUrl.protocol !== "https:" ||
+    requestUrl.username ||
+    requestUrl.password ||
+    requestUrl.search ||
+    requestUrl.hash ||
+    !requestUrl.pathname.startsWith("/api/maintenance/")
+  ) {
+    throw authorizationDenied();
+  }
+  return requestUrl;
 }
 
 async function verifyHmacSha256(

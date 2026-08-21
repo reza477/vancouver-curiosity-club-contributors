@@ -11,23 +11,10 @@ const ROUTE_ENVIRONMENT = {};
 let maintenanceRun = async () => {
   throw new Error("The maintenance route test did not install a runner.");
 };
-let emailDrain = async () => ({
-  attempted: 0,
-  blocked: 0,
-  configurationMissing: 0,
-  retried: 0,
-  sent: 0,
-  suppressed: 0,
-});
-let emailDrainArguments = [];
 
 globalThis.__VCC_DAILY_MAINTENANCE_ROUTE_ENV__ = ROUTE_ENVIRONMENT;
 globalThis.__VCC_DAILY_MAINTENANCE_RUN__ = (...args) =>
   maintenanceRun(...args);
-globalThis.__VCC_FORM_EMAIL_DRAIN__ = (...args) => {
-  emailDrainArguments = args;
-  return emailDrain(...args);
-};
 
 nodeModule.registerHooks?.({
   resolve(specifier, context, nextResolve) {
@@ -47,14 +34,6 @@ nodeModule.registerHooks?.({
         shortCircuit: true,
         url: dataModule(
           "export async function runDailyMeetupRefresh(...args) { return globalThis.__VCC_DAILY_MAINTENANCE_RUN__(...args); }",
-        ),
-      };
-    }
-    if (specifier === "@/lib/server/phase7/public-form-email") {
-      return {
-        shortCircuit: true,
-        url: dataModule(
-          "export async function drainPublicFormEmailOutbox(...args) { return globalThis.__VCC_FORM_EMAIL_DRAIN__(...args); }",
         ),
       };
     }
@@ -113,7 +92,6 @@ test("daily updater is POST-only and independent of cookies or owner identity", 
   );
 
   assert.equal(response.status, 200);
-  assert.equal(emailDrainArguments[1]?.limit, 1);
   assert.equal(received.database, database);
   assert.equal(received.options.requestId, requestId);
   assert.ok(Number.isSafeInteger(received.options.nowUtcMs));
@@ -388,7 +366,7 @@ async function signedRequest({
   const timestamp = String(Math.floor(Date.now() / 1_000));
   const signature = await hmacHex(
     secret,
-    `${timestamp}.${requestId}.${body}`,
+    JSON.stringify([timestamp, requestId, PATHNAME, body]),
   );
   return new Request(`${ORIGIN}${PATHNAME}`, {
     body,

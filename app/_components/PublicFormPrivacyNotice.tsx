@@ -36,10 +36,11 @@ export function PublicFormPrivacyNotice() {
       <p>
         Each submission receives a retention-review date 12 months after it
         is received. That review does not automatically delete it. An
-        authorized Owner can permanently redact its personal content. A
-        minimal administrative record may remain with the submission
+        authorized Owner can permanently redact personal content held by this
+        site. A minimal administrative record may remain with the submission
         reference, form type, dates, final status, and security or audit
-        facts.
+        facts. An organizer email copy already delivered is separate and must
+        be deleted separately from the organizer inbox and email provider.
       </p>
       <p>
         The site uses technical safeguards and limits private submission
@@ -67,8 +68,9 @@ export function PublicFormPrivacyNotice() {
         Include your submission reference if you have it. We will review the
         request and follow up using the reply email you provide. Deletion is
         not automatic; an authorized Owner can irreversibly redact personal
-        content while retaining the minimal administrative record described
-        above.
+        content held by this site while retaining the minimal administrative
+        record described above. This does not delete a copy already delivered
+        to the organizer email inbox.
       </p>
     </section>
   );

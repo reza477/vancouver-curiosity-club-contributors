@@ -109,9 +109,14 @@ The email outbox stores no destination address or form content. Its fixed
 destination and provider credential come from server-only runtime settings.
 After the D1 submission commits, a bounded worker sends a plain-text organizer
 copy, uses the visitor's validated address only as Reply-To, and records a
-provider receipt. Provider failure never rolls back the submission; retryable
-rows remain queued for bounded maintenance delivery. Provider requests use a
-stable idempotency key so public retries do not create duplicate email copies.
+provider receipt. Provider failure never rolls back the submission; rows
+remain queued for an independent signed maintenance job, including after a
+credential or sender-configuration error is corrected. Provider requests use
+a stable idempotency key so public retries do not create duplicate email
+copies. The daily runner follows fresh route-bound signatures through bounded
+six-row slices until the due queue is current, so one deferred slice does not
+starve newer submissions. It fails visibly if any copy remains deferred.
+Email delivery does not depend on Meetup refresh success.
 
 Audit records contain only minimum workflow facts. They never copy form
 content, email addresses, note bodies, raw protection facts, or rate-limit
@@ -129,7 +134,10 @@ audited write replaces the submission payload, every private note body, and
 every completed workflow-intent payload copy with the canonical redaction
 marker while retaining only the reference, form type, received/redacted times,
 final workflow status, actor, and minimum integrity facts. The application has
-no recovery endpoint for redacted content.
+no recovery endpoint for redacted content. Redaction also suppresses any
+queued organizer email copy that has not been sent. A copy already delivered
+to the organizer inbox or retained by the email provider is outside the site
+database and must be deleted separately there.
 
 Administrators and Organizers may not perform personal-content redaction.
 

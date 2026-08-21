@@ -1,11 +1,8 @@
 import { env } from "cloudflare:workers";
 import { isD1DatabaseLike } from "@/lib/server/auth";
-import {
-  runDailyMeetupRefresh,
-} from "@/lib/server/maintenance/daily-meetup-refresh";
-import {
-  authenticateMaintenanceRequest,
-} from "@/lib/server/maintenance/request-signature";
+import { authenticateMaintenanceRequest } from "@/lib/server/maintenance/request-signature";
+import { drainPublicFormEmailOutbox } from "@/lib/server/phase7/public-form-email";
+import { readPublicFormEmailConfiguration } from "@/lib/server/phase7/public-form-email-runtime";
 import {
   SafeApplicationError,
   privateJsonHeaders,
@@ -15,7 +12,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const ROUTE = "/api/maintenance/meetup/refresh";
+const ROUTE = "/api/maintenance/forms/email";
+const DELIVERY_SLICE_LIMIT = 6;
 
 export async function POST(request: Request): Promise<Response> {
   const startedAt = Date.now();
@@ -44,18 +42,26 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const result = await runDailyMeetupRefresh(database, {
+    const configuration = readPublicFormEmailConfiguration();
+    if (!configuration) throw unavailable();
+    const delivery = await drainPublicFormEmailOutbox(database, {
+      configuration,
+      limit: DELIVERY_SLICE_LIMIT,
       nowUtcMs: startedAt,
-      requestId: authenticated.requestId,
     });
+    const status =
+      delivery.hasMoreDue
+        ? "continue"
+        : delivery.blocked > 0 || delivery.retried > 0
+          ? "failed"
+          : "succeeded";
+
     writeSafeLog(
-      "info",
-      result.status === "succeeded"
-        ? "daily_meetup_refresh_completed"
-        : "daily_meetup_refresh_progressed",
+      status === "failed" ? "warn" : "info",
+      `public_form_email_maintenance_${status}`,
       {
         durationMs: Date.now() - startedAt,
-        operation: "daily_meetup_refresh",
+        operation: "drain_public_form_email_outbox",
         requestId: authenticated.requestId,
         route: ROUTE,
         status: 200,
@@ -65,37 +71,20 @@ export async function POST(request: Request): Promise<Response> {
     headers.set("Referrer-Policy", "no-referrer");
     return new Response(
       JSON.stringify({
-        completedAt: result.completedAt,
-        counts: {
-          cancelled: result.counts.cancelled,
-          created: result.counts.created,
-          materializations:
-            result.counts.materializations === null
-              ? null
-              : {
-                  eventDetailCount:
-                    result.counts.materializations.eventDetailCount,
-                  eventsSnapshotCount:
-                    result.counts.materializations.eventsSnapshotCount,
-                  homeEventCount:
-                    result.counts.materializations.homeEventCount,
-                },
-          passes: result.counts.passes,
-          rejected: result.counts.rejected,
-          removed: result.counts.removed,
-          updated: result.counts.updated,
-        },
-        outcome: result.outcome,
+        attempted: delivery.attempted,
+        blocked: delivery.blocked,
         requestId: authenticated.requestId,
-        startedAt: result.startedAt,
-        status: result.status,
+        retried: delivery.retried,
+        sent: delivery.sent,
+        status,
+        suppressed: delivery.suppressed,
       }),
       { headers, status: 200 },
     );
   } catch (error) {
     return safeErrorResponse(error, {
       durationMs: Date.now() - startedAt,
-      operation: "daily_meetup_refresh",
+      operation: "drain_public_form_email_outbox",
       ...(authenticatedRequestId
         ? { requestId: authenticatedRequestId }
         : {}),
@@ -115,6 +104,6 @@ function unavailable(): SafeApplicationError {
   return new SafeApplicationError(
     "service_unavailable",
     503,
-    "Maintenance is temporarily unavailable.",
+    "Form email maintenance is temporarily unavailable.",
   );
 }

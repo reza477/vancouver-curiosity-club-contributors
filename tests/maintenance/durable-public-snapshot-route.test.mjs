@@ -122,7 +122,7 @@ async function signedRequest({ body, requestId, secret }) {
   const timestamp = String(Math.floor(Date.now() / 1_000));
   const signature = await hmacHex(
     secret,
-    `${timestamp}.${requestId}.${body}`,
+    JSON.stringify([timestamp, requestId, PATHNAME, body]),
   );
   return new Request(`${ORIGIN}${PATHNAME}`, {
     body,

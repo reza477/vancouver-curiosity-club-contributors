@@ -12,7 +12,7 @@ import {
 const PROVIDER_URL = "https://api.resend.com/emails";
 const DELIVERY_TIMEOUT_MS = 5_000;
 const LEASE_DURATION_MS = 2 * 60_000;
-const MAX_ATTEMPTS = 12;
+const MAX_BACKOFF_ATTEMPTS = 12;
 const MAX_DRAIN_ITEMS = 6;
 
 export type PublicFormEmailConfiguration = Readonly<{
@@ -34,6 +34,7 @@ export type PublicFormEmailDrainResult = Readonly<{
   attempted: number;
   blocked: number;
   configurationMissing: number;
+  hasMoreDue: boolean;
   retried: number;
   sent: number;
   suppressed: number;
@@ -52,6 +53,8 @@ type ClaimedSubmission = Readonly<{
   publicReference: string;
   submissionId: string;
 }>;
+
+type ClaimSubmissionResult = ClaimedSubmission | "blocked" | null;
 
 type DeliveryErrorCode =
   | "configuration_missing"
@@ -114,6 +117,7 @@ export async function deliverPublicFormEmail(
     leaseTokenHash,
     nowUtcMs,
   );
+  if (claimed === "blocked") return "blocked";
   if (!claimed) return "not_due";
 
   const startedAt = Date.now();
@@ -143,32 +147,21 @@ export async function deliverPublicFormEmail(
 
   if (!response.ok) {
     const code = providerErrorCode(response.status);
-    const retryable = isRetryableProviderStatus(response.status);
-    if (retryable) {
-      await releaseForRetry(
-        database,
-        claimed,
-        leaseTokenHash,
-        code,
-        nowUtcMs,
-      );
-    } else {
-      await blockDelivery(
-        database,
-        claimed.submissionId,
-        leaseTokenHash,
-        code,
-        nowUtcMs,
-      );
-    }
-    writeSafeLog(retryable ? "warn" : "error", "public_form_email_delivery_failed", {
+    await releaseForRetry(
+      database,
+      claimed,
+      leaseTokenHash,
+      code,
+      nowUtcMs,
+    );
+    writeSafeLog("warn", "public_form_email_delivery_failed", {
       code,
       durationMs: Date.now() - startedAt,
       operation: "deliver_public_form_email",
       requestId: submissionId,
       status: response.status,
     });
-    return retryable ? "provider_retry" : "blocked";
+    return "provider_retry";
   }
 
   const providerMessageId = await readProviderMessageId(response);
@@ -259,8 +252,10 @@ export async function drainPublicFormEmailOutbox(
        ORDER BY next_attempt_at ASC, created_at ASC, submission_id ASC
        LIMIT ?`,
     )
-    .bind(nowUtcMs, nowUtcMs, limit)
+    .bind(nowUtcMs, nowUtcMs, limit + 1)
     .all<Record<string, unknown>>();
+  const dueRows = rows.results ?? [];
+  const hasMoreDue = dueRows.length > limit;
 
   const counts = {
     attempted: 0,
@@ -270,7 +265,7 @@ export async function drainPublicFormEmailOutbox(
     sent: 0,
     suppressed: 0,
   };
-  for (const row of rows.results ?? []) {
+  for (const row of dueRows.slice(0, limit)) {
     const submissionId = readString(row.submission_id);
     if (!submissionId) continue;
     const outcome = await deliverPublicFormEmail(database, submissionId, {
@@ -286,7 +281,7 @@ export async function drainPublicFormEmailOutbox(
       counts.configurationMissing += 1;
     } else if (outcome === "suppressed") counts.suppressed += 1;
   }
-  return Object.freeze(counts);
+  return Object.freeze({ ...counts, hasMoreDue });
 }
 
 async function claimSubmission(
@@ -294,12 +289,12 @@ async function claimSubmission(
   submissionId: string,
   leaseTokenHash: string,
   nowUtcMs: number,
-): Promise<ClaimedSubmission | null> {
+): Promise<ClaimSubmissionResult> {
   const claimed = await database
     .prepare(
       `UPDATE form_submission_email_outbox
        SET state = 'leased',
-           attempt_count = attempt_count + 1,
+           attempt_count = min(attempt_count + 1, ?),
            lease_token_hash = ?,
            lease_expires_at = ?,
            last_error_code = NULL,
@@ -307,7 +302,6 @@ async function claimSubmission(
        WHERE submission_id = ?
          AND state = 'pending'
          AND next_attempt_at <= ?
-         AND attempt_count < ?
          AND EXISTS (
            SELECT 1
            FROM form_submissions AS submission
@@ -323,12 +317,12 @@ async function claimSubmission(
          )`,
     )
     .bind(
+      MAX_BACKOFF_ATTEMPTS,
       leaseTokenHash,
       nowUtcMs + LEASE_DURATION_MS,
       nowUtcMs,
       submissionId,
       nowUtcMs,
-      MAX_ATTEMPTS,
     )
     .run();
   if (changes(claimed) !== 1) return null;
@@ -384,7 +378,7 @@ async function claimSubmission(
       "provider_invalid_response",
       nowUtcMs,
     );
-    return null;
+    return "blocked";
   }
 }
 
@@ -396,7 +390,7 @@ async function recoverExpiredLease(
   await database
     .prepare(
       `UPDATE form_submission_email_outbox
-       SET state = CASE WHEN attempt_count >= ? THEN 'blocked' ELSE 'pending' END,
+       SET state = 'pending',
            lease_token_hash = NULL,
            lease_expires_at = NULL,
            last_error_code = 'provider_timeout',
@@ -406,7 +400,7 @@ async function recoverExpiredLease(
          AND state = 'leased'
          AND lease_expires_at <= ?`,
     )
-    .bind(MAX_ATTEMPTS, nowUtcMs, nowUtcMs, submissionId, nowUtcMs)
+    .bind(nowUtcMs, nowUtcMs, submissionId, nowUtcMs)
     .run();
 }
 
@@ -473,7 +467,6 @@ async function releaseForRetry(
   code: DeliveryErrorCode,
   nowUtcMs: number,
 ): Promise<void> {
-  const blocked = claimed.attemptCount >= MAX_ATTEMPTS;
   await database
     .prepare(
       `UPDATE form_submission_email_outbox
@@ -488,7 +481,7 @@ async function releaseForRetry(
          AND lease_token_hash = ?`,
     )
     .bind(
-      blocked ? "blocked" : "pending",
+      "pending",
       code,
       nowUtcMs + retryDelayMs(claimed.attemptCount),
       nowUtcMs,
@@ -645,10 +638,6 @@ function providerErrorCode(status: number): DeliveryErrorCode {
     return "provider_unavailable";
   }
   return "provider_rejected";
-}
-
-function isRetryableProviderStatus(status: number): boolean {
-  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
 }
 
 function retryDelayMs(attemptCount: number): number {

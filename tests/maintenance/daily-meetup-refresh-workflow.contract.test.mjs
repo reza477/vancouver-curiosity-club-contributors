@@ -31,7 +31,7 @@ test("daily Meetup refresh runs off-hour in Vancouver and can also be dispatched
   assert.match(workflow, /^\s+cancel-in-progress:\s*false\s*$/mu);
 });
 
-test("workflow signs the timestamp, UUID, and exact empty body without exposing the secret", () => {
+test("workflow signs the timestamp, UUID, route, and exact body without exposing the secret", () => {
   const workflow = source(WORKFLOW_PATH);
   assert.equal(
     (
@@ -39,8 +39,8 @@ test("workflow signs the timestamp, UUID, and exact empty body without exposing 
         /\$\{\{\s*secrets\.DAILY_MEETUP_REFRESH_SECRET\s*\}\}/gu,
       ) ?? []
     ).length,
-    1,
-    "the GitHub secret should enter only through one step-level environment binding",
+    2,
+    "each independent signed maintenance job needs one step-level secret binding",
   );
   assert.match(
     workflow,
@@ -64,7 +64,16 @@ test("workflow signs the timestamp, UUID, and exact empty body without exposing 
   assert.match(workflow, /createHmac\s*\(\s*["']sha256["']/u);
   assert.match(
     workflow,
-    /timestamp[^\r\n]{0,240}request[_A-Za-z]*id[^\r\n]{0,240}body/iu,
+    /PATHNAME='\/api\/maintenance\/meetup\/refresh'/u,
+  );
+  assert.match(
+    workflow,
+    /PATHNAME='\/api\/maintenance\/public-snapshots\/capture'/u,
+  );
+  assert.match(workflow, /JSON\.stringify\(\[process\.env\.TIMESTAMP/u);
+  assert.match(
+    workflow,
+    /timestamp[^\r\n]{0,360}request[_A-Za-z]*id[^\r\n]{0,360}pathname[^\r\n]{0,360}body/iu,
   );
   assert.match(workflow, /x-maintenance-timestamp/iu);
   assert.match(workflow, /x-maintenance-request-id/iu);

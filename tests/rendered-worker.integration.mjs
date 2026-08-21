@@ -610,7 +610,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    89,
+    90,
   );
   assert.equal(
     await database
@@ -621,7 +621,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    201,
+    202,
   );
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
@@ -1046,7 +1046,14 @@ test("the built Worker promotes a nonce-free Events RSC through the protected fo
       const timestamp = String(Math.floor(Date.now() / 1_000));
       const requestId = crypto.randomUUID();
       const signature = createHmac("sha256", DURABLE_CAPTURE_SECRET)
-        .update(`${timestamp}.${requestId}.${body}`)
+        .update(
+          JSON.stringify([
+            timestamp,
+            requestId,
+            DURABLE_CAPTURE_PATH,
+            body,
+          ]),
+        )
         .digest("hex");
       const response = await fetchPath(DURABLE_CAPTURE_PATH, {
         body,
