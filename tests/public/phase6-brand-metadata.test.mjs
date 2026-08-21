@@ -159,6 +159,16 @@ test("custom brand metadata, social image, header, and manifest use only approve
     "utf8",
   );
   assert.match(header, /\{brandName\}/u);
+  assert.doesNotMatch(
+    header,
+    /from "next\/image"/u,
+    "the fixed 44px wordmark must not ship the image-loader client shim",
+  );
+  assert.match(
+    header,
+    /<img(?=[\s\S]*?className="wordmark-logo")(?=[\s\S]*?height=\{44\})(?=[\s\S]*?width=\{44\})[\s\S]*?\/>/u,
+    "the native wordmark image must reserve its exact layout dimensions",
+  );
   assert.match(
     header,
     /`\/media\/\$\{encodeURIComponent\([\s\S]*logoAssetId/u,

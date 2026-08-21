@@ -263,6 +263,29 @@ test("public maintenance claims its throttle only for route-eligible work", () =
       scheduler.indexOf("Date.now()"),
     "route eligibility must be checked before the throttle timestamp is claimed",
   );
+  const fullVerification = scheduler.indexOf(
+    "await ensureDatabaseInvariants(database)",
+  );
+  const repairGate = scheduler.indexOf(
+    'invariantStatus !== "ready"',
+    fullVerification,
+  );
+  const maintenanceWriteBoundary = scheduler.indexOf(
+    "await runRequestMaintenance(database, request)",
+    repairGate,
+  );
+  assert.ok(
+    fullVerification >= 0 &&
+      repairGate > fullVerification &&
+      maintenanceWriteBoundary > repairGate,
+    "background visitor maintenance must fully verify invariants and stop repaired requests before any write-capable work",
+  );
+  assert.equal(
+    scheduler.match(/await runRequestMaintenance\(database, request\)/gu)
+      ?.length ?? 0,
+    1,
+    "the background scheduler must expose exactly one guarded write-capable maintenance call",
+  );
 });
 
 test("form-page copy runs after the existing starter upgrade and only on its exact routes", async () => {

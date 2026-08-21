@@ -15,11 +15,15 @@ export type PublicFormInstance = Readonly<{
   nonce: string;
 }>;
 
-export async function ensurePublicFormProtectionKey(
+/**
+ * Reads an already-provisioned signing key without mutating public state.
+ * Public page rendering may use this seam; key creation stays behind an
+ * immediately preceding full database-invariant verification boundary.
+ */
+export async function readPublicFormProtectionKey(
   database: D1DatabaseLike,
   organizationId: string,
-  nowUtcMs: number,
-): Promise<string> {
+): Promise<string | null> {
   const existing = await database
     .prepare(
       `SELECT key_hex
@@ -32,13 +36,24 @@ export async function ensurePublicFormProtectionKey(
   if (typeof existing === "string" && /^[a-f0-9]{64}$/u.test(existing)) {
     return existing;
   }
-  if (existing !== null && existing !== undefined) {
-    throw new SafeApplicationError(
-      "service_unavailable",
-      503,
-      "The form is temporarily unavailable.",
-    );
-  }
+  if (existing === null || existing === undefined) return null;
+  throw new SafeApplicationError(
+    "service_unavailable",
+    503,
+    "The form is temporarily unavailable.",
+  );
+}
+
+export async function ensurePublicFormProtectionKey(
+  database: D1DatabaseLike,
+  organizationId: string,
+  nowUtcMs: number,
+): Promise<string> {
+  const existing = await readPublicFormProtectionKey(
+    database,
+    organizationId,
+  );
+  if (existing !== null) return existing;
   const candidate = bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
   await database
     .prepare(
@@ -50,16 +65,11 @@ export async function ensurePublicFormProtectionKey(
     )
     .bind(organizationId, candidate, nowUtcMs, nowUtcMs)
     .run();
-  const keyHex = await database
-    .prepare(
-      `SELECT key_hex
-       FROM public_form_protection_keys
-       WHERE organization_id = ?
-       LIMIT 1`,
-    )
-    .bind(organizationId)
-    .first<string>("key_hex");
-  if (typeof keyHex !== "string" || !/^[a-f0-9]{64}$/u.test(keyHex)) {
+  const keyHex = await readPublicFormProtectionKey(
+    database,
+    organizationId,
+  );
+  if (keyHex === null) {
     throw new SafeApplicationError(
       "service_unavailable",
       503,

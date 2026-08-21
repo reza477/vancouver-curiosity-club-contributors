@@ -420,6 +420,35 @@ test("one bounded detail row serves event, related, club, and program views with
     first: 1,
     run: 0,
   });
+  assert.equal(
+    counter.sql().filter((sql) =>
+      sql.includes("FROM public_event_calendar_snapshots"),
+    ).length,
+    1,
+  );
+  assert.ok(
+    counter.sql().every((sql) => !sql.includes("WITH public_clubs AS")),
+    "detail visitors must never execute the unified public-event projection",
+  );
+
+  counter.reset();
+  const missing =
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        slug: "missing-event",
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.deepEqual(missing, { kind: "missing" });
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
 
   counter.reset();
   const club = await materializations.readPublicClubEventViewMaterialization(
@@ -467,6 +496,114 @@ test("one bounded detail row serves event, related, club, and program views with
   assert.deepEqual(
     program?.past.events.map((event) => event.title),
     ["Past program gathering", "Older program gathering"],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
+
+  const detailCacheKey = JSON.stringify([
+    "public-event-materializations",
+    1,
+    ORGANIZATION_ID,
+    "details",
+  ]);
+  const savedDetailRow = database.sqlite
+    .prepare(
+      `SELECT snapshot_json, expires_at, updated_at
+       FROM public_event_calendar_snapshots
+       WHERE cache_key = ? AND organization_id = ?`,
+    )
+    .get(detailCacheKey, ORGANIZATION_ID);
+  assert.ok(savedDetailRow);
+
+  database.sqlite
+    .prepare(
+      `UPDATE public_event_calendar_snapshots
+       SET snapshot_json = ?
+       WHERE cache_key = ? AND organization_id = ?`,
+    )
+    .run("{}", detailCacheKey, ORGANIZATION_ID);
+  counter.reset();
+  assert.equal(
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        slug: target.slug,
+        todayDate: TODAY_DATE,
+      },
+    ),
+    null,
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
+
+  database.sqlite
+    .prepare(
+      `UPDATE public_event_calendar_snapshots
+       SET snapshot_json = ?, expires_at = ?, updated_at = ?
+       WHERE cache_key = ? AND organization_id = ?`,
+    )
+    .run(
+      savedDetailRow.snapshot_json,
+      savedDetailRow.expires_at,
+      Number(savedDetailRow.updated_at) + 1,
+      detailCacheKey,
+      ORGANIZATION_ID,
+    );
+  counter.reset();
+  assert.equal(
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        slug: target.slug,
+        todayDate: TODAY_DATE,
+      },
+    ),
+    null,
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
+
+  database.sqlite
+    .prepare(
+      `UPDATE public_event_calendar_snapshots
+       SET snapshot_json = ?, expires_at = ?, updated_at = ?
+       WHERE cache_key = ? AND organization_id = ?`,
+    )
+    .run(
+      savedDetailRow.snapshot_json,
+      NOW_UTC_MS + 1,
+      savedDetailRow.updated_at,
+      detailCacheKey,
+      ORGANIZATION_ID,
+    );
+  counter.reset();
+  assert.equal(
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: NOW_UTC_MS + 1,
+        organizationId: ORGANIZATION_ID,
+        slug: target.slug,
+        todayDate: TODAY_DATE,
+      },
+    ),
+    null,
   );
   assert.deepEqual(counter.counts(), {
     batch: 0,
@@ -894,9 +1031,13 @@ function countDatabaseStatements(database) {
   let first = 0;
   let runs = 0;
   let batches = 0;
+  let statements = [];
   const inner = new WeakMap();
   const wrapped = {
-    prepare(sql) { return wrap(database.prepare(sql)); },
+    prepare(sql) {
+      statements.push(sql);
+      return wrap(database.prepare(sql));
+    },
     async batch(statements) {
       batches += 1;
       const results = await database.batch(statements.map((statement) => inner.get(statement)));
@@ -910,8 +1051,15 @@ function countDatabaseStatements(database) {
     count: () => executions,
     counts: () => ({ batch: batches, executions, first, run: runs }),
     database: wrapped,
-    reset() { executions = 0; first = 0; runs = 0; batches = 0; },
+    reset() {
+      executions = 0;
+      first = 0;
+      runs = 0;
+      batches = 0;
+      statements = [];
+    },
     runCount: () => runs,
+    sql: () => [...statements],
   };
   function wrap(statement) {
     const result = {

@@ -8,11 +8,13 @@ import { ContactRouteBody } from "@/app/_components/EditorialRouteBodies";
 import { PublicSubmissionForm } from "@/app/_components/PublicSubmissionForm";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
+import { ensureDatabaseInvariants } from "@/lib/server/database/invariants";
 import { getRequestPublicOrganization } from "@/lib/server/public/request-cache";
 import type { PublicFormKey } from "@/lib/server/phase7/public-form-contract";
 import {
   createPublicFormInstanceToken,
   ensurePublicFormProtectionKey,
+  readPublicFormProtectionKey,
 } from "@/lib/server/phase7/public-form-protection";
 import { writeSafeLog } from "@/lib/validation/server-observability";
 
@@ -71,11 +73,19 @@ async function preparePublicFormInstance(
     const organization = await getRequestPublicOrganization(database);
     if (!organization) return null;
     const nowUtcMs = readServerUtcMs();
-    const keyHex = await ensurePublicFormProtectionKey(
+    let keyHex = await readPublicFormProtectionKey(
       database,
       organization.id,
-      nowUtcMs,
     );
+    if (keyHex === null) {
+      const invariantStatus = await ensureDatabaseInvariants(database);
+      if (invariantStatus !== "ready") return null;
+      keyHex = await ensurePublicFormProtectionKey(
+        database,
+        organization.id,
+        nowUtcMs,
+      );
+    }
     const { token } = await createPublicFormInstanceToken(
       keyHex,
       formKey,

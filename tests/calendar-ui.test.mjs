@@ -1,4 +1,7 @@
-import { readPublicCss } from "./helpers/public-css.mjs";
+import {
+  readPublicCss,
+  readPublicRouteCss,
+} from "./helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -470,7 +473,7 @@ test("About presents a professional mission, impact, continuity, and partnership
       new URL("lib/server/public/catalog-definitions.ts", projectRoot),
       "utf8",
     ),
-    readPublicCss(),
+    readPublicRouteCss("about"),
   ]);
   const aboutPositioning = `${about}\n${missionCopy}\n${catalogDefinitions}`;
 
@@ -559,7 +562,12 @@ test("About presents a professional mission, impact, continuity, and partnership
   );
   assert.match(
     styles,
-    /\.about-hero,[\s\S]*?\.about-closing\s*\{[^}]*padding:\s*clamp\(2\.5rem, 5vw, 4\.75rem\)/u,
+    /--public-section-space:\s*clamp\(2\.5rem, 4\.5vw, 4\.5rem\);/u,
+    "The shared section-space token must remain compact and responsive",
+  );
+  assert.match(
+    styles,
+    /\.about-hero,[\s\S]*?\.about-closing\s*\{[^}]*padding:\s*var\(--public-section-space\)/u,
     "About sections must keep compact, responsive page padding",
   );
 });
@@ -654,7 +662,10 @@ test("Events defaults to Upcoming, keeps Calendar, and exposes no public diagnos
     /public-export-actions|Download this public view|exportHref\(/u,
   );
   assert.match(renderer, /<PublicMonthCalendar/u);
-  assert.match(renderer, /<EventCard compact event=\{event\}/u);
+  assert.match(
+    renderer,
+    /<EventCard[\s\S]*?compact[\s\S]*?event=\{event\}/u,
+  );
   assert.doesNotMatch(renderer, /EditorialSection|editorial-sections/u);
   assert.doesNotMatch(
     `${page}\n${renderer}`,

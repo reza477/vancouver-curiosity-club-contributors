@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { usePathname } from "next/navigation";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
@@ -36,7 +35,11 @@ export function SiteHeader({
         prefetch={prefetchInternalLinks}
       >
         {logoAssetId ? (
-          <Image
+          // The published logo is already a validated 480px WebP. A native,
+          // dimensioned image avoids shipping the full image-loader client
+          // shim for this fixed 44px decorative mark.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
             alt=""
             className="wordmark-logo"
             height={44}
@@ -47,7 +50,6 @@ export function SiteHeader({
                   )}/variants/webp_480`
                 : `/media/${encodeURIComponent(logoAssetId)}/webp_480`
             }
-            unoptimized
             width={44}
           />
         ) : (

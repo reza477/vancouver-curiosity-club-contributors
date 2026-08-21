@@ -69,7 +69,10 @@ test("form-page introductions keep their purpose without repeating defensive mec
       /private organizer inbox|marketing|email confirmation/iu,
     );
   }
-  assert.match(targetIntro("contact").text, /^The Feedback form/u);
+  assert.equal(
+    targetIntro("contact").text,
+    "Send comments or questions privately to our team for review and follow-up.",
+  );
   assert.match(
     targetIntro("get-involved").paragraphs[0],
     /volunteer|partnership/u,

@@ -22,19 +22,20 @@ prefetch, or add shared HTML cache directives.
   dataset, and public event details. Related events and the bounded
   Club/Program Upcoming/Past rails are derived from one indexed detail row, so
   older history outside the calendar window remains available. Event pages
-  pair that row with one request-cached current public-event read; this keeps
-  an unpublish or edit authoritative without repeating the read between
-  metadata and page rendering. Visitor reads never write or run the
-  updater-owned projection.
+  use that row directly for both metadata and rendering. A missing, expired,
+  corrupt, or slug-missing detail row fails closed; it never falls back to the
+  unified live projection. Visitor reads never write or run the updater-owned
+  projection.
 - Existing Home and Events envelope versions remain compatible during rollout.
-  Until the first detail row is promoted, event detail uses the existing
-  privacy-safe direct reader. A slug absent from the saved detail row may also
-  use that request-cached reader so a newly scheduled publication is not hidden
-  until the next daily rebuild; this path remains read-only and never performs
-  synchronization or snapshot writes.
+  Event detail becomes available after the protected updater promotes the
+  coherent detail row. Publication, edit, cancellation, and unpublication
+  changes therefore reach this public surface through that protected rebuild
+  boundary rather than through visitor-time projection work.
 - Anonymous public GET/HEAD invariant preflight reads one exact certified
   version/fingerprint marker. Organizer, identity, API, maintenance, write, and
   private RSC boundaries still verify the full `sqlite_master` definitions.
+  Background maintenance requested after a public response repeats the full
+  verification immediately before any maintenance write.
   Missing or stale certification enters the existing bounded fail-closed
   repair path before application dispatch.
 

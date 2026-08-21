@@ -123,6 +123,14 @@ WHERE cache_key = ?
   AND organization_id = ?
 LIMIT 1`;
 
+const READ_DETAIL_MATERIALIZATION_SQL = String.raw`
+SELECT snapshot_json, updated_at
+FROM public_event_calendar_snapshots
+WHERE cache_key = ?
+  AND organization_id = ?
+  AND expires_at > ?
+LIMIT 1`;
+
 const UPSERT_MATERIALIZATION_SQL = String.raw`
 INSERT INTO public_event_calendar_snapshots (
   cache_key,
@@ -279,7 +287,7 @@ export async function refreshPublicEventMaterializations(
     const [activeEvents, activeHome, activeDetails] = await Promise.all([
       readEnvelope(database, organizationId),
       readHomeEnvelope(database, organizationId),
-      readDetailEnvelope(database, organizationId),
+      readDetailEnvelope(database, organizationId, nowUtcMs),
     ]);
     if (!activeEvents || !activeHome || !activeDetails) {
       throw new Error(
@@ -338,7 +346,11 @@ export async function readPublicEventDetailViewMaterialization(
     minimum: 1,
     maximum: 6,
   });
-  const envelope = await readDetailEnvelope(database, organizationId);
+  const envelope = await readDetailEnvelope(
+    database,
+    organizationId,
+    nowUtcMs,
+  );
   if (!envelope) return null;
   const event = envelope.eventDetails.find(
     (candidate) => candidate.slug === slug,
@@ -408,7 +420,11 @@ export async function readPublicClubEventViewMaterialization(
     minimum: 1,
     maximum: 12,
   });
-  const detailEnvelope = await readDetailEnvelope(database, organizationId);
+  const detailEnvelope = await readDetailEnvelope(
+    database,
+    organizationId,
+    nowUtcMs,
+  );
   let events: readonly PublicEventCardDto[];
   if (detailEnvelope) {
     events = detailEnvelope.eventDetails;
@@ -673,6 +689,7 @@ async function readHomeEnvelope(
 async function readDetailEnvelope(
   database: Pick<D1DatabaseLike, "prepare">,
   rawOrganizationId: string,
+  nowUtcMs: number,
 ): Promise<EventDetailMaterializationEnvelope | null> {
   const organizationId = parseIdentifier(
     rawOrganizationId,
@@ -681,8 +698,12 @@ async function readDetailEnvelope(
   let row: Record<string, unknown> | null;
   try {
     row = await database
-      .prepare(READ_MATERIALIZATION_SQL)
-      .bind(materializationKey(organizationId, "details"), organizationId)
+      .prepare(READ_DETAIL_MATERIALIZATION_SQL)
+      .bind(
+        materializationKey(organizationId, "details"),
+        organizationId,
+        nowUtcMs,
+      )
       .first<Record<string, unknown>>();
   } catch {
     return null;
@@ -695,7 +716,8 @@ async function readDetailEnvelope(
     return null;
   }
   try {
-    return validatedDetailEnvelope(JSON.parse(row.snapshot_json));
+    const envelope = validatedDetailEnvelope(JSON.parse(row.snapshot_json));
+    return row.updated_at === envelope.generatedAtUtcMs ? envelope : null;
   } catch {
     return null;
   }

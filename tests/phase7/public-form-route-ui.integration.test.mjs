@@ -28,6 +28,7 @@ import {
 import {
   createPublicFormInstanceToken,
   PUBLIC_FORM_CLIENT_COOKIE,
+  readPublicFormProtectionKey,
 } from "../../lib/server/phase7/public-form-protection.ts";
 import {
   listPublicFormClubProgramChoices,
@@ -94,6 +95,51 @@ const routeTestOptions = directRouteImportsSupported
       skip:
         "Direct App Router imports require node:module registerHooks (Node 22.15+).",
     };
+
+test("public Contact reads first and fully verifies before missing-key provisioning", async () => {
+  const statements = [];
+  const database = {
+    prepare(sql) {
+      statements.push(sql);
+      return {
+        bind() {
+          return this;
+        },
+        async first() {
+          return null;
+        },
+      };
+    },
+  };
+  assert.equal(
+    await readPublicFormProtectionKey(database, "organization-contact"),
+    null,
+  );
+  assert.equal(statements.length, 1);
+  assert.match(statements[0], /^SELECT key_hex/u);
+  assert.doesNotMatch(statements[0], /INSERT|UPDATE|DELETE/iu);
+
+  const contactPage = source("app/contact/page.tsx");
+  assert.match(contactPage, /readPublicFormProtectionKey/u);
+  const initialRead = contactPage.indexOf(
+    "await readPublicFormProtectionKey(",
+  );
+  const fullVerification = contactPage.indexOf(
+    "await ensureDatabaseInvariants(database)",
+    initialRead,
+  );
+  const keyProvision = contactPage.indexOf(
+    "await ensurePublicFormProtectionKey(",
+    fullVerification,
+  );
+  assert.ok(
+    initialRead >= 0 &&
+      fullVerification > initialRead &&
+      keyProvision > fullVerification,
+    "a missing public form key must cross the full invariant boundary before INSERT",
+  );
+  assert.match(contactPage, /invariantStatus !== "ready"/u);
+});
 
 test("fresh public catalog copy truthfully describes the four stored forms", () => {
   const pageCopy = Object.fromEntries(

@@ -167,6 +167,7 @@ await initializePackagedCmsAdoption(runtime);
 await initializePackagedDatabaseInvariants(runtime, false);
 await seedPhase7PrivateSentinels(runtime);
 await initializePackagedDatabaseInvariants(runtime, false);
+await materializeRenderedPublicEvents();
 
 test.after(async () => {
   await runtime.dispose();
@@ -2833,6 +2834,19 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
       await candidate.arrayBuffer();
     }
   }
+  if (!reconciledDetail) {
+    // Scheduled publication and public-view projection are separate protected
+    // write boundaries. Once maintenance publishes the event, materialize the
+    // bounded visitor snapshot before expecting the detail route to serve it.
+    await materializeRenderedPublicEvents();
+    const candidate = await fetchPath(detailPath);
+    if (candidate.status === 200) {
+      reconciledDetail = candidate;
+    } else {
+      assert.equal(candidate.status, 404);
+      await candidate.arrayBuffer();
+    }
+  }
   assert.ok(reconciledDetail, "the due publication did not reconcile");
   const reconciledHtml = await reconciledDetail.text();
   assert.match(reconciledHtml, new RegExp(escapeRegex(publicTitle), "u"));
@@ -2957,6 +2971,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
     finalUnpublish.workspace.event.publicationStatus,
     "unpublished",
   );
+  await materializeRenderedPublicEvents();
   await assertAbsentFromPublicSurfaces("cancelled event after unpublish");
 });
 

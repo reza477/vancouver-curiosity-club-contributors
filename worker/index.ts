@@ -1,7 +1,10 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
-import { ensureDatabaseInvariantsForRequest } from "../lib/server/database/invariants";
+import {
+  ensureDatabaseInvariants,
+  ensureDatabaseInvariantsForRequest,
+} from "../lib/server/database/invariants";
 import {
   runRequestMaintenance,
   shouldRunRequestMaintenance,
@@ -120,21 +123,32 @@ function schedulePublicRequestMaintenance(
   }
   publicRequestMaintenanceNextEligibleAtUtcMs =
     nowUtcMs + PUBLIC_REQUEST_MAINTENANCE_INTERVAL_MS;
-  const maintenance = runRequestMaintenance(database, request)
-    .then((result) => {
-      if (result.kind === "continue") return;
-      const level = result.kind === "unavailable" ? "error" : "info";
-      console[level](
+  const maintenance = (async () => {
+    const invariantStatus = await ensureDatabaseInvariants(database);
+    if (invariantStatus !== "ready") {
+      console.error(
         JSON.stringify({
-          event:
-            result.kind === "unavailable"
-              ? "public_request_maintenance_deferred"
-              : "public_request_maintenance_completed",
-          level,
-          source: result.source,
+          event: "public_request_maintenance_deferred",
+          level: "error",
+          source: "database_invariants",
         }),
       );
-    })
+      return;
+    }
+    const result = await runRequestMaintenance(database, request);
+    if (result.kind === "continue") return;
+    const level = result.kind === "unavailable" ? "error" : "info";
+    console[level](
+      JSON.stringify({
+        event:
+          result.kind === "unavailable"
+            ? "public_request_maintenance_deferred"
+            : "public_request_maintenance_completed",
+        level,
+        source: result.source,
+      }),
+    );
+  })()
     .catch(() => {
       console.error(
         JSON.stringify({

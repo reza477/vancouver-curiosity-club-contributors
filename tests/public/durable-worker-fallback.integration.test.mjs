@@ -58,7 +58,7 @@ nodeModule.registerHooks?.({
       return {
         shortCircuit: true,
         url: dataModule(
-          "export async function ensureDatabaseInvariantsForRequest(){ throw new Error('forced_d1_outage'); }",
+          "export async function ensureDatabaseInvariants(){ throw new Error('forced_d1_outage'); } export async function ensureDatabaseInvariantsForRequest(){ throw new Error('forced_d1_outage'); }",
         ),
       };
     }

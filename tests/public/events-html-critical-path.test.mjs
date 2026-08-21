@@ -263,12 +263,24 @@ test("event and club detail routes use request-scoped and materialized seams", a
       "utf8",
     ),
   ]);
-  assert.match(eventRoute, /getRequestPublicEventBySlug/u);
+  assert.doesNotMatch(eventRoute, /getRequestPublicEventBySlug/u);
   assert.match(
     eventRoute,
     /getRequestPublicEventDetailViewMaterialization/u,
   );
+  assert.doesNotMatch(
+    eventRoute,
+    /listRelatedPublicEvents|materializedIsCurrent|currentEvent|JSON\.stringify\(materialized\.event\)/u,
+    "event detail must fail closed on its one protected-updater snapshot instead of running the unified live projection",
+  );
   assert.doesNotMatch(eventRoute, /\bgetPublicEventBySlug\b/u);
+  assert.match(eventRoute, /if \(!organization\) publicServiceUnavailable\(\)/u);
+  assert.match(eventRoute, /if \(!materialized\) publicServiceUnavailable\(\)/u);
+  assert.match(
+    eventRoute,
+    /if \(materialized\.kind !== "available"\) return null/u,
+    "only a coherent materialized missing result may become a 404",
+  );
   assert.match(clubRoute, /getRequestPublicClubBySlug/u);
   assert.match(clubRoute, /getRequestPublicSlugRedirect/u);
   assert.match(clubRoute, /getRequestPublicOrganization/u);

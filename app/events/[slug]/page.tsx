@@ -8,10 +8,9 @@ import { StructuredData } from "@/app/_components/StructuredData";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
-import {
-  listRelatedPublicEvents,
-  type PublicEventCardDto,
-  type PublicEventDetailDto,
+import type {
+  PublicEventCardDto,
+  PublicEventDetailDto,
 } from "@/lib/server/public/events";
 import { buildPublicEventJsonLd } from "@/lib/server/public/event-structured-data";
 import {
@@ -25,12 +24,12 @@ import {
 } from "@/lib/server/public/origin";
 import {
   getRequestPublicEventDetailViewMaterialization,
-  getRequestPublicEventBySlug,
   getRequestPublicOrganization,
   getRequestPublicSiteContext,
 } from "@/lib/server/public/request-cache";
 import { InputValidationError } from "@/lib/validation";
 import { usesShippedSocialArtwork } from "@/lib/brand";
+import { publicServiceUnavailable } from "@/lib/server/public/service-failure";
 
 export const dynamic = "force-dynamic";
 
@@ -78,23 +77,8 @@ export default async function EventDetailPage({
   const loaded = await loadEvent(slug);
   if (!loaded) notFound();
 
-  const {
-    event,
-    organizationId,
-    database,
-    siteName,
-    nowUtcMs,
-    todayDate,
-  } = loaded;
-  const related = loaded.related ?? (event.isCancelled
-    ? []
-    : await listRelatedPublicEvents(database, {
-        organizationId,
-        slug: event.slug,
-        nowUtcMs,
-        todayDate,
-        limit: 3,
-      }));
+  const { event, siteName } = loaded;
+  const related = loaded.related;
   const origin = await getTrustedRequestOrigin();
   const canonicalUrl = origin
     ? publicUrl(`/events/${event.slug}`, origin)
@@ -171,21 +155,19 @@ export default async function EventDetailPage({
 async function loadEvent(slug: string): Promise<{
   database: ReturnType<typeof getRuntimeAuthConfiguration>["database"];
   event: PublicEventDetailDto;
-  nowUtcMs: number;
   organizationId: string;
-  related: readonly PublicEventCardDto[] | null;
+  related: readonly PublicEventCardDto[];
   siteName: string | null;
   siteOpenGraphAssetId: string | null;
-  todayDate: string;
   useShippedSocialFallback: boolean;
 } | null> {
   try {
     const { database } = getRuntimeAuthConfiguration();
     const organization = await getRequestPublicOrganization(database);
-    if (!organization) return null;
+    if (!organization) publicServiceUnavailable();
     const nowUtcMs = readServerUtcMs();
     const todayDate = vancouverCalendarDate(nowUtcMs);
-    const [materialized, currentEvent, site] = await Promise.all([
+    const [materialized, site] = await Promise.all([
       getRequestPublicEventDetailViewMaterialization(database, {
         limit: 3,
         nowUtcMs,
@@ -193,35 +175,19 @@ async function loadEvent(slug: string): Promise<{
         slug,
         todayDate,
       }),
-      getRequestPublicEventBySlug(database, {
-        organizationId: organization.id,
-        slug,
-      }),
       getRequestPublicSiteContext(database),
     ]);
-    if (!currentEvent) return null;
-    const materializedIsCurrent =
-      materialized?.kind === "available" &&
-      JSON.stringify(materialized.event) === JSON.stringify(currentEvent);
-    const event = materializedIsCurrent
-      ? materialized.event
-      : currentEvent;
-    return event
-      ? {
-          database,
-          event,
-          nowUtcMs,
-          organizationId: organization.id,
-          related:
-            materializedIsCurrent && materialized.kind === "available"
-              ? materialized.related
-              : null,
-          siteName: site?.brandName ?? null,
-          siteOpenGraphAssetId: site?.openGraphAssetId ?? null,
-          todayDate,
-          useShippedSocialFallback: usesShippedSocialArtwork(site),
-        }
-      : null;
+    if (!materialized) publicServiceUnavailable();
+    if (materialized.kind !== "available") return null;
+    return {
+      database,
+      event: materialized.event,
+      organizationId: organization.id,
+      related: materialized.related,
+      siteName: site?.brandName ?? null,
+      siteOpenGraphAssetId: site?.openGraphAssetId ?? null,
+      useShippedSocialFallback: usesShippedSocialArtwork(site),
+    };
   } catch (error) {
     if (error instanceof InputValidationError) return null;
     throw error;

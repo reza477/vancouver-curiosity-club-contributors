@@ -115,6 +115,11 @@ test("Contact safely switches between general and partnership inquiry contracts"
     /formKey="contact"/u,
   );
   assert.match(contactSource, /preparePublicFormInstance\("contact"\)/u);
+  assert.match(contactSource, /readPublicFormProtectionKey/u);
+  assert.match(
+    contactSource,
+    /readPublicFormProtectionKey[\s\S]*?ensureDatabaseInvariants[\s\S]*?invariantStatus !== "ready"[\s\S]*?ensurePublicFormProtectionKey/u,
+  );
   assert.match(
     contactSource,
     /initialContactTopic=\{partnershipMode \? "Partnerships" : undefined\}/u,

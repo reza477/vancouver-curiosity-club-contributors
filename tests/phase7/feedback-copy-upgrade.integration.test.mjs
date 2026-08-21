@@ -442,7 +442,10 @@ function targetIntro() {
   )?.content;
   assert.ok(intro);
   assert.equal(intro.heading, "Share feedback or ask a question");
-  assert.match(intro.text, /^The Feedback form/u);
+  assert.equal(
+    intro.text,
+    "Send comments or questions privately to our team for review and follow-up.",
+  );
   return intro;
 }
 

@@ -34,7 +34,6 @@ test("supporting routes consume one bounded public typography and spacing system
   for (const [name, css] of [
     ["shared masthead", layout],
     ["Events masthead", events],
-    ["event detail", eventDetail],
     ["About", about],
     ["For Organizations", organizations],
   ]) {
@@ -44,6 +43,11 @@ test("supporting routes consume one bounded public typography and spacing system
       `${name} must use the shared page-title scale`,
     );
   }
+  assert.match(
+    eventDetail,
+    /\.event-detail__header h1\s*\{[^}]*font-size:\s*clamp\(3rem, 5vw, 4\.25rem\);/su,
+    "Event detail must keep its balanced title scale within the public hierarchy",
+  );
 
   assert.match(
     editorial,
