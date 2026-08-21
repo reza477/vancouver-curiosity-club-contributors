@@ -518,6 +518,21 @@ test("About presents a professional mission, impact, continuity, and partnership
     /\b(?:members?|attendees?)\s+(?:say|said|report(?:ed)?|tell|told)\b|\btestimonial(?:s)?\b|<blockquote\b/iu,
   );
   assert.match(styles, /\.about-feel,/u);
+  assert.match(
+    styles,
+    /\.about-page h2, \.event-detail h2,[^{]*\{[^}]*margin:\s*0;/u,
+    "About section headings must not regain the browser's oversized default margins",
+  );
+  assert.match(
+    styles,
+    /\.about-page h2\s*\{[^}]*font-size:\s*clamp\(2\.75rem, 3\.6vw, 3\.75rem\);[^}]*line-height:\s*1;/u,
+    "About section headings must stay balanced against their supporting copy",
+  );
+  assert.match(
+    styles,
+    /\.about-feel, \.about-audience, \.about-solo, \.about-closing\s*\{[^}]*padding-block:\s*clamp\(2\.5rem, 4vw, 4\.5rem\);[^}]*gap:\s*clamp\(1\.5rem, 4vw, 4rem\);/u,
+    "About sections must keep compact vertical rhythm and a bounded column gap",
+  );
 });
 
 test("Events defaults to Upcoming, keeps Calendar, and exposes no public diagnostics", async () => {

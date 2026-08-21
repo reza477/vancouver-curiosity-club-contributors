@@ -3,6 +3,15 @@
   width: 100%;
 }
 
+.about-page h2 {
+  font-size: clamp(2.75rem, 3.6vw, 3.75rem);
+  line-height: 1;
+}
+
+.about-page .section-kicker {
+  margin-bottom: 0.8rem;
+}
+
 .about-hero {
   padding: clamp(3rem, 7vw, 6rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)) clamp(3rem, 6vw, 5rem) max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-left));
   border-bottom: 1px solid var(--ink);
@@ -29,6 +38,11 @@
   border-bottom: 1px solid var(--ink);
   grid-template-columns: minmax(14rem, 0.8fr) minmax(0, 1.2fr);
   display: grid;
+}
+
+.about-feel, .about-audience, .about-solo, .about-closing {
+  padding-block: clamp(2.5rem, 4vw, 4.5rem);
+  gap: clamp(1.5rem, 4vw, 4rem);
 }
 
 .about-audience {

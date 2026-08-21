@@ -149,7 +149,7 @@
   border-bottom: 1px solid var(--line);
 }
 
-.section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .event-detail h2, .related-events h2, .public-empty-state h3 {
+.section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .about-page h2, .event-detail h2, .related-events h2, .public-empty-state h3 {
   max-width: 15ch;
   font-family: var(--display);
   letter-spacing: -0.055em;
