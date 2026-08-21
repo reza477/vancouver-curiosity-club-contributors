@@ -11,19 +11,19 @@ const CLUB_COVER_ARTWORK: Readonly<Record<string, ClubCoverArtwork>> =
   Object.freeze({
     "vancouver-curiosity-club": clubCoverArtwork({
       altText:
-        "Four people examine a neighbourhood map and tactile curios in a rainy Vancouver studio.",
+        "A friendly sea monster sings above a rainy Vancouver night filled with reading, music, art, film, and conversation.",
       credit: "Original artwork for Vancouver Curiosity Club",
       fileStem: "vancouver-curiosity-club",
     }),
     "vancouver-fantasy-scifi-group": clubCoverArtwork({
       altText:
-        "Four readers discuss a star chart beneath a brass orrery with Vancouver mountains beyond.",
+        "An ornate cosmic library opens onto planets, galaxies, and a distant fantasy city.",
       credit: "Original artwork for Vancouver Fantasy and Sci-Fi Group",
       fileStem: "vancouver-fantasy-scifi-group",
     }),
     "vancouver-literature-and-film": clubCoverArtwork({
       altText:
-        "Four people compare a novel and storyboard cards after a screening on a rainy Vancouver evening.",
+        "Three people discuss a book and storyboard cards in a warm film library overlooking rainy Vancouver.",
       credit: "Original artwork for Vancouver Literature and Film",
       fileStem: "vancouver-literature-and-film",
     }),
