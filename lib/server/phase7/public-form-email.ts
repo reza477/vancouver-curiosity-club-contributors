@@ -137,7 +137,7 @@ export async function deliverPublicFormEmail(
       nowUtcMs,
     );
     writeSafeLog("warn", "public_form_email_delivery_deferred", {
-      code,
+      code: providerFetchExceptionLogCode(error, code),
       durationMs: Date.now() - startedAt,
       operation: "deliver_public_form_email",
       requestId: submissionId,
@@ -638,6 +638,35 @@ function providerErrorCode(status: number): DeliveryErrorCode {
     return "provider_unavailable";
   }
   return "provider_rejected";
+}
+
+function providerFetchExceptionLogCode(
+  error: unknown,
+  fallback: DeliveryErrorCode,
+): string {
+  if (fallback === "provider_timeout") return fallback;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (message.includes("network connection lost")) {
+    return "provider_network_connection_lost";
+  }
+  if (
+    message.includes("another worker") ||
+    message.includes("global fetch") ||
+    message.includes("error 1042")
+  ) {
+    return "provider_worker_fetch_blocked";
+  }
+  if (message.includes("cache") && message.includes("not implemented")) {
+    return "provider_cache_option_unavailable";
+  }
+  if (
+    message.includes("fetch failed") ||
+    message.includes("fetch api cannot load")
+  ) {
+    return "provider_fetch_failed";
+  }
+  if (error instanceof TypeError) return "provider_fetch_type_error";
+  return fallback;
 }
 
 function retryDelayMs(attemptCount: number): number {

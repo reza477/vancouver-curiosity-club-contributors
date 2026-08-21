@@ -10,6 +10,10 @@ const runner = readFileSync(
   "scripts/run-form-email-maintenance.mjs",
   "utf8",
 );
+const delivery = readFileSync(
+  "lib/server/phase7/public-form-email.ts",
+  "utf8",
+);
 const viteConfig = readFileSync("vite.config.ts", "utf8");
 
 test("daily maintenance runs organizer email delivery independently of Meetup", () => {
@@ -51,5 +55,25 @@ test("production routes third-party email API calls through the public network",
     viteConfig,
     /compatibility_flags:\s*\["nodejs_compat",\s*"global_fetch_strictly_public"\]/u,
     "Resend is a public Worker endpoint, so the production Worker must use public fetch routing",
+  );
+});
+
+test("email fetch exceptions emit only bounded operational classifications", () => {
+  for (const code of [
+    "provider_network_connection_lost",
+    "provider_worker_fetch_blocked",
+    "provider_cache_option_unavailable",
+    "provider_fetch_failed",
+    "provider_fetch_type_error",
+  ]) {
+    assert.ok(delivery.includes(`return "${code}";`), code);
+  }
+  assert.match(
+    delivery,
+    /writeSafeLog\("warn", "public_form_email_delivery_deferred", \{[\s\S]*?code: providerFetchExceptionLogCode\(error, code\)/u,
+  );
+  assert.doesNotMatch(
+    delivery,
+    /writeSafeLog\([\s\S]*?(?:message|stack):\s*error/u,
   );
 });
