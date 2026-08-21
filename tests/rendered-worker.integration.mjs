@@ -786,7 +786,9 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(html, />Explore our work<\/a>/u);
   assert.match(html, />Partner with us<\/a>/u);
-  assert.match(html, />View upcoming events<\/a>/u);
+  assert.doesNotMatch(html, />View upcoming events<\/a>/u);
+  assert.match(html, />View the public event calendar<\/a>/u);
+  assert.match(html, />Explore upcoming events<\/a>/u);
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
   const orderedHomeSections = [
     'data-home-section="hero"',

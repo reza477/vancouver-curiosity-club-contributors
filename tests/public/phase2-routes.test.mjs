@@ -213,7 +213,10 @@ test("Events renders explicit Upcoming and Calendar views while /calendar forwar
   );
   assert.doesNotMatch(renderer, /calendar-view-switcher/u);
   assert.match(renderer, /<PublicMonthCalendar/u);
-  assert.match(renderer, /<EventCard compact event=\{event\}/u);
+  assert.match(
+    renderer,
+    /<EventCard[\s\S]{0,160}?\bcompact[\s\S]{0,80}?event=\{event\}/u,
+  );
   assert.doesNotMatch(renderer, /EditorialSection|editorial-sections/u);
   assert.doesNotMatch(calendar, /Download upcoming events/u);
   assert.doesNotMatch(

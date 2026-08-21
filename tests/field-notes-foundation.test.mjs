@@ -88,7 +88,8 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(missionCopy, /Building community through curiosity\./u);
   assert.match(missionCopy, /thoughtful public programs across learning, culture, creativity, and shared experience/u);
   assert.match(homeRenderer, /Explore our work/u);
-  assert.match(homeRenderer, /View upcoming events/u);
+  assert.match(homeRenderer, /View the public event calendar/u);
+  assert.match(homeRenderer, /Explore upcoming events/u);
   assert.match(homeRenderer, /Organization at a glance/u);
   assert.match(homeRenderer, /Shared curiosity makes connection easier to begin\./u);
   assert.match(

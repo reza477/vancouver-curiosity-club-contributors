@@ -31,19 +31,19 @@ const partnershipOpportunities = [
 const communityModel = [
   {
     heading: "Arrive without an existing circle",
-    body: "Each gathering offers a clear activity or subject, so people have a natural place to begin.",
+    body: "A clear activity or subject gives people a natural place to begin.",
   },
   {
     heading: "Start with something shared",
-    body: "Books, films, ideas, creative practice, walks, food, and play give conversation useful shape.",
+    body: "Books, films, ideas, making, walks, food, and play give conversation shape.",
   },
   {
     heading: "Have a reason to return",
-    body: "Recurring programs create repeated opportunities to participate and see familiar faces.",
+    body: "Recurring programs create reasons to participate and see familiar faces.",
   },
   {
     heading: "Find more than one way in",
-    body: "Different program formats make room for different interests, energy levels, and kinds of participation.",
+    body: "Different formats make room for varied interests, energy, and participation.",
   },
 ] as const;
 
@@ -85,9 +85,6 @@ export function HomePageRenderer({
             </Link>
             <Link href="/for-organizations">Partner with us</Link>
           </div>
-          <Link className="home-hero__events-link" href="/events">
-            View upcoming events
-          </Link>
         </div>
 
         {heroEvent ? (
@@ -156,15 +153,9 @@ export function HomePageRenderer({
         data-home-section="programs"
         aria-labelledby="home-programs-title"
       >
-        <div className="home-section-heading home-section-heading--split">
-          <div>
-            <p className="section-kicker">What we do</p>
-            <h2 id="home-programs-title">Four ways into community life.</h2>
-          </div>
-          <p>
-            Our program streams give people several ways to gather around a
-            shared subject, activity, or experience.
-          </p>
+        <div className="home-section-heading">
+          <p className="section-kicker">What we do</p>
+          <h2 id="home-programs-title">Four ways into community life.</h2>
         </div>
         <div className="home-programs__list">
           {lanes.map((lane, index) => (
@@ -191,32 +182,31 @@ export function HomePageRenderer({
         data-home-section="work-in-action"
         aria-labelledby="home-work-title"
       >
-        <div className="home-section-heading home-section-heading--split">
-          <div>
-            <p className="section-kicker">Our work in action</p>
-            <h2 id="home-work-title">Upcoming public programs.</h2>
-          </div>
-          <p>
-            Current events show the range of subjects and formats already on
-            the public calendar.
-          </p>
+        <div className="home-section-heading">
+          <p className="section-kicker">Our work in action</p>
+          <h2 id="home-work-title">Upcoming public programs.</h2>
         </div>
         {upcomingEvents.length > 0 ? (
-          <div className="home-work__grid">
-            {upcomingEvents.map((event) => (
-              <HomeWorkEvent event={event} key={event.slug} />
-            ))}
-          </div>
+          <>
+            <div className="home-work__grid">
+              {upcomingEvents.map((event) => (
+                <HomeWorkEvent event={event} key={event.slug} />
+              ))}
+            </div>
+            <Link className="home-work__calendar-link" href="/events">
+              View the public event calendar
+            </Link>
+          </>
         ) : (
-          <div className="public-empty-state">
+          <div className="home-work__empty public-empty-state">
             <p className="section-kicker">Upcoming programs</p>
             <h3>The next public listings are being prepared.</h3>
             <p>Use the event calendar for the latest confirmed information.</p>
+            <Link className="home-work__calendar-link" href="/events">
+              View the public event calendar
+            </Link>
           </div>
         )}
-        <Link className="home-work__calendar-link" href="/events">
-          View the public event calendar
-        </Link>
       </section>
 
       <section
@@ -273,19 +263,13 @@ export function HomePageRenderer({
         data-home-section="communities"
         aria-labelledby="home-communities-title"
       >
-        <div className="home-section-heading home-section-heading--split">
-          <div>
-            <p className="section-kicker">
-              {publicClubs.length === 3
-                ? "One organization, three public communities"
-                : "Public communities"}
-            </p>
-            <h2 id="home-communities-title">Different interests, one public home.</h2>
-          </div>
-          <p>
-            Vancouver Curiosity Club coordinates public communities with
-            different programming interests under this shared website.
+        <div className="home-section-heading">
+          <p className="section-kicker">
+            {publicClubs.length === 3
+              ? "One organization, three public communities"
+              : "Public communities"}
           </p>
+          <h2 id="home-communities-title">Different interests, one public home.</h2>
         </div>
         <div className="home-communities__list">
           {publicClubs.map((club, index) => (

@@ -36,7 +36,13 @@ test("Home renders the approved institutional story in the exact section order",
   );
   assert.match(markup, /href="#our-work"[^>]*>Explore our work<\/a>/u);
   assert.match(markup, /href="\/for-organizations"[^>]*>Partner with us<\/a>/u);
-  assert.match(markup, /href="\/events"[^>]*>View upcoming events<\/a>/u);
+  assert.doesNotMatch(markup, /home-hero__events-link|>View upcoming events<\/a>/u);
+  assert.match(
+    markup,
+    /href="\/events"[^>]*>View the public event calendar<\/a>/u,
+  );
+  assert.match(markup, /href="\/events"[^>]*>Explore upcoming events<\/a>/u);
+  assert.doesNotMatch(markup, /home-section-heading--split/u);
 });
 
 test("Home features one real poster and three distinct later event posters", () => {
