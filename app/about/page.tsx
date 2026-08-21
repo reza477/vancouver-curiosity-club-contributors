@@ -108,7 +108,10 @@ export default async function AboutPage() {
             partnerships and conversations about financial support.
           </p>
           <div className="about-closing__actions">
-            <Link className="primary-action" href="/get-involved#partner">
+            <Link
+              className="primary-action"
+              href="/contact?topic=partnerships#contact-form"
+            >
               Discuss a partnership
             </Link>
             <Link href="/events">See the work in action</Link>

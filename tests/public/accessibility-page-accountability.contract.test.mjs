@@ -73,7 +73,7 @@ test("the public and organizer-preview Accessibility route share one accountable
     /event listings do not yet include venue-access details/u,
   );
   assert.match(markup, /external RSVP destinations/u);
-  assert.match(markup, /<a[^>]*href="\/contact"[^>]*>Feedback form<\/a>/u);
+  assert.match(markup, /<a[^>]*href="\/contact"[^>]*>Contact form<\/a>/u);
 
   assert.match(routeSource, /<AccessibilityRouteBody page=\{loaded\.page\} \/>/u);
   assert.match(

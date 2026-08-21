@@ -14,14 +14,28 @@ export const publicCssModulePaths = Object.freeze([
   "app/styles/components/calendar.css",
   "app/styles/components/forms.css",
   "app/styles/pages/home.css",
-  "app/styles/pages/events.css",
   "app/styles/pages/event-detail.css",
   "app/styles/pages/about.css",
   "app/styles/components/responsive-overrides.css",
 ]);
 
+const publicRouteCssPaths = Object.freeze({
+  events: "public/styles/events.css",
+  organizations: "public/styles/organizations.css",
+});
+
 export async function readPublicCss() {
   return readCssGraph(publicCssEntry, new Set());
+}
+
+export async function readPublicRouteCss(route) {
+  const routeCssPath = publicRouteCssPaths[route];
+  if (!routeCssPath) throw new Error(`Unknown public route stylesheet: ${route}`);
+  const [globalCss, routeCss] = await Promise.all([
+    readPublicCss(),
+    readFile(new URL(routeCssPath, projectRoot), "utf8"),
+  ]);
+  return `${globalCss}\n${routeCss}`;
 }
 
 export function readPublicCssSync() {

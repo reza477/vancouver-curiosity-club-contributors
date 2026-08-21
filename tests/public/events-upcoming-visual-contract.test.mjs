@@ -1,4 +1,4 @@
-import { readPublicCss } from "../helpers/public-css.mjs";
+import { readPublicRouteCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -11,7 +11,7 @@ const VIEWPORTS = Object.freeze([
 const ROOT_FONT_SIZE_PX = 16;
 
 test("Upcoming cards stack on phones and keep posters substantial at larger widths", async () => {
-  const styles = await readPublicCss();
+  const styles = await readPublicRouteCss("events");
 
   for (const viewportWidth of PHONE_VIEWPORTS) {
     const columns = declarationAtViewport(
@@ -55,7 +55,7 @@ test("Upcoming cards stack on phones and keep posters substantial at larger widt
 });
 
 test("Upcoming-card typography keeps titles, dates, associations, and facts balanced", async () => {
-  const styles = await readPublicCss();
+  const styles = await readPublicRouteCss("events");
 
   for (const viewportWidth of VIEWPORTS) {
     const titleSize = fontSizePx(

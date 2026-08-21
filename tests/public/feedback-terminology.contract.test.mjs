@@ -3,183 +3,133 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { HomePageRenderer } from "../../app/_components/HomePageRenderer.tsx";
 import { PublicSubmissionForm } from "../../app/_components/PublicSubmissionForm.tsx";
 import { SiteFooter } from "../../app/_components/SiteFooter.tsx";
 import { normalizedPrimaryNavigation } from "../../app/_components/SiteHeader.tsx";
 import { publicFormLabel } from "../../lib/server/phase7/public-form-contract.ts";
-import { PUBLIC_CATALOG_PAGES } from "../../lib/server/public/catalog-definitions.ts";
-import { buildPublicPageMetadataForOrigin } from "../../lib/server/public/metadata.ts";
 
 const projectRoot = new URL("../../", import.meta.url);
 
-test("the primary header remains exactly Events, Clubs, About, and Feedback", async () => {
-  const header = await source("app/_components/SiteHeader.tsx");
-  const requiredNavigation = header.match(
-    /const requiredNavigation\s*=\s*\[([\s\S]*?)\]\s*as const;/u,
-  )?.[1];
-  assert.ok(requiredNavigation, "the required primary navigation must exist");
-
-  const destinations = [...requiredNavigation.matchAll(
-    /\{\s*href:\s*"([^"]+)",\s*label:\s*"([^"]+)"\s*\}/gu,
-  )].map((match) => ({ href: match[1], label: match[2] }));
-  assert.deepEqual(destinations, [
-    { href: "/events", label: "Events" },
-    { href: "/clubs", label: "Clubs" },
-    { href: "/about", label: "About" },
-    { href: "/contact", label: "Feedback" },
-  ]);
-});
-
-test("configured header order cannot rename or expand the approved destinations", () => {
+test("the primary header is exactly the five approved public destinations", () => {
   assert.deepEqual(
     normalizedPrimaryNavigation(
       Object.freeze([
-        Object.freeze({ href: "/about", label: "Our story" }),
         Object.freeze({ href: "/calendar", label: "Calendar" }),
-        Object.freeze({ href: "/contact", label: "Contact" }),
-        Object.freeze({ href: "/events", label: "Duplicate events" }),
+        Object.freeze({ href: "/contact", label: "Feedback" }),
         Object.freeze({ href: "https://example.com", label: "External" }),
       ]),
     ),
     [
-      { href: "/about", label: "About" },
       { href: "/events", label: "Events" },
-      { href: "/contact", label: "Feedback" },
       { href: "/clubs", label: "Clubs" },
+      { href: "/about", label: "About" },
+      { href: "/for-organizations", label: "For Organizations" },
+      { href: "/contact", label: "Contact" },
     ],
   );
 });
 
-test("Feedback keeps the canonical contact route and complete public metadata", async () => {
-  const [contactRoute, editorialPage] = await Promise.all([
-    source("app/contact/page.tsx"),
-    source("app/_components/EditorialPage.tsx"),
+test("For Organizations is emphasized without becoming an application button", async () => {
+  const [header, styles] = await Promise.all([
+    source("app/_components/SiteHeader.tsx"),
+    source("app/styles/layout.css"),
   ]);
-  const feedbackPage = PUBLIC_CATALOG_PAGES.find(
-    (page) => page.slug === "contact",
-  );
-  assert.ok(feedbackPage, "the contact-keyed public page must exist");
-  const introduction = feedbackPage.sections.find((section) =>
-    ["intro", "hero"].includes(section.type),
-  );
-  assert.ok(introduction, "Feedback must have an introduction");
-  assert.equal(feedbackPage.title, "Feedback");
-  assert.match(String(introduction.content.heading), /feedback/iu);
-  assert.match(String(introduction.content.text), /feedback/iu);
-
-  assert.match(contactRoute, /const route\s*=\s*"\/contact";/u);
-  assert.match(contactRoute, /const slug\s*=\s*"contact";/u);
-  assert.match(contactRoute, /formKey="contact"/u);
-  assert.match(
-    contactRoute,
-    /buildEditorialMetadata\(\{[\s\S]*?fallbackTitle:\s*(?:"Feedback"|feedbackTitle),[\s\S]*?path:\s*route,[\s\S]*?route,[\s\S]*?slug,/u,
-  );
-  assert.match(
-    contactRoute,
-    /<ContactRouteBody page=\{(?:feedbackPage\()?loaded\.page\)?\}>/u,
-  );
 
   assert.match(
-    editorialPage,
-    /<Breadcrumbs[\s\S]*?\{\s*label:\s*page\.title\s*\}/u,
-    "the public breadcrumb must use the Feedback page title",
+    header,
+    /item\.href === "\/for-organizations"[\s\S]*?primary-nav__link--organizations/u,
   );
-  assert.match(
-    editorialPage,
-    /<PageMasthead[\s\S]*?title=\{introduction\?\.content\.heading\s*\?\?\s*page\.title\}/u,
-    "the public H1 must use the Feedback introduction heading or title",
+  assert.match(styles, /\.primary-nav__link--organizations/u);
+  assert.doesNotMatch(
+    styles,
+    /\.primary-nav__link--organizations\s*\{[^}]*(?:border-radius|box-shadow|background:)/su,
   );
-
-  const description = String(introduction.content.text);
-  const metadata = buildPublicPageMetadataForOrigin(
-    {
-      description,
-      pathname: "/contact",
-      title: feedbackPage.title,
-    },
-    new URL("https://preview.example"),
-  );
-  assert.equal(metadata.title, "Feedback");
-  assert.equal(metadata.description, description);
-  assert.equal(
-    metadata.alternates?.canonical,
-    "https://preview.example/contact",
-  );
-  assert.match(String(metadata.openGraph?.title), /^Feedback\b/u);
-  assert.equal(metadata.openGraph?.description, description);
-  assert.equal(metadata.openGraph?.url, "https://preview.example/contact");
-  assert.match(String(metadata.twitter?.title), /^Feedback\b/u);
-  assert.equal(metadata.twitter?.description, description);
 });
 
-test("the visitor form says Feedback while its private organizer key stays Contact", async () => {
-  const [formSource, privateWorkspace] = await Promise.all([
-    source("app/_components/PublicSubmissionForm.tsx"),
-    source("app/_organizer/SubmissionWorkspace.tsx"),
+test("the public Contact form keeps the private contact key and safe partnership preselection", async () => {
+  const [contactSource, routeBodies] = await Promise.all([
+    source("app/contact/page.tsx"),
+    source("app/_components/EditorialRouteBodies.tsx"),
   ]);
   const markup = renderToStaticMarkup(
-    createElement(PublicSubmissionForm, { formKey: "contact" }),
+    createElement(PublicSubmissionForm, {
+      formKey: "contact",
+      id: "contact-form",
+      initialContactTopic: "Partnerships",
+    }),
   );
 
+  assert.equal(publicFormLabel("contact"), "Contact");
   assert.match(markup, /data-form-key="contact"/u);
-  assert.match(markup, /<h2[^>]*>Feedback<\/h2>/u);
-  assert.doesNotMatch(markup, /<h2[^>]*>Contact<\/h2>/u);
-  assert.match(
-    formSource,
-    /case\s+"contact":\s*return\s+"Send feedback";/u,
-    "the hydrated public form button must say Send feedback",
+  assert.match(markup, /<h2[^>]*>Contact<\/h2>/u);
+  assert.match(markup, />Send message<\/button>/u);
+  assert.match(markup, /<option value="Partnerships" selected="">Partnerships<\/option>/u);
+  assert.match(contactSource, /params\.topic === "partnerships" \? "Partnerships" : undefined/u);
+  assert.match(contactSource, /id="contact-form"/u);
+  assert.doesNotMatch(
+    contactSource,
+    /params\.(?:name|replyEmail|email|message|organization)/u,
+    "URL parameters must never prefill personal form fields",
   );
-  assert.equal(
-    publicFormLabel("contact"),
-    "Contact",
-    "the stored form key and private organizer label must not be renamed",
+  const contactBody = routeBodies.slice(
+    routeBodies.indexOf("export function ContactRouteBody"),
+    routeBodies.indexOf("export function HostAnEventRouteBody"),
   );
-  assert.match(
-    privateWorkspace,
-    /publicFormLabel\(submission\.formKey\)/u,
-    "the private submission workspace must retain the internal label helper",
+  const getInvolvedBody = routeBodies.slice(
+    routeBodies.indexOf("export function GetInvolvedRouteBody"),
+    routeBodies.indexOf("export function ContactRouteBody"),
   );
+  assert.match(contactBody, /displayTitle="Contact"/u);
+  assert.match(contactBody, /displayEyebrow="Contact"/u);
+  assert.doesNotMatch(getInvolvedBody, /displayTitle="Contact"/u);
 });
 
-test("configured Contact footer copy is normalized to public Feedback", () => {
+test("the footer contains the approved institutional groups and keeps organizer access footer-only", async () => {
+  const header = await source("app/_components/SiteHeader.tsx");
   const markup = renderToStaticMarkup(
     createElement(SiteFooter, {
+      brandName: "Vancouver Curiosity Club",
+      legalName: "Verified Legal Name",
+      mission:
+        "Thoughtful public programs across learning, culture, creativity, and shared experience.",
       navigation: Object.freeze([
-        Object.freeze({ href: "/contact", label: "Contact" }),
+        Object.freeze({ href: "/contact", label: "Feedback" }),
       ]),
     }),
   );
-  assert.match(markup, /<a[^>]*href="\/contact"[^>]*>Feedback<\/a>/u);
-  assert.doesNotMatch(markup, /<a[^>]*href="\/contact"[^>]*>Contact<\/a>/u);
+
+  for (const label of ["Explore", "Participate", "Community information"]) {
+    assert.match(markup, new RegExp(`>${label}<`, "u"));
+  }
+  for (const [href, label] of [
+    ["/events", "Events"],
+    ["/clubs", "Clubs"],
+    ["/about", "About"],
+    ["/for-organizations", "For Organizations"],
+    ["/get-involved", "Get Involved"],
+    ["/host-an-event", "Host an Event"],
+    ["/contact", "Contact"],
+    ["/conduct", "Code of Conduct"],
+    ["/accessibility", "Accessibility"],
+    ["/privacy", "Privacy"],
+    ["/organizer", "Organizer Login"],
+  ]) {
+    assert.match(markup, new RegExp(`href="${href}"[^>]*>${label}<`, "u"));
+  }
+  assert.match(markup, /Legal name: Verified Legal Name/u);
+  const requiredHeaderNavigation = header.match(
+    /const requiredNavigation\s*=\s*\[([\s\S]*?)\]\s*as const;/u,
+  )?.[1] ?? "";
+  assert.doesNotMatch(requiredHeaderNavigation, /\/organizer|Organizer Login/u);
 });
 
-test("the homepage exposes the partnership path while Get involved retains Host", async () => {
-  const routeBodies = await source("app/_components/EditorialRouteBodies.tsx");
-  const markup = renderToStaticMarkup(
-    createElement(HomePageRenderer, {
-      catalog: Object.freeze({
-        clubs: Object.freeze([]),
-        communityLinks: Object.freeze([]),
-        lanes: Object.freeze([]),
-        site: Object.freeze({ mission: "A thoughtful Vancouver community." }),
-      }),
-      events: Object.freeze([]),
-      origin: null,
-      page: Object.freeze({ slug: "home" }),
-    }),
-  );
-  const main = markup.match(/<main\b[\s\S]*<\/main>/u)?.[0];
-  assert.ok(main, "the homepage main must render");
+test("homepage partnerships enter the existing Contact form", async () => {
+  const home = await source("app/_components/HomePageRenderer.tsx");
   assert.match(
-    main,
-    /<a[^>]*href="\/get-involved#partner"[^>]*>Start a partnership conversation<\/a>/u,
+    home,
+    /href="\/contact\?topic=partnerships#contact-form"[\s\S]*?Discuss a partnership/u,
   );
-  assert.match(
-    routeBodies,
-    /data-contribution-path="host"[\s\S]*?href="\/host-an-event"[\s\S]*?<strong>Host an event<\/strong>/u,
-    "Get involved must continue to offer the Host an event path",
-  );
+  assert.doesNotMatch(home, /\/get-involved#partner/u);
 });
 
 async function source(pathname) {

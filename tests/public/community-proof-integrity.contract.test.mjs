@@ -6,18 +6,18 @@ const projectRoot = new URL("../../", import.meta.url);
 
 test("Home describes designed impact without presenting links as community proof", async () => {
   const home = await source("app/_components/HomePageRenderer.tsx");
-  const mission = sectionSource(home, "home-mission home-community");
+  const mission = sectionSource(home, "home-impact");
 
   assert.match(
     mission,
-    /Our gatherings are designed to make three things easier/u,
+    /Shared curiosity makes connection easier to begin/u,
     "impact copy must describe the program design rather than claim measured outcomes",
   );
+  assert.match(mission, /communityModel\.map/u);
   assert.match(
-    mission,
-    /Arrive without an existing circle[\s\S]*?Connect through substance[\s\S]*?Return to something dependable/u,
+    home,
+    /Arrive without an existing circle[\s\S]*?Start with something shared[\s\S]*?Have a reason to return[\s\S]*?Find more than one way in/u,
   );
-  assert.match(mission, /We are building for the long term/u);
   assert.doesNotMatch(
     home,
     /className="home-proof home-community"|Official community links|>Community proof</u,
@@ -70,15 +70,16 @@ test("Home and About omit the dormant self-authored Reza note", async () => {
 });
 
 test("mission positioning avoids unverified legal and testimonial claims", async () => {
-  const [home, about, formContract, missionCopy] = await Promise.all([
+  const [home, about, organizations, formContract, missionCopy] = await Promise.all([
     source("app/_components/HomePageRenderer.tsx"),
     source("app/about/page.tsx"),
+    source("app/for-organizations/page.tsx"),
     source("lib/server/phase7/public-form-contract.ts"),
     source("lib/public-mission-copy.ts"),
   ]);
-  const publicPositioning = `${home}\n${about}\n${missionCopy}`;
+  const publicPositioning = `${home}\n${about}\n${organizations}\n${missionCopy}`;
 
-  assert.match(publicPositioning, /mission-led/u);
+  assert.match(publicPositioning, /community organization/u);
   assert.match(publicPositioning, /conversations about financial support/u);
   assert.match(
     formContract,

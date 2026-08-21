@@ -148,6 +148,150 @@ export function SiteIdentityEditor({
               value={snapshot.locationLabel}
             />
           </Field>
+          <div className={`${styles.field} ${styles.fieldWide}`}>
+            <span>Institutional facts</span>
+            <p className={styles.helpText}>
+              These values stay private unless the matching public-display
+              confirmation is checked. Totals also require an as-of date.
+              Legal name and registration fields remain in the owner-confirmed
+              Legal Status section below.
+            </p>
+          </div>
+          <Field label="Founding year">
+            <input
+              max={9999}
+              min={1800}
+              onChange={(event) =>
+                setSnapshot({
+                  ...snapshot,
+                  institutionalFacts: {
+                    ...snapshot.institutionalFacts,
+                    foundedYear: event.target.value
+                      ? Number.parseInt(event.target.value, 10)
+                      : null,
+                  },
+                })
+              }
+              type="number"
+              value={snapshot.institutionalFacts.foundedYear ?? ""}
+            />
+          </Field>
+          <label className={styles.checkboxField}>
+            <input
+              checked={snapshot.institutionalFacts.foundedYearConfirmed}
+              onChange={(event) =>
+                setSnapshot({
+                  ...snapshot,
+                  institutionalFacts: {
+                    ...snapshot.institutionalFacts,
+                    foundedYearConfirmed: event.target.checked,
+                  },
+                })
+              }
+              type="checkbox"
+            />
+            <span>Founding year verified for public display</span>
+          </label>
+          <Field label="Attendance total">
+            <input
+              max={100000000}
+              min={0}
+              onChange={(event) =>
+                setSnapshot({
+                  ...snapshot,
+                  institutionalFacts: {
+                    ...snapshot.institutionalFacts,
+                    attendanceTotal: event.target.value
+                      ? Number.parseInt(event.target.value, 10)
+                      : null,
+                  },
+                })
+              }
+              type="number"
+              value={snapshot.institutionalFacts.attendanceTotal ?? ""}
+            />
+          </Field>
+          <Field label="Attendance total as of">
+            <input
+              onChange={(event) =>
+                setSnapshot({
+                  ...snapshot,
+                  institutionalFacts: {
+                    ...snapshot.institutionalFacts,
+                    attendanceTotalAsOf: event.target.value || null,
+                  },
+                })
+              }
+              type="date"
+              value={snapshot.institutionalFacts.attendanceTotalAsOf ?? ""}
+            />
+          </Field>
+          <label className={styles.checkboxField}>
+            <input
+              checked={snapshot.institutionalFacts.attendanceTotalConfirmed}
+              onChange={(event) =>
+                setSnapshot({
+                  ...snapshot,
+                  institutionalFacts: {
+                    ...snapshot.institutionalFacts,
+                    attendanceTotalConfirmed: event.target.checked,
+                  },
+                })
+              }
+              type="checkbox"
+            />
+            <span>Attendance total verified for public display</span>
+          </label>
+          <Field label="Member total">
+            <input
+              max={100000000}
+              min={0}
+              onChange={(event) =>
+                setSnapshot({
+                  ...snapshot,
+                  institutionalFacts: {
+                    ...snapshot.institutionalFacts,
+                    memberTotal: event.target.value
+                      ? Number.parseInt(event.target.value, 10)
+                      : null,
+                  },
+                })
+              }
+              type="number"
+              value={snapshot.institutionalFacts.memberTotal ?? ""}
+            />
+          </Field>
+          <Field label="Member total as of">
+            <input
+              onChange={(event) =>
+                setSnapshot({
+                  ...snapshot,
+                  institutionalFacts: {
+                    ...snapshot.institutionalFacts,
+                    memberTotalAsOf: event.target.value || null,
+                  },
+                })
+              }
+              type="date"
+              value={snapshot.institutionalFacts.memberTotalAsOf ?? ""}
+            />
+          </Field>
+          <label className={styles.checkboxField}>
+            <input
+              checked={snapshot.institutionalFacts.memberTotalConfirmed}
+              onChange={(event) =>
+                setSnapshot({
+                  ...snapshot,
+                  institutionalFacts: {
+                    ...snapshot.institutionalFacts,
+                    memberTotalConfirmed: event.target.checked,
+                  },
+                })
+              }
+              type="checkbox"
+            />
+            <span>Member total verified for public display</span>
+          </label>
           <Field label="Tagline" wide>
             <input
               maxLength={160}

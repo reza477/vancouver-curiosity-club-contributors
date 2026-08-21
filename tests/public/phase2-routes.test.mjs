@@ -17,6 +17,7 @@ const requiredPublicRoutes = [
   "app/clubs/[slug]/page.tsx",
   "app/community/page.tsx",
   "app/about/page.tsx",
+  "app/for-organizations/page.tsx",
   "app/get-involved/page.tsx",
   "app/host-an-event/page.tsx",
   "app/contact/page.tsx",
@@ -51,7 +52,8 @@ test("Phase 2 exposes the complete public route contract", async () => {
     ["/events", "Events"],
     ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/contact", "Feedback"],
+    ["/for-organizations", "For Organizations"],
+    ["/contact", "Contact"],
   ];
   let priorDestinationIndex = -1;
   for (const [href, label] of primaryDestinations) {
@@ -64,7 +66,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
   assert.equal(
     (header.match(/\{ href: "\/[^"]+", label: "[^"]+" \}/gu) ?? [])
       .length,
-    4,
+    5,
   );
   assert.match(
     header,
@@ -76,6 +78,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "/events",
     "/clubs",
     "/about",
+    "/for-organizations",
     "/get-involved",
     "/contact",
     "/conduct",
@@ -101,36 +104,42 @@ test("Phase 2 exposes the complete public route contract", async () => {
   );
   assert.doesNotMatch(home, /CalendarPage|PublicMonthCalendar/u);
   for (const copy of [
-    "A mission-led Vancouver community organization",
-    "Building a lasting home for curiosity.",
-    "Our mission is to make meaningful connection easier to find—and easier to return to.",
-    "Read our mission",
-    "Upcoming community programs",
-    "Coming for the first time?",
-    "Connection grows when people have a reason to return.",
-    "recurring programs across three official Meetup groups",
-    "Start a partnership conversation",
-    "See upcoming gatherings",
+    "A Vancouver community organization",
+    "Building community through curiosity.",
+    "Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience.",
+    "Explore our work",
+    "Organization at a glance",
+    "Four ways into community life.",
+    "Upcoming public programs.",
+    "Shared curiosity makes connection easier to begin.",
+    "Discuss a partnership",
+    "Explore upcoming events",
   ]) {
     assert.ok(homePositioning.includes(copy), copy);
   }
   const homepageSections = [
-    "home-hero",
-    "home-events",
-    "home-newcomer attending-note",
-    "lane-index",
-    "home-mission home-community",
-    "home-closing home-invitation",
+    "hero",
+    "at-a-glance",
+    "programs",
+    "work-in-action",
+    "why-it-matters",
+    "partnerships",
+    "communities",
+    "public-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 6);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
   let priorSectionIndex = -1;
-  for (const className of homepageSections) {
-    const sectionIndex = homeRenderer.indexOf(`className="${className}"`);
-    assert.ok(sectionIndex > priorSectionIndex, className);
+  for (const sectionName of homepageSections) {
+    const sectionIndex = homeRenderer.indexOf(
+      `data-home-section="${sectionName}"`,
+    );
+    assert.ok(sectionIndex > priorSectionIndex, sectionName);
     priorSectionIndex = sectionIndex;
   }
-  assert.doesNotMatch(homeRenderer, /className="home-(?:clubs|proof)/u);
-  assert.match(homeRenderer, /href="\/get-involved#partner"/u);
+  assert.match(
+    homeRenderer,
+    /href="\/contact\?topic=partnerships#contact-form"/u,
+  );
   assert.doesNotMatch(
     homeRenderer,
     /PublicMonthCalendar|public-calendar__grid|calendar-view-switcher/u,

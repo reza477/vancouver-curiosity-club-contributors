@@ -6,6 +6,7 @@ import {
   PARTNERSHIP_TYPES,
   VOLUNTEER_INTERESTS,
   publicFormLabel,
+  type ContactTopic,
   type PublicFormKey,
 } from "@/lib/server/phase7/public-form-contract";
 import { PUBLIC_FORM_MINIMUM_COMPLETION_MS } from "@/lib/server/phase7/public-form-protection";
@@ -30,10 +31,12 @@ export function PublicSubmissionForm({
   choices = [],
   formKey,
   id,
+  initialContactTopic,
 }: Readonly<{
   choices?: readonly PublicFormChoice[];
   formKey: PublicFormKey;
   id?: string;
+  initialContactTopic?: ContactTopic;
 }>) {
   const [instanceToken, setInstanceToken] = useState("");
   const [instanceState, setInstanceState] =
@@ -45,7 +48,7 @@ export function PublicSubmissionForm({
   const [success, setSuccess] = useState(false);
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [values, setValues] = useState<FormState>(() =>
-    initialValues(formKey),
+    initialValues(formKey, initialContactTopic),
   );
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -208,8 +211,7 @@ export function PublicSubmissionForm({
     setInstanceRequest((current) => current + 1);
   }
 
-  const title =
-    formKey === "contact" ? "Feedback" : publicFormLabel(formKey);
+  const title = publicFormLabel(formKey);
   return (
     <section
       className="public-submission"
@@ -521,7 +523,7 @@ export function PublicSubmissionForm({
 function submitButtonLabel(formKey: PublicFormKey): string {
   switch (formKey) {
     case "contact":
-      return "Send feedback";
+      return "Send message";
     case "volunteer":
       return "Send volunteer interest";
     case "host_event":
@@ -727,9 +729,18 @@ function CheckboxGroup({
   );
 }
 
-function initialValues(formKey: PublicFormKey): FormState {
+function initialValues(
+  formKey: PublicFormKey,
+  initialContactTopic?: ContactTopic,
+): FormState {
   const base = { name: "", replyEmail: "" };
-  if (formKey === "contact") return { ...base, topic: "", message: "" };
+  if (formKey === "contact") {
+    return {
+      ...base,
+      topic: initialContactTopic ?? "",
+      message: "",
+    };
+  }
   if (formKey === "volunteer") {
     return {
       ...base,

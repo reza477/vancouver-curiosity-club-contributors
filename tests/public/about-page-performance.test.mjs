@@ -66,7 +66,7 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     about,
-    /<Link\s+className="primary-action"\s+href="\/get-involved#partner">[\s\S]*?Discuss a partnership[\s\S]*?<\/Link>/u,
+    /<Link[\s\S]*?className="primary-action"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?>[\s\S]*?Discuss a partnership[\s\S]*?<\/Link>/u,
     "About must give prospective partners a focused next step",
   );
   assert.match(
@@ -131,9 +131,10 @@ test("primary navigation applies selective public prefetching", async () => {
       { href: "/events", label: "Events" },
       { href: "/clubs", label: "Clubs" },
       { href: "/about", label: "About" },
-      { href: "/contact", label: "Feedback" },
+      { href: "/for-organizations", label: "For Organizations" },
+      { href: "/contact", label: "Contact" },
     ],
-    "removing speculative work must not change primary hrefs or order",
+    "the institutional redesign must preserve the approved primary hrefs and order",
   );
 
   const navigationLinks = sourceSection(

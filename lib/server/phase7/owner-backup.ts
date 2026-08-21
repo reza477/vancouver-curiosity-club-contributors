@@ -13,7 +13,7 @@ import {
   parseClubProfileSnapshot,
   parseCommunityLinkSnapshot,
   parseLegalStatusSnapshot,
-  parseNavigationSnapshot,
+  parsePersistedNavigationSnapshot,
   parsePageSnapshot,
   parseProgramProfileSnapshot,
   parseSiteIdentitySnapshot,
@@ -731,7 +731,7 @@ function sanitizeCmsRevisionSnapshot(
         );
       case "navigation":
         return sanitizeCmsNavigationSnapshot(
-          parseNavigationSnapshot(parsed),
+          parsePersistedNavigationSnapshot(parsed),
         );
       case "site_identity":
         return sanitizeCmsSiteIdentitySnapshot(
@@ -843,7 +843,7 @@ function sanitizeCmsCommunitySnapshot(
 }
 
 function sanitizeCmsNavigationSnapshot(
-  snapshot: ReturnType<typeof parseNavigationSnapshot>,
+  snapshot: ReturnType<typeof parsePersistedNavigationSnapshot>,
 ): Readonly<Record<string, unknown>> {
   return Object.freeze({
     items: Object.freeze(
@@ -866,6 +866,19 @@ function sanitizeCmsSiteIdentitySnapshot(
   return Object.freeze({
     brandName: safeText(snapshot.brandName),
     footerMission: safeText(snapshot.footerMission),
+    institutionalFacts: Object.freeze({
+      attendanceTotal: snapshot.institutionalFacts.attendanceTotal,
+      attendanceTotalAsOf: snapshot.institutionalFacts.attendanceTotalAsOf,
+      attendanceTotalConfirmed:
+        snapshot.institutionalFacts.attendanceTotalConfirmed,
+      foundedYear: snapshot.institutionalFacts.foundedYear,
+      foundedYearConfirmed:
+        snapshot.institutionalFacts.foundedYearConfirmed,
+      memberTotal: snapshot.institutionalFacts.memberTotal,
+      memberTotalAsOf: snapshot.institutionalFacts.memberTotalAsOf,
+      memberTotalConfirmed:
+        snapshot.institutionalFacts.memberTotalConfirmed,
+    }),
     locationLabel: safeText(snapshot.locationLabel),
     logoAssetId: snapshot.logoAssetId,
     metaDescription: safeText(snapshot.metaDescription),

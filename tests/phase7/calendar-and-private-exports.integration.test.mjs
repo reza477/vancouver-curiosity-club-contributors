@@ -819,6 +819,34 @@ test("Owner backup projects nested CMS and settings JSON through contextual allo
   }
 });
 
+test("Owner backup preserves valid legacy navigation revisions", async () => {
+  const database = fixture();
+  try {
+    seedLegacyNavigationRevision(database);
+    const download = await createOwnerJsonBackup(database, OWNER, {
+      confirmation: "GENERATE SENSITIVE OWNER BACKUP",
+      generatedAt: NOW,
+      sourceRevision: SOURCE_REVISION,
+    });
+    const backup = JSON.parse(download.body);
+    const revision = backup.sections.cmsRevisions.find(
+      (candidate) => candidate.id === "cms-revision-legacy-navigation",
+    );
+    assert.equal(revision.entityType, "navigation");
+    assert.equal(revision.snapshot.items.length, 15);
+    assert.equal(
+      revision.snapshot.items.some(
+        (item) =>
+          item.placement === "header" && item.target === "/community",
+      ),
+      true,
+    );
+    assert.notDeepEqual(revision.snapshot, { unavailable: true });
+  } finally {
+    database.close();
+  }
+});
+
 test("Owner backup rejects an invalid source revision before reading or auditing", async () => {
   const database = fixture();
   try {
@@ -1603,6 +1631,65 @@ function seedNestedBackupSentinels(database) {
                  'profile-owner', ?, ?)`,
     )
     .bind("setting-backup-safety", settingJson, NOW, NOW)
+    .runSynchronously();
+}
+
+function seedLegacyNavigationRevision(database) {
+  const snapshot = JSON.stringify({
+    items: [
+      ["events", "Events", "header", 10, "/events"],
+      ["clubs", "Clubs", "header", 20, "/clubs"],
+      ["community", "Community", "header", 30, "/community"],
+      ["about", "About", "header", 40, "/about"],
+      ["involved", "Get Involved", "header", 50, "/get-involved"],
+      ["organizer", "Organizer Login", "header", 60, "/organizer"],
+      ["footer-events", "Events", "footer", 10, "/events"],
+      ["footer-clubs", "Clubs", "footer", 20, "/clubs"],
+      ["footer-community", "Community", "footer", 30, "/community"],
+      ["footer-about", "About", "footer", 40, "/about"],
+      ["footer-involved", "Get Involved", "footer", 50, "/get-involved"],
+      ["footer-contact", "Feedback", "footer", 60, "/contact"],
+      ["footer-accessibility", "Accessibility", "footer", 70, "/accessibility"],
+      ["footer-conduct", "Code of Conduct", "footer", 80, "/conduct"],
+      ["footer-privacy", "Privacy", "footer", 90, "/privacy"],
+    ].map(([id, label, placement, sortOrder, target]) => ({
+      id,
+      label,
+      placement,
+      sortOrder,
+      target,
+    })),
+  });
+  database
+    .prepare(
+      `INSERT INTO cms_entity_publication_states (
+         id, organization_id, entity_type, entity_key, workflow_status,
+         content_version, current_draft_revision_id, published_revision_id,
+         last_editor_profile_id, draft_updated_at, published_at,
+         unpublished_at, adopted_at, created_at, updated_at
+       ) VALUES (?, 'org-vcc', 'navigation', 'navigation', 'archived', 1,
+                 NULL, NULL, 'profile-owner', NULL, NULL, NULL, NULL, ?, ?)`,
+    )
+    .bind("cms-state-legacy-navigation", NOW, NOW)
+    .runSynchronously();
+  database
+    .prepare(
+      `INSERT INTO cms_entity_revisions (
+         id, organization_id, publication_state_id, entity_type, entity_key,
+         revision_number, snapshot_json, content_hash, canonical_byte_size,
+         restored_from_revision_id, legacy_page_revision_id,
+         actor_profile_id, created_at
+       ) VALUES (?, 'org-vcc', ?, 'navigation', 'navigation', 1, ?, ?, ?,
+                 NULL, NULL, 'profile-owner', ?)`,
+    )
+    .bind(
+      "cms-revision-legacy-navigation",
+      "cms-state-legacy-navigation",
+      snapshot,
+      "d".repeat(64),
+      Buffer.byteLength(snapshot),
+      NOW,
+    )
     .runSynchronously();
 }
 

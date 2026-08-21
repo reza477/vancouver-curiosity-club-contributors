@@ -117,7 +117,7 @@ test("the month calendar uses substantial brand accents without losing non-colou
     readPublicCss(),
   ]);
 
-  for (const viewportWidth of [390, 768, 1440]) {
+  for (const viewportWidth of [390, 768, 1366, 1440]) {
     const toolbarBackground = lastDeclarationAtViewport(
       styles,
       ".public-calendar__toolbar",
@@ -213,7 +213,7 @@ test("the month calendar uses substantial brand accents without losing non-colou
 
 test("the calendar month title has no offset text shadow", async () => {
   const styles = await readPublicCss();
-  for (const viewportWidth of [390, 768, 1440]) {
+  for (const viewportWidth of [390, 768, 1366, 1440]) {
     const textShadow = lastDeclarationAtViewport(
       styles,
       ".public-calendar__title",
@@ -227,7 +227,7 @@ test("the calendar month title has no offset text shadow", async () => {
   }
 });
 
-test("event posters stay horizontal and uncropped across desktop, tablet, and phone discovery surfaces", async () => {
+test("event posters stay uncropped while established discovery frames remain horizontal", async () => {
   const [calendar, cards, styles] = await Promise.all([
     readFile(
       new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
@@ -237,11 +237,8 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
     readPublicCss(),
   ]);
 
-  for (const viewportWidth of [390, 768, 1440]) {
-    for (const selector of [
-      ".home-hero__poster img",
-      ".event-detail__artwork-frame",
-    ]) {
+  for (const viewportWidth of [390, 768, 1366, 1440]) {
+    for (const selector of [".event-detail__artwork-frame"]) {
       const ratio = horizontalRatio(
         lastDeclarationAtViewport(
           styles,
@@ -257,7 +254,6 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
     }
     for (const selector of [
       ".event-detail__lead > .event-detail__artwork--fallback",
-      ".home-hero__poster--fallback",
     ]) {
       const ratio = horizontalRatio(
         lastDeclarationAtViewport(
@@ -299,9 +295,52 @@ test("event posters stay horizontal and uncropped across desktop, tablet, and ph
         `${selector} must stay uncropped at ${viewportWidth}px`,
       );
     }
+    assert.equal(
+      lastDeclarationAtViewport(
+        styles,
+        ".home-hero__poster img",
+        "width",
+        viewportWidth,
+      ),
+      "100%",
+      `the homepage hero poster must remain responsive at ${viewportWidth}px`,
+    );
+    assert.equal(
+      lastDeclarationAtViewport(
+        styles,
+        ".home-hero__poster img",
+        "background",
+        viewportWidth,
+      ),
+      "var(--paper-deep)",
+      `the homepage hero must keep a light loading surface at ${viewportWidth}px`,
+    );
   }
 
-  for (const viewportWidth of [320, 375, 768, 1024, 1440]) {
+  for (const viewportWidth of [320, 375, 768, 1024, 1366, 1440]) {
+    const homeWorkRatio = horizontalRatio(
+      lastDeclarationAtViewport(
+        styles,
+        ".home-work-card__media",
+        "aspect-ratio",
+        viewportWidth,
+      ),
+    );
+    assert.ok(
+      homeWorkRatio !== null && homeWorkRatio >= 1.5,
+      `homepage work posters should resolve to a horizontal frame at ${viewportWidth}px`,
+    );
+    assert.equal(
+      lastDeclarationAtViewport(
+        styles,
+        ".home-work-card__media img",
+        "object-fit",
+        viewportWidth,
+      ),
+      "contain",
+      `homepage work posters must stay uncropped at ${viewportWidth}px`,
+    );
+
     const ratio = horizontalRatio(
       lastDeclarationAtViewport(
         styles,

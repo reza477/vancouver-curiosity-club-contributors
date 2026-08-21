@@ -150,6 +150,7 @@ type PublicShell = Readonly<{
   footerNavigation: readonly PublicNavigationItemDto[];
   headerNavigation: readonly PublicNavigationItemDto[];
   legalFooter: string | null;
+  legalName: string | null;
   location: string;
   logoAssetId: string | null;
   mission: string;
@@ -203,6 +204,7 @@ export default async function RootLayout({
           footerNavigation: navigation.footer,
           headerNavigation: navigation.header,
           legalFooter: site.legalFooter,
+          legalName: site.legalName,
           location: site.locationLabel,
           logoAssetId,
           mission: site.footerMission,
@@ -269,6 +271,7 @@ export default async function RootLayout({
             brandName={shell?.brandName}
             externalLinks={shell?.externalLinks}
             legalFooter={shell?.legalFooter}
+            legalName={shell?.legalName}
             location={shell?.location}
             mission={shell?.mission}
             navigation={shell?.footerNavigation}

@@ -43,6 +43,13 @@ const PUBLIC_SECTION_KEYS = [
 export type PublicSiteContextDto = Readonly<{
   brandName: string;
   footerMission: string;
+  institutionalFacts: Readonly<{
+    attendanceTotal: number | null;
+    attendanceTotalAsOf: string | null;
+    foundedYear: number | null;
+    memberTotal: number | null;
+    memberTotalAsOf: string | null;
+  }>;
   legalFooter: string | null;
   legalName: string | null;
   locationLabel: string;
@@ -903,6 +910,9 @@ export async function getPublicSiteContext(
   if (!brandName || !locationLabel || !mission || !tagline) return null;
   const footerMission =
     publicBoundedText(value.footerMission, 1_000) ?? mission;
+  const institutionalFacts = publicInstitutionalFacts(
+    value.institutionalFacts,
+  );
   const legalFooter = publicBoundedText(legalValue?.footerWording, 500);
   const legalName = publicBoundedText(legalValue?.legalName, 240);
   const seoTitle = publicBoundedText(value.seoTitle, 60);
@@ -917,6 +927,7 @@ export async function getPublicSiteContext(
   return Object.freeze({
     brandName,
     footerMission,
+    institutionalFacts,
     legalFooter,
     legalName,
     locationLabel,
@@ -929,6 +940,74 @@ export async function getPublicSiteContext(
     tagline,
     typography,
   });
+}
+
+function publicInstitutionalFacts(
+  value: unknown,
+): PublicSiteContextDto["institutionalFacts"] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return Object.freeze({
+      attendanceTotal: null,
+      attendanceTotalAsOf: null,
+      foundedYear: null,
+      memberTotal: null,
+      memberTotalAsOf: null,
+    });
+  }
+  const facts = value as Record<string, unknown>;
+  const attendanceTotal =
+    facts.attendanceTotalConfirmed === true
+      ? publicWholeNumber(facts.attendanceTotal, 100_000_000)
+      : null;
+  const attendanceTotalAsOf =
+    attendanceTotal !== null
+      ? publicCalendarDate(facts.attendanceTotalAsOf)
+      : null;
+  const foundedYear =
+    facts.foundedYearConfirmed === true
+      ? publicWholeNumber(facts.foundedYear, 9_999, 1_800)
+      : null;
+  const memberTotal =
+    facts.memberTotalConfirmed === true
+      ? publicWholeNumber(facts.memberTotal, 100_000_000)
+      : null;
+  const memberTotalAsOf =
+    memberTotal !== null ? publicCalendarDate(facts.memberTotalAsOf) : null;
+  return Object.freeze({
+    attendanceTotal:
+      attendanceTotalAsOf === null ? null : attendanceTotal,
+    attendanceTotalAsOf,
+    foundedYear,
+    memberTotal: memberTotalAsOf === null ? null : memberTotal,
+    memberTotalAsOf,
+  });
+}
+
+function publicWholeNumber(
+  value: unknown,
+  maximum: number,
+  minimum = 0,
+): number | null {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= minimum &&
+    value <= maximum
+    ? value
+    : null;
+}
+
+function publicCalendarDate(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/u.test(value)
+  ) {
+    return null;
+  }
+  const date = new Date(`${value}T12:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== value
+    ? null
+    : value;
 }
 
 export async function listPublicLanes(
@@ -1506,17 +1585,17 @@ export async function listPublicNavigation(
   const requiredHeaderTargets = new Set<string>([
     "/events",
     "/clubs",
-    "/community",
     "/about",
-    "/get-involved",
-    "/organizer",
+    "/for-organizations",
+    "/contact",
   ]);
   const requiredFooterTargets = new Set<string>([
     "/events",
     "/clubs",
-    "/community",
     "/about",
+    "/for-organizations",
     "/get-involved",
+    "/host-an-event",
     "/contact",
     "/accessibility",
     "/conduct",
@@ -2755,7 +2834,8 @@ function cleanConfirmedHttpsUrl(value: unknown): string | null {
 }
 
 function cleanPublicNavigationHref(value: unknown): string | null {
-  return value === "/organizer" ? "/organizer" : cleanConfirmedHttpsUrl(value);
+  if (value === "/organizer" || value === "/for-organizations") return value;
+  return cleanConfirmedHttpsUrl(value);
 }
 
 function cleanPublicContentUrl(value: unknown): string | null {

@@ -126,6 +126,16 @@ test("populated Phase 5 content adopts atomically without changing its public fa
     brandName: "Vancouver Curiosity Club",
     footerMission:
       "Thoughtful events for people who like learning in company.",
+    institutionalFacts: {
+      attendanceTotal: null,
+      attendanceTotalAsOf: null,
+      attendanceTotalConfirmed: false,
+      foundedYear: null,
+      foundedYearConfirmed: false,
+      memberTotal: null,
+      memberTotalAsOf: null,
+      memberTotalConfirmed: false,
+    },
     locationLabel: "Vancouver, British Columbia",
     logoAssetId: null,
     metaDescription:

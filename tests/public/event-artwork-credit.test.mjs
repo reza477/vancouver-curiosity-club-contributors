@@ -93,7 +93,7 @@ test("homepage discovery hides the repeated Meetup credit in both hero and cards
   const customMarkup = renderToStaticMarkup(
     createElement(HomePageRenderer, homeProps(CUSTOM_CREDIT)),
   );
-  assert.ok(
+  assert.equal(
     (customMarkup.match(/Artwork: Illustration by A\. Neighbour/gu) ?? [])
       .length,
     4,

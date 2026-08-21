@@ -14,23 +14,39 @@ export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return buildEditorialMetadata({
-    fallbackTitle: "Feedback",
+    descriptionOverride:
+      "Contact Vancouver Curiosity Club about partnerships, events, accessibility, media, or another question.",
+    fallbackTitle: "Contact",
     path: route,
     route,
     slug,
+    titleOverride: "Contact",
   });
 }
 
-export default async function ContactPage() {
+type PageSearchParams = Promise<
+  Record<string, string | string[] | undefined>
+>;
+
+export default async function ContactPage({
+  searchParams,
+}: Readonly<{ searchParams: PageSearchParams }>) {
+  const params = await searchParams;
   const loaded = await loadEditorialPage(slug, route);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "unavailable") {
-    return <EditorialUnavailable title="Feedback" />;
+    return <EditorialUnavailable title="Contact" />;
   }
 
   return (
     <ContactRouteBody page={loaded.page}>
-      <PublicSubmissionForm formKey="contact" />
+      <PublicSubmissionForm
+        formKey="contact"
+        id="contact-form"
+        initialContactTopic={
+          params.topic === "partnerships" ? "Partnerships" : undefined
+        }
+      />
     </ContactRouteBody>
   );
 }

@@ -40,7 +40,7 @@ const formCases = Object.freeze([
   Object.freeze({
     formKey: "contact",
     primaryField: "message",
-    submitLabel: "Send feedback",
+    submitLabel: "Send message",
   }),
   Object.freeze({
     formKey: "volunteer",
@@ -316,11 +316,11 @@ async function formPageMarkups() {
   });
   return Object.freeze(await Promise.all([
     Object.freeze([
-      "Feedback",
+      "Contact",
       render(
         createElement(
           ContactRouteBody,
-          { page: page("contact", "Feedback"), privatePreview: true },
+          { page: page("contact", "Contact"), privatePreview: true },
           createElement(PublicSubmissionForm, { formKey: "contact" }),
         ),
       ),

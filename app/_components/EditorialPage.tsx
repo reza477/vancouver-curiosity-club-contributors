@@ -141,6 +141,7 @@ export async function buildEditorialMetadata({
   path,
   route,
   slug,
+  titleOverride,
 }: Readonly<{
   absoluteTitle?: boolean;
   descriptionOverride?: string;
@@ -148,6 +149,7 @@ export async function buildEditorialMetadata({
   path: string;
   route: string;
   slug: string;
+  titleOverride?: string;
 }>): Promise<Metadata> {
   const [loaded, support, origin] = await Promise.all([
     loadEditorialPage(slug, route),
@@ -206,7 +208,11 @@ export async function buildEditorialMetadata({
       socialMedia = null;
     }
   }
-  const title = page?.seoTitle ?? page?.title ?? fallbackTitle;
+  const title =
+    (page ? titleOverride : undefined) ??
+    page?.seoTitle ??
+    page?.title ??
+    fallbackTitle;
   const description = page
     ? (descriptionOverride ??
       page.metaDescription ??
@@ -296,6 +302,9 @@ export function buildEditorialMetadataFromResolved({
 
 export async function EditorialPage({
   children,
+  displayDeck,
+  displayEyebrow,
+  displayTitle,
   page,
   previewCommunityLinks,
   privatePreview = false,
@@ -303,6 +312,9 @@ export async function EditorialPage({
   tone = "think",
 }: Readonly<{
   children?: ReactNode;
+  displayDeck?: string;
+  displayEyebrow?: string;
+  displayTitle?: string;
   page: PublicPageDto;
   previewCommunityLinks?: readonly PublicCommunityLinkDto[];
   privatePreview?: boolean;
@@ -310,6 +322,8 @@ export async function EditorialPage({
   tone?: FieldArtworkTone;
 }>) {
   const introduction = introductionFor(page);
+  const publicTitle =
+    displayTitle ?? introduction?.content.heading ?? page.title;
   const sections = page.sections.filter(
     (section) => section !== introduction,
   );
@@ -326,23 +340,28 @@ export async function EditorialPage({
       <Breadcrumbs
         items={[
           { href: "/", label: "Home" },
-          { label: page.title },
+          { label: displayTitle ?? page.title },
         ]}
       />
       <PageMasthead
         deck={
+          displayDeck ??
           introduction?.content.text ??
           "Stories and information from Vancouver Curiosity Club."
         }
-        eyebrow={introduction?.content.eyebrow ?? "Field notes"}
-        title={introduction?.content.heading ?? page.title}
+        eyebrow={
+          displayEyebrow ??
+          introduction?.content.eyebrow ??
+          "Field notes"
+        }
+        title={publicTitle}
         tone={tone}
       />
 
       {introduction?.content.paragraphs?.length ? (
         <section
           className="editorial-section editorial-section--prose"
-          aria-label={`${page.title} details`}
+          aria-label={`${displayTitle ?? page.title} details`}
         >
           {introduction.content.paragraphs.map((paragraph, index) => (
             <p key={`introduction-${index}`}>{paragraph}</p>
@@ -377,7 +396,7 @@ export async function EditorialPage({
               {
                 "@type": "ListItem",
                 position: 2,
-                name: page.title,
+                name: displayTitle ?? page.title,
                 item: publicUrl(
                   page.slug === "home" ? "/" : `/${page.slug}`,
                   origin,

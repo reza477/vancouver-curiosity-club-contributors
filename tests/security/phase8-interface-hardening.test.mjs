@@ -145,7 +145,8 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
     ["/events", "Events"],
     ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/contact", "Feedback"],
+    ["/for-organizations", "For Organizations"],
+    ["/contact", "Contact"],
   ]) {
     assert.match(
       header,
@@ -160,13 +161,18 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
   assert.doesNotMatch(header, /pathname === "\/"/u);
   assertRuleContains(css, ".primary-nav", [
     /display:\s*grid;/u,
-    /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/u,
-    /border:\s*1px solid var\(--ink\);/u,
+    /grid-template-columns:\s*repeat\(5, minmax\(0, auto\)\);/u,
+  ]);
+  assertRuleContains(css, ".primary-nav", [
+    /border:\s*0;/u,
+    /background:\s*transparent;/u,
+    /box-shadow:\s*none;/u,
   ]);
   assertRuleContains(css, ".primary-nav a", [/min-height:\s*3rem;/u]);
   assertRuleContains(css, '.primary-nav a[aria-current="page"]', [
-    /background:\s*[^;]+;/u,
+    /background:\s*transparent;/u,
     /color:\s*[^;]+;/u,
+    /box-shadow:\s*inset 0 -0\.18rem 0 var\(--forest\);/u,
   ]);
 
   const tabletStyles = atRuleBlocks(css, "@media (max-width: 70rem)")[0] ?? "";
@@ -174,7 +180,7 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
 
   const phoneStyles = atRuleBlocks(css, "@media (max-width: 30rem)")[0] ?? "";
   assertRuleContains(phoneStyles, ".primary-nav", [
-    /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u,
+    /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/u,
   ]);
   assertRuleContains(phoneStyles, ".primary-nav a", [
     /min-height:\s*2\.75rem;/u,
@@ -256,7 +262,7 @@ test("public navigation uses selective prefetch while private previews stay opte
     /className="wordmark"[\s\S]*?prefetch=\{prefetchInternalLinks\}/u,
   );
   assert.match(header, /normalizedPrimaryNavigation\(navigation\)/u);
-  assert.match(header, /for \(const sourceItem of configured\)/u);
+  assert.match(header, /return Object\.freeze\(\[\.\.\.requiredNavigation\]\)/u);
   assert.doesNotMatch(
     header,
     /\{ href: "\/organizer", label: "Organizer Login" \}/u,

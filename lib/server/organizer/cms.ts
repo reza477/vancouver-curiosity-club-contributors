@@ -28,6 +28,7 @@ import {
   canonicalJson,
   contrastRatio,
   contentHash,
+  institutionalNavigationItems,
   assertLegalStatusSnapshotCoherent,
   assertPagePublicationStructure,
   parseClubProfileSnapshot,
@@ -36,6 +37,7 @@ import {
   parseExpectedContentVersion,
   parseLegalStatusSnapshot,
   parseNavigationSnapshot,
+  parsePersistedNavigationSnapshot,
   parsePageSnapshot,
   parsePublishInput,
   parseProgramProfileSnapshot,
@@ -654,7 +656,7 @@ export async function readCmsRevisionPreview(
   } catch {
     throw serviceUnavailable();
   }
-  let snapshot = parseSnapshot(entityType, raw);
+  let snapshot = parsePersistedSnapshot(entityType, raw);
   let clubRelatedResources: readonly Readonly<{
     label: string;
     url: string;
@@ -1245,13 +1247,25 @@ export async function restoreCmsRevisionAsDraft(
     input.revisionId,
   );
   if (!source) throw notFound();
+  let restoredSnapshot = source.snapshot;
+  if (entityType === "navigation") {
+    try {
+      parseNavigationSnapshot(source.snapshot);
+    } catch {
+      restoredSnapshot = Object.freeze({
+        items: institutionalNavigationItems(
+          (source.snapshot as CmsNavigationSnapshot).items,
+        ),
+      });
+    }
+  }
   await saveRevision(database, actor, {
     entityKey,
     entityType,
     expectedContentVersion: input.expectedContentVersion,
     now: parseTimestamp(nowUtcMs),
     restoredFromRevisionId: source.id,
-    snapshot: source.snapshot,
+    snapshot: restoredSnapshot,
   });
   return readCmsEntityWorkspace(database, identity, entityType, entityKey);
 }
@@ -1333,6 +1347,7 @@ async function publishRevisionForActor(
     state.currentDraftRevisionId,
   );
   if (!revision) throw serviceUnavailable();
+  parseSnapshot(entityType, revision.snapshot);
   await assertNoHistoricalOrganizerEmail(
     database,
     actor.organizationId,
@@ -3905,6 +3920,7 @@ async function saveRevision(
     snapshot: CmsSnapshot;
   }>,
 ): Promise<number> {
+  parseSnapshot(input.entityType, input.snapshot);
   const state = await readState(
     database,
     actor.organizationId,
@@ -6199,9 +6215,10 @@ async function navigationPublicationStatements(
                  AND published_at IS NOT NULL AND deleted_at IS NULL
                LIMIT 1
              )
-             WHEN json_extract(item.value, '$.target') LIKE '/%'
-              AND json_extract(item.value, '$.target') <> '/organizer'
-             THEN (
+              WHEN json_extract(item.value, '$.target') LIKE '/%'
+               AND json_extract(item.value, '$.target') <> '/organizer'
+               AND json_extract(item.value, '$.target') <> '/for-organizations'
+              THEN (
                SELECT id FROM pages
                WHERE organization_id = ?
                  AND slug = substr(json_extract(item.value, '$.target'), 2)
@@ -6212,11 +6229,14 @@ async function navigationPublicationStatements(
              ELSE NULL
            END,
            CASE
-             WHEN json_extract(item.value, '$.target') = '/organizer'
-               OR json_extract(item.value, '$.target') LIKE 'https://%'
-             THEN json_extract(item.value, '$.target')
-             ELSE NULL
-           END,
+              WHEN json_extract(item.value, '$.target') IN (
+                     '/organizer',
+                     '/for-organizations'
+                   )
+                OR json_extract(item.value, '$.target') LIKE 'https://%'
+              THEN json_extract(item.value, '$.target')
+              ELSE NULL
+            END,
            json_extract(item.value, '$.sortOrder'), 1, ?, ?, ?, NULL
          FROM json_each(?) AS item
          WHERE ${guard.sql}
@@ -7973,7 +7993,7 @@ async function readRevision(
     contentHash: requiredString(row.content_hash),
     id: requiredString(row.id),
     revisionNumber: requiredInteger(row.revision_number),
-    snapshot: parseSnapshot(state.entityType, raw),
+    snapshot: parsePersistedSnapshot(state.entityType, raw),
   });
 }
 
@@ -9516,6 +9536,15 @@ function parseSnapshot(
     case "legal_status":
       return parseLegalStatusSnapshot(value);
   }
+}
+
+function parsePersistedSnapshot(
+  entityType: CmsEntityType,
+  value: unknown,
+): CmsSnapshot {
+  return entityType === "navigation"
+    ? parsePersistedNavigationSnapshot(value)
+    : parseSnapshot(entityType, value);
 }
 
 function projectionGuard(

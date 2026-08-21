@@ -136,6 +136,7 @@ const PUBLIC_PATHS = [
   "/clubs",
   "/clubs/vancouver-curiosity-club",
   "/about",
+  "/for-organizations",
   "/get-involved",
   "/host-an-event",
   "/contact",
@@ -772,34 +773,30 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(
     html,
-    /name="description" content="Vancouver Curiosity Club brings people together through thoughtful gatherings built around learning, culture, creativity, and shared experience\."/iu,
+    /name="description" content="Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\."/iu,
   );
   assert.match(
     html,
-    /A mission-led Vancouver community organization/u,
+    /A Vancouver community organization/u,
   );
-  assert.match(html, /Building a lasting home for curiosity\./u);
+  assert.match(html, /Building community through curiosity\./u);
   assert.match(
     html,
-    /Our mission is to make meaningful connection easier to find—and easier to return to\./u,
+    /Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\. Our gatherings are open to the public, while partnerships with organizations, venues, and supporters help this work grow\./u,
   );
-  assert.match(html, />Read our mission<\/a>/u);
-  assert.match(html, />See our work in action<\/a>/u);
-  assert.match(html, /class="home-hero"/u);
-  assert.match(html, /class="home-events"/u);
-  assert.match(html, /class="home-newcomer attending-note"/u);
-  assert.match(html, /class="lane-index"/u);
-  assert.match(html, /class="home-mission home-community"/u);
-  assert.match(html, /class="home-closing home-invitation"/u);
-  assert.doesNotMatch(html, /class="home-(?:clubs|proof)/u);
+  assert.match(html, />Explore our work<\/a>/u);
+  assert.match(html, />Partner with us<\/a>/u);
+  assert.match(html, />View upcoming events<\/a>/u);
   assert.equal([...html.matchAll(/<h1\b/giu)].length, 1);
   const orderedHomeSections = [
-    'class="home-hero"',
-    'class="home-events"',
-    'class="home-newcomer attending-note"',
-    'class="lane-index"',
-    'class="home-mission home-community"',
-    'class="home-closing home-invitation"',
+    'data-home-section="hero"',
+    'data-home-section="at-a-glance"',
+    'data-home-section="programs"',
+    'data-home-section="work-in-action"',
+    'data-home-section="why-it-matters"',
+    'data-home-section="partnerships"',
+    'data-home-section="communities"',
+    'data-home-section="public-invitation"',
   ];
   for (let index = 1; index < orderedHomeSections.length; index += 1) {
     assert.ok(
@@ -829,11 +826,11 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(
     html,
-    /property="og:description" content="Vancouver Curiosity Club brings people together through thoughtful gatherings built around learning, culture, creativity, and shared experience\."/iu,
+    /property="og:description" content="Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\."/iu,
   );
   assert.match(
     html,
-    /name="twitter:description" content="Vancouver Curiosity Club brings people together through thoughtful gatherings built around learning, culture, creativity, and shared experience\."/iu,
+    /name="twitter:description" content="Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\."/iu,
   );
   assert.match(
     html,
@@ -937,7 +934,7 @@ test("the built public root is indexable and carries the production security con
   assert.match(renderedCss, /--focus-ring-outer:#fff(?:fff)?/u);
   assert.match(
     renderedCss,
-    /\.primary-nav\{[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/u,
+    /\.primary-nav\{[^}]*grid-template-columns:repeat\(5,minmax\(0,auto\)\)/u,
   );
   assert.match(
     renderedCss,
@@ -1372,60 +1369,56 @@ test("public form routes render editable fields immediately while secure send pr
   );
 });
 
-test("Feedback is consistent while contact and Host routes remain canonical", async () => {
-  const feedbackResponse = await fetchPath("/contact");
-  assert.equal(feedbackResponse.status, 200);
-  const feedbackHtml = await feedbackResponse.text();
+test("Contact is consistent while partnership and Host routes remain canonical", async () => {
+  const contactResponse = await fetchPath("/contact");
+  assert.equal(contactResponse.status, 200);
+  const contactHtml = await contactResponse.text();
   assert.match(
-    feedbackHtml,
+    contactHtml,
     /rel="canonical" href="https:\/\/preview\.example\/contact"/u,
   );
   assert.match(
-    feedbackHtml,
-    /<title>Feedback[^<]*Vancouver Curiosity Club<\/title>/u,
+    contactHtml,
+    /<title>Contact[^<]*Vancouver Curiosity Club<\/title>/u,
   );
   assert.match(
-    feedbackHtml,
-    /<meta(?=[^>]*\bname="description")(?=[^>]*\bcontent="[^"]*[Ff]eedback[^"]*")[^>]*>/u,
+    contactHtml,
+    /<meta(?=[^>]*\bname="description")(?=[^>]*\bcontent="[^"]*Contact Vancouver Curiosity Club[^"]*")[^>]*>/u,
   );
   assert.match(
-    feedbackHtml,
-    /<meta(?=[^>]*\bproperty="og:title")(?=[^>]*\bcontent="Feedback[^"]*")[^>]*>/u,
+    contactHtml,
+    /<meta(?=[^>]*\bproperty="og:title")(?=[^>]*\bcontent="Contact[^"]*")[^>]*>/u,
   );
   assert.match(
-    feedbackHtml,
-    /<meta(?=[^>]*\bproperty="og:description")(?=[^>]*\bcontent="[^"]*[Ff]eedback[^"]*")[^>]*>/u,
+    contactHtml,
+    /<meta(?=[^>]*\bproperty="og:description")(?=[^>]*\bcontent="[^"]*Contact Vancouver Curiosity Club[^"]*")[^>]*>/u,
   );
   assert.match(
-    feedbackHtml,
-    /<meta(?=[^>]*\bname="twitter:title")(?=[^>]*\bcontent="Feedback[^"]*")[^>]*>/u,
+    contactHtml,
+    /<meta(?=[^>]*\bname="twitter:title")(?=[^>]*\bcontent="Contact[^"]*")[^>]*>/u,
   );
   assert.match(
-    feedbackHtml,
-    /<meta(?=[^>]*\bname="twitter:description")(?=[^>]*\bcontent="[^"]*[Ff]eedback[^"]*")[^>]*>/u,
+    contactHtml,
+    /<meta(?=[^>]*\bname="twitter:description")(?=[^>]*\bcontent="[^"]*Contact Vancouver Curiosity Club[^"]*")[^>]*>/u,
   );
   assert.match(
-    feedbackHtml,
-    /aria-label="Breadcrumb"[\s\S]*?aria-current="page">Feedback<\/span>/u,
+    contactHtml,
+    /aria-label="Breadcrumb"[\s\S]*?aria-current="page">Contact<\/span>/u,
   );
-  assert.match(feedbackHtml, /<h1[^>]*>[^<]*[Ff]eedback[^<]*<\/h1>/u);
+  assert.match(contactHtml, /<h1[^>]*>Contact<\/h1>/u);
   assert.match(
-    feedbackHtml,
-    /<section(?=[^>]*data-form-key="contact")[^>]*>[\s\S]*?<h2[^>]*>Feedback<\/h2>/u,
+    contactHtml,
+    /<section(?=[^>]*data-form-key="contact")[^>]*>[\s\S]*?<h2[^>]*>Contact<\/h2>/u,
   );
-  assert.doesNotMatch(feedbackHtml, /Send a private inquiry/u);
-  assert.doesNotMatch(
-    feedbackHtml,
-    /<a[^>]*href="\/contact"[^>]*>Contact<\/a>/u,
-  );
-  assertNoPrivateSentinels(feedbackHtml);
+  assert.match(contactHtml, />Send message<\/button>/u);
+  assertNoPrivateSentinels(contactHtml);
 
   const homeResponse = await fetchPath("/");
   assert.equal(homeResponse.status, 200);
   const homeHtml = await homeResponse.text();
   assert.match(
     homeHtml,
-    /class="home-invitation__actions"[\s\S]*?<a[^>]*href="\/get-involved#partner"[^>]*>Start a partnership conversation<\/a>/u,
+    /<a[^>]*href="\/contact\?topic=partnerships#contact-form"[^>]*>Discuss a partnership<\/a>/u,
   );
 
   const getInvolvedResponse = await fetchPath("/get-involved");
@@ -1697,6 +1690,7 @@ test("robots and sitemap contain only public canonical routes", async () => {
     "/events",
     "/clubs",
     "/about",
+    "/for-organizations",
     "/get-involved",
     "/host-an-event",
     "/contact",
@@ -2583,11 +2577,11 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   const homeResponse = await fetchPath("/");
   assert.equal(homeResponse.status, 200);
   const homeHtml = await homeResponse.text();
-  assert.match(homeHtml, new RegExp(escapeRegex(publicTitle), "u"));
-  assert.match(
-    homeHtml,
-    new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
-  );
+  assert.match(homeHtml, /Building community through curiosity\./u);
+  assertNoPrivateSentinels(homeHtml);
+  for (const value of privateValues) {
+    assert.doesNotMatch(homeHtml, new RegExp(value, "u"));
+  }
 
   const monthEventsResponse = await fetchPath("/events?month=2026-10");
   assert.equal(monthEventsResponse.status, 200);
@@ -3215,7 +3209,11 @@ function assertSharedChrome(html) {
   assert.match(html, /href="\/about"/u);
   assert.match(
     html,
-    /<a(?=[^>]*href="\/contact")(?=[^>]*data-primary-destination="feedback")[^>]*>Feedback<\/a>/u,
+    /<a(?=[^>]*href="\/for-organizations")(?=[^>]*data-primary-destination="for organizations")[^>]*>For Organizations<\/a>/u,
+  );
+  assert.match(
+    html,
+    /<a(?=[^>]*href="\/contact")(?=[^>]*data-primary-destination="contact")[^>]*>Contact<\/a>/u,
   );
   assert.match(html, /href="\/get-involved"/u);
   assert.match(html, />Get Involved<\/a>/u);

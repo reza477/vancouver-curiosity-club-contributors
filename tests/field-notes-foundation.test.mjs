@@ -84,15 +84,17 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(homeRenderer, /PUBLIC_HOME_MISSION_COPY/u);
   assert.match(catalog, /PUBLIC_HOME_MISSION_COPY/u);
   assert.match(catalog, /PUBLIC_ABOUT_MISSION_COPY/u);
-  assert.match(missionCopy, /A mission-led Vancouver community organization/u);
-  assert.match(missionCopy, /Building a lasting home for curiosity\./u);
-  assert.match(missionCopy, /make meaningful connection easier to find/u);
-  assert.match(homeRenderer, /Read our mission/u);
-  assert.match(homeRenderer, /See upcoming gatherings/u);
-  assert.match(homeRenderer, /Coming for the first time\?/u);
-  assert.match(homeRenderer, /Connection grows when people have a reason to return\./u);
-  assert.match(homeRenderer, /recurring programs across three official Meetup groups/u);
-  assert.match(homeRenderer, /href="\/get-involved#partner"/u);
+  assert.match(missionCopy, /A Vancouver community organization/u);
+  assert.match(missionCopy, /Building community through curiosity\./u);
+  assert.match(missionCopy, /thoughtful public programs across learning, culture, creativity, and shared experience/u);
+  assert.match(homeRenderer, /Explore our work/u);
+  assert.match(homeRenderer, /View upcoming events/u);
+  assert.match(homeRenderer, /Organization at a glance/u);
+  assert.match(homeRenderer, /Shared curiosity makes connection easier to begin\./u);
+  assert.match(
+    homeRenderer,
+    /href="\/contact\?topic=partnerships#contact-form"/u,
+  );
   assert.match(homeRenderer, /home-hero__featured-poster/u);
   assert.doesNotMatch(homeRenderer, /FieldArtwork/u);
   assert.match(catalog, /A social calendar with a brain\./);
@@ -108,7 +110,8 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     ['{ href: "/events", label: "Events" }', "Events"],
     ['{ href: "/clubs", label: "Clubs" }', "Clubs"],
     ['{ href: "/about", label: "About" }', "About"],
-    ['{ href: "/contact", label: "Feedback" }', "Feedback"],
+    ['{ href: "/for-organizations", label: "For Organizations" }', "For Organizations"],
+    ['{ href: "/contact", label: "Contact" }', "Contact"],
   ];
   let previousDestination = -1;
   for (const [literal, label] of destinations) {
@@ -129,21 +132,24 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     /section\("(?:attending|invitation|community)"/u,
   );
   const homepageSections = [
-    "home-hero",
-    "home-events",
-    "home-newcomer",
-    "lane-index",
-    "home-mission",
-    "home-closing",
+    "hero",
+    "at-a-glance",
+    "programs",
+    "work-in-action",
+    "why-it-matters",
+    "partnerships",
+    "communities",
+    "public-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 6);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
   let previousSection = -1;
-  for (const className of homepageSections) {
-    const section = homeRenderer.indexOf(`className="${className}`);
-    assert.ok(section > previousSection, `${className} section order`);
+  for (const sectionName of homepageSections) {
+    const section = homeRenderer.indexOf(
+      `data-home-section="${sectionName}"`,
+    );
+    assert.ok(section > previousSection, `${sectionName} section order`);
     previousSection = section;
   }
-  assert.doesNotMatch(homeRenderer, /className="home-(?:clubs|proof)/u);
   assert.match(layout, /generateMetadata/);
   assert.match(layout, /const isUnknownPath = !isKnownApplicationPath/);
   assert.match(layout, /robots:\s*isUnknownPath/);
@@ -238,7 +244,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   );
   for (const [selector, background, foreground] of [
     [".site-footer", "--cobalt", "--paper"],
-    [".lane-index", "--paper-deep", "--ink"],
+    [".home-partnerships", "--cobalt", "--paper"],
     [".community-destinations", "--forest", "--paper"],
     [".editorial-section--callout", "--ink", "--paper"],
   ]) {

@@ -272,7 +272,7 @@ test("Meetup snapshot identity includes versioned aliases, editorial policy, and
   assert.match(editorialPolicy, /315823081/u);
 });
 
-test("homepage leads with the mission and six focused sections", async () => {
+test("homepage leads with the institutional mission and eight focused sections", async () => {
   const [page, calendar, month, homeRenderer, homeData, missionCopy] =
     await Promise.all([
       readFile(new URL("app/page.tsx", projectRoot), "utf8"),
@@ -298,31 +298,35 @@ test("homepage leads with the mission and six focused sections", async () => {
   assert.doesNotMatch(page, /CalendarPage|PublicMonthCalendar/u);
 
   for (const copy of [
-    "A mission-led Vancouver community organization",
-    "Building a lasting home for curiosity.",
-    "Our mission is to make meaningful connection easier to find—and easier to return to.",
-    "Read our mission",
-    "See our work in action",
-    "Coming for the first time?",
-    "Connection grows when people have a reason to return.",
-    "Start a partnership conversation",
+    "A Vancouver community organization",
+    "Building community through curiosity.",
+    "Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience.",
+    "Explore our work",
+    "Partner with us",
+    "Organization at a glance",
+    "Upcoming public programs.",
+    "Discuss a partnership",
   ]) {
     assert.ok(homePositioning.includes(copy), copy);
   }
 
-  const sectionClasses = [
-    "home-hero",
-    "home-events",
-    "home-newcomer attending-note",
-    "lane-index",
-    "home-mission home-community",
-    "home-closing home-invitation",
+  const sectionNames = [
+    "hero",
+    "at-a-glance",
+    "programs",
+    "work-in-action",
+    "why-it-matters",
+    "partnerships",
+    "communities",
+    "public-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 6);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
   let priorSectionIndex = -1;
-  for (const className of sectionClasses) {
-    const sectionIndex = homeRenderer.indexOf(`className="${className}"`);
-    assert.ok(sectionIndex > priorSectionIndex, className);
+  for (const sectionName of sectionNames) {
+    const sectionIndex = homeRenderer.indexOf(
+      `data-home-section="${sectionName}"`,
+    );
+    assert.ok(sectionIndex > priorSectionIndex, sectionName);
     priorSectionIndex = sectionIndex;
   }
   assert.doesNotMatch(homeRenderer, /className="home-(?:clubs|proof)/u);
@@ -494,7 +498,7 @@ test("About presents a professional mission, impact, continuity, and partnership
   );
   assert.match(
     about,
-    /<Link\s+className="primary-action"\s+href="\/get-involved#partner">[\s\S]*?Discuss a partnership[\s\S]*?<\/Link>/u,
+    /<Link[\s\S]*?className="primary-action"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?>[\s\S]*?Discuss a partnership[\s\S]*?<\/Link>/u,
   );
   assert.match(
     about,
@@ -973,7 +977,7 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
   );
 });
 
-test("the exact four primary destinations stay ordered and map related routes active", async () => {
+test("the exact five primary destinations stay ordered and map related routes active", async () => {
   const [header, footer, css] = await Promise.all([
     readFile(
       new URL("app/_components/SiteHeader.tsx", projectRoot),
@@ -990,7 +994,8 @@ test("the exact four primary destinations stay ordered and map related routes ac
     ["/events", "Events"],
     ["/clubs", "Clubs"],
     ["/about", "About"],
-    ["/contact", "Feedback"],
+    ["/for-organizations", "For Organizations"],
+    ["/contact", "Contact"],
   ];
   let priorDestinationIndex = -1;
   for (const [href, label] of destinations) {
@@ -1003,7 +1008,7 @@ test("the exact four primary destinations stay ordered and map related routes ac
   assert.equal(
     (header.match(/\{ href: "\/[^"]+", label: "[^"]+" \}/gu) ?? [])
       .length,
-    4,
+    5,
   );
   assert.doesNotMatch(header, /\{ href: "\/community", label: "Community" \}/u);
   assert.doesNotMatch(
@@ -1022,12 +1027,11 @@ test("the exact four primary destinations stay ordered and map related routes ac
   assert.match(footer, /<Link href="\/organizer" prefetch=\{false\}>/u);
   assert.match(footer, /Organizer Login/u);
   assert.match(header, /className="primary-nav"/u);
-  assert.match(header, /className="primary-nav__link"/u);
+  assert.match(header, /"primary-nav__link"/u);
+  assert.match(header, /"primary-nav__link primary-nav__link--organizations"/u);
   assert.doesNotMatch(header, /<details|<summary|site-navigation/u);
   assert.match(header, /normalizedPrimaryNavigation\(navigation\)/u);
-  assert.match(header, /for \(const sourceItem of configured\)/u);
-  assert.match(header, /requiredByHref\.get\(normalizedHref\)/u);
-  assert.match(header, /primary\.push\(required\)/u);
+  assert.match(header, /return Object\.freeze\(\[\.\.\.requiredNavigation\]\)/u);
   assert.match(
     header,
     /href === "\/events"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)[\s\S]*?pathname === "\/calendar"/u,

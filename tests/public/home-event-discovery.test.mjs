@@ -1,36 +1,45 @@
-import { readPublicCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { HomePageRenderer } from "../../app/_components/HomePageRenderer.tsx";
+import {
+  HomePageRenderer,
+  selectHomeDiscoveryEvents,
+} from "../../app/_components/HomePageRenderer.tsx";
 
-test("Home leads with one featured poster and three later chronological gatherings", () => {
-  const events = upcomingEvents(6);
-  const markup = renderHome(events);
-  const hero = sectionMarkup(markup, "home-hero");
-  const next = sectionMarkup(markup, "home-events");
+const requiredSections = [
+  "hero",
+  "at-a-glance",
+  "programs",
+  "work-in-action",
+  "why-it-matters",
+  "partnerships",
+  "communities",
+  "public-invitation",
+];
+
+test("Home renders the approved institutional story in the exact section order", () => {
+  const markup = renderHome(upcomingEvents(6));
 
   assert.deepEqual(
-    uniqueEventSlugs(hero),
-    [events[0].slug],
-    "the hero must feature one event rather than a thumbnail collage",
+    [...markup.matchAll(/data-home-section="([^"]+)"/gu)].map(
+      (match) => match[1],
+    ),
+    requiredSections,
   );
-  assert.deepEqual(
-    uniqueEventSlugs(next),
-    events.slice(1, 4).map(({ slug }) => slug),
-    "the gathering rail must continue chronologically after the hero",
+  assert.equal((markup.match(/<h1\b/gu) ?? []).length, 1);
+  assert.match(markup, />A Vancouver community organization</u);
+  assert.match(markup, />Building community through curiosity\.<\/h1>/u);
+  assert.match(
+    markup,
+    /Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\. Our gatherings are open to the public, while partnerships with organizations, venues, and supporters help this work grow\./u,
   );
-  assert.deepEqual(eventTitles(hero), [events[0].title]);
-  assert.deepEqual(eventTitles(next), events.slice(1, 4).map(({ title }) => title));
-  assert.deepEqual(
-    intersection(uniqueEventSlugs(hero), uniqueEventSlugs(next)),
-    [],
-    "the featured event must not be repeated in the gathering rail",
-  );
+  assert.match(markup, /href="#our-work"[^>]*>Explore our work<\/a>/u);
+  assert.match(markup, /href="\/for-organizations"[^>]*>Partner with us<\/a>/u);
+  assert.match(markup, /href="\/events"[^>]*>View upcoming events<\/a>/u);
 });
 
-test("Home scans the durable reserve for unique slugs and artwork URLs", () => {
+test("Home features one real poster and three distinct later event posters", () => {
   const hero = eventCard(1);
   const duplicateArtwork = eventCard(2, { artwork: hero.artwork });
   const duplicateSlug = eventCard(3, { slug: hero.slug });
@@ -43,153 +52,47 @@ test("Home scans the durable reserve for unique slugs and artwork URLs", () => {
     eventCard(5),
     eventCard(6),
     eventCard(7),
+    eventCard(8),
   ]);
+  const selection = selectHomeDiscoveryEvents(reserve);
   const markup = renderHome(reserve);
+  const heroSection = homeSection(markup, "hero");
+  const workSection = homeSection(markup, "work-in-action");
 
+  assert.equal(selection.heroEvent?.slug, hero.slug);
   assert.deepEqual(
-    uniqueEventSlugs(sectionMarkup(markup, "home-hero")),
-    [hero.slug],
+    selection.upcomingEvents.map((event) => event.slug),
+    reserve.slice(4, 7).map((event) => event.slug),
   );
+  assert.deepEqual(uniqueEventSlugs(heroSection), [hero.slug]);
   assert.deepEqual(
-    uniqueEventSlugs(sectionMarkup(markup, "home-events")),
-    reserve.slice(4).map(({ slug }) => slug),
-    "duplicate identities, duplicate posters, and posterless reserve entries must be skipped",
-  );
-});
-
-test("Home keeps a useful chronological rail as one-to-four events become available", () => {
-  for (const count of [1, 2, 3, 4]) {
-    const events = upcomingEvents(count);
-    const markup = renderHome(events);
-    const hero = sectionMarkup(markup, "home-hero");
-    const next = sectionMarkup(markup, "home-events");
-
-    assert.deepEqual(uniqueEventSlugs(hero), [events[0].slug]);
-    assert.deepEqual(
-      uniqueEventSlugs(next),
-      events.slice(1, 4).map(({ slug }) => slug),
-    );
-    assert.equal(countEventCards(next), Math.min(3, count - 1));
-    if (count === 1) {
-      assert.match(next, /class="public-empty-state"/u);
-      assert.match(next, /Those are the next gatherings\./u);
-      assert.match(next, /<a href="\/events">Open events<\/a>/u);
-    } else {
-      assert.doesNotMatch(next, /class="public-empty-state"/u);
-    }
-  }
-});
-
-test("Home has a useful zero-event state and no empty poster group", () => {
-  const markup = renderHome(Object.freeze([]));
-  const hero = sectionMarkup(markup, "home-hero");
-  const next = sectionMarkup(markup, "home-events");
-
-  assert.doesNotMatch(hero, /home-hero__featured-poster/u);
-  assert.deepEqual(uniqueEventSlugs(hero), []);
-  assert.deepEqual(uniqueEventSlugs(next), []);
-  assert.match(next, /<h2 id="home-events-title">Upcoming community programs<\/h2>/u);
-  assert.match(next, /No upcoming event yet\./u);
-  assert.match(next, /<a href="\/events">Open events<\/a>/u);
-});
-
-test("a posterless event selected for the hero remains linked to its detail page", () => {
-  const events = Object.freeze([
-    eventCard(1, { artwork: null }),
-  ]);
-  const hero = sectionMarkup(renderHome(events), "home-hero");
-
-  assert.match(hero, /class="home-hero__poster home-hero__poster--fallback"/u);
-  assert.match(
-    hero,
-    /<a[^>]*href="\/events\/chronological-event-1"[^>]*>Chronological event 1<\/a>/u,
-  );
-});
-
-test("Home scans past a posterless first event to keep the hero poster-led", () => {
-  const events = Object.freeze([
-    eventCard(1, { artwork: null }),
-    eventCard(2),
-    eventCard(3),
-    eventCard(4),
-    eventCard(5),
-  ]);
-  const markup = renderHome(events);
-
-  assert.deepEqual(
-    uniqueEventSlugs(sectionMarkup(markup, "home-hero")),
-    [events[1].slug],
+    [...workSection.matchAll(/data-home-event-slug="([^"]+)"/gu)].map(
+      (match) => match[1],
+    ),
+    reserve.slice(4, 7).map((event) => event.slug),
   );
   assert.deepEqual(
-    uniqueEventSlugs(sectionMarkup(markup, "home-events")),
-    events.slice(2, 5).map(({ slug }) => slug),
+    intersection(uniqueEventSlugs(heroSection), uniqueEventSlugs(workSection)),
+    [],
   );
+  assert.equal((workSection.match(/class="home-work-card"/gu) ?? []).length, 3);
 });
 
-test("Home event discovery keeps its accessible section and link architecture", () => {
-  const markup = renderHome(upcomingEvents(6));
-  const hero = sectionMarkup(markup, "home-hero");
-  const next = sectionMarkup(markup, "home-events");
-
-  assert.match(hero, /aria-labelledby="home-title"/u);
-  assert.match(hero, /id="home-title"/u);
-  assert.match(
-    hero,
-    /class="home-hero__featured-poster" aria-label="Featured upcoming gathering" role="group"/u,
+test("Home fails closed without artwork instead of showing a blank or fake poster", () => {
+  const markup = renderHome(
+    Object.freeze([eventCard(1, { artwork: null }), eventCard(2, { artwork: null })]),
   );
-  assert.match(next, /aria-labelledby="home-events-title"/u);
-  assert.match(next, /<h2 id="home-events-title">Upcoming community programs<\/h2>/u);
-  assert.equal(countEventCards(next), 3);
-  for (const event of upcomingEvents(6).slice(1, 4)) {
-    assert.match(
-      next,
-      new RegExp(`aria-label="View details for ${event.title}"`, "u"),
-    );
-  }
+  const hero = homeSection(markup, "hero");
+  const work = homeSection(markup, "work-in-action");
+
+  assert.match(hero, /class="home-hero home-hero--text-only"/u);
+  assert.doesNotMatch(hero, /<figure|<img|home-artwork-fallback/u);
+  assert.doesNotMatch(work, /home-work-card/u);
+  assert.match(work, /The next public listings are being prepared\./u);
+  assert.match(work, /href="\/events"[^>]*>View the public event calendar<\/a>/u);
 });
 
-test("Home keeps newcomer guidance concise and makes impact and continuity explicit", () => {
-  const markup = renderHome(Object.freeze([]));
-  const newcomer = sectionMarkup(markup, "home-newcomer attending-note");
-  const mission = sectionMarkup(markup, "home-mission home-community");
-
-  assert.equal((markup.match(/class="home-newcomer attending-note"/gu) ?? []).length, 1);
-  assert.doesNotMatch(markup, /home-community-feel/u);
-  assert.equal(
-    (newcomer.match(/<p(?:\s[^>]*)?>/gu) ?? []).length,
-    2,
-    "the newcomer section must keep one kicker and one guidance paragraph",
-  );
-  assert.match(newcomer, /Coming for the first time\?/u);
-  assert.match(newcomer, /No prior expertise—or pre-existing social circle—is required\./u);
-  assert.doesNotMatch(newcomer, /How a gathering begins|perform expertise/u);
-  assert.match(markup, /class="home-mission home-community"/u);
-  assert.match(mission, /How the work helps/u);
-  assert.match(mission, /Arrive without an existing circle\./u);
-  assert.match(mission, /Connect through substance\./u);
-  assert.match(mission, /Return to something dependable\./u);
-  assert.match(mission, /recurring programs across three official Meetup groups/u);
-  assert.match(mission, /across seasons and years/u);
-  assert.doesNotMatch(markup, /class="home-clubs(?:\s|"|$)/u);
-  assert.doesNotMatch(markup, /class="home-proof home-community"/u);
-
-  const withOfficialLink = renderHome(Object.freeze([]), [
-    Object.freeze({
-      description: "Official Meetup group",
-      label: "Meetup",
-      linkType: "meetup_group",
-      url: "https://www.meetup.com/vancouver-curiosity-club/",
-    }),
-  ]);
-  assert.doesNotMatch(withOfficialLink, /class="home-proof home-community"/u);
-  assert.doesNotMatch(withOfficialLink, /Official community links/u);
-  assert.match(
-    withOfficialLink,
-    /href="\/get-involved#partner"[^>]*>Start a partnership conversation<\/a>/u,
-  );
-});
-
-test("Home gives eager high-priority loading only to the featured poster", () => {
+test("Only the featured poster receives eager high-priority loading", () => {
   const markup = renderHome(upcomingEvents(6));
   const images = [...markup.matchAll(/<img\b[^>]*>/gu)].map(
     (match) => match[0],
@@ -198,53 +101,82 @@ test("Home gives eager high-priority loading only to the featured poster", () =>
   assert.equal(images.length, 4);
   assert.match(images[0], /fetchPriority="high"/u);
   assert.match(images[0], /loading="eager"/u);
-  assert.match(
-    images[0],
-    /src="\/event-posters\/chronological-event-1-1600\.jpeg"/u,
-  );
   for (const image of images.slice(1)) {
-    assert.match(image, /fetchPriority="auto"/u);
     assert.match(image, /loading="lazy"/u);
     assert.doesNotMatch(image, /fetchPriority="high"|loading="eager"/u);
   }
 });
 
-test("Home alternates section treatments and keeps motion preference-safe", async () => {
-  const styles = await readPublicCss();
+test("Home uses evidence-safe impact and partnership language", () => {
+  const markup = renderHome(upcomingEvents(4));
+  const impact = homeSection(markup, "why-it-matters");
+  const partnerships = homeSection(markup, "partnerships");
 
-  assert.match(styles, /\.home-newcomer\s*\{[^}]*background:\s*var\(--blue-surface\);/su);
-  assert.match(styles, /\.lane-index\s*\{[^}]*background:\s*var\(--paper-deep\);/su);
-  assert.match(styles, /\.home-mission\s*\{[^}]*background:\s*var\(--amber-surface\);/su);
-  assert.match(styles, /\.home-mission li strong\s*\{[^}]*display:\s*block;/su);
-  assert.doesNotMatch(styles, /\.home-(?:clubs__grid|proof)\b/u);
+  assert.match(impact, /Arrive without an existing circle/u);
+  assert.match(impact, /Start with something shared/u);
+  assert.match(impact, /Have a reason to return/u);
+  assert.match(impact, /Find more than one way in/u);
+  assert.equal((partnerships.match(/<li>/gu) ?? []).length, 6);
   assert.match(
-    styles,
-    /@media \(prefers-reduced-motion: no-preference\)\s*\{[\s\S]*?\.home-page > section\s*\{[^}]*animation:\s*[^;]*home-section-enter[^;]*;/su,
+    partnerships,
+    /href="\/contact\?topic=partnerships#contact-form"[^>]*>Discuss a partnership<\/a>/u,
   );
-  assert.match(
-    styles,
-    /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.home-page > section\s*\{[^}]*animation:\s*none;/su,
+  assert.doesNotMatch(
+    `${impact}\n${partnerships}`,
+    /registered nonprofit|registered charity|tax[- ]deductible|members? (?:say|report)|attendees? (?:say|report)/iu,
   );
 });
 
-function renderHome(events, communityLinks = Object.freeze([])) {
+function renderHome(events) {
   return renderToStaticMarkup(
     createElement(HomePageRenderer, {
-      catalog: Object.freeze({
-        clubs: Object.freeze([]),
-        communityLinks: Object.freeze(communityLinks),
-        lanes: Object.freeze([]),
-        site: Object.freeze({
-          brandName: "Vancouver Curiosity Club",
-          legalName: null,
-          mission: "A thoughtful Vancouver community.",
-        }),
-      }),
+      catalog: catalogFixture(),
       events,
       origin: null,
       page: Object.freeze({ slug: "home" }),
     }),
   );
+}
+
+function catalogFixture() {
+  const lanes = ["Think", "Reset & Make", "Explore", "Eat & Play"].map(
+    (name) =>
+      Object.freeze({
+        description: `${name} public programs.`,
+        name,
+        slug: name.toLowerCase().replaceAll(/[^a-z]+/gu, "-").replace(/^-|-$/gu, ""),
+      }),
+  );
+  const clubs = [
+    ["Vancouver Curiosity Club", "vancouver-curiosity-club"],
+    ["Vancouver Fantasy & Sci-Fi Group", "vancouver-fantasy-scifi-group"],
+    ["Vancouver Literature and Film", "vancouver-literature-and-film"],
+  ].map(([name, slug]) =>
+    Object.freeze({
+      archived: false,
+      description: `${name} public community.`,
+      name,
+      publicGroupUrl: `https://www.meetup.com/${slug}/`,
+      slug,
+    }),
+  );
+  return Object.freeze({
+    clubs: Object.freeze(clubs),
+    communityLinks: Object.freeze([]),
+    lanes: Object.freeze(lanes),
+    site: Object.freeze({
+      brandName: "Vancouver Curiosity Club",
+      institutionalFacts: Object.freeze({
+        attendanceTotal: null,
+        attendanceTotalAsOf: null,
+        foundedYear: null,
+        memberTotal: null,
+        memberTotalAsOf: null,
+      }),
+      legalName: null,
+      mission: "A thoughtful Vancouver community.",
+    }),
+  });
 }
 
 function upcomingEvents(count) {
@@ -310,11 +242,13 @@ function eventCard(position, overrides = {}) {
   });
 }
 
-function sectionMarkup(markup, className) {
-  const start = markup.indexOf(`<section class="${className}"`);
-  assert.notEqual(start, -1, `${className} section must render`);
-  const end = markup.indexOf("<section", start + 1);
-  return markup.slice(start, end === -1 ? markup.length : end);
+function homeSection(markup, name) {
+  const start = markup.indexOf(`data-home-section="${name}"`);
+  assert.notEqual(start, -1, `${name} section must render`);
+  const sectionStart = markup.lastIndexOf("<section", start);
+  const sectionEnd = markup.indexOf("</section>", start);
+  assert.ok(sectionStart >= 0 && sectionEnd > start);
+  return markup.slice(sectionStart, sectionEnd + "</section>".length);
 }
 
 function uniqueEventSlugs(markup) {
@@ -325,19 +259,6 @@ function uniqueEventSlugs(markup) {
       ),
     ),
   ];
-}
-
-function eventTitles(markup) {
-  return [
-    ...markup.matchAll(
-      /<a\b[^>]*href="\/events\/[^"?#/]+"[^>]*>([^<]+)<\/a>/gu,
-    ),
-  ].map((match) => match[1]);
-}
-
-function countEventCards(markup) {
-  return (markup.match(/<article class="event-card(?: [^"]+)?"/gu) ?? [])
-    .length;
 }
 
 function intersection(left, right) {

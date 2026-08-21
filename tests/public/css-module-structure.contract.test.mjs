@@ -11,6 +11,11 @@ import {
 const expectedImports = publicCssModulePaths.map(
   (file) => `@import "./${file.replace(/^app\//u, "")}" layer(${layerFor(file)});`,
 );
+const organizationsCss = new URL(
+  "public/styles/organizations.css",
+  projectRoot,
+);
+const eventsCss = new URL("public/styles/events.css", projectRoot);
 
 test("the public stylesheet entrypoint owns only an explicit layered module graph", async () => {
   const entry = await readFile(publicCssEntry, "utf8");
@@ -54,7 +59,7 @@ test("route and component selectors stay in their named modules", async () => {
     assert.ok(styles.get(modulePath).includes(selector), `${selector} must stay in ${modulePath}`);
   }
 
-  const events = styles.get("app/styles/pages/events.css");
+  const events = await readFile(eventsCss, "utf8");
   for (const selector of [
     ".events-page__discovery",
     ".events-page__controls",
@@ -65,6 +70,18 @@ test("route and component selectors stay in their named modules", async () => {
   ]) {
     assert.ok(events.includes(selector), `${selector} must stay in the Events page module`);
   }
+
+  const organizations = await readFile(organizationsCss, "utf8");
+  assert.match(organizations, /\.for-organizations-page\b/u);
+  assert.match(organizations, /\.organizations-collaboration\b/u);
+  assert.ok(
+    (await stat(organizationsCss)).size < 30_000,
+    "the route-scoped organizations stylesheet must remain bounded",
+  );
+  assert.ok(
+    (await stat(eventsCss)).size < 30_000,
+    "the route-scoped Events stylesheet must remain bounded",
+  );
 });
 
 test("retired public systems and private organizer controls cannot leak into public CSS", async () => {

@@ -97,9 +97,21 @@ export type CmsNavigationSnapshot = Readonly<{
   items: readonly CmsNavigationItem[];
 }>;
 
+export type CmsInstitutionalFactsSnapshot = Readonly<{
+  attendanceTotal: number | null;
+  attendanceTotalAsOf: string | null;
+  attendanceTotalConfirmed: boolean;
+  foundedYear: number | null;
+  foundedYearConfirmed: boolean;
+  memberTotal: number | null;
+  memberTotalAsOf: string | null;
+  memberTotalConfirmed: boolean;
+}>;
+
 export type CmsSiteIdentitySnapshot = Readonly<{
   brandName: string;
   footerMission: string;
+  institutionalFacts: CmsInstitutionalFactsSnapshot;
   locationLabel: string;
   logoAssetId: string | null;
   metaDescription: string;
@@ -179,7 +191,7 @@ export type CmsProgramProfileSnapshot = Readonly<{
 
 const MAX_PAGE_BLOCKS = 24;
 const MAX_REVISION_BYTES = 128 * 1024;
-export const CMS_HEADER_NAVIGATION_MAX = 12;
+export const CMS_HEADER_NAVIGATION_MAX = 5;
 export const CMS_FOOTER_NAVIGATION_MAX = 24;
 export const CMS_NAVIGATION_MAX =
   CMS_HEADER_NAVIGATION_MAX + CMS_FOOTER_NAVIGATION_MAX;
@@ -192,6 +204,7 @@ const SAFE_INTERNAL_ROUTES = new Set([
   "/conduct",
   "/contact",
   "/events",
+  "/for-organizations",
   "/get-involved",
   "/host-an-event",
   "/privacy",
@@ -201,12 +214,33 @@ const RESERVED_SLUGS = new Set([
   "accept-invitation",
   "api",
   "callback",
+  "for-organizations",
   "organizer",
   "preview",
   "signin-with-chatgpt",
   "signout-with-chatgpt",
 ]);
-const REQUIRED_HEADER_TARGETS = new Set([
+const REQUIRED_HEADER_ITEMS = new Map([
+  ["/events", "Events"],
+  ["/clubs", "Clubs"],
+  ["/about", "About"],
+  ["/for-organizations", "For Organizations"],
+  ["/contact", "Contact"],
+]);
+const REQUIRED_HEADER_TARGETS = new Set(REQUIRED_HEADER_ITEMS.keys());
+const REQUIRED_FOOTER_ITEMS = new Map([
+  ["/events", "Events"],
+  ["/clubs", "Clubs"],
+  ["/about", "About"],
+  ["/for-organizations", "For Organizations"],
+  ["/get-involved", "Get Involved"],
+  ["/host-an-event", "Host an Event"],
+  ["/contact", "Contact"],
+  ["/conduct", "Code of Conduct"],
+  ["/accessibility", "Accessibility"],
+  ["/privacy", "Privacy"],
+]);
+const LEGACY_HEADER_TARGETS = new Set([
   "/events",
   "/clubs",
   "/community",
@@ -214,7 +248,7 @@ const REQUIRED_HEADER_TARGETS = new Set([
   "/get-involved",
   "/organizer",
 ]);
-const REQUIRED_FOOTER_TARGETS = new Set([
+const LEGACY_FOOTER_TARGETS = new Set([
   "/events",
   "/clubs",
   "/community",
@@ -225,6 +259,7 @@ const REQUIRED_FOOTER_TARGETS = new Set([
   "/conduct",
   "/privacy",
 ]);
+const LEGACY_HEADER_NAVIGATION_MAX = 12;
 const REQUIRED_PAGE_INTRO_TYPES = new Map<string, PageBlockType>([
   ["home", "hero"],
   ["events", "intro"],
@@ -416,16 +451,32 @@ export function parseCommunityLinkSnapshot(
 export function parseNavigationSnapshot(
   value: unknown,
 ): CmsNavigationSnapshot {
+  return parseNavigationSnapshotForStorage(value, false);
+}
+
+export function parsePersistedNavigationSnapshot(
+  value: unknown,
+): CmsNavigationSnapshot {
+  return parseNavigationSnapshotForStorage(value, true);
+}
+
+function parseNavigationSnapshotForStorage(
+  value: unknown,
+  permitLegacy: boolean,
+): CmsNavigationSnapshot {
   const input = parseObject(value, "snapshot");
   assertOnlyKeys(input, ["items"], "snapshot");
+  const maximumItems = permitLegacy
+    ? LEGACY_HEADER_NAVIGATION_MAX + CMS_FOOTER_NAVIGATION_MAX
+    : CMS_NAVIGATION_MAX;
   if (
     !Array.isArray(input.items) ||
-    input.items.length > CMS_NAVIGATION_MAX
+    input.items.length > maximumItems
   ) {
     throw validationIssue(
       "snapshot.items",
       "invalid_length",
-      `Navigation may contain at most ${CMS_NAVIGATION_MAX} items.`,
+      `Navigation may contain at most ${maximumItems} items.`,
     );
   }
   const ids = new Set<string>();
@@ -455,11 +506,11 @@ export function parseNavigationSnapshot(
       `snapshot.items.${index}.label`,
       80,
     );
-    if (target === "/organizer" && label !== "Organizer Login") {
+    if (target === "/organizer" && !permitLegacy) {
       throw validationIssue(
-        `snapshot.items.${index}.label`,
+        `snapshot.items.${index}.target`,
         "protected_navigation",
-        "Organizer Login cannot be renamed.",
+        "Organizer Login is a fixed footer-only system link.",
       );
     }
     const placement = parseEnum(
@@ -493,14 +544,20 @@ export function parseNavigationSnapshot(
   ).length;
   const footerCount = items.length - headerCount;
   if (
-    headerCount > CMS_HEADER_NAVIGATION_MAX ||
+    headerCount >
+      (permitLegacy
+        ? LEGACY_HEADER_NAVIGATION_MAX
+        : CMS_HEADER_NAVIGATION_MAX) ||
     footerCount > CMS_FOOTER_NAVIGATION_MAX
   ) {
     throw validationIssue(
       "snapshot.items",
       "invalid_length",
-      `Navigation may contain at most ${CMS_HEADER_NAVIGATION_MAX} header items and ${CMS_FOOTER_NAVIGATION_MAX} footer items.`,
+      `Navigation may contain at most ${permitLegacy ? LEGACY_HEADER_NAVIGATION_MAX : CMS_HEADER_NAVIGATION_MAX} header items and ${CMS_FOOTER_NAVIGATION_MAX} footer items.`,
     );
+  }
+  if (permitLegacy && isLegacyNavigationSnapshot(items)) {
+    return enforceRevisionSize(Object.freeze({ items: Object.freeze(items) }));
   }
   requireNavigationItems(items);
   return enforceRevisionSize(Object.freeze({ items: Object.freeze(items) }));
@@ -515,6 +572,7 @@ export function parseSiteIdentitySnapshot(
     [
       "brandName",
       "footerMission",
+      "institutionalFacts",
       "locationLabel",
       "logoAssetId",
       "metaDescription",
@@ -534,6 +592,9 @@ export function parseSiteIdentitySnapshot(
         input.footerMission,
         "snapshot.footerMission",
         300,
+      ),
+      institutionalFacts: parseInstitutionalFacts(
+        input.institutionalFacts,
       ),
       locationLabel: plainText(
         input.locationLabel,
@@ -564,6 +625,149 @@ export function parseSiteIdentitySnapshot(
       ),
     }),
   );
+}
+
+function parseInstitutionalFacts(
+  value: unknown,
+): CmsInstitutionalFactsSnapshot {
+  if (value === undefined) {
+    return Object.freeze({
+      attendanceTotal: null,
+      attendanceTotalAsOf: null,
+      attendanceTotalConfirmed: false,
+      foundedYear: null,
+      foundedYearConfirmed: false,
+      memberTotal: null,
+      memberTotalAsOf: null,
+      memberTotalConfirmed: false,
+    });
+  }
+  const input = parseObject(value, "snapshot.institutionalFacts");
+  assertOnlyKeys(
+    input,
+    [
+      "attendanceTotal",
+      "attendanceTotalAsOf",
+      "attendanceTotalConfirmed",
+      "foundedYear",
+      "foundedYearConfirmed",
+      "memberTotal",
+      "memberTotalAsOf",
+      "memberTotalConfirmed",
+    ],
+    "snapshot.institutionalFacts",
+  );
+  const attendanceTotal = optionalWholeNumber(
+    input.attendanceTotal,
+    "snapshot.institutionalFacts.attendanceTotal",
+    100_000_000,
+  );
+  const attendanceTotalAsOf = optionalInstitutionalDate(
+    input.attendanceTotalAsOf,
+    "snapshot.institutionalFacts.attendanceTotalAsOf",
+  );
+  const attendanceTotalConfirmed = optionalBoolean(
+    input.attendanceTotalConfirmed,
+    "snapshot.institutionalFacts.attendanceTotalConfirmed",
+  );
+  const foundedYear = optionalWholeNumber(
+    input.foundedYear,
+    "snapshot.institutionalFacts.foundedYear",
+    9_999,
+    1_800,
+  );
+  const foundedYearConfirmed = optionalBoolean(
+    input.foundedYearConfirmed,
+    "snapshot.institutionalFacts.foundedYearConfirmed",
+  );
+  const memberTotal = optionalWholeNumber(
+    input.memberTotal,
+    "snapshot.institutionalFacts.memberTotal",
+    100_000_000,
+  );
+  const memberTotalAsOf = optionalInstitutionalDate(
+    input.memberTotalAsOf,
+    "snapshot.institutionalFacts.memberTotalAsOf",
+  );
+  const memberTotalConfirmed = optionalBoolean(
+    input.memberTotalConfirmed,
+    "snapshot.institutionalFacts.memberTotalConfirmed",
+  );
+  if (foundedYearConfirmed && foundedYear === null) {
+    throw validationIssue(
+      "snapshot.institutionalFacts.foundedYearConfirmed",
+      "missing_verified_value",
+      "A founding year is required before it can be confirmed for public display.",
+    );
+  }
+  if (
+    attendanceTotalConfirmed &&
+    (attendanceTotal === null || attendanceTotalAsOf === null)
+  ) {
+    throw validationIssue(
+      "snapshot.institutionalFacts.attendanceTotalConfirmed",
+      "missing_verified_value",
+      "An attendance total and as-of date are required before public display.",
+    );
+  }
+  if (
+    memberTotalConfirmed &&
+    (memberTotal === null || memberTotalAsOf === null)
+  ) {
+    throw validationIssue(
+      "snapshot.institutionalFacts.memberTotalConfirmed",
+      "missing_verified_value",
+      "A member total and as-of date are required before public display.",
+    );
+  }
+  return Object.freeze({
+    attendanceTotal,
+    attendanceTotalAsOf,
+    attendanceTotalConfirmed,
+    foundedYear,
+    foundedYearConfirmed,
+    memberTotal,
+    memberTotalAsOf,
+    memberTotalConfirmed,
+  });
+}
+
+function optionalWholeNumber(
+  value: unknown,
+  path: string,
+  maximum: number,
+  minimum = 0,
+): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < minimum ||
+    value > maximum
+  ) {
+    throw validationIssue(
+      path,
+      "invalid_number",
+      `Expected a whole number from ${minimum} to ${maximum}.`,
+    );
+  }
+  return value;
+}
+
+function optionalBoolean(value: unknown, path: string): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    throw validationIssue(path, "invalid_boolean", "Expected true or false.");
+  }
+  return value;
+}
+
+function optionalInstitutionalDate(
+  value: unknown,
+  path: string,
+): string | null {
+  const parsed = optionalPlainText(value, path, 10);
+  return parsed ? parseCalendarDate(parsed, path) : null;
 }
 
 export function parseLegalStatusSnapshot(
@@ -1349,35 +1553,153 @@ function canonicalMeetupDiscussionUrl(value: unknown, path: string): string {
 function requireNavigationItems(
   items: readonly CmsNavigationItem[],
 ): void {
-  for (const target of REQUIRED_HEADER_TARGETS) {
+  const headerItems = items.filter((item) => item.placement === "header");
+  if (
+    headerItems.length !== REQUIRED_HEADER_ITEMS.size ||
+    headerItems.some((item) => !REQUIRED_HEADER_TARGETS.has(item.target))
+  ) {
+    throw validationIssue(
+      "snapshot.items",
+      "required_navigation",
+      "The public header must contain exactly Events, Clubs, About, For Organizations, and Contact.",
+    );
+  }
+  for (const [target, label] of REQUIRED_HEADER_ITEMS) {
     const matches = items.filter(
       (item) => item.placement === "header" && item.target === target,
     );
-    if (
-      matches.length !== 1 ||
-      (target === "/organizer" &&
-        matches[0]?.label !== "Organizer Login")
-    ) {
+    if (matches.length !== 1 || matches[0]?.label !== label) {
       throw validationIssue(
         "snapshot.items",
         "required_navigation",
-        "Required public navigation items cannot be removed or repointed.",
+        "Required public header labels and destinations cannot be changed.",
       );
     }
   }
-  for (const target of REQUIRED_FOOTER_TARGETS) {
+  for (const [target, label] of REQUIRED_FOOTER_ITEMS) {
+    const match = items.find(
+      (item) => item.placement === "footer" && item.target === target,
+    );
+    if (!match || match.label !== label) {
+      throw validationIssue(
+        "snapshot.items",
+        "required_navigation",
+        "Required footer labels and destinations must remain reachable.",
+      );
+    }
+  }
+}
+
+function isLegacyNavigationSnapshot(
+  items: readonly CmsNavigationItem[],
+): boolean {
+  const headerItems = items.filter((item) => item.placement === "header");
+  if (
+    headerItems.some(
+      (item) =>
+        item.target === "/organizer" && item.label !== "Organizer Login",
+    )
+  ) {
+    return false;
+  }
+  for (const target of LEGACY_HEADER_TARGETS) {
+    if (
+      headerItems.filter((item) => item.target === target).length !== 1
+    ) {
+      return false;
+    }
+  }
+  for (const target of LEGACY_FOOTER_TARGETS) {
     if (
       !items.some(
         (item) => item.placement === "footer" && item.target === target,
       )
     ) {
-      throw validationIssue(
-        "snapshot.items",
-        "required_navigation",
-        "Footer policy links must remain reachable.",
-      );
+      return false;
     }
   }
+  return true;
+}
+
+export function institutionalNavigationItems(
+  configured: readonly CmsNavigationItem[],
+): readonly CmsNavigationItem[] {
+  const byPlacementTarget = new Map(
+    configured.map((item) => [`${item.placement}:${item.target}`, item]),
+  );
+  const configuredIds = new Set(configured.map((item) => item.id));
+  const usedIds = new Set<string>();
+  const configuredIdOrGenerated = (
+    configuredItem: CmsNavigationItem | undefined,
+    base: string,
+  ): string => {
+    if (configuredItem && !usedIds.has(configuredItem.id)) {
+      usedIds.add(configuredItem.id);
+      return configuredItem.id;
+    }
+    let candidate = base;
+    let suffix = 2;
+    while (configuredIds.has(candidate) || usedIds.has(candidate)) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(candidate);
+    return candidate;
+  };
+  const result: CmsNavigationItem[] = [];
+  for (const [index, [target, label]] of [...REQUIRED_HEADER_ITEMS].entries()) {
+    const configuredItem = byPlacementTarget.get(`header:${target}`);
+    result.push(Object.freeze({
+      id: configuredIdOrGenerated(configuredItem, `required-header-${index}`),
+      label,
+      placement: "header",
+      sortOrder: (index + 1) * 10,
+      target,
+    }));
+  }
+  for (const [index, [target, label]] of [...REQUIRED_FOOTER_ITEMS].entries()) {
+    const configuredItem = byPlacementTarget.get(`footer:${target}`);
+    result.push(Object.freeze({
+      id: configuredIdOrGenerated(configuredItem, `required-footer-${index}`),
+      label,
+      placement: "footer",
+      sortOrder: (index + 1) * 10,
+      target,
+    }));
+  }
+  const resources = byPlacementTarget.get("footer:/resources");
+  if (resources) {
+    result.push(Object.freeze({
+      id: configuredIdOrGenerated(resources, "optional-footer-resources"),
+      label: resources.label,
+      placement: "footer",
+      sortOrder: 110,
+      target: "/resources",
+    }));
+  }
+  const externalByTarget = new Map<string, CmsNavigationItem>();
+  for (const item of configured) {
+    if (!item.target.startsWith("https://")) continue;
+    const existing = externalByTarget.get(item.target);
+    if (!existing || item.placement === "footer") {
+      externalByTarget.set(item.target, item);
+    }
+  }
+  const availableExternalSlots =
+    CMS_FOOTER_NAVIGATION_MAX - REQUIRED_FOOTER_ITEMS.size - (resources ? 1 : 0);
+  for (const item of [...externalByTarget.values()].slice(0, availableExternalSlots)) {
+    if (!usedIds.has(item.id)) {
+      usedIds.add(item.id);
+      result.push(Object.freeze({
+        id: item.id,
+        label: item.label,
+        placement: "footer",
+        sortOrder: item.sortOrder,
+        target: item.target,
+      }));
+    }
+  }
+  return Object.freeze(result);
 }
 
 function plainText(

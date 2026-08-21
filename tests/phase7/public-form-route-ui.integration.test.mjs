@@ -1261,7 +1261,7 @@ test(
     );
     const privacyText = visibleText(privacyHtml);
     for (const exactEnumeration of [
-      "The Feedback form collects a name, reply email, topic, and message.",
+      "The Contact form collects a name, reply email, topic, and message.",
       "Volunteer collects a name, reply email, one to five interest areas, how the visitor would like to help, and optional availability or relevant context.",
       "Host an Event collects a name, reply email, proposed event title or topic, short event idea, format, and optional preferred club or program and timing.",
       "Partnership or Funding Support collects a contact name, reply email, organization, venue, or supporter name, partnership type, message, and an optional HTTPS website.",
@@ -1442,7 +1442,7 @@ test(
     assert.match(formSource, /data-form-key=\{formKey\}/u);
     assert.match(formSource, /Send this to the organizers/u);
     for (const label of [
-      "Send feedback",
+      "Send message",
       "Send volunteer interest",
       "Send event idea",
       "Send partnership or support inquiry",

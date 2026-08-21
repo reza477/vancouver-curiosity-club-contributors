@@ -1,4 +1,4 @@
-import { readPublicCss } from "../helpers/public-css.mjs";
+import { readPublicRouteCss } from "../helpers/public-css.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -155,6 +155,11 @@ test("Events parses the approved URL state and renders only the active view", as
   assert.match(page, /rawPage:\s*raw\.page/u);
   assert.match(
     renderer,
+    /<link rel="stylesheet" href="\/styles\/events\.css" precedence="events" \/>/u,
+    "the shared Events renderer must deliver its bounded route stylesheet",
+  );
+  assert.match(
+    renderer,
     /activeView === "upcoming"[\s\S]*<UpcomingEventsView[\s\S]*:\s*\([\s\S]*<CalendarEventsView/u,
     "only the active view may be mounted, including on mobile",
   );
@@ -176,7 +181,7 @@ test("the full calendar exposes event names in its mobile agenda", async () => {
       new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
       "utf8",
     ),
-    readPublicCss(),
+    readPublicRouteCss("events"),
   ]);
   const rulesAt390 = maxWidthMediaBlocks(styles)
     .filter(({ maxWidthRem }) => maxWidthRem >= 24.375)

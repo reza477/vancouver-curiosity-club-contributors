@@ -1520,12 +1520,13 @@ function interceptBeforeListRowsRead(database, hook) {
 
 async function seedAssignedOrganizerSubmission(data, suffix) {
   const organizer = await createOrganizerMember(data, suffix);
+  const submittedAt = data.now - 1_000;
   const stored = await submitPublicForm(
     data.database,
     formInput(
       "contact",
       `race-${suffix}`.padEnd(32, "x"),
-      data.now,
+      submittedAt,
       PAYLOADS.contact,
       { organizationId: data.organizationId },
     ),

@@ -57,6 +57,10 @@ import {
 } from "../../lib/server/database/invariants.ts";
 import { PHASE6_INVARIANT_COUNT_SQL } from "../../lib/server/database/phase6-invariant-sql.ts";
 import { cmsReceiptMatchesRevisionSql } from "../../lib/server/public/cms-materialization-contract.ts";
+import {
+  canonicalJson,
+  contentHash,
+} from "../../lib/server/organizer/cms-validation.ts";
 import { runRequestMaintenance } from "../../lib/server/database/request-maintenance.ts";
 import { MAX_DATABASE_INVARIANT_READY_ATTEMPTS } from "../database/invariant-ready.mjs";
 import {
@@ -364,18 +368,13 @@ test("every mandatory system page rejects a blank publish without partial public
       updated_by_profile_id, created_at, updated_at
     ) VALUES
       ('page-home', 'org-main', 'Home', 'home', 'published', 'public',
-       1, 1, 'profile-owner', 'profile-owner', 1, 1),
-      ('page-host-an-event', 'org-main', 'Host an Event', 'host-an-event',
-       'published', 'public', 1, 1, 'profile-owner', 'profile-owner', 1, 1);
+       1, 1, 'profile-owner', 'profile-owner', 1, 1);
     INSERT INTO page_sections (
       id, organization_id, page_id, section_key, section_type,
       content_json, sort_order, created_at, updated_at
     ) VALUES
       ('section-home-hero', 'org-main', 'page-home', 'hero', 'hero',
-       '{"heading":"Home","text":"Existing public home copy."}', 10, 1, 1),
-      ('section-host-intro', 'org-main', 'page-host-an-event', 'intro', 'intro',
-       '{"heading":"Host an Event","text":"Existing public host copy."}',
-       10, 1, 1);
+       '{"heading":"Home","text":"Existing public home copy."}', 10, 1, 1);
   `);
   await listCmsEntities(database, ownerIdentity);
 
@@ -1478,14 +1477,25 @@ test("club, navigation, identity, and dynamic blocks materialize allowlisted pub
     {
       expectedContentVersion: navigation.entity.contentVersion,
       snapshot: {
-        items: navigation.revision.snapshot.items.map((item) =>
-          item.target === "/events"
-            ? { ...item, label: "What’s On" }
-            : item,
-        ),
+        items: [
+          ...navigation.revision.snapshot.items,
+          {
+            id: "navigation-partner-resource",
+            label: "Partner resources",
+            placement: "footer",
+            sortOrder: 120,
+            target: "https://partners.example/resources",
+          },
+        ],
       },
     },
     NOW + 4,
+  );
+  navigation = await readCmsEntityWorkspace(
+    database,
+    ownerIdentity,
+    "navigation",
+    "navigation",
   );
   await publishCmsEntity(
     database,
@@ -1495,17 +1505,41 @@ test("club, navigation, identity, and dynamic blocks materialize allowlisted pub
     { expectedContentVersion: navigation.entity.contentVersion },
     NOW + 5,
   );
-  assert.equal(
-    (await listPublicNavigation(database)).header.find(
-      ({ href }) => href === "/events",
-    ).label,
-    "What’s On",
+  const publicNavigation = await listPublicNavigation(database);
+  assert.deepEqual(
+    publicNavigation.header.map(({ href, label }) => ({ href, label })),
+    [
+      { href: "/events", label: "Events" },
+      { href: "/clubs", label: "Clubs" },
+      { href: "/about", label: "About" },
+      { href: "/for-organizations", label: "For Organizations" },
+      { href: "/contact", label: "Contact" },
+    ],
   );
-  assert.equal(
-    (await listPublicNavigation(database)).header.find(
-      ({ href }) => href === "/organizer",
-    ).label,
-    "Organizer Login",
+  assert.deepEqual(
+    publicNavigation.footer.find(
+      ({ href }) => href === "https://partners.example/resources",
+    ),
+    {
+      href: "https://partners.example/resources",
+      label: "Partner resources",
+    },
+  );
+  assert.deepEqual(
+    {
+      ...database.sqlite
+        .prepare(
+          `SELECT page_id, external_url
+           FROM navigation_items
+           WHERE organization_id = 'org-main'
+             AND label = 'For Organizations'
+             AND placement = 'header'
+             AND is_published = 1
+             AND deleted_at IS NULL`,
+        )
+        .get(),
+    },
+    { page_id: null, external_url: "/for-organizations" },
   );
 
   let identity = await readCmsEntityWorkspace(
@@ -1860,6 +1894,232 @@ test("club, navigation, identity, and dynamic blocks materialize allowlisted pub
       `${label} must not satisfy a page receipt`,
     );
   }
+});
+
+test("navigation publication cannot mask a missing required CMS page", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  database.exec(`
+    DELETE FROM page_sections WHERE page_id = 'page-about';
+    DELETE FROM pages WHERE id = 'page-about';
+  `);
+  await listCmsEntities(database, ownerIdentity);
+
+  let navigation = await readCmsEntityWorkspace(
+    database,
+    ownerIdentity,
+    "navigation",
+    "navigation",
+  );
+  navigation = await saveCmsEntityDraft(
+    database,
+    ownerIdentity,
+    "navigation",
+    "navigation",
+    {
+      expectedContentVersion: navigation.entity.contentVersion,
+      snapshot: navigation.revision.snapshot,
+    },
+    NOW,
+  );
+  await assert.rejects(
+    publishCmsEntity(
+      database,
+      ownerIdentity,
+      "navigation",
+      "navigation",
+      { expectedContentVersion: navigation.entity.contentVersion },
+      NOW + 1,
+    ),
+    (error) => error?.code === "stale_edit",
+  );
+  assert.equal(
+    scalar(
+      database,
+      `SELECT count(*) FROM navigation_items
+       WHERE organization_id = 'org-main'
+         AND external_url = '/about'
+         AND is_published = 1
+         AND deleted_at IS NULL`,
+    ),
+    0,
+  );
+});
+
+test("a persisted v1 navigation revision stays readable and restores as the institutional model", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  const initial = await readCmsEntityWorkspace(
+    database,
+    ownerIdentity,
+    "navigation",
+    "navigation",
+  );
+  const legacyItems = [
+    ["events", "Events", "header", 10, "/events"],
+    ["clubs", "Clubs", "header", 20, "/clubs"],
+    ["community", "Community", "header", 30, "/community"],
+    ["about", "About", "header", 40, "/about"],
+    ["involved", "Get Involved", "header", 50, "/get-involved"],
+    ["organizer", "Organizer Login", "header", 60, "/organizer"],
+    ["footer-events", "Events", "footer", 10, "/events"],
+    ["footer-clubs", "Clubs", "footer", 20, "/clubs"],
+    ["footer-community", "Community", "footer", 30, "/community"],
+    ["footer-about", "About", "footer", 40, "/about"],
+    ["footer-involved", "Get Involved", "footer", 50, "/get-involved"],
+    ["footer-contact", "Feedback", "footer", 60, "/contact"],
+    ["footer-accessibility", "Accessibility", "footer", 70, "/accessibility"],
+    ["footer-conduct", "Code of Conduct", "footer", 80, "/conduct"],
+    ["footer-privacy", "Privacy", "footer", 90, "/privacy"],
+  ].map(([id, label, placement, sortOrder, target]) => ({
+    id,
+    label,
+    placement,
+    sortOrder,
+    target,
+  }));
+  const snapshotJson = canonicalJson({ items: legacyItems });
+  const hash = await contentHash({ items: legacyItems });
+  database.sqlite
+    .prepare(
+      `UPDATE cms_entity_revisions
+       SET snapshot_json = ?, content_hash = ?, canonical_byte_size = ?
+       WHERE id = ?`,
+    )
+    .run(
+      snapshotJson,
+      hash,
+      new TextEncoder().encode(snapshotJson).byteLength,
+      initial.revision.id,
+    );
+  const legacy = await readCmsEntityWorkspace(
+    database,
+    ownerIdentity,
+    "navigation",
+    "navigation",
+  );
+  assert.equal(
+    legacy.revision.snapshot.items.some(
+      ({ target }) => target === "/organizer",
+    ),
+    true,
+  );
+  const restored = await restoreCmsRevisionAsDraft(
+    database,
+    ownerIdentity,
+    "navigation",
+    "navigation",
+    {
+      expectedContentVersion: legacy.entity.contentVersion,
+      revisionId: legacy.revision.id,
+    },
+    NOW,
+  );
+  assert.deepEqual(
+    restored.revision.snapshot.items
+      .filter(({ placement }) => placement === "header")
+      .map(({ label, target }) => ({ label, target })),
+    [
+      { label: "Events", target: "/events" },
+      { label: "Clubs", target: "/clubs" },
+      { label: "About", target: "/about" },
+      { label: "For Organizations", target: "/for-organizations" },
+      { label: "Contact", target: "/contact" },
+    ],
+  );
+});
+
+test("a Resources page lost after navigation preflight never becomes an internal URL fallback", async (t) => {
+  const database = newDatabase();
+  t.after(() => database.close());
+  await listCmsEntities(database, ownerIdentity);
+  let resources = await createCmsEntityDraft(
+    database,
+    ownerIdentity,
+    "page",
+    { snapshot: pageSnapshot({ slug: "resources", text: "Verified resources." }) },
+    NOW,
+  );
+  resources = await publishCmsEntity(
+    database,
+    ownerIdentity,
+    "page",
+    resources.entity.entityKey,
+    { expectedContentVersion: resources.entity.contentVersion },
+    NOW + 1,
+  );
+
+  let navigation = await readCmsEntityWorkspace(
+    database,
+    ownerIdentity,
+    "navigation",
+    "navigation",
+  );
+  navigation = await saveCmsEntityDraft(
+    database,
+    ownerIdentity,
+    "navigation",
+    "navigation",
+    {
+      expectedContentVersion: navigation.entity.contentVersion,
+      snapshot: {
+        items: [
+          ...navigation.revision.snapshot.items,
+          {
+            id: "navigation-resources-race",
+            label: "Resources",
+            placement: "footer",
+            sortOrder: 110,
+            target: "/resources",
+          },
+        ],
+      },
+    },
+    NOW + 2,
+  );
+
+  let raced = false;
+  const racingDatabase = {
+    batch: async (statements) => {
+      if (!raced) {
+        raced = true;
+        await unpublishCmsEntity(
+          database,
+          ownerIdentity,
+          "page",
+          resources.entity.entityKey,
+          { expectedContentVersion: resources.entity.contentVersion },
+          NOW + 3,
+        );
+      }
+      return database.batch(statements);
+    },
+    exec: (sql) => database.exec(sql),
+    prepare: (sql) => database.prepare(sql),
+  };
+  await assert.rejects(
+    publishCmsEntity(
+      racingDatabase,
+      ownerIdentity,
+      "navigation",
+      "navigation",
+      { expectedContentVersion: navigation.entity.contentVersion },
+      NOW + 4,
+    ),
+    (error) => error?.code === "stale_edit",
+  );
+  assert.equal(raced, true);
+  assert.equal(
+    scalar(
+      database,
+      `SELECT count(*) FROM navigation_items
+       WHERE organization_id = 'org-main'
+         AND external_url = '/resources'
+         AND is_published = 1
+         AND deleted_at IS NULL`,
+    ),
+    0,
+  );
 });
 
 test("club and site palette publication enforce cross-entity contrast with race-safe guards", async (t) => {
@@ -4966,6 +5226,8 @@ function seed(database) {
        1, 1, 'profile-owner', 'profile-owner', 1, 1),
       ('page-get-involved', 'org-main', 'Get Involved', 'get-involved', 'published', 'public',
        1, 1, 'profile-owner', 'profile-owner', 1, 1),
+      ('page-host-an-event', 'org-main', 'Host an Event', 'host-an-event', 'published', 'public',
+       1, 1, 'profile-owner', 'profile-owner', 1, 1),
       ('page-contact', 'org-main', 'Contact', 'contact', 'published', 'public',
        1, 1, 'profile-owner', 'profile-owner', 1, 1),
       ('page-conduct', 'org-main', 'Code of Conduct', 'conduct', 'published', 'public',
@@ -5002,6 +5264,11 @@ function seed(database) {
       (
         'section-get-involved', 'org-main', 'page-get-involved', 'intro', 'intro',
         '{"heading":"Get involved","paragraphs":[],"text":"Attend, volunteer, host, or begin a thoughtful partnership conversation."}',
+        10, 1, 1
+      ),
+      (
+        'section-host-an-event', 'org-main', 'page-host-an-event', 'intro', 'intro',
+        '{"heading":"Host an Event","paragraphs":[],"text":"Share a thoughtful public program proposal with the organizer team."}',
         10, 1, 1
       ),
       (
@@ -5456,7 +5723,7 @@ async function ensureRuntimeInvariantReadiness(database) {
 test("all exercised CMS and adoption SQL shapes compile through real D1", async () => {
   const shapes = cmsSqlRecording.stop();
   await assertRecordedD1ShapesCompile(shapes, {
-    expectedCount: 120,
+    expectedCount: 121,
     label: "CMS and adoption services",
   });
 });

@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-css-tags -- This shared renderer owns bounded route CSS that must not inflate Home. */
+
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { EventCard } from "./EventCard";
 import { PublicMonthCalendar } from "./PublicMonthCalendar";
@@ -53,6 +55,7 @@ export function EventsPageRenderer({
 
   return (
     <main className="public-page events-page">
+      <link rel="stylesheet" href="/styles/events.css" precedence="events" />
       <header
         aria-labelledby="events-page-title"
         className="events-page-masthead"

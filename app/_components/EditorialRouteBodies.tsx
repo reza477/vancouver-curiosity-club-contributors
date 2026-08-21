@@ -60,7 +60,7 @@ export function AccessibilityRouteBody({
         </ul>
         <p>
           If you encounter a barrier, use the{" "}
-          <Link href="/contact">Feedback form</Link> and choose the
+          <Link href="/contact">Contact form</Link> and choose the
           Accessibility topic. Include the page or event and what went wrong;
           device or assistive-technology details are welcome if you are
           comfortable sharing them.
@@ -158,7 +158,14 @@ export function ContactRouteBody({
     page: PublicPageDto;
   }>) {
   return (
-    <EditorialPage page={page} tone="community" {...preview}>
+    <EditorialPage
+      displayDeck="Send a private message to the organizers about partnerships, events, accessibility, media, or another question."
+      displayEyebrow="Contact"
+      displayTitle="Contact"
+      page={page}
+      tone="community"
+      {...preview}
+    >
       <PublicFormPageGuidance />
       {children}
     </EditorialPage>

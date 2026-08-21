@@ -125,6 +125,7 @@ export async function PublicPreviewShell({
       <SiteFooter
         brandName={shell.site.brandName}
         legalFooter={shell.site.legalFooter}
+        legalName={shell.site.legalName}
         location={shell.site.locationLabel}
         mission={shell.site.footerMission}
         navigation={shell.navigation.footer}

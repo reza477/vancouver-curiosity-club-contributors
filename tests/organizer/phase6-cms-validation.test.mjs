@@ -9,10 +9,12 @@ import {
   canonicalJson,
   contrastRatio,
   contentHash,
+  institutionalNavigationItems,
   parseClubProfileSnapshot,
   parseCommunityLinkSnapshot,
   parseLegalStatusSnapshot,
   parseNavigationSnapshot,
+  parsePersistedNavigationSnapshot,
   parsePageSnapshot,
   parseSiteIdentitySnapshot,
 } from "../../lib/server/organizer/cms-validation.ts";
@@ -260,23 +262,23 @@ test("page revisions reject unsafe markup, protected routes, legal bypasses, dup
   );
 });
 
-test("navigation requires exact primary destinations, organizer login, and footer policies", () => {
+test("navigation requires the exact public header and institutional footer", () => {
   const items = [
     ["events", "Events", "header", 10, "/events"],
     ["clubs", "Clubs", "header", 20, "/clubs"],
-    ["community", "Community", "header", 30, "/community"],
-    ["about", "About", "header", 40, "/about"],
-    ["get-involved", "Get Involved", "header", 50, "/get-involved"],
-    ["organizer", "Organizer Login", "header", 60, "/organizer"],
+    ["about", "About", "header", 30, "/about"],
+    ["organizations", "For Organizations", "header", 40, "/for-organizations"],
+    ["header-contact", "Contact", "header", 50, "/contact"],
     ["footer-events", "Events", "footer", 10, "/events"],
     ["footer-clubs", "Clubs", "footer", 20, "/clubs"],
-    ["footer-community", "Community", "footer", 30, "/community"],
-    ["footer-about", "About", "footer", 40, "/about"],
+    ["footer-about", "About", "footer", 30, "/about"],
+    ["footer-organizations", "For Organizations", "footer", 40, "/for-organizations"],
     ["footer-involved", "Get Involved", "footer", 50, "/get-involved"],
-    ["contact", "Contact", "footer", 60, "/contact"],
-    ["conduct", "Code of Conduct", "footer", 70, "/conduct"],
-    ["accessibility", "Accessibility", "footer", 80, "/accessibility"],
-    ["privacy", "Privacy", "footer", 90, "/privacy"],
+    ["footer-host", "Host an Event", "footer", 60, "/host-an-event"],
+    ["contact", "Contact", "footer", 70, "/contact"],
+    ["conduct", "Code of Conduct", "footer", 80, "/conduct"],
+    ["accessibility", "Accessibility", "footer", 90, "/accessibility"],
+    ["privacy", "Privacy", "footer", 100, "/privacy"],
   ].map(([id, label, placement, sortOrder, target]) => ({
     id,
     label,
@@ -285,15 +287,14 @@ test("navigation requires exact primary destinations, organizer login, and foote
     target,
   }));
   assert.equal(parseNavigationSnapshot({ items }).items.length, 15);
-  assert.equal(
+  assert.throws(() =>
     parseNavigationSnapshot({
       items: items.map((item) =>
-        item.target === "/events"
+        item.target === "/events" && item.placement === "header"
           ? { ...item, label: "What’s On" }
           : item,
       ),
-    }).items.find(({ target }) => target === "/events").label,
-    "What’s On",
+    }),
   );
   assert.throws(() =>
     parseNavigationSnapshot({
@@ -302,11 +303,16 @@ test("navigation requires exact primary destinations, organizer login, and foote
   );
   assert.throws(() =>
     parseNavigationSnapshot({
-      items: items.map((item) =>
-        item.target === "/organizer"
-          ? { ...item, label: "Portal" }
-          : item,
-      ),
+      items: [
+        ...items,
+        {
+          id: "organizer",
+          label: "Organizer Login",
+          placement: "footer",
+          sortOrder: 110,
+          target: "/organizer",
+        },
+      ],
     }),
   );
   assert.throws(() =>
@@ -322,14 +328,7 @@ test("navigation requires exact primary destinations, organizer login, and foote
   );
   const maximumItems = [
     ...items,
-    ...Array.from({ length: 6 }, (_, index) => ({
-      id: `header-optional-${index}`,
-      label: `Header optional ${index + 1}`,
-      placement: "header",
-      sortOrder: 100 + index,
-      target: `https://header.example.com/confirmed-${index + 1}`,
-    })),
-    ...Array.from({ length: 15 }, (_, index) => ({
+    ...Array.from({ length: 14 }, (_, index) => ({
       id: `footer-optional-${index}`,
       label: `Footer optional ${index + 1}`,
       placement: "footer",
@@ -385,6 +384,115 @@ test("navigation requires exact primary destinations, organizer login, and foote
           : item,
       ),
     }),
+  );
+});
+
+test("legacy v1 navigation stays readable and upgrades to the institutional model", () => {
+  const legacyItems = [
+    ["events", "Events", "header", 10, "/events"],
+    ["clubs", "Clubs", "header", 20, "/clubs"],
+    ["community", "Community", "header", 30, "/community"],
+    ["about", "About", "header", 40, "/about"],
+    ["involved", "Get Involved", "header", 50, "/get-involved"],
+    ["organizer", "Organizer Login", "header", 60, "/organizer"],
+    ["footer-events", "Events", "footer", 10, "/events"],
+    ["footer-clubs", "Clubs", "footer", 20, "/clubs"],
+    ["footer-community", "Community", "footer", 30, "/community"],
+    ["footer-about", "About", "footer", 40, "/about"],
+    ["footer-involved", "Get Involved", "footer", 50, "/get-involved"],
+    ["footer-contact", "Feedback", "footer", 60, "/contact"],
+    ["footer-accessibility", "Accessibility", "footer", 70, "/accessibility"],
+    ["footer-conduct", "Code of Conduct", "footer", 80, "/conduct"],
+    ["footer-privacy", "Privacy", "footer", 90, "/privacy"],
+  ].map(([id, label, placement, sortOrder, target]) => ({
+    id,
+    label,
+    placement,
+    sortOrder,
+    target,
+  }));
+
+  assert.throws(() => parseNavigationSnapshot({ items: legacyItems }));
+  const persisted = parsePersistedNavigationSnapshot({ items: legacyItems });
+  assert.equal(persisted.items.length, legacyItems.length);
+
+  const upgraded = institutionalNavigationItems(persisted.items);
+  assert.doesNotThrow(() => parseNavigationSnapshot({ items: upgraded }));
+  assert.deepEqual(institutionalNavigationItems(upgraded), upgraded);
+  assert.deepEqual(
+    upgraded
+      .filter(({ placement }) => placement === "header")
+      .map(({ label, target }) => ({ label, target })),
+    [
+      { label: "Events", target: "/events" },
+      { label: "Clubs", target: "/clubs" },
+      { label: "About", target: "/about" },
+      { label: "For Organizations", target: "/for-organizations" },
+      { label: "Contact", target: "/contact" },
+    ],
+  );
+  assert.equal(upgraded.some(({ target }) => target === "/organizer"), false);
+
+  const maximumLegacy = parsePersistedNavigationSnapshot({
+    items: [
+      ...legacyItems,
+      ...Array.from({ length: 15 }, (_, index) => ({
+        id: `legacy-external-${index}`,
+        label: `Legacy external ${index + 1}`,
+        placement: "footer",
+        sortOrder: 100 + index,
+        target: `https://legacy.example.com/link-${index + 1}`,
+      })),
+    ],
+  });
+  const maximumUpgrade = institutionalNavigationItems(maximumLegacy.items);
+  assert.equal(maximumUpgrade.length, CMS_NAVIGATION_MAX);
+  assert.equal(
+    maximumUpgrade.filter(({ placement }) => placement === "footer").length,
+    CMS_FOOTER_NAVIGATION_MAX,
+  );
+  assert.equal(
+    maximumUpgrade.filter(({ target }) => target.startsWith("https://")).length,
+    14,
+  );
+  assert.doesNotThrow(() =>
+    parseNavigationSnapshot({ items: maximumUpgrade }),
+  );
+
+  const maximumLegacyWithResources = parsePersistedNavigationSnapshot({
+    items: [
+      ...legacyItems,
+      {
+        id: "legacy-resources",
+        label: "Resources",
+        placement: "footer",
+        sortOrder: 100,
+        target: "/resources",
+      },
+      ...Array.from({ length: 14 }, (_, index) => ({
+        id: `legacy-resource-external-${index}`,
+        label: `Legacy resource external ${index + 1}`,
+        placement: "footer",
+        sortOrder: 110 + index,
+        target: `https://resources.example.com/link-${index + 1}`,
+      })),
+    ],
+  });
+  const resourceUpgrade = institutionalNavigationItems(
+    maximumLegacyWithResources.items,
+  );
+  assert.equal(resourceUpgrade.length, CMS_NAVIGATION_MAX);
+  assert.equal(
+    resourceUpgrade.filter(({ target }) => target.startsWith("https://"))
+      .length,
+    13,
+  );
+  assert.equal(
+    resourceUpgrade.some(({ target }) => target === "/resources"),
+    true,
+  );
+  assert.doesNotThrow(() =>
+    parseNavigationSnapshot({ items: resourceUpgrade }),
   );
 });
 
@@ -765,7 +873,64 @@ test("site identity stays neutral unless legal wording uses the Owner-only legal
   assert.ok(
     contrastRatio(base.palette.foreground, "#E8E0CF") >= 4.5,
   );
-  assert.equal(parseSiteIdentitySnapshot(base).brandName, base.brandName);
+  const legacyIdentity = parseSiteIdentitySnapshot(base);
+  assert.equal(legacyIdentity.brandName, base.brandName);
+  assert.deepEqual(legacyIdentity.institutionalFacts, {
+    attendanceTotal: null,
+    attendanceTotalAsOf: null,
+    attendanceTotalConfirmed: false,
+    foundedYear: null,
+    foundedYearConfirmed: false,
+    memberTotal: null,
+    memberTotalAsOf: null,
+    memberTotalConfirmed: false,
+  });
+  const verifiedIdentity = parseSiteIdentitySnapshot({
+    ...base,
+    institutionalFacts: {
+      attendanceTotal: 1200,
+      attendanceTotalAsOf: "2026-08-20",
+      attendanceTotalConfirmed: true,
+      foundedYear: 2024,
+      foundedYearConfirmed: true,
+      memberTotal: 900,
+      memberTotalAsOf: "2026-08-20",
+      memberTotalConfirmed: true,
+    },
+  });
+  assert.equal(verifiedIdentity.institutionalFacts.foundedYear, 2024);
+  assert.equal(verifiedIdentity.institutionalFacts.attendanceTotal, 1200);
+  assert.equal(verifiedIdentity.institutionalFacts.memberTotal, 900);
+  assert.throws(() =>
+    parseSiteIdentitySnapshot({
+      ...base,
+      institutionalFacts: {
+        attendanceTotal: null,
+        attendanceTotalAsOf: null,
+        attendanceTotalConfirmed: true,
+        foundedYear: null,
+        foundedYearConfirmed: false,
+        memberTotal: null,
+        memberTotalAsOf: null,
+        memberTotalConfirmed: false,
+      },
+    }),
+  );
+  assert.throws(() =>
+    parseSiteIdentitySnapshot({
+      ...base,
+      institutionalFacts: {
+        attendanceTotal: 12,
+        attendanceTotalAsOf: "2026-02-30",
+        attendanceTotalConfirmed: false,
+        foundedYear: null,
+        foundedYearConfirmed: false,
+        memberTotal: null,
+        memberTotalAsOf: null,
+        memberTotalConfirmed: false,
+      },
+    }),
+  );
   const warmSurfacePalette = parseSiteIdentitySnapshot({
     ...base,
     palette: {

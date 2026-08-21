@@ -116,29 +116,10 @@ function NavigationLinks({
 }
 
 export function normalizedPrimaryNavigation(
-  configured: readonly PublicNavigationItemDto[],
+  _configured: readonly PublicNavigationItemDto[],
 ): readonly PublicNavigationItemDto[] {
-  const requiredByHref = new Map<
-    string,
-    (typeof requiredNavigation)[number]
-  >(
-    requiredNavigation.map((item) => [item.href, item]),
-  );
-  const seen = new Set<string>();
-  const primary: PublicNavigationItemDto[] = [];
-  for (const sourceItem of configured) {
-    const normalizedHref =
-      sourceItem.href === "/calendar" ? "/events" : sourceItem.href;
-    const required = requiredByHref.get(normalizedHref);
-    if (!required || seen.has(normalizedHref)) continue;
-    seen.add(normalizedHref);
-    primary.push(required);
-  }
-  for (const required of requiredNavigation) {
-    if (seen.has(required.href)) continue;
-    primary.push(required);
-  }
-  return Object.freeze(primary);
+  void _configured;
+  return Object.freeze([...requiredNavigation]);
 }
 
 function isCurrentNavigationPath(

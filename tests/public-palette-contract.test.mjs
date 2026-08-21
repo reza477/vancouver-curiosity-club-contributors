@@ -67,11 +67,12 @@ test("the public palette stays coherent and primary navigation labels remain rea
     const rule = cssRules(css).find(({ selectors }) => matches(selectors));
     assert.ok(rule, `missing CSS rule for ${label}`);
     const { declarations } = rule;
-    const background = resolvedDeclarationColor(
-      declarations,
-      "background",
-      publicVariables,
-    );
+    const backgroundValue = declarations.get("background");
+    assert.ok(backgroundValue, `missing background declaration for ${label}`);
+    const background =
+      backgroundValue.trim().toLowerCase() === "transparent"
+        ? pageBackground
+        : resolveColor(backgroundValue, publicVariables);
     const foreground = resolvedDeclarationColor(
       declarations,
       "color",
@@ -97,7 +98,10 @@ test("the public palette stays coherent and primary navigation labels remain rea
     if (!backgroundValue) {
       continue;
     }
-    const background = resolveColor(backgroundValue, publicVariables);
+    const background =
+      backgroundValue.trim().toLowerCase() === "transparent"
+        ? pageBackground
+        : resolveColor(backgroundValue, publicVariables);
     assert.ok(
       !legacyDarkSurfaces.has(background),
       `${selectors.trim()} must not put an interactive label on a legacy dark surface`,

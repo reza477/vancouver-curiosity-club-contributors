@@ -48,6 +48,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ]);
 
     const result: MetadataRoute.Sitemap = [];
+    result.push({
+      url: publicUrl("/for-organizations", origin),
+    });
     for (const page of catalogEntries.pages) {
       const path = PUBLIC_PAGE_PATHS.get(page.slug);
       if (!path) continue;

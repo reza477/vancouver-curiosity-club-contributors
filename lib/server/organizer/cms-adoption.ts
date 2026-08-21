@@ -11,6 +11,7 @@ import {
 import {
   canonicalJson,
   contentHash,
+  institutionalNavigationItems,
   parseClubProfileSnapshot,
   parseCommunityLinkSnapshot,
   parseLegalStatusSnapshot,
@@ -1665,17 +1666,23 @@ async function readNavigationCandidate(
     .all<Record<string, unknown>>();
   const rows = result.results ?? [];
   if (rows.length > 80) throw new CmsAdoptionError();
-  const configured = rows.map((row) => ({
-    id: requiredString(row.id),
-    label: requiredString(row.label),
-    placement: row.placement,
-    sortOrder: nonnegativeInteger(row.sort_order),
-    target: optionalString(row.page_slug)
-      ? `/${requiredString(row.page_slug)}`
-      : requiredString(row.external_url),
-  }));
+  const configured = rows.map((row) => {
+    const placement = row.placement;
+    if (placement !== "header" && placement !== "footer") {
+      throw new CmsAdoptionError();
+    }
+    return Object.freeze({
+      id: requiredString(row.id),
+      label: requiredString(row.label),
+      placement,
+      sortOrder: nonnegativeInteger(row.sort_order),
+      target: optionalString(row.page_slug)
+        ? `/${requiredString(row.page_slug)}`
+        : requiredString(row.external_url),
+    });
+  });
   const snapshot = parseNavigationSnapshot({
-    items: adoptedNavigationItems(configured),
+    items: institutionalNavigationItems(configured),
   });
   return adoptionCandidate({
     actor,
@@ -1734,6 +1741,7 @@ async function readIdentityCandidate(
   const snapshot = parseSiteIdentitySnapshot({
     brandName,
     footerMission: existing.footerMission ?? mission,
+    institutionalFacts: existing.institutionalFacts,
     locationLabel:
       existing.locationLabel ?? "Vancouver, British Columbia",
     logoAssetId: existing.logoAssetId ?? null,
@@ -1823,99 +1831,6 @@ async function adoptionCandidate(input: Readonly<{
       input.workflowStatus === "unpublished" ? input.now : null,
     workflowStatus: input.workflowStatus,
   });
-}
-
-function adoptedNavigationItems(
-  configured: readonly Readonly<{
-    id: string;
-    label: string;
-    placement: unknown;
-    sortOrder: number;
-    target: string;
-  }>[],
-): readonly Readonly<{
-  id: string;
-  label: string;
-  placement: "footer" | "header";
-  sortOrder: number;
-  target: string;
-}>[] {
-  const byTarget = new Map(configured.map((item) => [item.target, item]));
-  const requiredHeader = [
-    ["/events", "Events"],
-    ["/clubs", "Clubs"],
-    ["/community", "Community"],
-    ["/about", "About"],
-    ["/get-involved", "Get Involved"],
-    ["/organizer", "Organizer Login"],
-  ] as const;
-  const requiredFooter = [
-    ["/events", "Events"],
-    ["/clubs", "Clubs"],
-    ["/community", "Community"],
-    ["/about", "About"],
-    ["/get-involved", "Get Involved"],
-    ["/contact", "Feedback"],
-    ["/conduct", "Code of Conduct"],
-    ["/accessibility", "Accessibility"],
-    ["/privacy", "Privacy"],
-  ] as const;
-  const result: {
-    id: string;
-    label: string;
-    placement: "footer" | "header";
-    sortOrder: number;
-    target: string;
-  }[] = [];
-  for (const [index, [target, label]] of requiredHeader.entries()) {
-    const configuredItem = byTarget.get(target);
-    result.push({
-      id: configuredItem?.id ?? `required-header-${index}`,
-      label: target === "/organizer"
-        ? "Organizer Login"
-        : configuredItem?.label ?? label,
-      placement: "header",
-      sortOrder: (index + 1) * 10,
-      target,
-    });
-  }
-  for (const [index, [target, label]] of requiredFooter.entries()) {
-    const configuredItem = byTarget.get(target);
-    result.push({
-      id: configuredItem?.id
-        ? `${configuredItem.id}-footer`
-        : `required-footer-${index}`,
-      label: configuredItem?.label ?? label,
-      placement: "footer",
-      sortOrder: (index + 1) * 10,
-      target,
-    });
-  }
-  const resources = byTarget.get("/resources");
-  if (resources) {
-    result.push({
-      id: resources.id,
-      label: resources.label,
-      placement: "header",
-      sortOrder: 70,
-      target: "/resources",
-    });
-  }
-  for (const item of configured) {
-    if (
-      item.target.startsWith("https://") &&
-      !result.some((entry) => entry.target === item.target)
-    ) {
-      result.push({
-        id: item.id,
-        label: item.label,
-        placement: "footer",
-        sortOrder: item.sortOrder,
-        target: item.target,
-      });
-    }
-  }
-  return Object.freeze(result);
 }
 
 function firstPageSummary(

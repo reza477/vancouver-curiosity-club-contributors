@@ -6,6 +6,7 @@ import {
   CMS_FOOTER_NAVIGATION_MAX,
   CMS_HEADER_NAVIGATION_MAX,
   CMS_NAVIGATION_MAX,
+  institutionalNavigationItems,
 } from "@/lib/server/organizer/cms-validation";
 import { useRef, useState } from "react";
 import {
@@ -23,11 +24,11 @@ import type {
 const REQUIRED_TARGETS = new Set([
   "/events",
   "/clubs",
-  "/community",
   "/about",
+  "/for-organizations",
   "/get-involved",
+  "/host-an-event",
   "/contact",
-  "/organizer",
   "/accessibility",
   "/conduct",
   "/privacy",
@@ -173,11 +174,12 @@ export function NavigationContentEditor({
             <p className={styles.kicker}>Required routes stay protected</p>
             <h2>Header and footer navigation</h2>
             <p className={styles.helpText}>
-              Organizer Login cannot be removed, renamed, or repointed. Policy
-              links remain reachable. Resources appears publicly only when its
-              page is published.
-              Navigation supports up to {CMS_HEADER_NAVIGATION_MAX} header
-              items and {CMS_FOOTER_NAVIGATION_MAX} footer items.
+              The five public header destinations and required footer links are
+              fixed to match the public information architecture. Organizer
+              Login is added automatically in the footer. Optional resources
+              and confirmed external links can be added to the footer.
+              Navigation supports exactly {CMS_HEADER_NAVIGATION_MAX} header
+              items and up to {CMS_FOOTER_NAVIGATION_MAX} footer items.
             </p>
           </div>
           <div className={styles.toolbar}>
@@ -226,7 +228,6 @@ export function NavigationContentEditor({
         <ol className={styles.blockList}>
           {items.map((item, index) => {
             const protectedTarget = REQUIRED_TARGETS.has(item.target);
-            const organizerLogin = item.target === "/organizer";
             return (
               <li className={styles.blockCard} key={item.id}>
                 <header>
@@ -261,7 +262,7 @@ export function NavigationContentEditor({
                   <label className={styles.field}>
                     <span>Label</span>
                     <input
-                      disabled={organizerLogin}
+                      disabled={protectedTarget}
                       maxLength={80}
                       onChange={(event) => update(index, { label: event.target.value })}
                       required
@@ -366,7 +367,10 @@ function navigationSnapshot(
   ) {
     throw new Error("The navigation revision is unavailable.");
   }
-  return workspace.revision.snapshot as CmsNavigationSnapshot;
+  const snapshot = workspace.revision.snapshot as CmsNavigationSnapshot;
+  return Object.freeze({
+    items: institutionalNavigationItems(snapshot.items),
+  });
 }
 
 function isWorkspace(value: unknown): value is CmsEntityWorkspaceDto {

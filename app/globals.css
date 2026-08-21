@@ -10,7 +10,6 @@
 @import "./styles/components/calendar.css" layer(components);
 @import "./styles/components/forms.css" layer(components);
 @import "./styles/pages/home.css" layer(components);
-@import "./styles/pages/events.css" layer(components);
 @import "./styles/pages/event-detail.css" layer(components);
 @import "./styles/pages/about.css" layer(components);
 @import "./styles/components/responsive-overrides.css" layer(components);

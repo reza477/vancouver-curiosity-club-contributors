@@ -11,12 +11,15 @@ export type PublicFormKey = (typeof PUBLIC_FORM_KEYS)[number];
 
 export const CONTACT_TOPICS = [
   "General",
+  "Partnerships",
   "Event question",
   "Accessibility",
   "Privacy",
   "Media",
   "Other",
 ] as const;
+
+export type ContactTopic = (typeof CONTACT_TOPICS)[number];
 
 export const VOLUNTEER_INTERESTS = [
   "Event support",

@@ -11,7 +11,7 @@ export function PublicFormPrivacyNotice() {
         How we handle information you send
       </h2>
       <p>
-        The Feedback form collects a name, reply email, topic, and message.
+        The Contact form collects a name, reply email, topic, and message.
         Volunteer collects a name, reply email, one to five interest areas,
         how the visitor would like to help, and optional availability or
         relevant context.
@@ -64,7 +64,7 @@ export function PublicFormPrivacyNotice() {
       <p>
         To ask a privacy question or request review, correction, or deletion
         of information you submitted, use the{" "}
-        <Link href="/contact">Feedback form</Link> and choose the Privacy topic.
+        <Link href="/contact">Contact form</Link> and choose the Privacy topic.
         Include your submission reference if you have it. We will review the
         request and follow up using the reply email you provide. Deletion is
         not automatic; an authorized Owner can irreversibly redact personal
