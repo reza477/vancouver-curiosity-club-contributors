@@ -93,7 +93,7 @@ export default async function ProgramDetailPage({
         <section className="public-service-state" aria-live="polite">
           <p className="section-kicker">Temporarily unavailable</p>
           <h1>The Program page could not be prepared.</h1>
-          <p>No draft or substitute Program information is being shown.</p>
+          <p>Please try again shortly.</p>
         </section>
       </main>
     );

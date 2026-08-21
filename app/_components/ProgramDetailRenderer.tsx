@@ -200,7 +200,7 @@ export function ProgramDetailRenderer({
         <section className="public-service-state" aria-live="polite">
           <p className="section-kicker">Program calendar</p>
           <h2>Program events are temporarily unavailable.</h2>
-          <p>No substitute event facts are being shown.</p>
+          <p>Please try the calendar again shortly.</p>
         </section>
       )}
       {origin ? (

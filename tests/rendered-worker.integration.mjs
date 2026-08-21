@@ -1301,7 +1301,7 @@ test("public form routes render editable fields immediately while secure send pr
     );
     assert.match(
       html,
-      /Organizers review submissions and may use your reply email to follow up; timing varies and there is no fixed response time\./u,
+      /Our team reviews each submission and may use your reply email to follow up\./u,
       `${path} truthful response process`,
     );
 
@@ -1314,7 +1314,7 @@ test("public form routes render editable fields immediately while secure send pr
       );
       assert.match(
         formSection,
-        /<noscript>[\s\S]*Your information has not been sent\.[\s\S]*Please enable[\s\S]*JavaScript and reload this page\.[\s\S]*<\/noscript>/u,
+        /<noscript>[\s\S]*form is unavailable in this browser[\s\S]*Your information has not been sent\.[\s\S]*Please try again later\.[\s\S]*<\/noscript>/u,
         `${path} no-script safety notice`,
       );
       assert.match(

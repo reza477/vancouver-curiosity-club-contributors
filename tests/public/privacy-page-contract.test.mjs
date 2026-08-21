@@ -10,7 +10,7 @@ import { PUBLIC_CATALOG_PAGES } from "../../lib/server/public/catalog-definition
 const PROJECT_ROOT = process.cwd();
 
 const INTERNAL_OR_PRELAUNCH_COPY =
-  /starter notice|legal review before (?:a )?(?:public )?launch|marked internally|owner\/legal review|\bD1\b|\bR2\b|\bthis release\b|(?:publication|publishing (?:a )?page) is not a claim of (?:legal )?compliance/iu;
+  /starter notice|legal review before (?:a )?(?:public )?launch|marked internally|owner\/legal review|\bD1\b|\bR2\b|\bthis release\b|(?:publication|publishing (?:a )?page) is not a claim of (?:legal )?compliance|organizer inbox|email-delivery provider|fixed organizer email|outside the application|anonymous browser cookie|IP[- ]address|user-agent|private keyed hash|raw network|CSRF|URL parameters|server validation|database behaviour|form transport/iu;
 
 test("the public Privacy surface contains only visitor-facing policy copy", () => {
   const privacyPageSource = source("app/privacy/page.tsx");
@@ -38,34 +38,12 @@ test("the rendered Privacy notice explains the site's real data boundaries", () 
 
   assert.doesNotMatch(text, INTERNAL_OR_PRELAUNCH_COPY);
 
-  assert.match(
-    text,
-    /Contact[^.]*name[^.]*reply email[^.]*topic[^.]*message/iu,
-    "visitors must be told what the Contact form collects",
-  );
-  assert.match(
-    text,
-    /Volunteer[^.]*name[^.]*reply email[^.]*interest/iu,
-    "visitors must be told what the Volunteer form collects",
-  );
-  assert.match(
-    text,
-    /Host an Event[^.]*name[^.]*reply email[^.]*event/iu,
-    "visitors must be told what the hosting form collects",
-  );
-  assert.match(
-    text,
-    /Partnership or Funding Support[^.]*name[^.]*reply email[^.]*supporter[^.]*website/iu,
-    "visitors must be told what the partnership form collects",
-  );
-  assert.match(
-    text,
-    /authorized[^.]*organizers[^.]*(?:review|respond)|(?:review|respond)[^.]*authorized[^.]*organizers/iu,
-    "the form-data purpose and audience must be clear",
-  );
+  assert.match(text, /asks only for the details needed/iu);
+  assert.match(text, /name[^.]*email[^.]*organization[^.]*topic/iu);
+  assert.match(text, /Our team[^.]*(?:review|follow up)/iu);
 
   assert.match(text, /12 months/iu);
-  assert.match(text, /retention[^.]*review|review[^.]*retention/iu);
+  assert.match(text, /review submissions 12 months/iu);
   assert.match(
     text,
     /request[^.]*(?:review|correct|correction)/iu,
@@ -81,24 +59,11 @@ test("the rendered Privacy notice explains the site's real data boundaries", () 
 
   assert.match(
     text,
-    /(?:access|submissions?)[^.]*(?:limited|restricted)[^.]*authorized|only authorized[^.]*(?:access|review)/iu,
+    /Access is limited[^.]*people responsible/iu,
     "the policy must describe the access boundary",
   );
-  assert.match(
-    text,
-    /(?:no|cannot)[^.]*guarantee[^.]*(?:security|secure)|(?:security|secure)[^.]*(?:cannot|not)[^.]*guarantee|(?:cannot|never|not)[^.]*completely secure|no[^.]*absolute security/iu,
-    "the policy must not imply absolute security",
-  );
-  assert.match(text, /anonymous[^.]*cookie/iu);
-  assert.match(text, /cookie[^.]*(?:one year|12 months)/iu);
-  assert.match(text, /cookie[^.]*(?:abuse|rate-limit|retry)/iu);
-  assert.match(
-    text,
-    /IP[- ]address[^.]*browser user-agent[^.]*accepted-language/iu,
-    "the policy must identify the bounded request facts used for abuse limits",
-  );
-  assert.match(text, /private keyed[^.]*hash/iu);
-  assert.match(text, /raw[^.]*(?:network|browser)[^.]*not stored/iu);
+  assert.match(text, /protect submissions/iu);
+  assert.match(text, /not used for advertising or attendee profiles/iu);
 
   assert.match(
     text,

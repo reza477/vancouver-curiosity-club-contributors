@@ -45,12 +45,11 @@ export function AccessibilityRouteBody({
         <ul>
           <li>
             Some event listings do not yet include venue-access details because
-            those details have not been confirmed by an organizer.
+            our team has not received confirmed information.
           </li>
           <li>
-            Public forms require JavaScript to prepare secure sending. If
-            scripts are unavailable, a form cannot be submitted through this
-            website and no information is sent.
+            Some browsers may be unable to prepare a public form. If a form is
+            unavailable, no information is sent.
           </li>
           <li>
             Meetup, map providers, and other external RSVP destinations have
@@ -98,7 +97,7 @@ export function ClubsRouteBody({
         <section className="public-service-state" aria-live="polite">
           <p className="section-kicker">Clubs</p>
           <h2>Club pages are temporarily unavailable.</h2>
-          <p>No draft or substitute program information is being shown.</p>
+          <p>Please try again shortly.</p>
         </section>
       )}
     </EditorialPage>
@@ -114,15 +113,23 @@ export function GetInvolvedRouteBody({
     page: PublicPageDto;
   }>) {
   return (
-    <EditorialPage page={page} tone="community" {...preview}>
+    <EditorialPage
+      displayDeck="Attend a public program, volunteer, host a gathering, or begin a partnership conversation with our team."
+      displayEyebrow="Get involved"
+      displayParagraphs={[]}
+      displayTitle="Bring something to the community"
+      page={page}
+      tone="community"
+      {...preview}
+    >
       <section className="contribution-hub" aria-labelledby="ways-heading">
         <div className="contribution-hub__intro">
           <p className="section-kicker">Choose a way to contribute</p>
           <h2 id="ways-heading">What would you like to make happen?</h2>
           <p>
             Have an event idea, want to help at a gathering, know a great
-            venue, or want to support the work? Send the organizers the useful
-            details in one of the forms below.
+            venue, or want to support the work? Share the useful details with
+            our team in one of the forms below.
           </p>
         </div>
         <div className="contribution-paths">
@@ -159,8 +166,9 @@ export function ContactRouteBody({
   }>) {
   return (
     <EditorialPage
-      displayDeck="Send a private message to the organizers about partnerships, events, accessibility, media, or another question."
+      displayDeck="Send a private message to our team about partnerships, events, accessibility, media, or another question."
       displayEyebrow="Contact"
+      displayParagraphs={[]}
       displayTitle="Contact"
       page={page}
       tone="community"
@@ -181,7 +189,15 @@ export function HostAnEventRouteBody({
     page: PublicPageDto;
   }>) {
   return (
-    <EditorialPage page={page} tone="reset-make" {...preview}>
+    <EditorialPage
+      displayDeck="Share a thoughtful event idea with our team for consideration as a public program."
+      displayEyebrow="Public programs"
+      displayParagraphs={[]}
+      displayTitle="Propose an event"
+      page={page}
+      tone="reset-make"
+      {...preview}
+    >
       <PublicFormPageGuidance />
       {children}
     </EditorialPage>

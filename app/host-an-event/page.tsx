@@ -16,6 +16,8 @@ export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return buildEditorialMetadata({
+    descriptionOverride:
+      "Propose a thoughtful public program for Vancouver Curiosity Club.",
     fallbackTitle: "Host an Event",
     path: route,
     route,

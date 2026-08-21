@@ -45,10 +45,10 @@ export const PARTNERSHIP_TYPES = [
 ] as const;
 
 export const PUBLIC_FORM_PURPOSE_COPY =
-  "Organizers review submissions and may use your reply email to follow up; timing varies and there is no fixed response time.";
+  "Our team reviews each submission and may use your reply email to follow up.";
 
 export const PUBLIC_FORM_SUCCESS_COPY =
-  "Thanks — your submission was received for organizer review.";
+  "Thanks — your inquiry was received by our team.";
 
 export type PublicFormFieldErrors = Readonly<Record<string, string>>;
 

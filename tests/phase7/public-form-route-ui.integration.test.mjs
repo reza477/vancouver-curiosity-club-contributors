@@ -112,14 +112,14 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
   assert.deepEqual(pageCopy.contact, [
     {
       heading: "Share feedback or ask a question",
-      text: "The Feedback form sends your comments or questions privately to the organizers so they can review and reply.",
+      text: "Send comments or questions privately to our team for review and follow-up.",
     },
   ]);
   assert.deepEqual(pageCopy["get-involved"], [
     {
-      heading: "Bring something to the club",
+      heading: "Bring something to the community",
       paragraphs: [
-        "Attending a published event is the simplest way in. Use the forms below to tell the organizers how you would like to volunteer or to start a partnership, funding, or sponsorship conversation.",
+        "Attending a published event is the simplest way in. Use the forms below to tell our team how you would like to volunteer or to start a partnership, funding, or sponsorship conversation.",
       ],
       text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
     },
@@ -128,7 +128,7 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
     {
       heading: "Interested in hosting?",
       paragraphs: [
-        "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for an organizer to assess later.",
+        "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for our team to assess.",
       ],
       text: "Use the Host an Event form to share a proposed title or topic, a short event idea, format, optional preferred club or program, and optional timing.",
     },
@@ -136,7 +136,7 @@ test("fresh public catalog copy truthfully describes the four stored forms", () 
   const privacyCopy = JSON.stringify(pageCopy.privacy);
   assert.match(privacyCopy, /send a form without creating an attendee account/u);
   assert.match(privacyCopy, /collect only the information you choose to send/u);
-  assert.match(privacyCopy, /private organizer inbox/u);
+  assert.match(privacyCopy, /available only to the people responsible/iu);
   assert.match(privacyCopy, /Meetup or another external service/u);
   assert.doesNotMatch(
     JSON.stringify(pageCopy),
@@ -167,7 +167,7 @@ test(
 
     assert.match(
       formSource,
-      /<noscript>[\s\S]*Your information has not been sent[\s\S]*<\/noscript>/u,
+      /<noscript>[\s\S]*Your information has not\s+been sent[\s\S]*<\/noscript>/u,
       "visitors without JavaScript need an explicit safe state",
     );
     const globalCss = readPublicCssSync();
@@ -551,7 +551,7 @@ test(
     assert.match(successBody.publicReference, /^VCC-[A-Z0-9-]+$/u);
     assert.deepEqual(successBody, {
       message:
-        `Thanks \u2014 your submission was received for organizer review. Reference: ${successBody.publicReference}.`,
+        `Thanks \u2014 your inquiry was received by our team. Reference: ${successBody.publicReference}.`,
       publicReference: successBody.publicReference,
       stored: true,
     });
@@ -1092,7 +1092,7 @@ test(
     assert.match(body.publicReference, /^VCC-[A-Z0-9-]+$/u);
     assert.deepEqual(body, {
       message:
-        `Thanks — your submission was received for organizer review. Reference: ${body.publicReference}.`,
+        `Thanks — your inquiry was received by our team. Reference: ${body.publicReference}.`,
       publicReference: body.publicReference,
       stored: true,
     });
@@ -1176,7 +1176,7 @@ test(
     assert.deepEqual(body, {
       error: {
         code: "service_unavailable",
-        message: "The submission could not be stored. Please try again.",
+        message: "We couldn’t send your inquiry. Please try again.",
       },
     });
     assert.equal(Object.hasOwn(body, "message"), false);
@@ -1238,18 +1238,18 @@ test(
       assert.ok(ids.includes(reference), `unresolved form id ${reference}`);
     }
     assert.equal(
-      countMatches(sharedFormsHtml, /Send this to the organizers/gu),
+      countMatches(sharedFormsHtml, /Send an inquiry/gu),
       2,
     );
     assert.match(sharedFormsHtml, /data-form-key="volunteer"/u);
     assert.match(sharedFormsHtml, /data-form-key="partnership"/u);
     assert.equal(
       PUBLIC_FORM_PURPOSE_COPY,
-      "Organizers review submissions and may use your reply email to follow up; timing varies and there is no fixed response time.",
+      "Our team reviews each submission and may use your reply email to follow up.",
     );
     assert.equal(
       PUBLIC_FORM_SUCCESS_COPY,
-      "Thanks — your submission was received for organizer review.",
+      "Thanks — your inquiry was received by our team.",
     );
     assert.doesNotMatch(
       sharedFormsHtml,
@@ -1260,36 +1260,13 @@ test(
       React.createElement(PublicFormPrivacyNotice),
     );
     const privacyText = visibleText(privacyHtml);
-    for (const exactEnumeration of [
-      "The Contact form collects a name, reply email, topic, and message.",
-      "Volunteer collects a name, reply email, one to five interest areas, how the visitor would like to help, and optional availability or relevant context.",
-      "Host an Event collects a name, reply email, proposed event title or topic, short event idea, format, and optional preferred club or program and timing.",
-      "Partnership or Funding Support collects a contact name, reply email, organization, venue, or supporter name, partnership type, message, and an optional HTTPS website.",
-    ]) {
-      assert.ok(
-        privacyText.includes(exactEnumeration),
-        `missing exact privacy enumeration: ${exactEnumeration}`,
-      );
-    }
-    assert.match(
+    assert.match(privacyText, /asks only for the details needed/iu);
+    assert.match(privacyText, /Our team uses this information/iu);
+    assert.match(privacyText, /review submissions 12 months/iu);
+    assert.match(privacyText, /protect submissions/iu);
+    assert.doesNotMatch(
       privacyText,
-      /stored in a private organizer inbox\./u,
-    );
-    assert.match(
-      privacyText,
-      /the site sends no form-confirmation email\./u,
-    );
-    assert.match(
-      privacyText,
-      /random anonymous browser cookie for one year/u,
-    );
-    assert.match(
-      privacyText,
-      /IP-address, browser user-agent, and accepted-language information into private keyed hashes/u,
-    );
-    assert.match(
-      privacyText,
-      /raw network and browser information is not stored/u,
+      /organizer inbox|email-delivery provider|anonymous browser cookie|IP-address|user-agent|private keyed hashes|raw network|form-confirmation email/iu,
     );
 
     const page = (slug, title) => ({
@@ -1440,7 +1417,7 @@ test(
     assert.match(formSource, /href=\{`#\$\{errorTargetId/u);
     assert.doesNotMatch(formSource, /<Link href="\/privacy">/u);
     assert.match(formSource, /data-form-key=\{formKey\}/u);
-    assert.match(formSource, /Send this to the organizers/u);
+    assert.match(formSource, /Send an inquiry/u);
     for (const label of [
       "Send message",
       "Send volunteer interest",

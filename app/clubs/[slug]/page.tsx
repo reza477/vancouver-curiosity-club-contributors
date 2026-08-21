@@ -88,7 +88,7 @@ export default async function ClubDetailPage({ params }: ClubPageProps) {
         <section className="public-service-state" aria-live="polite">
           <p className="section-kicker">Temporarily unavailable</p>
           <h1>The club page could not be prepared.</h1>
-          <p>No draft or substitute club information is being shown.</p>
+          <p>Please try again shortly.</p>
         </section>
       </main>
     );

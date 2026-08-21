@@ -90,7 +90,7 @@ export default async function ForOrganizationsPage() {
           <h1 id="organizations-unavailable-title">
             Organization information could not be prepared.
           </h1>
-          <p>Please try again for the current, verified information.</p>
+          <p>Please try again shortly.</p>
         </section>
       </main>
     );
@@ -196,8 +196,8 @@ export default async function ForOrganizationsPage() {
           <p className="section-kicker">Ways to collaborate</p>
           <h2 id="organizations-collaboration-title">Possible forms of support and partnership.</h2>
           <p>
-            These are invitations to explore fit—not claims about existing
-            partnerships.
+            Each conversation starts with shared objectives, practical fit,
+            and public benefit.
           </p>
         </div>
         <div className="organizations-collaboration__grid">
@@ -256,10 +256,6 @@ export default async function ForOrganizationsPage() {
               </li>
             ) : null}
           </ul>
-          <p>
-            Information that has not been verified—such as registration,
-            founding, attendance, or membership totals—is not displayed.
-          </p>
         </div>
       </section>
 
@@ -290,8 +286,8 @@ export default async function ForOrganizationsPage() {
             Tell us what kind of partnership you have in mind.
           </h2>
           <p>
-            The private contact form opens with Partnerships selected. Names,
-            email addresses, and messages are never placed in the URL.
+            Tell us about your organization, what you are working on, and the
+            kind of collaboration you have in mind.
           </p>
         </div>
         <Link

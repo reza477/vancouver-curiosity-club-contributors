@@ -182,7 +182,7 @@ export function PublicSubmissionForm({
           isRecord(body.error) &&
           typeof body.error.message === "string"
             ? body.error.message
-            : "The submission could not be stored. Please try again.";
+            : "We couldn’t send your inquiry. Please try again.";
         throw new Error(message);
       }
       setSuccess(true);
@@ -191,7 +191,7 @@ export function PublicSubmissionForm({
       setNotice(
         error instanceof Error
           ? error.message
-          : "The submission could not be stored. Please try again.",
+          : "We couldn’t send your inquiry. Please try again.",
       );
     } finally {
       setBusy(false);
@@ -220,7 +220,7 @@ export function PublicSubmissionForm({
       aria-labelledby={`${idPrefix}-title`}
     >
       <div className="public-submission__heading">
-        <p className="section-kicker">Send this to the organizers</p>
+        <p className="section-kicker">Send an inquiry</p>
         <h2 id={`${idPrefix}-title`}>{title}</h2>
       </div>
 
@@ -230,8 +230,8 @@ export function PublicSubmissionForm({
           role="status"
         >
           <p>
-            JavaScript is required to send this form. Your information has not been sent.
-            Please enable JavaScript and reload this page.
+            The form is unavailable in this browser. Your information has not
+            been sent. Please try again later.
           </p>
         </div>
       </noscript>

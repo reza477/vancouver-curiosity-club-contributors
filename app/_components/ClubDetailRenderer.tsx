@@ -286,10 +286,7 @@ export function ClubDetailRenderer({
         <section className="public-service-state" aria-live="polite">
           <p className="section-kicker">Club calendar</p>
           <h2>Club events are temporarily unavailable.</h2>
-          <p>
-            The club page remains available, but no substitute event facts are
-            being shown.
-          </p>
+          <p>The club page remains available. Please try the calendar again shortly.</p>
         </section>
       )}
       {origin ? (

@@ -31,7 +31,7 @@ export function ClubDirectory({
       <section className="public-empty-state" aria-labelledby="clubs-empty">
         <p className="section-kicker">Clubs</p>
         <h2 id="clubs-empty">No public club pages are available yet.</h2>
-        <p>Draft programs are not displayed.</p>
+        <p>Please check again shortly.</p>
       </section>
     );
   }

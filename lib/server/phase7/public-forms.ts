@@ -711,6 +711,6 @@ function publicFormUnavailable(): SafeApplicationError {
   return new SafeApplicationError(
     "service_unavailable",
     503,
-    "The submission could not be stored. Please try again.",
+    "We couldn’t send your inquiry. Please try again.",
   );
 }

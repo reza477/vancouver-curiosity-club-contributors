@@ -304,6 +304,7 @@ export async function EditorialPage({
   children,
   displayDeck,
   displayEyebrow,
+  displayParagraphs,
   displayTitle,
   page,
   previewCommunityLinks,
@@ -314,6 +315,7 @@ export async function EditorialPage({
   children?: ReactNode;
   displayDeck?: string;
   displayEyebrow?: string;
+  displayParagraphs?: readonly string[];
   displayTitle?: string;
   page: PublicPageDto;
   previewCommunityLinks?: readonly PublicCommunityLinkDto[];
@@ -324,6 +326,8 @@ export async function EditorialPage({
   const introduction = introductionFor(page);
   const publicTitle =
     displayTitle ?? introduction?.content.heading ?? page.title;
+  const introductionParagraphs =
+    displayParagraphs ?? introduction?.content.paragraphs ?? [];
   const sections = page.sections.filter(
     (section) => section !== introduction,
   );
@@ -358,12 +362,12 @@ export async function EditorialPage({
         tone={tone}
       />
 
-      {introduction?.content.paragraphs?.length ? (
+      {introductionParagraphs.length ? (
         <section
           className="editorial-section editorial-section--prose"
           aria-label={`${displayTitle ?? page.title} details`}
         >
-          {introduction.content.paragraphs.map((paragraph, index) => (
+          {introductionParagraphs.map((paragraph, index) => (
             <p key={`introduction-${index}`}>{paragraph}</p>
           ))}
         </section>
@@ -543,10 +547,7 @@ export function EditorialUnavailable({
       <section className="public-service-state" aria-labelledby="service-title">
         <p className="section-kicker">Temporarily unavailable</p>
         <h1 id="service-title">{title} could not be prepared.</h1>
-        <p>
-          This page is temporarily unavailable. No substitute details are
-          being shown.
-        </p>
+        <p>This page is temporarily unavailable. Please try again shortly.</p>
       </section>
     </main>
   );
@@ -587,7 +588,7 @@ export function CommunityDestinations({
         </ul>
       ) : (
         <p className="public-empty-note">
-          No group link is available here right now.
+          No community link is available here right now.
         </p>
       )}
     </section>
@@ -598,10 +599,8 @@ export function CommunityDestinationsUnavailable() {
   return (
     <section className="community-destinations" aria-live="polite">
       <p className="section-kicker">Community links</p>
-      <h2>Group links are temporarily unavailable.</h2>
-      <p>
-        No substitute address is being shown. Please try again later.
-      </p>
+      <h2>Community links are temporarily unavailable.</h2>
+      <p>Please try again later.</p>
     </section>
   );
 }
@@ -936,7 +935,7 @@ function DynamicBlockUnavailable({
   return (
     <section className="editorial-section" aria-live="polite">
       <h2>{heading} are temporarily unavailable.</h2>
-      <p>No private or substitute information is being shown.</p>
+      <p>Please try again shortly.</p>
     </section>
   );
 }

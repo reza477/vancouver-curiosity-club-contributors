@@ -14,6 +14,8 @@ export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return buildEditorialMetadata({
+    descriptionOverride:
+      "How Vancouver Curiosity Club handles information visitors choose to send.",
     fallbackTitle: "Privacy",
     path: route,
     route,
@@ -28,7 +30,14 @@ export default async function PrivacyPage() {
     return <EditorialUnavailable title="Privacy" />;
   }
   return (
-    <EditorialPage page={loaded.page} tone="think">
+    <EditorialPage
+      displayDeck="How we collect, use, protect, and review information you choose to send."
+      displayEyebrow="Community information"
+      displayParagraphs={[]}
+      displayTitle="Privacy"
+      page={loaded.page}
+      tone="think"
+    >
       <PublicFormPrivacyNotice />
     </EditorialPage>
   );

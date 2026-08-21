@@ -2,6 +2,7 @@ import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import { resolvePublicOrganization } from "@/lib/server/public/catalog";
 import {
+  PUBLIC_FORM_SUCCESS_COPY,
   PublicFormValidationError,
   parsePublicFormKey,
   type PublicFormKey,
@@ -99,8 +100,7 @@ export async function POST(
         });
       }
     }
-    const message =
-      `Thanks — your submission was received for organizer review. Reference: ${result.publicReference}.`;
+    const message = `${PUBLIC_FORM_SUCCESS_COPY} Reference: ${result.publicReference}.`;
     return nativeSubmission
       ? publicFormHtml({
           backPath: publicFormBackPath(formKey),

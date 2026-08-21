@@ -101,15 +101,11 @@ test("each form page uses one quiet privacy sentence and one truthful process se
       1,
       `${pageLabel} response process must stay concise`,
     );
-    assert.match(processText, /organizers?/iu);
+    assert.match(processText, /our team/iu);
     assert.match(processText, /review/iu);
     assert.match(processText, /reply email/iu);
     assert.match(processText, /follow up|reply/iu);
-    assert.match(
-      processText,
-      /timing (?:can |may )?varies|no fixed response time/iu,
-      `${pageLabel} must state the honest no-SLA boundary`,
-    );
+    assert.doesNotMatch(processText, /timing varies|no fixed response time/iu);
     assertNoGuaranteedResponse(processText, pageLabel);
   }
 });
@@ -195,8 +191,8 @@ test("all fields are editable immediately while only secure submission prepares"
     );
     assert.match(
       markup,
-      /<noscript>[\s\S]*Your information has not been sent\.[\s\S]*Please enable[\s\S]*JavaScript and reload this page\.[\s\S]*<\/noscript>/u,
-      `${formKey} must retain the explicit no-script safety notice`,
+      /<noscript>[\s\S]*form is unavailable in this browser[\s\S]*Your information has not been sent\.[\s\S]*Please try again later\.[\s\S]*<\/noscript>/u,
+      `${formKey} must retain a clear no-script safety notice without implementation language`,
     );
   }
 });

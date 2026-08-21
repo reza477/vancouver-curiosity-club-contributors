@@ -6,54 +6,31 @@ export function PublicFormPrivacyNotice() {
       className="editorial-section public-form-privacy"
       aria-labelledby="public-form-privacy-title"
     >
-      <p className="section-kicker">Public form data</p>
+      <p className="section-kicker">Privacy</p>
       <h2 id="public-form-privacy-title">
         How we handle information you send
       </h2>
       <p>
-        The Contact form collects a name, reply email, topic, and message.
-        Volunteer collects a name, reply email, one to five interest areas,
-        how the visitor would like to help, and optional availability or
-        relevant context.
+        Each public form asks only for the details needed to understand your
+        message and reply. Depending on the form, that may include your name,
+        email, organization, topic, interests, availability, or event idea.
       </p>
       <p>
-        Host an Event collects a name, reply email, proposed event title or
-        topic, short event idea, format, and optional preferred club or
-        program and timing. Partnership or Funding Support collects a contact
-        name, reply email, organization, venue, or supporter name, partnership
-        type, message, and an optional HTTPS website.
+        Our team uses this information to review your inquiry and follow up.
+        Access is limited to the people responsible for handling website
+        submissions. Form content is not used for automatic marketing
+        enrollment.
       </p>
       <p>
-        The information is used so authorized Vancouver Curiosity Club
-        organizers can review and respond outside the application. It is
-        stored in a private organizer inbox. A private copy is also processed
-        by an email-delivery provider and sent to a fixed organizer email
-        inbox. Access to submissions is restricted to authorized organizers.
-        Form content is not used for automatic marketing enrollment, and the
-        site sends no form-confirmation email. The delivery provider sends
-        only the private organizer copy.
+        We review submissions 12 months after they are received. You can ask
+        us to review, correct, or delete information you submitted. A limited
+        administrative record may be retained where needed for accountability
+        and security.
       </p>
       <p>
-        Each submission receives a retention-review date 12 months after it
-        is received. That review does not automatically delete it. An
-        authorized Owner can permanently redact personal content held by this
-        site. A minimal administrative record may remain with the submission
-        reference, form type, dates, final status, and security or audit
-        facts. An organizer email copy already delivered is separate and must
-        be deleted separately from the organizer inbox and email provider.
-      </p>
-      <p>
-        The site uses technical safeguards and limits private submission
-        access to authorized organizers, but no online service can guarantee
-        absolute security.
-      </p>
-      <p>
-        The form uses a random anonymous browser cookie for one year to apply
-        retry and abuse limits. It turns limited IP-address, browser user-agent, and
-        accepted-language information into private keyed hashes. The raw
-        network and browser information is not stored in the form submission
-        or those rate-limit records. Our hosting and security provider may
-        set its own short-lived security cookies.
+        We protect submissions and use visitor information only for the
+        purposes described here. It is not used for advertising or attendee
+        profiles.
       </p>
       <p>
         Event RSVP and ticket buttons may open Meetup or another external
@@ -66,11 +43,7 @@ export function PublicFormPrivacyNotice() {
         of information you submitted, use the{" "}
         <Link href="/contact">Contact form</Link> and choose the Privacy topic.
         Include your submission reference if you have it. We will review the
-        request and follow up using the reply email you provide. Deletion is
-        not automatic; an authorized Owner can irreversibly redact personal
-        content held by this site while retaining the minimal administrative
-        record described above. This does not delete a copy already delivered
-        to the organizer email inbox.
+        request and follow up using the reply email you provide.
       </p>
     </section>
   );

@@ -171,10 +171,10 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
     ]),
     page("get-involved", "Get Involved", [
       section("intro", "intro", 10, {
-        heading: "Bring something to the club",
+        heading: "Bring something to the community",
         text: "You can attend, share an event idea, volunteer, host a gathering, or begin a conversation about partnering.",
         paragraphs: [
-          "Attending a published event is the simplest way in. Use the forms below to tell the organizers how you would like to volunteer or to start a partnership, funding, or sponsorship conversation.",
+          "Attending a published event is the simplest way in. Use the forms below to tell our team how you would like to volunteer or to start a partnership, funding, or sponsorship conversation.",
         ],
       }),
     ]),
@@ -183,14 +183,14 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: "Interested in hosting?",
         text: "Use the Host an Event form to share a proposed title or topic, a short event idea, format, optional preferred club or program, and optional timing.",
         paragraphs: [
-          "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for an organizer to assess later.",
+          "A useful starting idea has a clear question or activity, a reason to gather, and enough practical detail for our team to assess.",
         ],
       }),
     ]),
     page("contact", "Feedback", [
       section("intro", "intro", 10, {
         heading: "Share feedback or ask a question",
-        text: "The Feedback form sends your comments or questions privately to the organizers so they can review and reply.",
+        text: "Send comments or questions privately to our team for review and follow-up.",
       }),
     ]),
     page("conduct", "Code of Conduct", [
@@ -218,7 +218,7 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: "Privacy, in plain language",
         text: "You can browse public pages and send a form without creating an attendee account. We collect only the information you choose to send and use it to review your request and reply.",
         paragraphs: [
-          "Form submissions are stored in a private organizer inbox. Access is restricted to authorized Vancouver Curiosity Club organizers, and the information is not used to enroll you in marketing.",
+          "Form submissions are available only to the people responsible for reviewing inquiries, and the information is not used to enroll you in marketing.",
           "Event RSVP and ticket buttons may open Meetup or another external service. Information you enter there is handled by that service under its own privacy practices; Vancouver Curiosity Club does not collect or receive your RSVP through this website.",
         ],
       }),

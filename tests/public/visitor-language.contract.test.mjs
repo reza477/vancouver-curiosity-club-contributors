@@ -34,11 +34,11 @@ const PRODUCT_OWNED_SURFACES = Object.freeze([
     rejected: /from the published calendar/iu,
   }),
   Object.freeze({
-    anchor: /Group links are temporarily unavailable/u,
+    anchor: /Community links are temporarily unavailable/u,
     label: "community destinations",
     path: "app/_components/EditorialPage.tsx",
     rejected:
-      /official destinations?|public content service|published artwork|published events/iu,
+      /official destinations?|public content service|published artwork|published events|No draft|Draft programs|substitute (?:address|details|information)/iu,
   }),
   Object.freeze({
     anchor: /Related events/u,

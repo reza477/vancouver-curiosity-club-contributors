@@ -14,6 +14,8 @@ export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return buildEditorialMetadata({
+    descriptionOverride:
+      "Ways to attend, volunteer, host a public program, or begin a partnership conversation with Vancouver Curiosity Club.",
     fallbackTitle: "Get Involved",
     path: route,
     route,
