@@ -128,7 +128,7 @@ export function NotificationCenter({
         <div>
           <p className={styles.kicker}>Personal preference</p>
           <h2 id="notification-preferences-title">What reaches this inbox</h2>
-          <p>No email or digest is sent.</p>
+          <p>This preference controls only this in-app inbox. No notification digest is sent.</p>
         </div>
         <fieldset>
           <legend className={styles.visuallyHidden}>Notification preference</legend>

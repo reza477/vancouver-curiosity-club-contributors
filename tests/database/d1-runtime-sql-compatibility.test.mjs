@@ -346,8 +346,8 @@ test("runtime invariant SQL compiles and executes through real D1", async () => 
     }
     assert.equal(
       operations.size,
-      166,
-      "Phase 7 adds 34 new guarded table-operation activation families",
+      168,
+      "Phase 7 adds 36 new guarded table-operation activation families",
     );
 
     await request(

@@ -26,7 +26,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const RETENTION_REVIEW_MS = 365 * DAY_MS;
 
 export type PublicFormSubmissionResult = Readonly<{
+  notificationEligible: boolean;
   publicReference: string;
+  submissionId: string;
   stored: true;
 }>;
 
@@ -216,6 +218,11 @@ export async function submitPublicForm(
     ...(spam
       ? []
       : [
+          publicSubmissionEmailOutboxStatement(database, {
+            nowUtcMs: input.nowUtcMs,
+            organizationId: input.organizationId,
+            submissionId,
+          }),
           publicSubmissionNotificationStatement(database, {
             formKey: input.formKey,
             idPrefix: notificationIdPrefix,
@@ -284,7 +291,12 @@ export async function submitPublicForm(
     }
     throw publicFormUnavailable();
   }
-  return Object.freeze({ publicReference, stored: true });
+  return Object.freeze({
+    notificationEligible: !spam,
+    publicReference,
+    submissionId,
+    stored: true,
+  });
 }
 
 async function assertCurrentPublicClubProgramChoice(
@@ -465,6 +477,40 @@ function publicSubmissionNotificationStatement(
     );
 }
 
+function publicSubmissionEmailOutboxStatement(
+  database: D1DatabaseLike,
+  input: Readonly<{
+    nowUtcMs: number;
+    organizationId: string;
+    submissionId: string;
+  }>,
+): D1PreparedStatementLike {
+  return database
+    .prepare(
+      `INSERT INTO form_submission_email_outbox (
+         submission_id, organization_id, destination_key, state,
+         attempt_count, next_attempt_at, lease_token_hash,
+         lease_expires_at, provider_message_id, last_error_code,
+         created_at, updated_at, sent_at, suppressed_at
+       )
+       SELECT submission.id, submission.organization_id,
+              'owner_inbox', 'pending', 0, ?, NULL, NULL, NULL, NULL,
+              ?, ?, NULL, NULL
+       FROM form_submissions AS submission
+       WHERE submission.id = ?
+         AND submission.organization_id = ?
+         AND submission.status <> 'spam'
+         AND submission.deleted_at IS NULL`,
+    )
+    .bind(
+      input.nowUtcMs,
+      input.nowUtcMs,
+      input.nowUtcMs,
+      input.submissionId,
+      input.organizationId,
+    );
+}
+
 function publicSubmissionCompletionStatement(
   database: D1DatabaseLike,
   input: Readonly<{
@@ -491,6 +537,19 @@ function publicSubmissionCompletionStatement(
                  AND workflow.organization_id = submission.organization_id
                  AND workflow.public_reference = ?
                  AND workflow.canonical_status = ?
+                 AND (
+                   ? = 1
+                   OR EXISTS (
+                     SELECT 1
+                     FROM form_submission_email_outbox AS email_outbox
+                     WHERE email_outbox.submission_id = submission.id
+                       AND email_outbox.organization_id =
+                           submission.organization_id
+                       AND email_outbox.destination_key = 'owner_inbox'
+                       AND email_outbox.state = 'pending'
+                       AND email_outbox.attempt_count = 0
+                   )
+                 )
                  AND (
                    ? = 1
                    OR NOT EXISTS (
@@ -550,6 +609,7 @@ function publicSubmissionCompletionStatement(
       input.publicReference,
       input.spam ? "spam" : "new",
       input.spam ? 1 : 0,
+      input.spam ? 1 : 0,
       input.idPrefix,
       "form_submission.created",
       JSON.stringify({
@@ -570,7 +630,9 @@ async function findIdempotentSubmission(
 ): Promise<PublicFormSubmissionResult | null> {
   const reference = await database
     .prepare(
-      `SELECT workflow.public_reference
+      `SELECT workflow.public_reference,
+              workflow.submission_id,
+              workflow.canonical_status
        FROM form_submission_workflows AS workflow
        JOIN form_submissions AS submission
          ON submission.id = workflow.submission_id
@@ -586,9 +648,20 @@ async function findIdempotentSubmission(
        LIMIT 1`,
     )
     .bind(organizationId, idempotencyHash)
-    .first<string>("public_reference");
-  return typeof reference === "string"
-    ? Object.freeze({ publicReference: reference, stored: true })
+    .first<Record<string, unknown>>();
+  if (!reference) return null;
+  const publicReference = reference.public_reference;
+  const submissionId = reference.submission_id;
+  const canonicalStatus = reference.canonical_status;
+  return typeof publicReference === "string" &&
+    typeof submissionId === "string" &&
+    typeof canonicalStatus === "string"
+    ? Object.freeze({
+        notificationEligible: canonicalStatus !== "spam",
+        publicReference,
+        submissionId,
+        stored: true,
+      })
     : null;
 }
 

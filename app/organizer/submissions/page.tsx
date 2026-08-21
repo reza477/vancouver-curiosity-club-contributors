@@ -76,7 +76,7 @@ export default async function OrganizerSubmissionsPage({
         introduction={
           loaded.context.membership.role === "organizer"
             ? "Only submissions currently assigned to you are visible. Notes and status changes are private."
-            : "Review, assign, and record manual follow-up. The application sends no response or confirmation email."
+            : "Review, assign, and record manual follow-up. New legitimate submissions are also queued for a private organizer email copy; this inbox remains the durable record."
         }
         title="Submissions"
       />

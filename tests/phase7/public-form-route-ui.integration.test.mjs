@@ -833,12 +833,12 @@ test(
       },
       {
         coldInstanceRoute: 4,
-        contact: 14,
-        host_event: 15,
+        contact: 19,
+        host_event: 20,
         instancePreflight: 2,
         invalid_contact: 8,
-        partnership: 14,
-        volunteer: 14,
+        partnership: 19,
+        volunteer: 19,
         warmInstanceRoute: 2,
       },
     );

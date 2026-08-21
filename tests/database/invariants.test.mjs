@@ -425,11 +425,11 @@ test("cold public certification converges with explicit statement headroom", asy
       }),
     ),
     {
-      counts: { batchLengths: [28], statementCount: 36 },
+      counts: { batchLengths: [30], statementCount: 38 },
       status: "repaired",
     },
     {
-      counts: { batchLengths: [25], statementCount: 35 },
+      counts: { batchLengths: [26], statementCount: 36 },
       status: "repaired",
     },
     {
@@ -553,11 +553,11 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
       }),
     ),
     {
-      counts: { batchLengths: [22], statementCount: 29 },
+      counts: { batchLengths: [24], statementCount: 31 },
       status: "repaired",
     },
     {
-      counts: { batchLengths: [25], statementCount: 34 },
+      counts: { batchLengths: [26], statementCount: 35 },
       status: "repaired",
     },
     {
@@ -719,11 +719,11 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
       }),
     ),
     {
-      counts: { batchLengths: [22], statementCount: 29 },
+      counts: { batchLengths: [24], statementCount: 31 },
       status: "repaired",
     },
     {
-      counts: { batchLengths: [25], statementCount: 34 },
+      counts: { batchLengths: [26], statementCount: 35 },
       status: "repaired",
     },
     {
@@ -913,8 +913,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
     { batchLengths: [39], statementCount: 46 },
     { batchLengths: [39], statementCount: 46 },
     { batchLengths: [39], statementCount: 46 },
-    { batchLengths: [22], statementCount: 29 },
-    { batchLengths: [25], statementCount: 34 },
+    { batchLengths: [24], statementCount: 31 },
+    { batchLengths: [26], statementCount: 35 },
   ];
   for (const [index, expectedCounts] of expectedColdTrace.entries()) {
     const request = countedBinding(database);
@@ -952,8 +952,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(missing.binding), "repaired");
   assertWithinD1StatementCap(missing, "missing-trigger repair");
   assert.deepEqual(missing.counts(), {
-    batchLengths: [26],
-    statementCount: 31,
+    batchLengths: [27],
+    statementCount: 32,
   });
 
   database.exec(`
@@ -968,8 +968,8 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
   assert.equal(await ensureDatabaseInvariants(mismatch.binding), "repaired");
   assertWithinD1StatementCap(mismatch, "single-mismatch repair");
   assert.deepEqual(mismatch.counts(), {
-    batchLengths: [27],
-    statementCount: 32,
+    batchLengths: [28],
+    statementCount: 33,
   });
   assert.deepEqual(
     await normalizedTriggerDefinitions(database),
@@ -1041,8 +1041,8 @@ test("a resolved same-isolate result never masks another isolate's invalidation"
     "repaired",
   );
   assert.deepEqual(firstIsolate.counts(), {
-    batchLengths: [26],
-    statementCount: 35,
+    batchLengths: [27],
+    statementCount: 36,
   });
   assertWithinD1StatementCap(
     firstIsolate,

@@ -28,12 +28,13 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0019_meetup_event_lanes.sql",
   "0020_meetup_public_event_facts.sql",
   "0021_daily_meetup_maintenance.sql",
+  "0022_messy_vertigo.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
-  checks: 249,
-  explicitIndexes: 201,
-  foreignKeys: 300,
-  tables: 89,
+  checks: 257,
+  explicitIndexes: 202,
+  foreignKeys: 302,
+  tables: 90,
   triggers: 0,
   uniqueIndexes: 79,
 });
@@ -59,6 +60,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0019_snapshot.json",
       "0020_snapshot.json",
       "0021_snapshot.json",
+      "0022_snapshot.json",
       "_journal.json",
     ],
     "the normalized chain must include every public-content and Events snapshot migration",
@@ -84,6 +86,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 19, tag: "0019_meetup_event_lanes" },
       { idx: 20, tag: "0020_meetup_public_event_facts" },
       { idx: 21, tag: "0021_daily_meetup_maintenance" },
+      { idx: 22, tag: "0022_messy_vertigo" },
     ],
   );
   assert.deepEqual(
@@ -102,6 +105,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0019",
       "0020",
       "0021",
+      "0022",
     ].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
@@ -115,7 +119,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200, 200, 201],
+    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200, 200, 201, 202],
     "migration snapshots must match the cumulative packaged index state",
   );
 

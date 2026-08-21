@@ -3,6 +3,8 @@ import { isD1DatabaseLike } from "@/lib/server/auth";
 import {
   runDailyMeetupRefresh,
 } from "@/lib/server/maintenance/daily-meetup-refresh";
+import { drainPublicFormEmailOutbox } from "@/lib/server/phase7/public-form-email";
+import { readPublicFormEmailConfiguration } from "@/lib/server/phase7/public-form-email-runtime";
 import {
   authenticateMaintenanceRequest,
 } from "@/lib/server/maintenance/request-signature";
@@ -48,6 +50,34 @@ export async function POST(request: Request): Promise<Response> {
       nowUtcMs: startedAt,
       requestId: authenticated.requestId,
     });
+    try {
+      const emailDelivery = await drainPublicFormEmailOutbox(database, {
+        configuration: readPublicFormEmailConfiguration(),
+        // A maximum Meetup slice already uses most of the 50-statement D1
+        // request budget. One email keeps this combined maintenance route safe.
+        limit: 1,
+        nowUtcMs: startedAt,
+      });
+      if (emailDelivery.attempted > 0) {
+        writeSafeLog("info", "public_form_email_maintenance_completed", {
+          code:
+            emailDelivery.blocked > 0 || emailDelivery.retried > 0
+              ? "delivery_deferred"
+              : "delivery_completed",
+          operation: "drain_public_form_email_outbox",
+          requestId: authenticated.requestId,
+          route: ROUTE,
+          status: 200,
+        });
+      }
+    } catch {
+      writeSafeLog("error", "public_form_email_maintenance_failed", {
+        code: "internal_error",
+        operation: "drain_public_form_email_outbox",
+        requestId: authenticated.requestId,
+        route: ROUTE,
+      });
+    }
     writeSafeLog(
       "info",
       result.status === "succeeded"

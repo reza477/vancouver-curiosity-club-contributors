@@ -18,9 +18,10 @@ The forms do not request a phone number, home address, birth date,
 demographics, password, payment information, attachment, marketing consent,
 or unnecessary social profile.
 
-Submitting stores a message in the private organizer inbox. It does not enroll
-the visitor in marketing, send an email confirmation, or promise a response
-time.
+Submitting stores a message in the private organizer inbox and queues one
+private email copy to the configured organizer address. It does not enroll the
+visitor in marketing, send the visitor an email confirmation, or promise a
+response time.
 
 ## Validation and plain-text handling
 
@@ -58,10 +59,10 @@ keys are not stored in rate-limit records, rendered, logged, or exported.
 
 A legitimate submission commits rate admission, the base submission,
 canonical workflow, non-enumerable public reference, idempotency hash,
-retention-review date, minimum-safe notifications, audit receipt, and
-completion proof in one D1 batch. Success is returned only after that batch
-commits. A retry with the same nonce returns the same reference without
-creating another submission or notification.
+retention-review date, minimum-safe notifications, PII-free email outbox row,
+audit receipt, and completion proof in one D1 batch. Success is returned only
+after that batch commits. A retry with the same nonce returns the same
+reference without creating another submission, notification, or email row.
 
 Honeypot and impossible-speed requests store only a redacted spam receipt,
 generate no organizer notification, and return generic success only after the
@@ -102,7 +103,15 @@ A new legitimate submission notifies active Owners and Administrators through
 the existing in-app important-notification preference. Assignment notifies
 the assigned Organizer. Notifications contain only form type, public
 reference, status, and an authenticated detail path. They do not contain the
-visitor's email or message. There is no email or notification digest.
+visitor's email or message. There is no notification digest.
+
+The email outbox stores no destination address or form content. Its fixed
+destination and provider credential come from server-only runtime settings.
+After the D1 submission commits, a bounded worker sends a plain-text organizer
+copy, uses the visitor's validated address only as Reply-To, and records a
+provider receipt. Provider failure never rolls back the submission; retryable
+rows remain queued for bounded maintenance delivery. Provider requests use a
+stable idempotency key so public retries do not create duplicate email copies.
 
 Audit records contain only minimum workflow facts. They never copy form
 content, email addresses, note bodies, raw protection facts, or rate-limit

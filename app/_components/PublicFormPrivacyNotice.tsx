@@ -26,10 +26,12 @@ export function PublicFormPrivacyNotice() {
       <p>
         The information is used so authorized Vancouver Curiosity Club
         organizers can review and respond outside the application. It is
-        stored in a private organizer inbox. Access to submissions is
-        restricted to authorized organizers. Form content is not used for
-        automatic marketing enrollment, and the site sends no
-        form-confirmation email.
+        stored in a private organizer inbox. A private copy is also processed
+        by an email-delivery provider and sent to a fixed organizer email
+        inbox. Access to submissions is restricted to authorized organizers.
+        Form content is not used for automatic marketing enrollment, and the
+        site sends no form-confirmation email. The delivery provider sends
+        only the private organizer copy.
       </p>
       <p>
         Each submission receives a retention-review date 12 months after it

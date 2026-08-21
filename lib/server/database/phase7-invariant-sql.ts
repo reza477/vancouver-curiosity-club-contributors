@@ -1956,6 +1956,87 @@ BEGIN
     THEN RAISE(ABORT, 'phase7_import_rate_limit_invalid')
   END;
 END;`,
+  String.raw`
+CREATE TRIGGER IF NOT EXISTS form_submission_email_outbox_phase7_before_insert
+BEFORE INSERT ON form_submission_email_outbox
+BEGIN
+  SELECT CASE
+    WHEN NEW.destination_key <> 'owner_inbox'
+      OR NEW.state <> 'pending'
+      OR NEW.attempt_count <> 0
+      OR NEW.lease_token_hash IS NOT NULL
+      OR NEW.lease_expires_at IS NOT NULL
+      OR NEW.provider_message_id IS NOT NULL
+      OR NEW.last_error_code IS NOT NULL
+      OR NEW.sent_at IS NOT NULL
+      OR NEW.suppressed_at IS NOT NULL
+      OR NEW.created_at <> NEW.updated_at
+      OR NOT EXISTS (
+        SELECT 1
+        FROM form_submissions AS submission
+        INNER JOIN form_submission_workflows AS workflow
+          ON workflow.submission_id = submission.id
+         AND workflow.organization_id = submission.organization_id
+        WHERE submission.id = NEW.submission_id
+          AND submission.organization_id = NEW.organization_id
+          AND submission.created_at = NEW.created_at
+          AND submission.status <> 'spam'
+          AND submission.deleted_at IS NULL
+          AND workflow.canonical_status <> 'spam'
+          AND workflow.redacted_at IS NULL
+      )
+    THEN RAISE(ABORT, 'phase7_form_email_outbox_insert_invalid')
+  END;
+END;`,
+  String.raw`
+CREATE TRIGGER IF NOT EXISTS form_submission_email_outbox_phase7_before_update
+BEFORE UPDATE ON form_submission_email_outbox
+BEGIN
+  SELECT CASE
+    WHEN NEW.submission_id <> OLD.submission_id
+      OR NEW.organization_id <> OLD.organization_id
+      OR NEW.destination_key <> OLD.destination_key
+      OR NEW.created_at <> OLD.created_at
+      OR NEW.attempt_count < OLD.attempt_count
+      OR NEW.updated_at < OLD.updated_at
+      OR OLD.state IN ('sent', 'suppressed')
+      OR (
+        NEW.state <> 'suppressed'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM form_submissions AS submission
+          INNER JOIN form_submission_workflows AS workflow
+            ON workflow.submission_id = submission.id
+           AND workflow.organization_id = submission.organization_id
+          WHERE submission.id = NEW.submission_id
+            AND submission.organization_id = NEW.organization_id
+            AND submission.status <> 'spam'
+            AND submission.deleted_at IS NULL
+            AND workflow.canonical_status <> 'spam'
+            AND workflow.redacted_at IS NULL
+        )
+      )
+      OR (
+        NEW.state = 'suppressed'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM form_submissions AS submission
+          INNER JOIN form_submission_workflows AS workflow
+            ON workflow.submission_id = submission.id
+           AND workflow.organization_id = submission.organization_id
+          WHERE submission.id = NEW.submission_id
+            AND submission.organization_id = NEW.organization_id
+            AND (
+              submission.status = 'spam'
+              OR submission.deleted_at IS NOT NULL
+              OR workflow.canonical_status = 'spam'
+              OR workflow.redacted_at IS NOT NULL
+            )
+        )
+      )
+    THEN RAISE(ABORT, 'phase7_form_email_outbox_update_invalid')
+  END;
+END;`,
 ]);
 
 export const PHASE7_INVARIANT_COUNT_SQL = Object.freeze([
@@ -2696,4 +2777,53 @@ WHERE revision.scope NOT IN ('public', 'private')
      WHERE organization.id = revision.organization_id
        AND organization.deleted_at IS NULL
    )`,
+  String.raw`
+SELECT COALESCE(sum(count_group.violation_count), 0) AS violation_count
+FROM (
+  SELECT count(*) AS violation_count
+  FROM form_submission_email_outbox AS outbox
+  LEFT JOIN form_submissions AS submission
+    ON submission.id = outbox.submission_id
+   AND submission.organization_id = outbox.organization_id
+  LEFT JOIN form_submission_workflows AS workflow
+    ON workflow.submission_id = outbox.submission_id
+   AND workflow.organization_id = outbox.organization_id
+  WHERE submission.id IS NULL
+     OR workflow.submission_id IS NULL
+     OR outbox.destination_key <> 'owner_inbox'
+     OR outbox.created_at <> submission.created_at
+     OR (
+       outbox.state <> 'suppressed'
+       AND (
+         submission.status = 'spam'
+         OR submission.deleted_at IS NOT NULL
+         OR workflow.canonical_status = 'spam'
+         OR workflow.redacted_at IS NOT NULL
+       )
+     )
+     OR (
+       outbox.state = 'suppressed'
+       AND submission.status <> 'spam'
+       AND submission.deleted_at IS NULL
+       AND workflow.canonical_status <> 'spam'
+       AND workflow.redacted_at IS NULL
+     )
+  UNION ALL
+  SELECT count(*) AS violation_count
+  FROM form_submissions AS submission
+  INNER JOIN form_submission_workflows AS workflow
+    ON workflow.submission_id = submission.id
+   AND workflow.organization_id = submission.organization_id
+  WHERE submission.created_at >= 1785567600000
+    AND submission.status <> 'spam'
+    AND submission.deleted_at IS NULL
+    AND workflow.canonical_status <> 'spam'
+    AND workflow.redacted_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM form_submission_email_outbox AS outbox
+      WHERE outbox.submission_id = submission.id
+        AND outbox.organization_id = submission.organization_id
+    )
+) AS count_group`,
 ]);

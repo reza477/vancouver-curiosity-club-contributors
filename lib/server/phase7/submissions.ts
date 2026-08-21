@@ -959,6 +959,44 @@ export async function redactFormSubmissionPersonalContent(
          now,
          actor.profileId,
        ),
+    database
+      .prepare(
+        `UPDATE form_submission_email_outbox
+         SET state = 'suppressed',
+             lease_token_hash = NULL,
+             lease_expires_at = NULL,
+             provider_message_id = NULL,
+             last_error_code = 'submission_redacted',
+             updated_at = ?,
+             suppressed_at = ?
+         WHERE submission_id = ?
+           AND organization_id = ?
+           AND state IN ('pending', 'leased', 'blocked')
+           AND EXISTS (
+             SELECT 1
+             FROM form_submission_workflows AS workflow
+             WHERE workflow.submission_id =
+                   form_submission_email_outbox.submission_id
+               AND workflow.organization_id =
+                   form_submission_email_outbox.organization_id
+               AND workflow.write_intent_id = ?
+               AND workflow.version = ?
+               AND workflow.public_reference = ?
+               AND workflow.redacted_at = ?
+               AND workflow.redacted_by_profile_id = ?
+           )`,
+      )
+      .bind(
+        now,
+        now,
+        submissionId,
+        actor.organizationId,
+        intentId,
+        expectedVersion + 1,
+        current.publicReference,
+        now,
+        actor.profileId,
+      ),
     submissionIntentHistoryRedactionStatement(database, {
       actor,
       intentId,

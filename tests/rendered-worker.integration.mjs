@@ -512,6 +512,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0019_meetup_event_lanes.sql",
     "0020_meetup_public_event_facts.sql",
     "0021_daily_meetup_maintenance.sql",
+    "0022_messy_vertigo.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");

@@ -4,7 +4,9 @@
 - CSV import creates new private events only. There is no overwrite, update,
   merge, remote-URL, XLSX, JSON, ZIP, or arbitrary-file import.
 - Imports never publish. Publication still uses the normal Phase 5 workflow.
-- The application sends no form, import, export, invitation, or calendar email.
+- Public forms may send one private organizer email copy after the durable inbox
+  record commits. The application sends no visitor confirmation, import,
+  export, invitation, calendar, or notification-digest email.
 - There is no newsletter enrollment.
 - Backups are Owner-run downloads. There is no scheduler, automatic backup,
   automatic restore, or complete infrastructure-backup claim.

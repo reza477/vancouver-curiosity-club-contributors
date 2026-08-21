@@ -178,6 +178,22 @@ test("Owner redaction irreversibly replaces an existing private note with the ca
     ).results.map((row) => row.proposed_payload_json),
     ['{"redacted":true}', '{"redacted":true}'],
   );
+  const suppressedEmail = await database
+    .prepare(
+      `SELECT state, attempt_count, provider_message_id,
+              last_error_code, sent_at, suppressed_at
+       FROM form_submission_email_outbox
+       WHERE organization_id = ?
+         AND submission_id = ?`,
+    )
+    .bind(organizationId, submissionId)
+    .first();
+  assert.equal(suppressedEmail.state, "suppressed");
+  assert.equal(suppressedEmail.attempt_count, 0);
+  assert.equal(suppressedEmail.provider_message_id, null);
+  assert.equal(suppressedEmail.last_error_code, "submission_redacted");
+  assert.equal(suppressedEmail.sent_at, null);
+  assert.equal(suppressedEmail.suppressed_at, redacted.redactedAt);
 
   const redactionAudits = await database
     .prepare(
@@ -255,6 +271,16 @@ test("Owner redaction irreversibly replaces an existing private note with the ca
            FROM notifications
            WHERE organization_id = ?
              AND json_extract(payload_json, '$.submissionId') = ?`,
+        )
+        .bind(organizationId, submissionId)
+        .all(),
+      database
+        .prepare(
+          `SELECT destination_key, state, attempt_count, provider_message_id,
+                  last_error_code, sent_at, suppressed_at
+           FROM form_submission_email_outbox
+           WHERE organization_id = ?
+             AND submission_id = ?`,
         )
         .bind(organizationId, submissionId)
         .all(),

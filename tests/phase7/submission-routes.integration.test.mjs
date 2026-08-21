@@ -570,7 +570,7 @@ test("submission routes enforce private role, assignment, redaction, and request
     owner_detail: 8,
     owner_list: 7,
     owner_note: 12,
-    owner_redaction: 18,
+    owner_redaction: 19,
     owner_status: 16,
     owner_unassign: 16,
     post_redaction_detail: 8,

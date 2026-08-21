@@ -14,6 +14,8 @@ import {
   verifyPublicFormInstanceToken,
 } from "@/lib/server/phase7/public-form-protection";
 import { submitPublicForm } from "@/lib/server/phase7/public-forms";
+import { deliverPublicFormEmail } from "@/lib/server/phase7/public-form-email";
+import { readPublicFormEmailConfiguration } from "@/lib/server/phase7/public-form-email-runtime";
 import { readBoundedUtf8Body } from "@/app/api/organizer/meetup/_mutation";
 import {
   SafeApplicationError,
@@ -83,6 +85,20 @@ export async function POST(
       organizationId: organization.id,
       payload: body.payload,
     });
+    if (result.notificationEligible) {
+      try {
+        await deliverPublicFormEmail(database, result.submissionId, {
+          configuration: readPublicFormEmailConfiguration(),
+        });
+      } catch {
+        writeSafeLog("error", "public_form_email_delivery_unavailable", {
+          code: "internal_error",
+          operation: "deliver_public_form_email",
+          requestId: result.submissionId,
+          route: routeLabel,
+        });
+      }
+    }
     const message =
       `Thanks — your submission was received for organizer review. Reference: ${result.publicReference}.`;
     return nativeSubmission

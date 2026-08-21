@@ -175,7 +175,7 @@ reviewed dependency update with all release gates; never use
 ## Database and content changes
 
 - Never modify an already released migration; add the next numbered one.
-- The checked-in chain currently runs from `0008` through `0021`. Do not run
+- The checked-in chain currently runs from `0008` through `0022`. Do not run
   `npm run db:generate` casually or accept an unrelated generated rewrite.
 - Keep every statement D1-compatible, additive, and retry-safe.
 - Update schema, invariants, query budgets, and integration tests together.

@@ -76,7 +76,7 @@ export default async function OrganizerSubmissionDetailPage({
       <PageHeader
         action={{ href: "/organizer/submissions", label: "Back to inbox" }}
         eyebrow="Private inbox"
-        introduction="Status records manual work outside the application. This workspace sends no email."
+        introduction="A private organizer email copy may be sent when the form arrives. Status still records manual follow-up outside the application; the site does not send the visitor a response."
         title={data.submission.publicReference}
       />
       <SubmissionWorkspace

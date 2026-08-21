@@ -4855,6 +4855,135 @@ export const formSubmissionWorkflows = sqliteTable(
   ],
 );
 
+/**
+ * Durable, PII-free delivery state for the organizer email copy of a public
+ * submission. The destination address and provider credential stay in Sites
+ * runtime settings; this row contains only retry and provider receipt data.
+ */
+export const formSubmissionEmailOutbox = sqliteTable(
+  "form_submission_email_outbox",
+  {
+    submissionId: text("submission_id")
+      .primaryKey()
+      .references(() => formSubmissions.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    destinationKey: text("destination_key", { enum: ["owner_inbox"] })
+      .notNull()
+      .default("owner_inbox"),
+    state: text("state", {
+      enum: ["pending", "leased", "sent", "blocked", "suppressed"],
+    })
+      .notNull()
+      .default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at").notNull(),
+    leaseTokenHash: text("lease_token_hash"),
+    leaseExpiresAt: integer("lease_expires_at"),
+    providerMessageId: text("provider_message_id"),
+    lastErrorCode: text("last_error_code"),
+    createdAt: integer("created_at").notNull().default(nowMs),
+    updatedAt: integer("updated_at").notNull().default(nowMs),
+    sentAt: integer("sent_at"),
+    suppressedAt: integer("suppressed_at"),
+  },
+  (table) => [
+    index("form_submission_email_outbox_due_idx").on(
+      table.organizationId,
+      table.state,
+      table.nextAttemptAt,
+      table.createdAt,
+    ),
+    check(
+      "form_submission_email_outbox_destination_check",
+      sql`${table.destinationKey} = 'owner_inbox'`,
+    ),
+    check(
+      "form_submission_email_outbox_state_check",
+      sql`${table.state} IN ('pending', 'leased', 'sent', 'blocked', 'suppressed')`,
+    ),
+    check(
+      "form_submission_email_outbox_attempt_check",
+      sql`${table.attemptCount} BETWEEN 0 AND 12`,
+    ),
+    check(
+      "form_submission_email_outbox_error_check",
+      sql`${table.lastErrorCode} IS NULL OR ${table.lastErrorCode} IN (
+        'configuration_missing',
+        'provider_timeout',
+        'provider_rate_limited',
+        'provider_unavailable',
+        'provider_rejected',
+        'provider_invalid_response',
+        'provider_concurrent_request',
+        'submission_redacted'
+      )`,
+    ),
+    check(
+      "form_submission_email_outbox_lease_hash_check",
+      sql`${table.leaseTokenHash} IS NULL OR (
+        length(${table.leaseTokenHash}) = 64
+        AND ${table.leaseTokenHash} = lower(${table.leaseTokenHash})
+        AND ${table.leaseTokenHash} NOT GLOB '*[^0-9a-f]*'
+      )`,
+    ),
+    check(
+      "form_submission_email_outbox_provider_id_check",
+      sql`${table.providerMessageId} IS NULL OR length(${table.providerMessageId}) BETWEEN 1 AND 255`,
+    ),
+    check(
+      "form_submission_email_outbox_time_check",
+      sql`${table.updatedAt} >= ${table.createdAt}
+          AND ${table.nextAttemptAt} >= ${table.createdAt}
+          AND (${table.sentAt} IS NULL OR ${table.sentAt} >= ${table.createdAt})
+          AND (${table.suppressedAt} IS NULL OR ${table.suppressedAt} >= ${table.createdAt})`,
+    ),
+    check(
+      "form_submission_email_outbox_shape_check",
+      sql`(
+        ${table.state} = 'pending'
+        AND ${table.leaseTokenHash} IS NULL
+        AND ${table.leaseExpiresAt} IS NULL
+        AND ${table.providerMessageId} IS NULL
+        AND ${table.sentAt} IS NULL
+        AND ${table.suppressedAt} IS NULL
+      ) OR (
+        ${table.state} = 'leased'
+        AND ${table.leaseTokenHash} IS NOT NULL
+        AND ${table.leaseExpiresAt} IS NOT NULL
+        AND ${table.providerMessageId} IS NULL
+        AND ${table.sentAt} IS NULL
+        AND ${table.suppressedAt} IS NULL
+      ) OR (
+        ${table.state} = 'sent'
+        AND ${table.leaseTokenHash} IS NULL
+        AND ${table.leaseExpiresAt} IS NULL
+        AND ${table.providerMessageId} IS NOT NULL
+        AND ${table.lastErrorCode} IS NULL
+        AND ${table.sentAt} IS NOT NULL
+        AND ${table.suppressedAt} IS NULL
+      ) OR (
+        ${table.state} = 'blocked'
+        AND ${table.leaseTokenHash} IS NULL
+        AND ${table.leaseExpiresAt} IS NULL
+        AND ${table.providerMessageId} IS NULL
+        AND ${table.lastErrorCode} IS NOT NULL
+        AND ${table.sentAt} IS NULL
+        AND ${table.suppressedAt} IS NULL
+      ) OR (
+        ${table.state} = 'suppressed'
+        AND ${table.leaseTokenHash} IS NULL
+        AND ${table.leaseExpiresAt} IS NULL
+        AND ${table.providerMessageId} IS NULL
+        AND ${table.lastErrorCode} = 'submission_redacted'
+        AND ${table.sentAt} IS NULL
+        AND ${table.suppressedAt} IS NOT NULL
+      )`,
+    ),
+  ],
+);
+
 export const formSubmissionNotes = sqliteTable(
   "form_submission_notes",
   {

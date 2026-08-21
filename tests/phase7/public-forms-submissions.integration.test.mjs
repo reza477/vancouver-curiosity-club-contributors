@@ -14,6 +14,10 @@ import {
   submitPublicForm,
 } from "../../lib/server/phase7/public-forms.ts";
 import {
+  deliverPublicFormEmail,
+  drainPublicFormEmailOutbox,
+} from "../../lib/server/phase7/public-form-email.ts";
+import {
   assignFormSubmission,
   getFormSubmission,
   listFormSubmissions,
@@ -124,6 +128,7 @@ async function publicFormPrivateResidueCounts(database) {
            (SELECT count(*) FROM form_submission_write_intents) AS intents,
            (SELECT count(*) FROM notifications
             WHERE type = 'form_submission_received') AS notifications,
+           (SELECT count(*) FROM form_submission_email_outbox) AS email_outbox,
            (SELECT count(*) FROM form_submissions) AS submissions,
            (SELECT count(*) FROM form_submission_workflows) AS workflows`,
       )
@@ -222,6 +227,9 @@ test("all four forms commit once, retry idempotently, and spam stores only a red
       `SELECT
          count(*) AS submission_count,
          count(DISTINCT workflow.request_idempotency_hash) AS hash_count,
+         (SELECT count(*)
+          FROM form_submission_email_outbox AS email_outbox
+          WHERE email_outbox.organization_id = ?) AS email_outbox_count,
          sum(CASE WHEN workflow.canonical_status = 'spam' THEN 1 ELSE 0 END)
            AS spam_count
        FROM form_submissions AS submission
@@ -233,10 +241,11 @@ test("all four forms commit once, retry idempotently, and spam stores only a red
         AND intent.completed_at IS NOT NULL
        WHERE submission.organization_id = ?`,
     )
-    .bind(data.organizationId)
+    .bind(data.organizationId, data.organizationId)
     .first();
   assert.equal(counts.submission_count, 5);
   assert.equal(counts.hash_count, 5);
+  assert.equal(counts.email_outbox_count, 4);
   assert.equal(counts.spam_count, 1);
 
   const spamRow = await data.database
@@ -252,6 +261,11 @@ test("all four forms commit once, retry idempotently, and spam stores only a red
                         '$.submissionId'
                       ) = submission.id
               ) AS notification_count
+              ,(
+                SELECT count(*)
+                FROM form_submission_email_outbox AS email_outbox
+                WHERE email_outbox.submission_id = submission.id
+              ) AS email_outbox_count
        FROM form_submissions AS submission
        JOIN form_submission_workflows AS workflow
          ON workflow.submission_id = submission.id
@@ -264,6 +278,35 @@ test("all four forms commit once, retry idempotently, and spam stores only a red
     '{"redacted":true,"reason":"anti_abuse"}',
   );
   assert.equal(spamRow.notification_count, 0);
+  assert.equal(spamRow.email_outbox_count, 0);
+  const spamSubmissionId = await data.database
+    .prepare(
+      `SELECT submission.id
+       FROM form_submissions AS submission
+       JOIN form_submission_workflows AS workflow
+         ON workflow.submission_id = submission.id
+       WHERE workflow.public_reference = ?`,
+    )
+    .bind(spam.publicReference)
+    .first("id");
+  await assert.rejects(
+    data.database
+      .prepare(
+        `INSERT INTO form_submission_email_outbox (
+           submission_id, organization_id, destination_key, state,
+           attempt_count, next_attempt_at, created_at, updated_at
+         ) VALUES (?, ?, 'owner_inbox', 'pending', 0, ?, ?, ?)`,
+      )
+      .bind(
+        spamSubmissionId,
+        data.organizationId,
+        data.now + 4 * 60_000,
+        data.now + 4 * 60_000,
+        data.now + 4 * 60_000,
+      )
+      .run(),
+    /phase7_form_email_outbox_insert_invalid/iu,
+  );
   const serialized = JSON.stringify(
     await data.database
       .prepare(
@@ -282,6 +325,269 @@ test("all four forms commit once, retry idempotently, and spam stores only a red
     assert.doesNotMatch(serialized, new RegExp(sentinel, "u"));
   }
   await assertPhase7Clean(data.database);
+});
+
+test("the durable email outbox sends one private organizer copy and records no form PII", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const stored = await submitPublicForm(
+    data.database,
+    formInput(
+      "contact",
+      "email-delivery-once".padEnd(32, "x"),
+      data.now,
+      PAYLOADS.contact,
+      { organizationId: data.organizationId },
+    ),
+  );
+  const requests = [];
+  const configuration = {
+    apiKey: "synthetic-delivery-api-key",
+    fromEmail: "website-sender@example.invalid",
+    toEmail: "organizer-inbox@example.invalid",
+  };
+  const fetcher = async (input, init) => {
+    requests.push({ input: String(input), init });
+    return Response.json({ id: "provider_message_1" }, { status: 200 });
+  };
+
+  assert.equal(
+    await deliverPublicFormEmail(data.database, stored.submissionId, {
+      configuration,
+      fetcher,
+      nowUtcMs: data.now + 1_000,
+    }),
+    "sent",
+  );
+  assert.equal(
+    await deliverPublicFormEmail(data.database, stored.submissionId, {
+      configuration,
+      fetcher,
+      nowUtcMs: data.now + 2_000,
+    }),
+    "already_sent",
+  );
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].input, "https://api.resend.com/emails");
+  assert.equal(requests[0].init.method, "POST");
+  assert.equal(requests[0].init.redirect, "error");
+  assert.equal(
+    requests[0].init.headers["Idempotency-Key"],
+    `vcc-form/${stored.submissionId}`,
+  );
+  const body = JSON.parse(requests[0].init.body);
+  assert.deepEqual(body.to, [configuration.toEmail]);
+  assert.equal(body.reply_to, PAYLOADS.contact.replyEmail);
+  assert.equal(
+    body.from,
+    `Vancouver Curiosity Club Website <${configuration.fromEmail}>`,
+  );
+  assert.match(body.subject, new RegExp(stored.publicReference, "u"));
+  assert.match(body.text, /Please share the accessible entrance information\./u);
+
+  const receipt = await data.database
+    .prepare(
+      `SELECT *
+       FROM form_submission_email_outbox
+       WHERE submission_id = ?`,
+    )
+    .bind(stored.submissionId)
+    .first();
+  assert.equal(receipt.state, "sent");
+  assert.equal(receipt.attempt_count, 1);
+  assert.equal(receipt.provider_message_id, "provider_message_1");
+  await assert.rejects(
+    data.database
+      .prepare(
+        `UPDATE form_submission_email_outbox
+         SET state = 'pending',
+             provider_message_id = NULL,
+             sent_at = NULL,
+             updated_at = ?
+         WHERE submission_id = ?`,
+      )
+      .bind(data.now + 3_000, stored.submissionId)
+      .run(),
+    /phase7_form_email_outbox_update_invalid/iu,
+  );
+  const serializedReceipt = JSON.stringify(receipt);
+  for (const sentinel of [
+    PAYLOADS.contact.name,
+    PAYLOADS.contact.replyEmail,
+    PAYLOADS.contact.message,
+    configuration.fromEmail,
+    configuration.toEmail,
+    configuration.apiKey,
+  ]) {
+    assert.doesNotMatch(serializedReceipt, new RegExp(sentinel, "u"));
+  }
+});
+
+test("retryable provider failure keeps the D1 submission and maintenance later delivers it", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const stored = await submitPublicForm(
+    data.database,
+    formInput(
+      "volunteer",
+      "email-retry".padEnd(32, "x"),
+      data.now,
+      PAYLOADS.volunteer,
+      { organizationId: data.organizationId },
+    ),
+  );
+  const configuration = {
+    apiKey: "synthetic-retry-api-key",
+    fromEmail: "website-sender@example.invalid",
+    toEmail: "organizer-inbox@example.invalid",
+  };
+  const idempotencyKeys = [];
+  assert.equal(
+    await deliverPublicFormEmail(data.database, stored.submissionId, {
+      configuration,
+      fetcher: async (_input, init) => {
+        idempotencyKeys.push(init.headers["Idempotency-Key"]);
+        return new Response("temporarily unavailable", { status: 503 });
+      },
+      nowUtcMs: data.now + 1_000,
+    }),
+    "provider_retry",
+  );
+  const pending = await data.database
+    .prepare(
+      `SELECT state, attempt_count, next_attempt_at, last_error_code
+       FROM form_submission_email_outbox
+       WHERE submission_id = ?`,
+    )
+    .bind(stored.submissionId)
+    .first();
+  assert.equal(pending.state, "pending");
+  assert.equal(pending.attempt_count, 1);
+  assert.equal(pending.last_error_code, "provider_unavailable");
+  assert.ok(pending.next_attempt_at > data.now + 1_000);
+  assert.equal(
+    await data.database
+      .prepare("SELECT count(*) FROM form_submissions WHERE id = ?")
+      .bind(stored.submissionId)
+      .first("count(*)"),
+    1,
+  );
+
+  const drained = await drainPublicFormEmailOutbox(data.database, {
+    configuration,
+    fetcher: async (_input, init) => {
+      idempotencyKeys.push(init.headers["Idempotency-Key"]);
+      return Response.json({ id: "provider_message_retry" });
+    },
+    nowUtcMs: pending.next_attempt_at,
+  });
+  assert.deepEqual(drained, {
+    attempted: 1,
+    blocked: 0,
+    configurationMissing: 0,
+    retried: 0,
+    sent: 1,
+    suppressed: 0,
+  });
+  assert.deepEqual(idempotencyKeys, [
+    `vcc-form/${stored.submissionId}`,
+    `vcc-form/${stored.submissionId}`,
+  ]);
+  assert.equal(
+    await data.database
+      .prepare(
+        `SELECT state
+         FROM form_submission_email_outbox
+         WHERE submission_id = ?`,
+      )
+      .bind(stored.submissionId)
+      .first("state"),
+    "sent",
+  );
+});
+
+test("missing configuration and concurrent drains never lose or duplicate a queued email", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const stored = await submitPublicForm(
+    data.database,
+    formInput(
+      "partnership",
+      "email-concurrency".padEnd(32, "x"),
+      data.now,
+      PAYLOADS.partnership,
+      { organizationId: data.organizationId },
+    ),
+  );
+  assert.equal(
+    await deliverPublicFormEmail(data.database, stored.submissionId, {
+      configuration: null,
+      nowUtcMs: data.now + 1_000,
+    }),
+    "configuration_missing",
+  );
+  const pending = await data.database
+    .prepare(
+      `SELECT state, attempt_count, next_attempt_at, last_error_code
+       FROM form_submission_email_outbox
+       WHERE submission_id = ?`,
+    )
+    .bind(stored.submissionId)
+    .first();
+  assert.deepEqual(
+    {
+      attemptCount: pending.attempt_count,
+      error: pending.last_error_code,
+      state: pending.state,
+    },
+    {
+      attemptCount: 0,
+      error: "configuration_missing",
+      state: "pending",
+    },
+  );
+
+  const configuration = {
+    apiKey: "synthetic-concurrent-api-key",
+    fromEmail: "website-sender@example.invalid",
+    toEmail: "organizer-inbox@example.invalid",
+  };
+  let releaseProvider;
+  let signalProvider;
+  const providerStarted = new Promise((resolve) => {
+    signalProvider = resolve;
+  });
+  const providerRelease = new Promise((resolve) => {
+    releaseProvider = resolve;
+  });
+  let providerCalls = 0;
+  const first = deliverPublicFormEmail(data.database, stored.submissionId, {
+    configuration,
+    fetcher: async () => {
+      providerCalls += 1;
+      signalProvider();
+      await providerRelease;
+      return Response.json({ id: "provider_message_concurrent" });
+    },
+    nowUtcMs: pending.next_attempt_at,
+  });
+  await providerStarted;
+  const second = await deliverPublicFormEmail(
+    data.database,
+    stored.submissionId,
+    {
+      configuration,
+      fetcher: async () => {
+        providerCalls += 1;
+        return Response.json({ id: "duplicate_should_not_send" });
+      },
+      nowUtcMs: pending.next_attempt_at,
+    },
+  );
+  assert.equal(second, "not_due");
+  releaseProvider();
+  assert.equal(await first, "sent");
+  assert.equal(providerCalls, 1);
 });
 
 test("submission list applies a bounded inclusive UTC date filter", async (t) => {
@@ -476,6 +782,7 @@ test("field-invalid public-form attempts consume the same durable atomic limits"
         await publicFormPrivateResidueCounts(data.database),
         {
           audits: 0,
+          email_outbox: 0,
           intents: 0,
           notifications: 0,
           submissions: 0,
@@ -621,6 +928,7 @@ test("field-invalid public-form attempts consume the same durable atomic limits"
         await publicFormPrivateResidueCounts(data.database),
         {
           audits: 0,
+          email_outbox: 0,
           intents: 0,
           notifications: 0,
           submissions: 0,
