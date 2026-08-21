@@ -504,7 +504,7 @@ test("Wednesday Night Reset surfaces its room and waitlist capacity on event car
   );
 });
 
-test("Wednesday Night Reset surfaces its room and waitlist capacity in essentials", () => {
+test("Wednesday Night Reset surfaces its room and waitlist capacity in detail facts", () => {
   const detailMarkup = renderToStaticMarkup(
     createElement(PublicEventDetailRenderer, {
       canonicalUrl: "https://preview.example/events/wednesday-night-reset",
@@ -513,16 +513,12 @@ test("Wednesday Night Reset surfaces its room and waitlist capacity in essential
       showShareControls: false,
     }),
   );
-  const essentials = detailMarkup.match(
-    /<section class="event-detail__facts"[\s\S]*?<\/section>/u,
-  )?.[0];
-  assert.ok(essentials, "the essentials section must render");
-  assert.match(essentials, /Level 4/u);
-  assert.match(essentials, /Room 492 South/u);
+  assert.match(detailMarkup, /Level 4/u);
+  assert.match(detailMarkup, /Room 492 South/u);
   assert.match(
-    essentials.replace(/<[^>]+>/gu, " "),
+    detailMarkup.replace(/<[^>]+>/gu, " "),
     /Capacity\s+12\s+\+\s+waitlist/iu,
-    "capacity and waitlist status must appear as one useful essential fact",
+    "capacity and waitlist status must appear as one useful planning fact",
   );
 });
 
@@ -550,8 +546,8 @@ test("event leads keep RSVP and lane-specific poster fallback near the title", (
   const artworkIndex = markup.indexOf('class="event-detail__artwork');
   const summaryIndex = markup.indexOf('class="event-detail__summary"');
   assert.ok(leadIndex >= 0);
-  assert.ok(artworkIndex > leadIndex);
-  assert.ok(summaryIndex > artworkIndex);
+  assert.ok(summaryIndex > leadIndex);
+  assert.ok(artworkIndex > summaryIndex);
   assert.match(markup, /data-event-lane="explore"/u);
   assert.match(markup, /<strong>Explore<\/strong>/u);
   assert.match(markup, /Gathering in the Explore lane/u);
@@ -610,17 +606,21 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
   const posterIndex = markup.indexOf('class="event-detail__artwork"');
   const summaryIndex = markup.indexOf('class="event-detail__summary"');
   const headingIndex = markup.indexOf("<h1>");
-  const factsIndex = markup.indexOf('class="event-detail__facts"');
+  const factsIndex = markup.indexOf(
+    'class="event-detail__facts event-detail__facts--primary"',
+  );
   const primaryRsvpIndex = markup.indexOf('class="primary-action"');
+  const deckIndex = markup.indexOf('class="event-detail__deck"');
   const storyIndex = markup.indexOf('class="event-detail__story"');
 
   assert.ok(leadIndex >= 0);
-  assert.ok(posterIndex > leadIndex, "the poster leads the event-detail flow");
-  assert.ok(summaryIndex > posterIndex, "the summary follows the poster");
+  assert.ok(summaryIndex > leadIndex, "the event summary leads the detail flow");
   assert.ok(headingIndex > summaryIndex, "the title begins the summary");
   assert.ok(primaryRsvpIndex > headingIndex, "the primary RSVP follows the title");
   assert.ok(factsIndex > primaryRsvpIndex, "date and location follow the RSVP");
-  assert.ok(storyIndex > factsIndex, "long-form copy follows essentials");
+  assert.ok(posterIndex > factsIndex, "the poster follows the early essentials");
+  assert.ok(deckIndex > posterIndex, "the short deck fills the poster column");
+  assert.ok(storyIndex > deckIndex, "long-form copy follows the complete lead");
   assert.match(markup, /<dt>When<\/dt>/u);
   assert.match(markup, /<dt>Location<\/dt>/u);
   assert.match(markup, /VIFF Centre/u);
@@ -628,6 +628,11 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
     (markup.match(new RegExp(`href="${rsvpUrl}"`, "gu")) ?? []).length,
     1,
   );
+  const detailPoster = markup.match(
+    /<img\b[^>]*alt="Princess Mononoke event poster\."[^>]*>/u,
+  )?.[0] ?? "";
+  assert.match(detailPoster, /fetchPriority="high"/u);
+  assert.match(detailPoster, /loading="eager"/u);
 
   const [css, detailStyles] = await Promise.all([
     readPublicCss(),
@@ -652,7 +657,7 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
   );
   assert.match(
     tabletStyles,
-    /\.event-detail__lead\s*>\s*\.event-detail__artwork\s*\{[^}]*width:\s*min\(100%,\s*34rem\);/su,
+    /\.event-detail__visual\s*>\s*\.event-detail__artwork\s*\{[^}]*width:\s*min\(100%,\s*42rem\);/su,
   );
   assert.match(
     mobileStyles,

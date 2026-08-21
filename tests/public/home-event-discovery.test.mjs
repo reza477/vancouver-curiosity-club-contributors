@@ -107,6 +107,24 @@ test("Only the featured poster receives eager high-priority loading", () => {
   }
 });
 
+test("Home uses a reviewed institutional title without mutating the Meetup title", () => {
+  const officeSpace = eventCard(1, {
+    rsvpUrl:
+      "https://www.meetup.com/vancouver-literature-and-film/events/316159440/",
+    title:
+      "🖨️💼 Office Space at VIFF - work is fake and the printer deserved it",
+  });
+  const canonicalTitle = officeSpace.title;
+  const hero = homeSection(
+    renderHome(Object.freeze([officeSpace, ...upcomingEvents(4)])),
+    "hero",
+  );
+
+  assert.match(hero, />Office Space — Movie Outing at VIFF<\/a>/u);
+  assert.doesNotMatch(hero, /printer deserved it/u);
+  assert.equal(officeSpace.title, canonicalTitle);
+});
+
 test("Home uses evidence-safe impact and partnership language", () => {
   const markup = renderHome(upcomingEvents(4));
   const impact = homeSection(markup, "why-it-matters");

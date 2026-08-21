@@ -69,7 +69,7 @@ test("Events offers a compact Upcoming list and keeps the full Calendar", async 
   );
   assert.match(
     renderer,
-    /<EventCard compact event=\{event\}/u,
+    /<EventCard\s+compact\s+event=\{event\}/u,
     "/events must render durable upcoming records as compact EventCards",
   );
   assert.match(renderer, /upcoming\.totalPages > 1[\s\S]*Upcoming events pages/u);

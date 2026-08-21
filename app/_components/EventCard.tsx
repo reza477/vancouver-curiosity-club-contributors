@@ -13,10 +13,14 @@ import type { PublicEventCardDto } from "@/lib/server/public/events";
 export function EventCard({
   event,
   compact = false,
+  eager = false,
+  posterSizes = "(max-width: 640px) 100vw, (max-width: 1100px) 38vw, 480px",
   priority = false,
 }: Readonly<{
   event: PublicEventCardDto;
   compact?: boolean;
+  eager?: boolean;
+  posterSizes?: string;
   priority?: boolean;
 }>) {
   const schedule = formatEventSchedule(event);
@@ -24,6 +28,16 @@ export function EventCard({
   const capacity = publicEventCapacityLabel(event);
   const artworkCredit = event.artwork
     ? discoveryArtworkCredit(event.artwork.credit)
+    : null;
+  const artworkDimensions = event.artwork
+    ? compact
+      ? event.artwork.dimensions.medium
+      : event.artwork.dimensions.large
+    : null;
+  const artworkSrc = event.artwork
+    ? compact
+      ? event.artwork.srcSet.medium
+      : event.artwork.url
     : null;
   const location =
     event.attendanceMode === "online"
@@ -61,10 +75,10 @@ export function EventCard({
                 />
               }
               fetchPriority={priority ? "high" : "auto"}
-              height={event.artwork.dimensions.large.height}
-              loading={priority ? "eager" : "lazy"}
-              sizes="(max-width: 640px) 100vw, (max-width: 1100px) 38vw, 480px"
-              src={event.artwork.url}
+              height={artworkDimensions!.height}
+              loading={priority || eager ? "eager" : "lazy"}
+              sizes={posterSizes}
+              src={artworkSrc!}
               srcSet={responsiveImageSrcSet([
                 {
                   url: event.artwork.srcSet.small,
@@ -82,7 +96,7 @@ export function EventCard({
               style={{
                 objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
               }}
-              width={event.artwork.dimensions.large.width}
+              width={artworkDimensions!.width}
             />
           </div>
           {artworkCredit ? (
@@ -121,8 +135,8 @@ export function EventCard({
           ) : null}
         </div>
         <h3>
-          <Link href={`/events/${event.slug}`}>
-            {event.title}
+          <Link aria-label={event.title} href={`/events/${event.slug}`}>
+            <EventTitleText title={event.title} />
           </Link>
         </h3>
         {event.summary && !compact ? (
@@ -178,6 +192,28 @@ export function EventCard({
         <span aria-hidden="true">→</span>
       </Link>
     </article>
+  );
+}
+
+export function EventTitleText({ title }: Readonly<{ title: string }>) {
+  const leadingEmoji = title.match(
+    /^([\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\u200D\s]+)(\S[\s\S]*)$/u,
+  );
+  const decoration = leadingEmoji?.[1].trim() ?? null;
+  const text = leadingEmoji?.[2] ?? title;
+  const protectedSeparators = text.replace(
+    /\s+([-–—])\s+/gu,
+    "\u00a0$1 ",
+  );
+
+  return (
+    <>
+      {decoration ? (
+        <span className="event-title__emoji">{decoration}</span>
+      ) : null}
+      {decoration ? "\u00a0" : null}
+      {protectedSeparators}
+    </>
   );
 }
 

@@ -423,15 +423,23 @@ test("event artwork carries exact portrait and square WebP dimensions into publi
     });
   }
 
-  for (const sourcePath of [
+  const eventCardSource = readFileSync(
     "app/_components/EventCard.tsx",
+    "utf8",
+  );
+  assert.match(eventCardSource, /event\.artwork\.dimensions\.medium/u);
+  assert.match(eventCardSource, /event\.artwork\.dimensions\.large/u);
+  assert.match(eventCardSource, /height=\{artworkDimensions!\.height\}/u);
+  assert.match(eventCardSource, /width=\{artworkDimensions!\.width\}/u);
+  assert.doesNotMatch(eventCardSource, /height=\{900\}|width=\{1600\}/u);
+
+  const detailSource = readFileSync(
     "app/_components/PublicEventDetailRenderer.tsx",
-  ]) {
-    const source = readFileSync(sourcePath, "utf8");
-    assert.match(source, /event\.artwork\.dimensions\.large\.height/u);
-    assert.match(source, /event\.artwork\.dimensions\.large\.width/u);
-    assert.doesNotMatch(source, /height=\{900\}|width=\{1600\}/u);
-  }
+    "utf8",
+  );
+  assert.match(detailSource, /event\.artwork\.dimensions\.large\.height/u);
+  assert.match(detailSource, /event\.artwork\.dimensions\.large\.width/u);
+  assert.doesNotMatch(detailSource, /height=\{900\}|width=\{1600\}/u);
 });
 
 test("event website fields share the CMS legal-claim gate and never reach public discovery", async (t) => {

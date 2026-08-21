@@ -50,7 +50,7 @@ const EVENT = Object.freeze({
   whatToBring: null,
 });
 
-test("desktop event details place the primary RSVP beside the title and summary", () => {
+test("desktop event details place the primary RSVP and essentials beside the poster", () => {
   const markup = renderToStaticMarkup(
     createElement(PublicEventDetailRenderer, {
       canonicalUrl:
@@ -65,15 +65,16 @@ test("desktop event details place the primary RSVP beside the title and summary"
   const titleIndex = markup.indexOf("<h1>", summaryIndex);
   const deckIndex = markup.indexOf('class="event-detail__deck"', titleIndex);
   const primaryRsvpIndex = markup.indexOf('class="primary-action"');
-  const essentialsIndex = markup.indexOf('class="event-detail__facts"');
+  const essentialsIndex = markup.indexOf(
+    'class="event-detail__facts event-detail__facts--primary"',
+  );
   const storyIndex = markup.indexOf('class="event-detail__story"');
 
   assert.ok(summaryIndex >= 0, "the lead summary must render");
   assert.ok(titleIndex > summaryIndex, "the event title must lead the summary");
-  assert.ok(deckIndex > titleIndex, "the short summary must follow the title");
   assert.ok(
-    primaryRsvpIndex > deckIndex,
-    "the desktop RSVP must follow the title and short summary",
+    primaryRsvpIndex > titleIndex,
+    "the desktop RSVP must immediately follow the title",
   );
   assert.ok(
     primaryRsvpIndex < essentialsIndex,
@@ -82,6 +83,10 @@ test("desktop event details place the primary RSVP beside the title and summary"
   assert.ok(
     essentialsIndex < storyIndex,
     "essentials must remain above the long-form event story",
+  );
+  assert.ok(
+    deckIndex > essentialsIndex && deckIndex < storyIndex,
+    "the short summary must fill the poster column before the long-form story",
   );
   assert.equal(
     (markup.match(/class="primary-action"/gu) ?? []).length,

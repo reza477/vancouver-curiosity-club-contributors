@@ -13,6 +13,7 @@ import {
   responsiveImageSrcSet,
 } from "@/lib/media/presentation";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
+import { institutionalEventTitle } from "@/lib/public-event-display-title";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import type { PublicCatalogDto } from "@/lib/server/public/catalog";
@@ -468,6 +469,7 @@ async function loadOrganizationPageData(): Promise<{
 function OrganizationActivityCard({
   event,
 }: Readonly<{ event: PublicEventCardDto }>) {
+  const displayTitle = institutionalEventTitle(event);
   const artworkCredit = event.artwork
     ? discoveryArtworkCredit(event.artwork.credit)
     : null;
@@ -523,7 +525,7 @@ function OrganizationActivityCard({
       <div className="organizations-activity-card__body">
         <p className="section-kicker">{event.club.name}</p>
         <h3>
-          <Link href={`/events/${event.slug}`}>{event.title}</Link>
+          <Link href={`/events/${event.slug}`}>{displayTitle}</Link>
         </h3>
         <time dateTime={eventDateTime(event)}>
           {formatEventSchedule(event).label}

@@ -45,6 +45,7 @@ test("For Organizations uses bounded current activity with truthful states and p
   assert.match(page, /<EventPosterImage/u);
   assert.match(page, /<EventArtworkFallback/u);
   assert.match(page, /responsiveImageSrcSet/u);
+  assert.match(page, /institutionalEventTitle\(event\)/u);
   assert.match(page, /loading="lazy"/u);
   assert.doesNotMatch(
     page,

@@ -27,8 +27,9 @@
 }
 
 .event-detail__header h1 {
-  overflow-wrap: anywhere;
-  max-width: 14ch;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+  max-width: 16ch;
   font-family: var(--display);
   letter-spacing: -0.065em;
   margin: 0;
@@ -45,9 +46,12 @@
 }
 
 .event-detail__deck {
-  max-width: 48rem;
+  max-width: 42rem;
   color: var(--ink-soft);
+  text-wrap: pretty;
+  margin: 0;
   font-size: clamp(1.1rem, 1.8vw, 1.5rem);
+  line-height: 1.48;
 }
 
 .event-detail__stamp {
@@ -60,6 +64,12 @@
   font-size: var(--public-section-title);
 }
 
+.event-detail__facts h2 {
+  max-width: none;
+  margin-bottom: 0.75rem;
+  font-size: clamp(1.65rem, 2.4vw, 2.35rem);
+}
+
 .event-detail__facts dl {
   border-top: 1px solid var(--line);
   margin: 0 0 2rem;
@@ -69,12 +79,15 @@
   border-bottom: 1px solid var(--line);
   grid-template-columns: 6rem minmax(0, 1fr);
   gap: 1rem;
-  padding: 1rem 0;
+  padding: 0.8rem 0;
   display: grid;
 }
 
 .event-detail__facts dd {
+  overflow-wrap: break-word;
+  text-wrap: pretty;
   margin: 0;
+  line-height: 1.45;
 }
 
 .event-detail__facts dd span {
@@ -147,13 +160,24 @@
 }
 
 .event-detail__lead {
-  grid-template-columns: minmax(22rem, 0.95fr) minmax(0, 1.05fr);
+  grid-template-areas:
+    "visual summary"
+    "visual secondary";
+  grid-template-columns: minmax(20rem, 0.9fr) minmax(0, 1.1fr);
   align-items: start;
-  gap: clamp(2rem, 6vw, 6rem);
+  gap: clamp(1.25rem, 3vw, 2.5rem) clamp(2rem, 4.5vw, 4rem);
   display: grid;
 }
 
-.event-detail__lead > .event-detail__artwork {
+.event-detail__visual {
+  grid-area: visual;
+  align-content: start;
+  gap: clamp(1rem, 2.5vw, 1.75rem);
+  min-width: 0;
+  display: grid;
+}
+
+.event-detail__visual > .event-detail__artwork {
   aspect-ratio: auto;
   border-top: 0.55rem solid var(--cobalt);
   box-shadow: 0.35rem 0.35rem 0 var(--amber);
@@ -162,22 +186,32 @@
 }
 
 .event-detail__summary {
+  grid-area: summary;
   min-width: 0;
 }
 
+.event-detail__facts--secondary {
+  grid-area: secondary;
+  padding-top: 0;
+}
+
+.event-detail__lead:not(:has(.event-detail__facts--secondary)) {
+  grid-template-areas: "visual summary";
+}
+
 .event-detail__header {
-  grid-template-columns: minmax(0, 1fr) clamp(4.5rem, 8vw, 7rem);
+  grid-template-columns: minmax(0, 1fr) clamp(4rem, 6vw, 5.5rem);
   gap: clamp(1rem, 3vw, 2rem);
-  padding-bottom: clamp(1.5rem, 4vw, 3rem);
+  padding-bottom: clamp(1.25rem, 3vw, 2rem);
 }
 
 .event-detail__header h1 {
-  font-size: var(--public-page-title);
+  font-size: clamp(3rem, 5vw, 4.25rem);
   line-height: 0.98;
 }
 
 .event-detail__facts {
-  padding-top: clamp(1.5rem, 4vw, 3rem);
+  padding-top: clamp(1.25rem, 3vw, 2rem);
 }
 
 .event-detail__summary > .primary-action {
@@ -197,18 +231,42 @@
   max-width: 50rem;
 }
 
+@media (min-width: 64.01rem) {
+  .event-detail__facts--secondary dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1.5rem;
+    display: grid;
+  }
+
+  .event-detail__facts--secondary dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+  }
+}
+
 @media (max-width: 64rem) {
   .event-detail__lead {
+    grid-template-areas:
+      "summary"
+      "visual"
+      "secondary";
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .event-detail__lead > .event-detail__artwork {
-    width: min(100%, 34rem);
+  .event-detail__lead:not(:has(.event-detail__facts--secondary)) {
+    grid-template-areas:
+      "summary"
+      "visual";
+  }
+
+  .event-detail__visual > .event-detail__artwork {
+    width: min(100%, 42rem);
   }
 }
 
 @media (max-width: 38rem) {
   .event-detail__summary > .primary-action {
+    width: auto;
     right: max(0.75rem, env(safe-area-inset-right));
     bottom: max(0.75rem, env(safe-area-inset-bottom));
     left: max(0.75rem, env(safe-area-inset-left));
@@ -227,13 +285,7 @@
     position: fixed;
   }
 
-  .event-detail__summary {
-    flex-direction: column;
-    display: flex;
-  }
-
   .event-detail__header {
-    order: 1;
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -247,15 +299,6 @@
 
   .event-detail__stamp {
     display: none;
-  }
-
-  .event-detail__facts {
-    order: 2;
-  }
-
-  .event-detail__deck {
-    order: 3;
-    margin-top: 2rem;
   }
 
   .event-detail-page:has(.event-detail__summary > .primary-action) {

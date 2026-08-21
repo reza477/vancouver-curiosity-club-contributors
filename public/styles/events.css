@@ -127,7 +127,7 @@
 }
 
 .events-upcoming__list .event-card {
-  grid-template-columns: clamp(11.5rem, 20vw, 17rem) minmax(0, 1fr) 2.75rem;
+  grid-template-columns: clamp(14rem, 24vw, 22rem) minmax(0, 1fr) 2.75rem;
   gap: clamp(1rem, 2vw, 1.75rem);
   padding-block: 1rem;
 }
@@ -176,7 +176,7 @@
   }
 
   .events-upcoming__list .event-card {
-    grid-template-columns: clamp(10rem, 24vw, 13rem) minmax(0, 1fr);
+    grid-template-columns: clamp(12rem, 30vw, 16rem) minmax(0, 1fr);
   }
 }
 

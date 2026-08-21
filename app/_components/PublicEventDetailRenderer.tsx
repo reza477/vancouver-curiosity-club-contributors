@@ -3,6 +3,7 @@ import { AddToCalendar } from "@/app/_components/AddToCalendar";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
 import {
   EventArtworkFallback,
+  EventTitleText,
   formatEventSchedule,
 } from "@/app/_components/EventCard";
 import { ShareControls } from "@/app/_components/ShareControls";
@@ -33,6 +34,12 @@ export function PublicEventDetailRenderer({
   const locationParts = publicEventLocationParts(event);
   const availability = publicEventAvailabilityLabel(event);
   const capacity = publicEventCapacityLabel(event);
+  const hasPlanningDetails =
+    event.status === "tentative" ||
+    availability !== null ||
+    event.costText !== null ||
+    capacity !== null ||
+    event.agePolicyText !== null;
 
   return (
     <>
@@ -48,59 +55,6 @@ export function PublicEventDetailRenderer({
 
       <article className="event-detail">
         <div className="event-detail__lead">
-          {event.artwork ? (
-            <figure
-              className="event-detail__artwork"
-              style={{
-                marginInline: "auto",
-                maxWidth: `${event.artwork.dimensions.large.width}px`,
-              }}
-            >
-              <div className="event-detail__artwork-frame">
-                {/* The gated media route revalidates rights and published usage on every
-                    request. Next/Image's optimizer cache would bypass that revocation
-                    boundary, so this responsive image must load the controlled URLs
-                    directly. */}
-                <EventPosterImage
-                  alt={event.artwork.altText ?? ""}
-                  fallback={
-                    <EventArtworkFallback
-                      className="event-detail__artwork-frame"
-                      lane={event.lane}
-                    />
-                  }
-                  height={event.artwork.dimensions.large.height}
-                  sizes="(max-width: 720px) 100vw, (max-width: 1280px) 48vw, 720px"
-                  src={event.artwork.url}
-                  srcSet={responsiveImageSrcSet([
-                    {
-                      url: event.artwork.srcSet.small,
-                      width: event.artwork.dimensions.small.width,
-                    },
-                    {
-                      url: event.artwork.srcSet.medium,
-                      width: event.artwork.dimensions.medium.width,
-                    },
-                    {
-                      url: event.artwork.srcSet.large,
-                      width: event.artwork.dimensions.large.width,
-                    },
-                  ])}
-                  style={{
-                    objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-                  }}
-                  width={event.artwork.dimensions.large.width}
-                />
-              </div>
-              <figcaption>Artwork: {event.artwork.credit}</figcaption>
-            </figure>
-          ) : (
-            <EventArtworkFallback
-              className="event-detail__artwork"
-              lane={event.lane}
-            />
-          )}
-
           <div className="event-detail__summary">
             <header className="event-detail__header">
               <div>
@@ -119,17 +73,15 @@ export function PublicEventDetailRenderer({
                   {event.lane ? ` · ${event.lane.name}` : ""}
                   {event.category ? ` · ${event.category.name}` : ""}
                 </p>
-                <h1>{event.title}</h1>
+                <h1>
+                  <EventTitleText title={event.title} />
+                </h1>
               </div>
               <div className="event-detail__stamp" aria-hidden="true">
                 <span>{schedule.month}</span>
                 <strong>{schedule.day}</strong>
               </div>
             </header>
-
-            {event.summary ? (
-              <p className="event-detail__deck">{event.summary}</p>
-            ) : null}
 
             {event.rsvpUrl && !event.isCancelled ? (
               <a
@@ -144,7 +96,7 @@ export function PublicEventDetailRenderer({
             ) : null}
 
             <section
-              className="event-detail__facts"
+              className="event-detail__facts event-detail__facts--primary"
               aria-labelledby="facts-title"
             >
               <h2 id="facts-title">The essentials</h2>
@@ -203,6 +155,86 @@ export function PublicEventDetailRenderer({
                     ) : null}
                   </dd>
                 </div>
+              </dl>
+              {event.rsvpMode === "coming_soon" && !event.isCancelled ? (
+                <p className="event-detail__rsvp-note">
+                  RSVP information coming soon.
+                </p>
+              ) : null}
+            </section>
+          </div>
+
+          <div className="event-detail__visual">
+            {event.artwork ? (
+              <figure
+                className="event-detail__artwork"
+                style={{
+                  marginInline: "auto",
+                  maxWidth: `${event.artwork.dimensions.large.width}px`,
+                }}
+              >
+                <div className="event-detail__artwork-frame">
+                  {/* The gated media route revalidates rights and published usage on every
+                      request. Next/Image's optimizer cache would bypass that revocation
+                      boundary, so this responsive image must load the controlled URLs
+                      directly. */}
+                  <EventPosterImage
+                    alt={event.artwork.altText ?? ""}
+                    decoding="async"
+                    fallback={
+                      <EventArtworkFallback
+                        className="event-detail__artwork-frame"
+                        lane={event.lane}
+                      />
+                    }
+                    fetchPriority="high"
+                    height={event.artwork.dimensions.large.height}
+                    loading="eager"
+                    sizes="(max-width: 1024px) 92vw, (max-width: 1440px) 42vw, 560px"
+                    src={event.artwork.url}
+                    srcSet={responsiveImageSrcSet([
+                      {
+                        url: event.artwork.srcSet.small,
+                        width: event.artwork.dimensions.small.width,
+                      },
+                      {
+                        url: event.artwork.srcSet.medium,
+                        width: event.artwork.dimensions.medium.width,
+                      },
+                      {
+                        url: event.artwork.srcSet.large,
+                        width: event.artwork.dimensions.large.width,
+                      },
+                    ])}
+                    style={{
+                      objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+                    }}
+                    width={event.artwork.dimensions.large.width}
+                  />
+                </div>
+                <figcaption>Artwork: {event.artwork.credit}</figcaption>
+              </figure>
+            ) : (
+              <EventArtworkFallback
+                className="event-detail__artwork"
+                lane={event.lane}
+              />
+            )}
+            {event.summary ? (
+              <p className="event-detail__deck">{event.summary}</p>
+            ) : null}
+            {showCalendarDownload ? (
+              <AddToCalendar canonicalUrl={canonicalUrl} event={event} />
+            ) : null}
+          </div>
+
+          {hasPlanningDetails ? (
+            <section
+              aria-labelledby="planning-details-title"
+              className="event-detail__facts event-detail__facts--secondary"
+            >
+              <h2 id="planning-details-title">Planning details</h2>
+              <dl>
                 {event.status === "tentative" ? (
                   <div>
                     <dt>Status</dt>
@@ -236,16 +268,8 @@ export function PublicEventDetailRenderer({
                   </div>
                 ) : null}
               </dl>
-              {event.rsvpMode === "coming_soon" && !event.isCancelled ? (
-                <p className="event-detail__rsvp-note">
-                  RSVP information coming soon.
-                </p>
-              ) : null}
-              {showCalendarDownload ? (
-                <AddToCalendar canonicalUrl={canonicalUrl} event={event} />
-              ) : null}
             </section>
-          </div>
+          ) : null}
         </div>
 
         <section className="event-detail__story" aria-labelledby="about-title">

@@ -43,15 +43,10 @@
   display: flex;
 }
 
-.event-card__meta > span:not(:last-child):after {
-  content: "·";
-  color: var(--ink);
-  margin-left: 1rem;
-}
-
 .event-card h3 {
-  overflow-wrap: anywhere;
-  max-width: 25ch;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+  max-width: 32ch;
   font-family: var(--display);
   letter-spacing: -0.045em;
   margin: 0;
@@ -376,6 +371,20 @@
 
 .event-card__facts dd span {
   display: block;
+}
+
+.event-card__facts dd {
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+  line-height: 1.45;
+}
+
+.event-title__emoji {
+  white-space: nowrap;
+  vertical-align: 0.12em;
+  letter-spacing: 0;
+  font-size: 0.66em;
+  display: inline-block;
 }
 
 .event-artwork-fallback {

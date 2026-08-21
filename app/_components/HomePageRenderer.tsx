@@ -7,6 +7,7 @@ import {
   responsiveImageSrcSet,
 } from "@/lib/media/presentation";
 import { publicEventLocationParts } from "@/lib/public-event-facts";
+import { institutionalEventTitle } from "@/lib/public-event-display-title";
 import type {
   PublicCatalogDto,
   PublicClubDto,
@@ -337,20 +338,21 @@ export function HomePageRenderer({
 function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
   if (!event.artwork) return null;
   const artworkCredit = discoveryArtworkCredit(event.artwork.credit);
+  const displayTitle = institutionalEventTitle(event);
 
   return (
     <figure className="home-hero__poster" data-home-hero-event={event.slug}>
       <EventPosterImage
-        alt={event.artwork.altText ?? `${event.title} event poster`}
+        alt={event.artwork.altText ?? `${displayTitle} event poster`}
         decoding="async"
         fallback={
           <div
-            aria-label={`${event.title} event poster unavailable`}
+            aria-label={`${displayTitle} event poster unavailable`}
             className="home-artwork-fallback"
             role="img"
           >
             <span>{event.club.name}</span>
-            <strong>{event.title}</strong>
+            <strong>{displayTitle}</strong>
           </div>
         }
         fetchPriority="high"
@@ -379,7 +381,7 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
       />
       <figcaption>
         <span>Featured upcoming program</span>
-        <Link href={`/events/${event.slug}`}>{event.title}</Link>
+        <Link href={`/events/${event.slug}`}>{displayTitle}</Link>
         {artworkCredit ? <small>Artwork: {artworkCredit}</small> : null}
       </figcaption>
     </figure>
@@ -389,6 +391,7 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
 function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
   if (!event.artwork) return null;
   const artworkCredit = discoveryArtworkCredit(event.artwork.credit);
+  const displayTitle = institutionalEventTitle(event);
   const schedule = formatEventSchedule(event);
   const venueLocation = publicEventLocationParts(event).slice(0, 2).join(" · ");
   const location =
@@ -409,16 +412,16 @@ function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
       <figure>
         <div className="home-work-card__media">
           <EventPosterImage
-            alt={event.artwork.altText ?? `${event.title} event poster`}
+            alt={event.artwork.altText ?? `${displayTitle} event poster`}
             decoding="async"
             fallback={
               <div
-                aria-label={`${event.title} event poster unavailable`}
+                aria-label={`${displayTitle} event poster unavailable`}
                 className="home-artwork-fallback"
                 role="img"
               >
                 <span>{event.club.name}</span>
-                <strong>{event.title}</strong>
+                <strong>{displayTitle}</strong>
               </div>
             }
             height={event.artwork.dimensions.large.height}
@@ -452,7 +455,7 @@ function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
           {event.club.name}{association ? ` · ${association}` : ""}
         </p>
         <h3>
-          <Link href={`/events/${event.slug}`}>{event.title}</Link>
+          <Link href={`/events/${event.slug}`}>{displayTitle}</Link>
         </h3>
         <dl>
           <div>
