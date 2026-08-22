@@ -19,6 +19,7 @@ test("public reads use vinext request scope across metadata, probes, and renderi
   for (const publicRead of [
     "clubDetails",
     "clubEventViews",
+    "clubNextEvents",
     "eventDetails",
     "eventMaterializedViews",
     "siteContext",
@@ -88,6 +89,12 @@ test("event and club detail lookups share one D1 read per request", async () => 
     slug: "event-one",
     todayDate: "2026-08-14",
   };
+  const directoryInput = {
+    clubSlugs: ["club-one", "club-two"],
+    nowUtcMs: materializedInput.nowUtcMs,
+    organizationId: "organization-1",
+    todayDate: "2026-08-14",
+  };
 
   await runWithRequestContext(createRequestContext(), async () => {
     await Promise.all([
@@ -101,6 +108,15 @@ test("event and club detail lookups share one D1 read per request", async () => 
         ...materializedInput,
         nowUtcMs: materializedInput.nowUtcMs + 1,
       }),
+      requestCache.getRequestPublicNextEventsByClubMaterialization(
+        database,
+        directoryInput,
+      ),
+      requestCache.getRequestPublicNextEventsByClubMaterialization(database, {
+        ...directoryInput,
+        clubSlugs: [...directoryInput.clubSlugs, "club-one"],
+        nowUtcMs: directoryInput.nowUtcMs + 1,
+      }),
       requestCache.getRequestPublicClubBySlug(database, "club-one"),
       requestCache.getRequestPublicClubBySlug(database, "club-one"),
       requestCache.getRequestPublicSlugRedirect(database, redirectInput),
@@ -109,7 +125,7 @@ test("event and club detail lookups share one D1 read per request", async () => 
     assert.deepEqual(reads, {
       club: 1,
       event: 1,
-      materialized: 1,
+      materialized: 2,
       redirect: 1,
     });
   });
@@ -121,13 +137,17 @@ test("event and club detail lookups share one D1 read per request", async () => 
         database,
         materializedInput,
       ),
+      requestCache.getRequestPublicNextEventsByClubMaterialization(
+        database,
+        directoryInput,
+      ),
       requestCache.getRequestPublicClubBySlug(database, "club-one"),
       requestCache.getRequestPublicSlugRedirect(database, redirectInput),
     ]);
   });
   assert.deepEqual(
     reads,
-    { club: 2, event: 2, materialized: 2, redirect: 2 },
+    { club: 2, event: 2, materialized: 4, redirect: 2 },
     "a later request must observe newly published event and club state",
   );
 });

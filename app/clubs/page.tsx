@@ -12,11 +12,11 @@ import {
 } from "@/lib/server/public/catalog";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
 import {
-  listNextPublicEventsByClub,
   type PublicEventCardDto,
 } from "@/lib/server/public/events";
 import {
   getRequestPublicClubs,
+  getRequestPublicNextEventsByClubMaterialization,
   getRequestPublicOrganization,
 } from "@/lib/server/public/request-cache";
 import {
@@ -90,32 +90,44 @@ async function loadClubs(): Promise<
     let nextEvents: readonly PublicEventCardDto[] = [];
     let nextEventsState: "available" | "unavailable" = "unavailable";
     if (organization) {
-      try {
-        media = await resolveMediaAssetsForRendering(database, {
+      const nowUtcMs = readServerUtcMs();
+      const usages = clubs.flatMap((club) =>
+        [
+          club.thumbnailAssetId
+            ? {
+                assetId: club.thumbnailAssetId,
+                entityKey: club.slug,
+                entityType: "club_public_profile" as const,
+                usageKind: "thumbnail",
+              }
+            : null,
+          club.coverAssetId
+            ? {
+                assetId: club.coverAssetId,
+                entityKey: club.slug,
+                entityType: "club_public_profile" as const,
+                usageKind: "cover",
+              }
+            : null,
+        ].filter((usage) => usage !== null),
+      );
+      const [mediaResult, nextEventsResult] = await Promise.allSettled([
+        resolveMediaAssetsForRendering(database, {
           organizationId: organization.id,
           publicationScope: "published",
-          usages: clubs.flatMap((club) =>
-            [
-              club.thumbnailAssetId
-                ? {
-                    assetId: club.thumbnailAssetId,
-                    entityKey: club.slug,
-                    entityType: "club_public_profile" as const,
-                    usageKind: "thumbnail",
-                  }
-                : null,
-              club.coverAssetId
-                ? {
-                    assetId: club.coverAssetId,
-                    entityKey: club.slug,
-                    entityType: "club_public_profile" as const,
-                    usageKind: "cover",
-                  }
-                : null,
-            ].filter((usage) => usage !== null),
-          ),
-        });
-      } catch {
+          usages,
+        }),
+        getRequestPublicNextEventsByClubMaterialization(database, {
+          clubSlugs: clubs.map((club) => club.slug),
+          nowUtcMs,
+          organizationId: organization.id,
+          todayDate: vancouverCalendarDate(nowUtcMs),
+        }),
+      ]);
+
+      if (mediaResult.status === "fulfilled") {
+        media = mediaResult.value;
+      } else {
         writeSafeLog("warn", "public_club_media_unavailable", {
           code: "partial_failure",
           operation: "resolve_public_club_media",
@@ -124,19 +136,16 @@ async function loadClubs(): Promise<
         });
       }
 
-      try {
-        const nowUtcMs = readServerUtcMs();
-        nextEvents = await listNextPublicEventsByClub(database, {
-          clubSlugs: clubs.map((club) => club.slug),
-          nowUtcMs,
-          organizationId: organization.id,
-          todayDate: vancouverCalendarDate(nowUtcMs),
-        });
+      if (
+        nextEventsResult.status === "fulfilled" &&
+        nextEventsResult.value !== null
+      ) {
+        nextEvents = nextEventsResult.value;
         nextEventsState = "available";
-      } catch {
+      } else {
         writeSafeLog("warn", "public_club_next_events_unavailable", {
           code: "partial_failure",
-          operation: "list_next_public_events_by_club",
+          operation: "read_public_next_events_by_club_materialization",
           route,
           status: 200,
         });

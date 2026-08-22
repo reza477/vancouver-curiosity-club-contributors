@@ -313,19 +313,26 @@ test("every card has exact Explore club copy and a unique accessible name", () =
   assert.equal(new Set(labels).size, 3);
 });
 
-test("the Clubs route uses one grouped D1 loader with no per-card or remote query", async () => {
-  const [page, loader, directory, routeBody] = await Promise.all([
+test("the Clubs route uses one materialized grouped read with no live, per-card, or remote query", async () => {
+  const [page, materializations, directory, routeBody] = await Promise.all([
     source("app/clubs/page.tsx"),
-    source("lib/server/public/events.ts"),
+    source("lib/server/public/event-materializations.ts"),
     source("app/_components/ClubDirectory.tsx"),
     source("app/_components/EditorialRouteBodies.tsx"),
   ]);
 
-  assert.match(page, /listNextPublicEventsByClub/u);
+  assert.match(page, /getRequestPublicNextEventsByClubMaterialization/u);
   assert.equal(
-    (page.match(/\blistNextPublicEventsByClub\s*\(/gu) ?? []).length,
+    (page.match(/\bgetRequestPublicNextEventsByClubMaterialization\s*\(/gu) ?? [])
+      .length,
     1,
-    "the route must call one grouped next-event loader",
+    "the route must call one grouped materialized next-event reader",
+  );
+  assert.doesNotMatch(page, /listNextPublicEventsByClub/u);
+  assert.match(
+    page,
+    /Promise\.allSettled\(\[[\s\S]*?resolveMediaAssetsForRendering[\s\S]*?getRequestPublicNextEventsByClubMaterialization/u,
+    "bounded media and event reads must start in the same D1 wave",
   );
   assert.match(page, /nextEventsByClubSlug/u);
   assert.match(page, /nextEventsState/u);
@@ -336,26 +343,27 @@ test("the Clubs route uses one grouped D1 loader with no per-card or remote quer
     /nextEventsState\s*=\s*"omitted"/u,
     "private preview must omit a live-event claim",
   );
-  assert.match(loader, /export async function listNextPublicEventsByClub/u);
-  const groupedLoader = exportedFunctionSource(
-    loader,
-    "listNextPublicEventsByClub",
+  assert.match(
+    materializations,
+    /export async function readPublicNextEventsByClubMaterialization/u,
   );
-  assert.match(groupedLoader, /UNIFIED_PUBLIC_EVENT_CTE_SQL/u);
-  assert.match(groupedLoader, /PARTITION BY[\s\S]{0,100}club/iu);
-  assert.match(groupedLoader, /row_number\(\)\s+OVER/iu);
-  assert.equal(
-    (groupedLoader.match(/\.prepare\s*\(/gu) ?? []).length,
-    1,
-    "the grouped loader must prepare one ranked event query",
+  const groupedReader = exportedFunctionSource(
+    materializations,
+    "readPublicNextEventsByClubMaterialization",
+  );
+  assert.match(groupedReader, /readDetailEnvelope/u);
+  assert.doesNotMatch(
+    groupedReader,
+    /readEnvelope|UNIFIED_PUBLIC_EVENT_CTE_SQL|queryPublicEvent|enrichPublicEventRows/u,
+    "the grouped reader must use only the certified bounded detail row",
   );
   assert.doesNotMatch(
-    `${page}\n${loader}\n${directory}`,
+    `${page}\n${groupedReader}\n${directory}`,
     /\.map\(\s*async[\s\S]{0,600}(?:queryPublicEvents|queryPublicEventSlice|prepare\()/u,
     "the directory must never execute one query per card",
   );
   assert.doesNotMatch(
-    `${page}\n${loader}\n${directory}`,
+    `${page}\n${groupedReader}\n${directory}`,
     /fetch\s*\(|https?:\/\/[^"']*meetup\.com/iu,
     "the public request path must not fetch Meetup",
   );

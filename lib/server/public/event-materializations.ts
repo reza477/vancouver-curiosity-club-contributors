@@ -38,6 +38,7 @@ import {
   parseFiniteInteger,
   parseIdentifier,
   parseObject,
+  validationIssue,
 } from "../../validation";
 import { parseCalendarDate } from "../../time";
 
@@ -52,6 +53,7 @@ const MAX_MATERIALIZATION_BYTES = 1_000_000;
 const MAX_EVENTS_PER_MONTH = 96;
 const MAX_HOME_EVENTS = 48;
 const MAX_DETAIL_EVENTS = 512;
+const MAX_NEXT_EVENT_CLUBS = 12;
 const DEFAULT_HOME_EVENT_READ_LIMIT = 6;
 const MATERIALIZED_MONTH_BUFFER = 1;
 const PUBLIC_MONTH_COUNT = 25;
@@ -462,6 +464,63 @@ export async function readPublicClubEventViewMaterialization(
     past: materializedEventPage(past, "past", pageSize),
     upcoming: materializedEventPage(upcoming, "upcoming", pageSize),
   });
+}
+
+/**
+ * One indexed detail-row read supplies the nearest upcoming event for each
+ * requested Club on the public directory. The ordered, deduplicated result is
+ * derived in memory; this visitor path never runs the live event projection.
+ */
+export async function readPublicNextEventsByClubMaterialization(
+  database: Pick<D1DatabaseLike, "prepare">,
+  input: Readonly<{
+    clubSlugs: readonly unknown[];
+    nowUtcMs: number;
+    organizationId: string;
+    todayDate: string;
+  }>,
+): Promise<readonly PublicEventCardDto[] | null> {
+  const organizationId = parseIdentifier(
+    input.organizationId,
+    "eventMaterializations.organizationId",
+  );
+  const clubSlugs = parseMaterializedClubSlugs(input.clubSlugs);
+  const nowUtcMs = parseFiniteInteger(input.nowUtcMs, {
+    path: "eventMaterializations.nowUtcMs",
+    minimum: 0,
+    maximum: MAX_TIMESTAMP - 1,
+  });
+  const todayDate = parseMaterializationDate(input.todayDate);
+  if (clubSlugs.length === 0) return Object.freeze([]);
+
+  const envelope = await readDetailEnvelope(
+    database,
+    organizationId,
+    nowUtcMs,
+  );
+  if (!envelope) return null;
+
+  const requested = new Set(clubSlugs);
+  const firstByClub = new Map<string, PublicEventCardDto>();
+  for (const event of [...envelope.eventDetails]
+    .filter(
+      (candidate) =>
+        requested.has(candidate.club.slug) &&
+        (candidate.status === "confirmed" ||
+          candidate.status === "tentative") &&
+        isPublicCalendarEventUpcoming(candidate, nowUtcMs, todayDate),
+    )
+    .sort(comparePublicEventStart)) {
+    if (!firstByClub.has(event.club.slug)) {
+      firstByClub.set(event.club.slug, publicEventCardProjection(event));
+    }
+  }
+  return Object.freeze(
+    clubSlugs.flatMap((clubSlug) => {
+      const event = firstByClub.get(clubSlug);
+      return event ? [event] : [];
+    }),
+  );
 }
 
 /** Read-only Home seam. A missing generation is an empty event rail. */
@@ -993,6 +1052,35 @@ function parseRequestedEventsPage(value: unknown): Readonly<{
     return Object.freeze({ invalid: true, page: 1 });
   }
   return Object.freeze({ invalid: false, page: Number(value) });
+}
+
+function parseMaterializedClubSlugs(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.length > MAX_NEXT_EVENT_CLUBS) {
+    throw validationIssue(
+      "eventMaterializations.clubSlugs",
+      "invalid_length",
+      `At most ${MAX_NEXT_EVENT_CLUBS} public Club slugs may be requested.`,
+    );
+  }
+  const seen = new Set<string>();
+  const slugs: string[] = [];
+  for (const [index, candidate] of value.entries()) {
+    const slug = parseIdentifier(
+      candidate,
+      `eventMaterializations.clubSlugs.${index}`,
+    );
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(slug)) {
+      throw validationIssue(
+        `eventMaterializations.clubSlugs.${index}`,
+        "invalid_identifier",
+        "Expected a normalized public Club slug.",
+      );
+    }
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    slugs.push(slug);
+  }
+  return Object.freeze(slugs);
 }
 
 function comparePublicEventStart(

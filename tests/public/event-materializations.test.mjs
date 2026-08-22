@@ -477,6 +477,72 @@ test("one bounded detail row serves event, related, club, and program views with
   });
 
   counter.reset();
+  const directory =
+    await materializations.readPublicNextEventsByClubMaterialization(
+      counter.database,
+      {
+        clubSlugs: ["alpha-club", "beta-club", "alpha-club"],
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.deepEqual(
+    directory?.map((event) => event.title),
+    ["Target gathering", "Same category gathering"],
+  );
+  assert.equal("descriptionHtml" in directory[0], false);
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
+  assert.ok(
+    counter.sql().every((sql) => !sql.includes("WITH public_clubs AS")),
+    "the directory must never execute the unified public-event projection",
+  );
+
+  counter.reset();
+  assert.deepEqual(
+    await materializations.readPublicNextEventsByClubMaterialization(
+      counter.database,
+      {
+        clubSlugs: [],
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      },
+    ),
+    [],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 0,
+    first: 0,
+    run: 0,
+  });
+  await assert.rejects(
+    materializations.readPublicNextEventsByClubMaterialization(
+      counter.database,
+      {
+        clubSlugs: Array.from({ length: 13 }, (_unused, index) =>
+          `club-${index + 1}`
+        ),
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      },
+    ),
+    (error) =>
+      error?.issues?.some(
+        (issue) =>
+          issue.path === "eventMaterializations.clubSlugs" &&
+          issue.code === "invalid_length",
+      ),
+  );
+
+  counter.reset();
   const program =
     await materializations.readPublicClubEventViewMaterialization(
       counter.database,
@@ -539,10 +605,22 @@ test("one bounded detail row serves event, related, club, and program views with
     ),
     null,
   );
+  assert.equal(
+    await materializations.readPublicNextEventsByClubMaterialization(
+      counter.database,
+      {
+        clubSlugs: ["alpha-club"],
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      },
+    ),
+    null,
+  );
   assert.deepEqual(counter.counts(), {
     batch: 0,
-    executions: 1,
-    first: 1,
+    executions: 2,
+    first: 2,
     run: 0,
   });
 

@@ -17,6 +17,7 @@ import { getPublicEventBySlug } from "./events";
 import {
   readPublicClubEventViewMaterialization,
   readPublicEventDetailViewMaterialization,
+  readPublicNextEventsByClubMaterialization,
 } from "./event-materializations";
 
 type PublicDatabase = Pick<D1DatabaseLike, "prepare">;
@@ -27,6 +28,10 @@ type PublicRequestCache = Readonly<{
   clubEventViews: Map<
     string,
     ReturnType<typeof readPublicClubEventViewMaterialization>
+  >;
+  clubNextEvents: Map<
+    string,
+    ReturnType<typeof readPublicNextEventsByClubMaterialization>
   >;
   clubs: Map<string, ReturnType<typeof listPublicClubs>>;
   communityLinks: Map<string, ReturnType<typeof listPublicCommunityLinks>>;
@@ -59,6 +64,10 @@ function requestDatabaseCache(database: PublicDatabase): PublicRequestCache {
     clubEventViews: new Map<
       string,
       ReturnType<typeof readPublicClubEventViewMaterialization>
+    >(),
+    clubNextEvents: new Map<
+      string,
+      ReturnType<typeof readPublicNextEventsByClubMaterialization>
     >(),
     clubs: new Map<string, ReturnType<typeof listPublicClubs>>(),
     communityLinks:
@@ -241,6 +250,28 @@ export function getRequestPublicClubEventViewMaterialization(
   ]);
   return remember(requestDatabaseCache(database).clubEventViews, key, () =>
     readPublicClubEventViewMaterialization(database, input),
+  );
+}
+
+export function getRequestPublicNextEventsByClubMaterialization(
+  database: PublicDatabase,
+  input: Readonly<{
+    clubSlugs: readonly unknown[];
+    nowUtcMs: number;
+    organizationId: string;
+    todayDate: string;
+  }>,
+) {
+  // The clock sample may differ between render phases, while the immutable
+  // materialization, requested Club order, and local calendar date do not.
+  const clubSlugs = [...new Set(input.clubSlugs)];
+  const key = JSON.stringify([
+    input.organizationId,
+    clubSlugs,
+    input.todayDate,
+  ]);
+  return remember(requestDatabaseCache(database).clubNextEvents, key, () =>
+    readPublicNextEventsByClubMaterialization(database, input),
   );
 }
 
