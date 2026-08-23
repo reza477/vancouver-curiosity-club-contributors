@@ -876,7 +876,10 @@ test("the built public root is indexable and carries the production security con
   assert.ok(moduleHrefs.length > 0, "Home must preload a built JavaScript module");
   let relativeImportHref = null;
   for (const href of moduleHrefs) {
-    assert.match(href, /^\/assets\/[A-Za-z0-9_.-]+\.js$/u);
+    assert.match(
+      href,
+      /^\/_next\/static\/chunks\/[A-Za-z0-9_.-]+\.js$/u,
+    );
     const response = await fetchPath(href);
     assert.equal(response.status, 200, `unable to load built module ${href}`);
     assert.equal(
@@ -911,7 +914,10 @@ test("the built public root is indexable and carries the production security con
   );
   let publicStylesheetBytes = 0;
   for (const href of publicStylesheetHrefs) {
-    assert.match(href, /^\/assets\/[A-Za-z0-9_.-]+\.css$/u);
+    assert.match(
+      href,
+      /^\/_next\/static\/css\/[A-Za-z0-9_.-]+\.css$/u,
+    );
     const originHref = publicAssetOriginPath({
       method: "GET",
       pathname: href,
@@ -1121,14 +1127,14 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
   const relocatedAssetDirectory = resolve(
     "dist/client",
     WORKER_ASSET_ORIGIN_PREFIX.slice(1),
-    "assets",
+    "_next/static/css",
   );
   const hashedAssetName = (await readdir(relocatedAssetDirectory)).find(
-    (name) => /-[A-Za-z0-9_-]{8,}\.css$/u.test(name),
+    (name) => /\.[A-Za-z0-9_-]{8,}\.css$/u.test(name),
   );
   assert.ok(hashedAssetName, "the build must emit a content-hashed stylesheet");
   await assert.rejects(
-    stat(resolve("dist/client/assets", hashedAssetName)),
+    stat(resolve("dist/client/_next/static/css", hashedAssetName)),
     (error) => error?.code === "ENOENT",
   );
   await assert.rejects(
@@ -1145,7 +1151,7 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
         resolve(
           "dist/client",
           WORKER_ASSET_ORIGIN_PREFIX.slice(1),
-          "assets",
+          "_next/static",
         ),
       )
     ).isDirectory(),
@@ -1183,7 +1189,7 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
   assert.ok((await response.arrayBuffer()).byteLength > 1_000);
 
   const hashedResponse = await posterRuntime.dispatchFetch(
-    `https://preview.example/assets/${hashedAssetName}`,
+    `https://preview.example/_next/static/css/${hashedAssetName}`,
   );
   assert.equal(hashedResponse.status, 200);
   assert.equal(
@@ -1202,7 +1208,7 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
       "public, max-age=86400, stale-while-revalidate=604800",
     ],
     [
-      `/assets/${hashedAssetName}`,
+      `/_next/static/css/${hashedAssetName}`,
       "public, max-age=31536000, immutable",
     ],
   ]) {

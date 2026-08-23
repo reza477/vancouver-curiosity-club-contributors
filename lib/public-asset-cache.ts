@@ -8,11 +8,22 @@ export const EVENT_POSTER_CACHE_CONTROL =
 export const WORKER_ASSET_ORIGIN_PREFIX = "/__vcc_asset_origin__";
 export const WORKER_OWNED_ASSET_DIRECTORIES = [
   "assets",
+  "_next/static",
   "event-posters",
 ] as const;
 
 const CONTENT_HASHED_ASSET_PATH =
   /^\/assets\/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$/u;
+const VINEXT_HASHED_CHUNK_PATH =
+  /^\/_next\/static\/chunks\/(?=[A-Za-z0-9_.-]{1,240}$)[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.js$/u;
+const VINEXT_HASHED_STYLESHEET_PATH =
+  /^\/_next\/static\/css\/(?=[A-Za-z0-9_.-]{1,240}$)[A-Za-z0-9_.-]+[.-][A-Za-z0-9_-]{8,}\.css$/u;
+const VINEXT_HASHED_FONT_PATH =
+  /^\/_next\/static\/_vinext_fonts\/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.woff2$/u;
+const VINEXT_HASHED_MEDIA_PATH =
+  /^\/_next\/static\/media\/(?=[A-Za-z0-9_.-]{1,240}$)[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]{8,}\.(?:avif|gif|ico|jpe?g|png|webp|woff2?)$/u;
+const VINEXT_BUILD_MANIFEST_PATH =
+  /^\/_next\/static\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(?:_buildManifest|_ssgManifest)\.js$/u;
 const REGENERABLE_EVENT_POSTER_PATH =
   /^\/event-posters\/(?=[A-Za-z0-9._-]{1,180}$)[A-Za-z0-9][A-Za-z0-9._-]*\.(?:avif|webp|jpeg)$/u;
 
@@ -53,7 +64,20 @@ export function publicAssetOriginPath(input: Readonly<{
 }
 
 export function isContentHashedAssetPath(pathname: string): boolean {
-  return CONTENT_HASHED_ASSET_PATH.test(pathname);
+  return (
+    CONTENT_HASHED_ASSET_PATH.test(pathname) ||
+    isVinextStaticAssetPath(pathname)
+  );
+}
+
+function isVinextStaticAssetPath(pathname: string): boolean {
+  return (
+    VINEXT_HASHED_CHUNK_PATH.test(pathname) ||
+    VINEXT_HASHED_STYLESHEET_PATH.test(pathname) ||
+    VINEXT_HASHED_FONT_PATH.test(pathname) ||
+    VINEXT_HASHED_MEDIA_PATH.test(pathname) ||
+    VINEXT_BUILD_MANIFEST_PATH.test(pathname)
+  );
 }
 
 export function isRegenerableEventPosterPath(pathname: string): boolean {

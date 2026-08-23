@@ -41,8 +41,25 @@ test("content-hashed assets receive a one-year immutable cache policy", () => {
   assert.equal(
     publicAssetCacheControl({
       method: "GET",
-      pathname: "/assets/framework-12345678.js",
+      pathname: "/_next/static/css/public-rsc.DBNOtGQ1.css",
       status: 304,
+    }),
+    HASHED_ASSET_CACHE_CONTROL,
+  );
+  assert.equal(
+    publicAssetCacheControl({
+      method: "GET",
+      pathname: "/_next/static/media/cover.4Fj0aBcD.webp",
+      status: 200,
+    }),
+    HASHED_ASSET_CACHE_CONTROL,
+  );
+  assert.equal(
+    publicAssetCacheControl({
+      method: "GET",
+      pathname:
+        "/_next/static/_vinext_fonts/geist-8ac0455e797f/geist-001175b1.woff2",
+      status: 200,
     }),
     HASHED_ASSET_CACHE_CONTROL,
   );
@@ -96,12 +113,26 @@ test("only safe read-only public asset paths map to the internal static origin",
       }),
       `${WORKER_ASSET_ORIGIN_PREFIX}/event-posters/meetup-315294572-960.webp`,
     );
+    assert.equal(
+      publicAssetOriginPath({
+        method,
+        pathname: "/_next/static/chunks/framework-JGc2HF7T.js",
+      }),
+      `${WORKER_ASSET_ORIGIN_PREFIX}/_next/static/chunks/framework-JGc2HF7T.js`,
+    );
   }
 
   for (const input of [
     { method: "POST", pathname: "/assets/framework-12345678.js" },
     { method: "GET", pathname: "/assets/unhashed.js" },
     { method: "GET", pathname: "/event-posters/nested/poster.webp" },
+    { method: "GET", pathname: "/_next/static/../server/index.js" },
+    { method: "GET", pathname: "/_next/static/chunks/" },
+    { method: "GET", pathname: "/_next/static/chunks/no-extension" },
+    { method: "GET", pathname: "/_next/static/chunks/unhashed.js" },
+    { method: "GET", pathname: "/_next/static/chunks/app.js.map" },
+    { method: "GET", pathname: "/_next/static/chunks/private.html" },
+    { method: "GET", pathname: "/_next/static/.vite/manifest.json" },
     { method: "GET", pathname: "/api/organizer/events.json" },
     {
       method: "GET",
@@ -254,6 +285,120 @@ test("the build relocates Worker-owned directories and leaves other public asset
     "fonts",
   );
   assert.equal(existsSync(resolve(root, "dist", "client", "_headers")), false);
+});
+
+test("the build accepts Vinext's _next/static output when the legacy assets directory is absent", async (t) => {
+  const root = mkdtempSync(resolve(tmpdir(), "vcc-worker-next-assets-"));
+  t.after(() => rmSync(root, { force: true, recursive: true }));
+  mkdirSync(
+    resolve(root, "dist", "client", "_next", "static", "chunks"),
+    { recursive: true },
+  );
+  mkdirSync(resolve(root, "dist", "client", "_next", "static", "css"), {
+    recursive: true,
+  });
+  mkdirSync(
+    resolve(
+      root,
+      "dist",
+      "client",
+      "_next",
+      "static",
+      "_vinext_fonts",
+      "geist-8ac0455e797f",
+    ),
+    { recursive: true },
+  );
+  mkdirSync(
+    resolve(
+      root,
+      "dist",
+      "client",
+      "_next",
+      "static",
+      "401960e8-5c0f-4266-8961-d67b3817cf00",
+    ),
+    { recursive: true },
+  );
+  mkdirSync(resolve(root, "dist", "client", "event-posters"), {
+    recursive: true,
+  });
+  writeFileSync(
+    resolve(
+      root,
+      "dist",
+      "client",
+      "_next",
+      "static",
+      "chunks",
+      "framework-JGc2HF7T.js",
+    ),
+    "vinext client asset",
+  );
+  const additionalStaticFiles = [
+    ["css", "public-rsc.DBNOtGQ1.css"],
+    ["_vinext_fonts/geist-8ac0455e797f", "geist-001175b1.woff2"],
+    ["401960e8-5c0f-4266-8961-d67b3817cf00", "_buildManifest.js"],
+    ["401960e8-5c0f-4266-8961-d67b3817cf00", "_ssgManifest.js"],
+  ];
+  for (const [directory, name] of additionalStaticFiles) {
+    writeFileSync(
+      resolve(root, "dist", "client", "_next", "static", directory, name),
+      `${directory}/${name}`,
+    );
+  }
+  writeFileSync(
+    resolve(root, "dist", "client", "event-posters", "meetup-1.webp"),
+    "poster",
+  );
+
+  await relocateWorkerOwnedAssetDirectories(root);
+  await relocateWorkerOwnedAssetDirectories(root);
+
+  const publicAssetPath = resolve(
+    root,
+    "dist",
+    "client",
+    "_next",
+    "static",
+    "chunks",
+    "framework-JGc2HF7T.js",
+  );
+  const internalAssetPath = resolve(
+    root,
+    "dist",
+    "client",
+    WORKER_ASSET_ORIGIN_PREFIX.slice(1),
+    "_next",
+    "static",
+    "chunks",
+    "framework-JGc2HF7T.js",
+  );
+  assert.equal(existsSync(publicAssetPath), false);
+  assert.equal(readFileSync(internalAssetPath, "utf8"), "vinext client asset");
+  for (const [directory, name] of additionalStaticFiles) {
+    const publicPath = resolve(
+      root,
+      "dist",
+      "client",
+      "_next",
+      "static",
+      directory,
+      name,
+    );
+    const internalPath = resolve(
+      root,
+      "dist",
+      "client",
+      WORKER_ASSET_ORIGIN_PREFIX.slice(1),
+      "_next",
+      "static",
+      directory,
+      name,
+    );
+    assert.equal(existsSync(publicPath), false);
+    assert.equal(readFileSync(internalPath, "utf8"), `${directory}/${name}`);
+  }
 });
 
 test("nonce-bearing public HTML is never placed in a shared response cache", () => {

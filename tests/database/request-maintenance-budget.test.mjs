@@ -233,6 +233,7 @@ test("public maintenance claims its throttle only for route-eligible work", () =
     "/about",
     "/accessibility",
     "/assets/framework-12345678.js",
+    "/_next/static/chunks/framework-JGc2HF7T.js",
     "/clubs",
     "/conduct",
     "/favicon.ico",

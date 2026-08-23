@@ -1,5 +1,5 @@
 import { access, cp, mkdir, readdir, rename, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
 import {
   WORKER_ASSET_ORIGIN_PREFIX,
@@ -19,6 +19,33 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+type RelativeFile = Readonly<{
+  absolutePath: string;
+  relativePath: string;
+}>;
+
+async function listFilesRecursively(
+  directory: string,
+  relativeDirectory = "",
+): Promise<RelativeFile[]> {
+  if (!(await exists(directory))) return [];
+
+  const files: RelativeFile[] = [];
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const relativePath = relativeDirectory
+      ? `${relativeDirectory}/${entry.name}`
+      : entry.name;
+    const absolutePath = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listFilesRecursively(absolutePath, relativePath)));
+    } else if (entry.isFile()) {
+      files.push({ absolutePath, relativePath });
+    }
+  }
+  return files;
+}
+
 export async function relocateWorkerOwnedAssetDirectories(
   root: string,
 ): Promise<void> {
@@ -33,40 +60,56 @@ export async function relocateWorkerOwnedAssetDirectories(
   await rm(resolve(clientDirectory, "_headers"), { force: true });
   await mkdir(originDirectory, { recursive: true });
 
+  const relocatedDirectoryCounts = new Map<string, number>();
+
   for (const directory of WORKER_OWNED_ASSET_DIRECTORIES) {
     const sourceDirectory = resolve(clientDirectory, directory);
     const targetDirectory = resolve(originDirectory, directory);
-    const sourceEntries = (await exists(sourceDirectory))
-      ? await readdir(sourceDirectory, { withFileTypes: true })
-      : [];
-    const ownedEntries = sourceEntries.filter(
-      (entry) =>
-        entry.isFile() &&
+    const sourceFiles = await listFilesRecursively(sourceDirectory);
+    const ownedFiles = sourceFiles.filter(
+      (file) =>
         publicAssetOriginPath({
           method: "GET",
-          pathname: `/${directory}/${entry.name}`,
+          pathname: `/${directory}/${file.relativePath}`,
         }) !== null,
     );
 
-    if (ownedEntries.length > 0) {
+    if (ownedFiles.length > 0) {
       await rm(targetDirectory, { recursive: true, force: true });
       await mkdir(targetDirectory, { recursive: true });
-      for (const entry of ownedEntries) {
+      for (const file of ownedFiles) {
+        const targetPath = resolve(targetDirectory, file.relativePath);
+        await mkdir(dirname(targetPath), { recursive: true });
         await rename(
-          resolve(sourceDirectory, entry.name),
-          resolve(targetDirectory, entry.name),
+          file.absolutePath,
+          targetPath,
         );
       }
     }
 
-    const targetEntries = (await exists(targetDirectory))
-      ? await readdir(targetDirectory, { withFileTypes: true })
-      : [];
-    if (!targetEntries.some((entry) => entry.isFile())) {
-      throw new Error(
-        `Missing Worker-owned static assets: dist/client/${directory}`,
-      );
-    }
+    const targetFiles = (await listFilesRecursively(targetDirectory)).filter(
+      (file) =>
+        publicAssetOriginPath({
+          method: "GET",
+          pathname: `/${directory}/${file.relativePath}`,
+        }) !== null,
+    );
+    relocatedDirectoryCounts.set(directory, targetFiles.length);
+  }
+
+  if (
+    !["assets", "_next/static"].some(
+      (directory) => (relocatedDirectoryCounts.get(directory) ?? 0) > 0,
+    )
+  ) {
+    throw new Error(
+      "Missing Worker-owned client assets: dist/client/assets or dist/client/_next/static",
+    );
+  }
+  if ((relocatedDirectoryCounts.get("event-posters") ?? 0) === 0) {
+    throw new Error(
+      "Missing Worker-owned static assets: dist/client/event-posters",
+    );
   }
 }
 
