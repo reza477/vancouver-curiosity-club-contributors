@@ -36,10 +36,31 @@ test("public benchmark distinguishes 5xx, timeout, and cancellation", () => {
     { durationMs: 20, kind: "response", ok: false, status: 503 },
     { durationMs: 30, kind: "timeout", ok: false, status: 0 },
     { durationMs: 40, kind: "cancelled", ok: false, status: 0 },
+    { durationMs: 50, kind: "service_state", ok: false, status: 200 },
   ]);
-  assert.equal(summary.failed, 3);
+  assert.equal(summary.failed, 4);
   assert.equal(summary.serverErrors, 1);
+  assert.equal(summary.serviceStates, 1);
   assert.equal(summary.timedOut, 1);
   assert.equal(summary.cancelled, 1);
   assert.equal(summary.p50Ms, 10);
+});
+
+test("public benchmark rejects a visitor-visible editorial fallback at HTTP 200", async () => {
+  await assert.rejects(
+    benchmarkPublicRoutes({
+      baseUrl: "https://club.example",
+      concurrency: 1,
+      fetchImpl: async () =>
+        new Response(
+          '<main><h1 id="service-title">About could not be prepared.</h1></main>',
+          { status: 200 },
+        ),
+      routes: ["/about"],
+      sampleCount: 1,
+      timeoutMs: 1_000,
+      waveCount: 1,
+    }),
+    /Public benchmark failed/u,
+  );
 });

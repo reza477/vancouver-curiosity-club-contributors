@@ -86,6 +86,9 @@ export function summarizeResults(results) {
     serverErrors: results.filter(
       (result) => result.kind === "response" && result.status >= 500,
     ).length,
+    serviceStates: results.filter(
+      (result) => result.kind === "service_state",
+    ).length,
     timedOut: results.filter((result) => result.kind === "timeout").length,
   });
 }
@@ -118,11 +121,12 @@ async function timedGet(fetchImpl, url, timeoutMs) {
       redirect: "follow",
       signal: controller.signal,
     });
-    await response.arrayBuffer();
+    const body = await response.text();
+    const serviceState = response.status < 500 && isUnavailablePage(body);
     return Object.freeze({
       durationMs: performance.now() - startedAt,
-      kind: "response",
-      ok: response.status < 500,
+      kind: serviceState ? "service_state" : "response",
+      ok: response.status < 500 && !serviceState,
       status: response.status,
       url: url.pathname,
     });
@@ -138,6 +142,13 @@ async function timedGet(fetchImpl, url, timeoutMs) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function isUnavailablePage(body) {
+  return (
+    body.includes("could not be prepared.") ||
+    body.includes("The public site is not available yet.")
+  );
 }
 
 function percentile(sorted, fraction) {

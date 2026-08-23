@@ -1643,12 +1643,9 @@ export async function getPublicPageContent(
 ): Promise<PublicPageDto | null> {
   const parsedSlug = publicSlug(slug);
   if (!parsedSlug) return null;
-  const result = await database
+  const row = await database
     .prepare(
-      `SELECT page.title, page.slug, section.section_key,
-              section.section_type, section.content_json,
-              metadata.seo_title, metadata.meta_description,
-              metadata.og_media_asset_id
+      `SELECT materialization.projection_json
        FROM pages AS page
        JOIN organizations AS organization
          ON organization.id = page.organization_id
@@ -1679,13 +1676,6 @@ export async function getPublicPageContent(
           "materialization",
           "publication_revision",
         )}
-       LEFT JOIN page_sections AS section
-         ON section.page_id = page.id
-        AND section.organization_id = page.organization_id
-        AND section.deleted_at IS NULL
-       LEFT JOIN page_public_metadata AS metadata
-         ON metadata.page_id = page.id
-        AND metadata.organization_id = page.organization_id
        WHERE organization.slug = ?
          AND organization.deleted_at IS NULL
          AND page.slug = ?
@@ -1702,97 +1692,11 @@ export async function getPublicPageContent(
                materialization.projection_json,
                '$.page.currentRevision'
              )
-         AND metadata.seo_title IS
-             json_extract(
-               materialization.projection_json,
-               '$.metadata.seoTitle'
-             )
-         AND metadata.meta_description IS
-             json_extract(
-               materialization.projection_json,
-               '$.metadata.metaDescription'
-             )
-         AND metadata.og_media_asset_id IS
-             json_extract(
-               materialization.projection_json,
-               '$.metadata.openGraphAssetId'
-             )
-         AND (
-           SELECT count(*)
-           FROM page_sections AS current_section
-           WHERE current_section.organization_id = page.organization_id
-             AND current_section.page_id = page.id
-             AND current_section.deleted_at IS NULL
-         ) = json_array_length(
-               materialization.projection_json,
-               '$.sections'
-             )
-         AND NOT EXISTS (
-           SELECT 1
-           FROM json_each(
-             materialization.projection_json,
-             '$.sections'
-           ) AS expected_section
-           WHERE NOT EXISTS (
-             SELECT 1
-             FROM page_sections AS current_section
-             WHERE current_section.organization_id = page.organization_id
-               AND current_section.page_id = page.id
-               AND current_section.section_key =
-                   json_extract(
-                     expected_section.value,
-                     '$.sectionKey'
-                   )
-               AND current_section.section_type =
-                   json_extract(
-                     expected_section.value,
-                     '$.sectionType'
-                   )
-               AND current_section.content_json =
-                   json_extract(
-                     expected_section.value,
-                     '$.contentJson'
-                   )
-               AND current_section.sort_order =
-                   json_extract(
-                     expected_section.value,
-                     '$.sortOrder'
-                   )
-               AND current_section.deleted_at IS NULL
-           )
-         )
-         AND NOT (${protectedLegalClaimSql([
-           "materialization.projection_json",
-         ])})
-         AND NOT (${publicOrganizerEmailExposureSql(
-           ["materialization.projection_json"],
-           "page.organization_id",
-         )})
-       ORDER BY section.sort_order ASC, section.section_key ASC`,
+       LIMIT 1`,
     )
     .bind(PUBLIC_ORGANIZATION_SLUG, parsedSlug)
-    .all<Record<string, unknown>>();
-  const rows = result.results ?? [];
-  const first = rows[0];
-  const title = publicText(first?.title);
-  const pageSlug = publicSlug(first?.slug);
-  if (!first || !title || !pageSlug) return null;
-  const sections = rows.flatMap((row) => {
-    const key = publicSlug(row.section_key);
-    const type = publicSectionType(row.section_type);
-    const content = type ? publicSectionContent(row.content_json, type) : null;
-    return key && type && content
-      ? [Object.freeze({ content, key, type })]
-      : [];
-  });
-  return Object.freeze({
-    metaDescription: publicBoundedText(first.meta_description, 160),
-    openGraphAssetId: publicIdentifier(first.og_media_asset_id),
-    sections: Object.freeze(sections),
-    seoTitle: publicBoundedText(first.seo_title, 60),
-    slug: pageSlug,
-    title,
-  });
+    .first<Record<string, unknown>>();
+  return publicPageFromCertifiedProjection(row?.projection_json, parsedSlug);
 }
 
 export async function loadPublicCatalog(
@@ -2639,6 +2543,121 @@ function publicSectionContent(
     }
   }
   return Object.keys(content).length > 0 ? Object.freeze(content) : null;
+}
+
+/**
+ * Reads the immutable, write-certified page projection without rebuilding it
+ * from the mutable CMS tables on every public request. Publication and
+ * maintenance boundaries retain the full semantic receipt verification; this
+ * parser keeps the hot path bounded and fails closed if the certified payload
+ * is malformed or exceeds the CMS page limits.
+ */
+function publicPageFromCertifiedProjection(
+  value: unknown,
+  expectedSlug: string,
+): PublicPageDto | null {
+  if (typeof value !== "string" || value.length < 2 || value.length > 131_072) {
+    return null;
+  }
+  let projection: unknown;
+  try {
+    projection = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!isJsonRecord(projection)) return null;
+  const page = projection.page;
+  const metadata = projection.metadata;
+  const sectionValues = projection.sections;
+  if (
+    !isJsonRecord(page) ||
+    !isJsonRecord(metadata) ||
+    !Array.isArray(sectionValues) ||
+    sectionValues.length > 24
+  ) {
+    return null;
+  }
+
+  const title = publicText(page.title);
+  const slug = publicSlug(page.slug);
+  if (
+    !title ||
+    slug !== expectedSlug ||
+    !Number.isSafeInteger(page.currentRevision) ||
+    (page.currentRevision as number) < 1
+  ) {
+    return null;
+  }
+  const seoTitle = certifiedOptionalText(metadata.seoTitle, 60);
+  const metaDescription = certifiedOptionalText(
+    metadata.metaDescription,
+    160,
+  );
+  const openGraphAssetId = certifiedOptionalIdentifier(
+    metadata.openGraphAssetId,
+  );
+  if (
+    seoTitle === undefined ||
+    metaDescription === undefined ||
+    openGraphAssetId === undefined
+  ) {
+    return null;
+  }
+
+  const seenKeys = new Set<string>();
+  const sections: PublicPageSectionDto[] = [];
+  let priorSortOrder = -1;
+  for (const sectionValue of sectionValues) {
+    if (!isJsonRecord(sectionValue)) return null;
+    const key = publicSlug(sectionValue.sectionKey);
+    const type = publicSectionType(sectionValue.sectionType);
+    const sortOrder = sectionValue.sortOrder;
+    const content = type
+      ? publicSectionContent(sectionValue.contentJson, type)
+      : null;
+    if (
+      !key ||
+      seenKeys.has(key) ||
+      !type ||
+      !content ||
+      !Number.isSafeInteger(sortOrder) ||
+      (sortOrder as number) < 0 ||
+      (sortOrder as number) <= priorSortOrder
+    ) {
+      return null;
+    }
+    seenKeys.add(key);
+    priorSortOrder = sortOrder as number;
+    sections.push(Object.freeze({ content, key, type }));
+  }
+
+  return Object.freeze({
+    metaDescription,
+    openGraphAssetId,
+    sections: Object.freeze(sections),
+    seoTitle,
+    slug,
+    title,
+  });
+}
+
+function certifiedOptionalText(
+  value: unknown,
+  maximum: number,
+): string | null | undefined {
+  if (value === null) return null;
+  return publicBoundedText(value, maximum) ?? undefined;
+}
+
+function certifiedOptionalIdentifier(
+  value: unknown,
+): string | null | undefined {
+  if (value === null) return null;
+  return publicIdentifier(value) ?? undefined;
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseJsonRecord(value: unknown): Record<string, unknown> | null {
