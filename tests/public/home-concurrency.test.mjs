@@ -13,6 +13,20 @@ const SITE_IDENTITY = JSON.stringify({
   mission: "A community organization for curious people.",
   tagline: "A social calendar with a brain.",
 });
+const HOME_PAGE_PROJECTION = JSON.stringify({
+  eventSelectionProofs: [],
+  metadata: {
+    metaDescription: "A home page.",
+    openGraphAssetId: null,
+    seoTitle: "Vancouver Curiosity Club",
+  },
+  page: {
+    currentRevision: 1,
+    slug: "home",
+    title: "Vancouver Curiosity Club",
+  },
+  sections: [],
+});
 
 test("Home bounds peak D1 read concurrency at the catalog fan-out of five", async () => {
   const homeSource = await readFile(
@@ -44,23 +58,10 @@ test("Home bounds peak D1 read concurrency at the catalog fan-out of five", asyn
             total_count: 0,
           };
         }
+        if (sql.includes("FROM pages AS page")) {
+          return { projection_json: HOME_PAGE_PROJECTION };
+        }
         return null;
-      }
-      if (sql.includes("FROM pages AS page")) {
-        return {
-          results: [
-            {
-              meta_description: "A home page.",
-              og_media_asset_id: null,
-              section_key: null,
-              section_type: null,
-              seo_title: "Vancouver Curiosity Club",
-              slug: "home",
-              title: "Vancouver Curiosity Club",
-            },
-          ],
-          success: true,
-        };
       }
       return { results: [], success: true };
     } finally {

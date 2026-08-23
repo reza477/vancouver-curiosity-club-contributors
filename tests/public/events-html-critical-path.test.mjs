@@ -368,8 +368,8 @@ test("vinext request scope shares one public D1 promise and resets for the next 
         bind() {
           return this;
         },
-        async all() {
-          return { results: [] };
+        async first() {
+          return null;
         },
       };
     },
@@ -381,8 +381,8 @@ test("vinext request scope shares one public D1 promise and resets for the next 
         bind() {
           return this;
         },
-        async all() {
-          return { results: [] };
+        async first() {
+          return null;
         },
       };
     },
