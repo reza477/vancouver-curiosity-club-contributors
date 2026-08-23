@@ -49,6 +49,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.2",
+    "image-size": "file:vendor/image-size-safe",
     "miniflare": "4.20260730.0",
     "next": "16.3.2",
     "react-server-dom-webpack": "19.2.8",
@@ -56,11 +57,12 @@
     "tailwindcss": "4.2.1",
     "tsx": "4.22.1",
     "typescript": "5.9.3",
-    "vinext": "1.0.0-beta.6",
+    "vinext": "0.0.50",
     "vite": "8.0.16",
     "wrangler": "4.125.0"
   },
   "overrides": {
+    "image-size": "$image-size",
     "@esbuild-kit/core-utils": {
       "esbuild": "0.25.12"
     },

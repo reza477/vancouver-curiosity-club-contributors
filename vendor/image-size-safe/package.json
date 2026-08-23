@@ -1,0 +1,8 @@
+{
+  "name": "image-size",
+  "version": "2.0.3",
+  "description": "Bounded image-dimension adapter for Vancouver Curiosity Club build metadata.",
+  "private": true,
+  "type": "module",
+  "exports": "./index.js"
+}
