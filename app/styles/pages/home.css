@@ -59,9 +59,17 @@
 .home-hero__deck {
   max-width: 62ch;
   color: var(--ink-soft);
-  margin: 1rem 0 0;
+  margin: 0;
   font-size: clamp(1rem, 1.35vw, 1.2rem);
   line-height: 1.55;
+}
+
+.home-hero h1 + .home-hero__deck {
+  margin-top: 1rem;
+}
+
+.home-hero__deck + .home-hero__deck {
+  margin-top: 0.75rem;
 }
 
 .home-hero__actions,

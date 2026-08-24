@@ -90,6 +90,12 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     missionCopy,
     /Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university/u,
   );
+  assert.match(missionCopy, /free, facilitated, in-person discussions/u);
+  assert.match(missionCopy, /At a time when much of social life takes place through screens/u);
+  assert.match(
+    missionCopy,
+    /Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection/u,
+  );
   assert.match(homeRenderer, /Explore our work/u);
   assert.match(homeRenderer, /View the public event calendar/u);
   assert.match(homeRenderer, /Explore upcoming events/u);

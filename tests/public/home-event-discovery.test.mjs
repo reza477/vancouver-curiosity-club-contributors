@@ -30,10 +30,13 @@ test("Home renders the approved institutional story in the exact section order",
   assert.equal((markup.match(/<h1\b/gu) ?? []).length, 1);
   assert.match(markup, />Our mission</u);
   assert.match(markup, />Building community through curiosity\.<\/h1>/u);
-  assert.match(
-    markup,
-    /Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university\. Through Vancouver Curiosity Club, we organize free, facilitated public discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life\. Our purpose is to encourage curiosity, thoughtful dialogue and meaningful community connection\./u,
-  );
+  const missionParagraphs = [
+    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated, in-person discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life.",
+    "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
+    "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
+  ];
+  assert.equal((markup.match(/class="home-hero__deck"/gu) ?? []).length, 3);
+  for (const paragraph of missionParagraphs) assert.ok(markup.includes(paragraph));
   assert.match(markup, /href="#our-work"[^>]*>Explore our work<\/a>/u);
   assert.match(markup, /href="\/for-organizations"[^>]*>Partner with us<\/a>/u);
   assert.doesNotMatch(markup, /home-hero__events-link|>View upcoming events<\/a>/u);

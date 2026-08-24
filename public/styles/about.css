@@ -54,9 +54,18 @@
 
 .about-hero__introduction > p {
   max-width: 47rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0;
   color: var(--ink-soft);
   font-size: clamp(1.05rem, 1.45vw, 1.25rem);
+  line-height: 1.55;
+}
+
+.about-hero__introduction > p + p {
+  margin-top: 0.85rem;
+}
+
+.about-hero__introduction > p:last-of-type {
+  margin-bottom: 1.5rem;
 }
 
 .about-actions {

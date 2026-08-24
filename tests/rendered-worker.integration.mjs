@@ -781,10 +781,13 @@ test("the built public root is indexable and carries the production security con
     /Our mission/u,
   );
   assert.match(html, /Building community through curiosity\./u);
-  assert.match(
-    html,
-    /Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university\. Through Vancouver Curiosity Club, we organize free, facilitated public discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life\. Our purpose is to encourage curiosity, thoughtful dialogue and meaningful community connection\./u,
-  );
+  const missionParagraphs = [
+    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated, in-person discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life.",
+    "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
+    "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
+  ];
+  assert.equal((html.match(/class="home-hero__deck"/gu) ?? []).length, 3);
+  for (const paragraph of missionParagraphs) assert.ok(html.includes(paragraph));
   assert.match(html, />Explore our work<\/a>/u);
   assert.match(html, />Partner with us<\/a>/u);
   assert.doesNotMatch(html, />View upcoming events<\/a>/u);
@@ -1252,13 +1255,24 @@ test("the built About page renders the exact shared mission and metadata", async
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  const mission =
-    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated public discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life. Our purpose is to encourage curiosity, thoughtful dialogue and meaningful community connection.";
+  const missionParagraphs = [
+    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated, in-person discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life.",
+    "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
+    "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
+  ];
   const metadataDescription =
     "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.";
 
   assert.match(html, />Our mission</u);
-  assert.ok(html.includes(mission), "About must render the complete mission verbatim");
+  const introduction = /<div class="about-hero__introduction">([\s\S]*?)<div class="about-actions">/u.exec(html)?.[1];
+  assert.ok(introduction, "About must render its mission introduction");
+  assert.equal((introduction.match(/<p>/gu) ?? []).length, 3);
+  let lastParagraphPosition = -1;
+  for (const paragraph of missionParagraphs) {
+    const position = introduction.indexOf(paragraph);
+    assert.ok(position > lastParagraphPosition, paragraph);
+    lastParagraphPosition = position;
+  }
   for (const metadata of [
     `name="description" content="${metadataDescription}"`,
     `property="og:description" content="${metadataDescription}"`,

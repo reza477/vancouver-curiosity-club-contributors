@@ -30,6 +30,9 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "Our mission",
     "Building belonging through curiosity.",
     "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.",
+    "free, facilitated, in-person discussions and learning events",
+    "At a time when much of social life takes place through screens",
+    "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
     "Organization at a glance",
     "How the model works",
     "What we organize",
@@ -47,6 +50,7 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     about,
     /descriptionOverride:\s*PUBLIC_ABOUT_MISSION_COPY\.metadataDescription/u,
   );
+  assert.match(about, /PUBLIC_ABOUT_MISSION_COPY\.paragraphs\.map/u);
   assert.match(
     editorial,
     /descriptionOverride \?\?[\s\S]*?page\.metaDescription/u,

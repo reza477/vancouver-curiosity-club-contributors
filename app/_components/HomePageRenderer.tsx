@@ -78,7 +78,11 @@ export function HomePageRenderer({
         <div className="home-hero__copy">
           <p className="eyebrow">{PUBLIC_HOME_MISSION_COPY.eyebrow}</p>
           <h1 id="home-title">{PUBLIC_HOME_MISSION_COPY.heading}</h1>
-          <p className="home-hero__deck">{PUBLIC_HOME_MISSION_COPY.body}</p>
+          {PUBLIC_HOME_MISSION_COPY.paragraphs.map((paragraph) => (
+            <p className="home-hero__deck" key={paragraph}>
+              {paragraph}
+            </p>
+          ))}
           <div className="home-hero__actions">
             <Link className="primary-action" href="#our-work">
               Explore our work

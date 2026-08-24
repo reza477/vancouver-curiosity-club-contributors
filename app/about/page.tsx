@@ -96,7 +96,9 @@ export default async function AboutPage() {
           <h1 id="about-title">{PUBLIC_ABOUT_MISSION_COPY.heading}</h1>
         </div>
         <div className="about-hero__introduction">
-          <p>{PUBLIC_ABOUT_MISSION_COPY.introduction}</p>
+          {PUBLIC_ABOUT_MISSION_COPY.paragraphs.map((paragraph) => (
+            <p key={paragraph}>{paragraph}</p>
+          ))}
           <div className="about-actions">
             <Link className="primary-action" href="/for-organizations">
               For organizations
