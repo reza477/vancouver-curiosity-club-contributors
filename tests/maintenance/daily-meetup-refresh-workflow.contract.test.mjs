@@ -20,7 +20,7 @@ test("daily Meetup refresh runs off-hour in Vancouver and can also be dispatched
   assert.match(workflow, /^on:\s*$/mu);
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/mu);
   assert.match(workflow, /^\s{2}schedule:\s*$/mu);
-  assert.match(workflow, /^\s+- cron:\s*["']17 4 \* \* \*["']\s*$/mu);
+  assert.match(workflow, /^\s+- cron:\s*["']17 0 \* \* \*["']\s*$/mu);
   assert.match(
     workflow,
     /^\s+timezone:\s*["']?America\/Vancouver["']?\s*$/mu,

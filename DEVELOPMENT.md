@@ -88,17 +88,17 @@ Important boundaries:
 
 ## Where changes belong
 
-| Change | Start here |
-| --- | --- |
-| Public route/metadata | `app/`, `app/_components/`, `lib/server/public/` |
-| Responsive styling | `app/globals.css` plus a focused visual contract |
-| Organizer workflow | `app/_organizer/`, `app/api/organizer/`, `lib/server/organizer/` |
-| Authentication | `lib/server/auth/` and organizer service boundaries |
-| Meetup import/sync | `lib/server/meetup/` |
-| Forms/submissions | `lib/server/phase7/`, `app/api/forms/` |
-| Database | `db/schema.ts`, next `drizzle/*.sql`, invariant tests |
-| Media | `lib/server/media/` and public usage/rights contracts |
-| Worker/security | `worker/index.ts`, security and rendered-Worker tests |
+| Change                | Start here                                                       |
+| --------------------- | ---------------------------------------------------------------- |
+| Public route/metadata | `app/`, `app/_components/`, `lib/server/public/`                 |
+| Responsive styling    | `app/globals.css` plus a focused visual contract                 |
+| Organizer workflow    | `app/_organizer/`, `app/api/organizer/`, `lib/server/organizer/` |
+| Authentication        | `lib/server/auth/` and organizer service boundaries              |
+| Meetup import/sync    | `lib/server/meetup/`                                             |
+| Forms/submissions     | `lib/server/phase7/`, `app/api/forms/`                           |
+| Database              | `db/schema.ts`, next `drizzle/*.sql`, invariant tests            |
+| Media                 | `lib/server/media/` and public usage/rights contracts            |
+| Worker/security       | `worker/index.ts`, security and rendered-Worker tests            |
 
 See [docs/architecture](docs/architecture/) for decisions. The large
 [BUILD_STATUS.md](BUILD_STATUS.md), [OWNER_INPUTS.md](OWNER_INPUTS.md), and
@@ -203,7 +203,7 @@ binding names, but no credentials or secrets.
 ### Scheduled Meetup maintenance
 
 `.github/workflows/daily-meetup-refresh.yml` is the production scheduler. It
-runs once daily at 04:17 America/Vancouver and can also be dispatched manually
+runs once daily at 00:17 America/Vancouver and can also be dispatched manually
 from GitHub Actions. Each request is timestamped, replay-protected, and signed
 with `DAILY_MEETUP_REFRESH_SECRET`, which must exist independently in the
 GitHub repository secret store and the Sites runtime secret store. Never put
@@ -212,9 +212,12 @@ that value in source, an issue, a log, or a local environment template.
 The endpoint advances exactly one two-event import slice per Worker request;
 the workflow repeats fresh signed requests until every source is current. The
 terminal request atomically promotes last-known-good Home, Events/club-card,
-and event-detail materializations. Visitor routes derive Home, Events,
-related-event, Club, and Program views from those indexed rows: they do not
-fetch or parse a Meetup group page and cannot advance synchronization.
+event-detail, related-event, and compact Club/Program rail materializations.
+Visitor routes read one bounded, generation-certified row for the requested
+event or club surface: they do not fetch or parse a Meetup group page and
+cannot advance synchronization. Public HTML remains `no-store` to preserve its
+per-response CSP nonce; that browser-facing policy is separate from these
+request-local and updater-owned read caches.
 GitHub Actions supplies the success/failure record and a counts-only summary.
 The organizer Meetup screen retains the manual refresh for urgent changes.
 

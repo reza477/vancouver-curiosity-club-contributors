@@ -23,6 +23,7 @@ test("only data-heavy public route families disable speculative prefetch", () =>
     "/clubs",
     "/clubs/fantasy-and-sci-fi",
     "/clubs/fantasy-and-sci-fi/programs/book-club",
+    "/for-organizations",
     { pathname: "/events" },
   ]) {
     assert.equal(isExpensivePublicRouteHref(href), true, String(href));
@@ -63,6 +64,7 @@ test("every public component that can emit an expensive href uses the policy lin
     "app/about/page.tsx",
     "app/error.tsx",
     "app/events/[slug]/page.tsx",
+    "app/for-organizations/page.tsx",
     "app/not-found.tsx",
     "app/page.tsx",
     "app/_components/Breadcrumbs.tsx",
@@ -96,7 +98,6 @@ test("every public component that can emit an expensive href uses the policy lin
       `${path} must not bypass the public prefetch policy`,
     );
   }
-
 });
 
 test("pending Vinext RSC prefetch duplication is removed for expensive destinations", async () => {

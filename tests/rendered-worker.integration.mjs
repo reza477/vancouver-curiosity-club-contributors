@@ -11,32 +11,18 @@ import {
   DATABASE_INVARIANT_VERSION,
   getExpectedDatabaseInvariantFingerprint,
 } from "../lib/server/database/invariants.ts";
-import {
-  createOrganizerEvent,
-} from "../lib/server/organizer/events.ts";
-import {
-  performOrganizerLifecycleAction,
-} from "../lib/server/organizer/scheduling.ts";
-import {
-  createOwnCalendarSubscription,
-} from "../lib/server/phase7/calendar-subscriptions.ts";
+import { createOrganizerEvent } from "../lib/server/organizer/events.ts";
+import { performOrganizerLifecycleAction } from "../lib/server/organizer/scheduling.ts";
+import { createOwnCalendarSubscription } from "../lib/server/phase7/calendar-subscriptions.ts";
 import {
   createCsvImportPreview,
   inspectCsvImportUpload,
 } from "../lib/server/phase7/imports.ts";
-import {
-  ensurePublicFormProtectionKey,
-} from "../lib/server/phase7/public-form-protection.ts";
-import {
-  submitPublicForm,
-} from "../lib/server/phase7/public-forms.ts";
-import {
-  appendFormSubmissionNote,
-} from "../lib/server/phase7/submissions.ts";
+import { ensurePublicFormProtectionKey } from "../lib/server/phase7/public-form-protection.ts";
+import { submitPublicForm } from "../lib/server/phase7/public-forms.ts";
+import { appendFormSubmissionNote } from "../lib/server/phase7/submissions.ts";
 import { ensurePublicCatalog } from "../lib/server/public/catalog.ts";
-import {
-  PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER,
-} from "../lib/server/public/warm-response-fallback.ts";
+import { PUBLIC_RESPONSE_FALLBACK_NONCE_PLACEHOLDER } from "../lib/server/public/warm-response-fallback.ts";
 import {
   WORKER_ASSET_ORIGIN_PREFIX,
   publicAssetOriginPath,
@@ -70,8 +56,7 @@ const OWNER_IDENTITY = trustedIdentityFromSites({
 });
 const EXPECTED_DATABASE_INVARIANT_FINGERPRINT =
   await getExpectedDatabaseInvariantFingerprint();
-const EXPECTED_DATABASE_INVARIANT_TRIGGERS =
-  DATABASE_INVARIANT_TRIGGER_NAMES;
+const EXPECTED_DATABASE_INVARIANT_TRIGGERS = DATABASE_INVARIANT_TRIGGER_NAMES;
 const PRIVATE_SENTINELS = [
   "PRIVATE_LEGAL_SENTINEL",
   "PRIVATE_OWNER_EMAIL_SENTINEL",
@@ -182,10 +167,9 @@ async function fetchPath(path, init) {
 }
 
 test("production redirects preserve the raw path and run before database work", async () => {
-  const edgeOnlyRuntime = createBuiltRuntime(
-    new CapturingLog(LogLevel.WARN),
-    { includeDatabase: false },
-  );
+  const edgeOnlyRuntime = createBuiltRuntime(new CapturingLog(LogLevel.WARN), {
+    includeDatabase: false,
+  });
   try {
     const path = "/events//%61/?lane=think&encoded=%2F&empty=";
     for (const sourceOrigin of PRODUCTION_ALTERNATE_ORIGINS) {
@@ -291,10 +275,7 @@ test("production metadata, structured data, sharing, exports, robots, and sitema
   const eventHtml = await eventResponse.text();
   assert.match(
     eventHtml,
-    new RegExp(
-      `rel="canonical" href="${canonicalOrigin}${eventPath}"`,
-      "u",
-    ),
+    new RegExp(`rel="canonical" href="${canonicalOrigin}${eventPath}"`, "u"),
   );
   assert.match(
     eventHtml,
@@ -371,13 +352,11 @@ test("production metadata, structured data, sharing, exports, robots, and sitema
 });
 
 function renderedStylesheetHrefs(html) {
-  return [...html.matchAll(/<link\b[^>]*>/giu)].flatMap(
-    ([linkTag]) => {
-      if (!/\brel="[^"]*\bstylesheet\b[^"]*"/iu.test(linkTag)) return [];
-      const href = /\bhref="([^"]+)"/iu.exec(linkTag)?.[1];
-      return href ? [href.replaceAll("&amp;", "&")] : [];
-    },
-  );
+  return [...html.matchAll(/<link\b[^>]*>/giu)].flatMap(([linkTag]) => {
+    if (!/\brel="[^"]*\bstylesheet\b[^"]*"/iu.test(linkTag)) return [];
+    const href = /\bhref="([^"]+)"/iu.exec(linkTag)?.[1];
+    return href ? [href.replaceAll("&amp;", "&")] : [];
+  });
 }
 
 async function readRenderedStyles(html) {
@@ -431,29 +410,25 @@ async function createRenderedTimedDraft({
   title,
   venueId = null,
 }) {
-  const response = await organizerMutation(
-    "/api/organizer/events",
-    "POST",
-    {
-      bufferAfterMinutes: 0,
-      bufferBeforeMinutes: 0,
-      clubId,
-      coOrganizerProfileIds: [],
-      description,
-      endLocal,
-      planningStatus: "draft",
-      primaryOrganizerProfileId: PROFILE_ID,
-      privateMeetingDetails,
-      privateNotes,
-      publicationStatus: "private",
-      scheduleShape: "timed",
-      startLocal,
-      summary,
-      timeZone: "America/Vancouver",
-      title,
-      venueId,
-    },
-  );
+  const response = await organizerMutation("/api/organizer/events", "POST", {
+    bufferAfterMinutes: 0,
+    bufferBeforeMinutes: 0,
+    clubId,
+    coOrganizerProfileIds: [],
+    description,
+    endLocal,
+    planningStatus: "draft",
+    primaryOrganizerProfileId: PROFILE_ID,
+    privateMeetingDetails,
+    privateNotes,
+    publicationStatus: "private",
+    scheduleShape: "timed",
+    startLocal,
+    summary,
+    timeZone: "America/Vancouver",
+    title,
+    venueId,
+  });
   let createDiagnostics = "";
   if (response.status !== 201) {
     const database = await runtime.getD1Database("DB");
@@ -523,18 +498,14 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     const batches = migrationStatementBatches(fragments);
     assert.ok(
       batches.every(
-        (batch) =>
-          batch.length <= MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
+        (batch) => batch.length <= MAX_D1_MIGRATION_STATEMENTS_PER_BATCH,
       ),
       `${file} must apply through bounded D1 batches`,
     );
   }
   const packagedFirstTable = productionMigrationFragments(
     await readFile(
-      join(
-        packagedMigrationDirectory,
-        "0009_sites_compatible_baseline.sql",
-      ),
+      join(packagedMigrationDirectory, "0009_sites_compatible_baseline.sql"),
       "utf8",
     ),
   )[0];
@@ -586,10 +557,13 @@ test("the packaged migration contract installs and enforces the exact runtime gu
        WHERE singleton_key = 'database-guards'`,
     )
     .first();
-  assert.deepEqual({ ...marker }, {
-    trigger_fingerprint: EXPECTED_DATABASE_INVARIANT_FINGERPRINT,
-    version: DATABASE_INVARIANT_VERSION,
-  });
+  assert.deepEqual(
+    { ...marker },
+    {
+      trigger_fingerprint: EXPECTED_DATABASE_INVARIANT_FINGERPRINT,
+      version: DATABASE_INVARIANT_VERSION,
+    },
+  );
   const triggerRows = await database
     .prepare(
       `SELECT name
@@ -764,6 +738,8 @@ test("the built public root is indexable and carries the production security con
     "max-age=31536000; includeSubDomains",
   );
   assert.equal(response.headers.get("x-robots-tag"), null);
+  assert.match(response.headers.get("server-timing") ?? "", /^app;dur=\d+$/u);
+  assert.equal(response.headers.get("x-vinext-timing"), null);
 
   const html = await response.text();
   assert.match(html, /<title>Vancouver Curiosity Club<\/title>/iu);
@@ -776,10 +752,7 @@ test("the built public root is indexable and carries the production security con
     html,
     /name="description" content="Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university\."/iu,
   );
-  assert.match(
-    html,
-    /Our mission/u,
-  );
+  assert.match(html, /Our mission/u);
   assert.match(html, /Building community through curiosity\./u);
   const missionParagraphs = [
     "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated, in-person discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life.",
@@ -787,7 +760,8 @@ test("the built public root is indexable and carries the production security con
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
   ];
   assert.equal((html.match(/class="home-hero__deck"/gu) ?? []).length, 3);
-  for (const paragraph of missionParagraphs) assert.ok(html.includes(paragraph));
+  for (const paragraph of missionParagraphs)
+    assert.ok(html.includes(paragraph));
   assert.match(html, />Explore our work<\/a>/u);
   assert.match(html, />Partner with us<\/a>/u);
   assert.doesNotMatch(html, />View upcoming events<\/a>/u);
@@ -822,10 +796,7 @@ test("the built public root is indexable and carries the production security con
     ),
     "healthy Home must not emit a noindex robots directive",
   );
-  assert.match(
-    html,
-    /rel="canonical" href="https:\/\/preview\.example\/"/iu,
-  );
+  assert.match(html, /rel="canonical" href="https:\/\/preview\.example\/"/iu);
   assert.match(
     html,
     /property="og:image" content="https:\/\/preview\.example\/og\.png"/iu,
@@ -876,7 +847,10 @@ test("the built public root is indexable and carries the production security con
       return href ? [href.replaceAll("&amp;", "&")] : [];
     },
   );
-  assert.ok(moduleHrefs.length > 0, "Home must preload a built JavaScript module");
+  assert.ok(
+    moduleHrefs.length > 0,
+    "Home must preload a built JavaScript module",
+  );
   let relativeImportHref = null;
   for (const href of moduleHrefs) {
     assert.match(href, /^\/assets\/[A-Za-z0-9_.-]+\.js$/u);
@@ -898,7 +872,10 @@ test("the built public root is indexable and carries the production security con
       ).pathname;
     }
   }
-  assert.ok(relativeImportHref, "a built module must reference a relative chunk");
+  assert.ok(
+    relativeImportHref,
+    "a built module must reference a relative chunk",
+  );
   const relativeImportResponse = await fetchPath(relativeImportHref);
   assert.equal(relativeImportResponse.status, 200);
   assert.equal(
@@ -994,9 +971,8 @@ test("the built public root is indexable and carries the production security con
   ]);
   assertNoPrivateSentinels(JSON.stringify(structuredData));
 
-  const modulePath = /<link\b[^>]*rel="modulepreload"[^>]*href="([^"]+)"/iu.exec(
-    html,
-  )?.[1];
+  const modulePath =
+    /<link\b[^>]*rel="modulepreload"[^>]*href="([^"]+)"/iu.exec(html)?.[1];
   assert.ok(modulePath, "the built HTML must reference a bootstrap module");
   const moduleResponse = await fetchPath(modulePath);
   assert.equal(moduleResponse.status, 200);
@@ -1034,6 +1010,28 @@ test("the built public root is indexable and carries the production security con
   assert.match(secondHtml, /https:\/\/preview\.example\/og\.png/u);
 });
 
+test("public RSC receives aggregate timing while identity-bearing HTML does not", async () => {
+  const rsc = await fetchPath("/events.rsc?_rsc=timing", {
+    headers: {
+      accept: "text/x-component",
+      rsc: "1",
+    },
+  });
+  assert.equal(rsc.status, 200);
+  assert.match(rsc.headers.get("content-type") ?? "", /^text\/x-component\b/iu);
+  assert.match(rsc.headers.get("server-timing") ?? "", /^app;dur=\d+$/u);
+  assert.equal(rsc.headers.get("x-vinext-timing"), null);
+  await rsc.arrayBuffer();
+
+  const cookieBearingHtml = await fetchPath("/", {
+    headers: { cookie: "visitor_test=1" },
+  });
+  assert.equal(cookieBearingHtml.status, 200);
+  assert.equal(cookieBearingHtml.headers.get("server-timing"), null);
+  assert.equal(cookieBearingHtml.headers.get("x-vinext-timing"), null);
+  await cookieBearingHtml.arrayBuffer();
+});
+
 test("the built Worker promotes a nonce-free Events RSC through the protected four-slot flow", async () => {
   const batchId = "00000000-0000-4000-8000-000000000111";
   const bucket = await runtime.getR2Bucket("MEDIA");
@@ -1050,12 +1048,7 @@ test("the built Worker promotes a nonce-free Events RSC through the protected fo
       const requestId = crypto.randomUUID();
       const signature = createHmac("sha256", DURABLE_CAPTURE_SECRET)
         .update(
-          JSON.stringify([
-            timestamp,
-            requestId,
-            DURABLE_CAPTURE_PATH,
-            body,
-          ]),
+          JSON.stringify([timestamp, requestId, DURABLE_CAPTURE_PATH, body]),
         )
         .digest("hex");
       const response = await fetchPath(DURABLE_CAPTURE_PATH, {
@@ -1135,21 +1128,13 @@ test("the built Worker serves public media through its D1-free cache-policy fast
     (error) => error?.code === "ENOENT",
   );
   await assert.rejects(
-    stat(
-      resolve(
-        "dist/client/event-posters/meetup-315294572-480.jpeg",
-      ),
-    ),
+    stat(resolve("dist/client/event-posters/meetup-315294572-480.jpeg")),
     (error) => error?.code === "ENOENT",
   );
   assert.equal(
     (
       await stat(
-        resolve(
-          "dist/client",
-          WORKER_ASSET_ORIGIN_PREFIX.slice(1),
-          "assets",
-        ),
+        resolve("dist/client", WORKER_ASSET_ORIGIN_PREFIX.slice(1), "assets"),
       )
     ).isDirectory(),
     true,
@@ -1204,10 +1189,7 @@ test("the built Worker serves public media through its D1-free cache-policy fast
       "/event-posters/meetup-315294572-480.jpeg",
       "public, max-age=86400, stale-while-revalidate=604800",
     ],
-    [
-      `/assets/${hashedAssetName}`,
-      "public, max-age=31536000, immutable",
-    ],
+    [`/assets/${hashedAssetName}`, "public, max-age=31536000, immutable"],
   ]) {
     const headResponse = await posterRuntime.dispatchFetch(
       `https://preview.example${pathname}`,
@@ -1264,7 +1246,10 @@ test("the built About page renders the exact shared mission and metadata", async
     "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.";
 
   assert.match(html, />Our mission</u);
-  const introduction = /<div class="about-hero__introduction">([\s\S]*?)<div class="about-actions">/u.exec(html)?.[1];
+  const introduction =
+    /<div class="about-hero__introduction">([\s\S]*?)<div class="about-actions">/u.exec(
+      html,
+    )?.[1];
   assert.ok(introduction, "About must render its mission introduction");
   assert.equal((introduction.match(/<p>/gu) ?? []).length, 3);
   let lastParagraphPosition = -1;
@@ -1296,7 +1281,10 @@ test("the built For Organizations hero shows public proof and an immediate partn
     )?.[0];
 
   assert.ok(hero, "For Organizations must render its partnership hero");
-  assert.match(hero, /<h1 id="organizations-title">Build thoughtful public programs with us<\/h1>/u);
+  assert.match(
+    hero,
+    /<h1 id="organizations-title">Build thoughtful public programs with us<\/h1>/u,
+  );
   assert.match(hero, /class="organizations-hero__proof"/u);
   const hasFeaturedEvent = hero.includes(
     "organizations-activity-card organizations-activity-card--featured",
@@ -1478,7 +1466,11 @@ test("public form routes render editable fields immediately while secure send pr
         /<button(?=[^>]*\bdisabled="")(?=[^>]*\btype="submit")[^>]*>/u,
         `${path} send must not be disabled while protection loads`,
       );
-      assert.doesNotMatch(formSection, /Preparing send/u, `${path} no blocking send status`);
+      assert.doesNotMatch(
+        formSection,
+        /Preparing send/u,
+        `${path} no blocking send status`,
+      );
       assert.doesNotMatch(
         formSection,
         /public-submission__(?:loading|skeleton)|aria-busy="true"/u,
@@ -1560,9 +1552,7 @@ test("Contact is consistent while partnership and Host routes remain canonical",
   assert.match(contactHtml, />Send message<\/button>/u);
   assertNoPrivateSentinels(contactHtml);
 
-  const partnershipResponse = await fetchPath(
-    "/contact?topic=partnerships",
-  );
+  const partnershipResponse = await fetchPath("/contact?topic=partnerships");
   assert.equal(partnershipResponse.status, 200);
   assert.equal(
     partnershipResponse.headers.get("cache-control"),
@@ -1686,10 +1676,7 @@ test("Events defaults to Upcoming and exposes Calendar as an explicit view", asy
 
   const past = await fetchPath("/events?state=past");
   assert.equal(past.status, 200);
-  assert.equal(
-    past.headers.get("x-robots-tag"),
-    "noindex, follow, noarchive",
-  );
+  assert.equal(past.headers.get("x-robots-tag"), "noindex, follow, noarchive");
   const pastHtml = await past.text();
   assert.match(pastHtml, /events-page__upcoming/u);
   assert.doesNotMatch(pastHtml, /aria-label="Event timeframe"|>Past<\/a>/u);
@@ -1718,13 +1705,15 @@ test("Home and Events public-service failures return truthful noindex 503 respon
         /(?:^|,\s*)no-store(?:,|$)/u,
         `${path} cache control`,
       );
+      assert.match(
+        response.headers.get("server-timing") ?? "",
+        /^app;dur=\d+$/u,
+        `${path} server timing`,
+      );
 
       const html = await response.text();
       assert.match(html, /The site is temporarily unavailable\./u);
-      assert.match(
-        html,
-        /database safety checks could not be completed/u,
-      );
+      assert.match(html, /database safety checks could not be completed/u);
       assert.match(
         html,
         /<meta(?=[^>]*\bname="robots")(?=[^>]*\bcontent="noindex, nofollow, noarchive")[^>]*>/iu,
@@ -1735,9 +1724,7 @@ test("Home and Events public-service failures return truthful noindex 503 respon
         `${path} must emit an HTML noindex directive`,
       );
       assert.ok(
-        robots.every(
-          (content) => !robotsTokens(content).includes("index"),
-        ),
+        robots.every((content) => !robotsTokens(content).includes("index")),
         `${path} must not emit a contradictory HTML index directive`,
       );
       assertNoPrivateSentinels(html);
@@ -1749,6 +1736,34 @@ test("Home and Events public-service failures return truthful noindex 503 respon
     }
   } finally {
     await unavailableRuntime.dispose();
+  }
+});
+
+test("an unexpected public dispatch failure becomes a secured measured 503", async () => {
+  const dispatchFailureRuntime = createBuiltRuntime(undefined, {
+    includeAssets: false,
+  });
+  try {
+    const response = await dispatchFailureRuntime.dispatchFetch(
+      new URL("/fonts/missing.woff2", "https://preview.example"),
+    );
+    assert.equal(response.status, 503);
+    assert.equal(
+      response.headers.get("x-robots-tag"),
+      "noindex, nofollow, noarchive",
+    );
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/u);
+    assert.match(
+      response.headers.get("server-timing") ?? "",
+      /^app;dur=\d+$/u,
+    );
+    assert.equal(response.headers.get("x-vinext-timing"), null);
+    assert.match(
+      await response.text(),
+      /The request could not be completed safely\./u,
+    );
+  } finally {
+    await dispatchFailureRuntime.dispose();
   }
 });
 
@@ -1767,7 +1782,10 @@ test("a cancelled event detail renders only published facts and accurate structu
     html,
     /<title>Rendered cancelled reading · Vancouver Curiosity Club<\/title>/iu,
   );
-  assert.match(html, /This previously published event is no longer going ahead/u);
+  assert.match(
+    html,
+    /This previously published event is no longer going ahead/u,
+  );
   assert.match(html, /\bclass="[^"]*\bcancellation-banner\b[^"]*"/u);
   assert.match(html, /Location details have not been published\./u);
   assert.doesNotMatch(html, /Online details are available/u);
@@ -1780,10 +1798,7 @@ test("a cancelled event detail renders only published facts and accurate structu
   );
   assert.ok(eventDocument);
   assert.ok(breadcrumbs);
-  assert.equal(
-    eventDocument.eventStatus,
-    "https://schema.org/EventCancelled",
-  );
+  assert.equal(eventDocument.eventStatus, "https://schema.org/EventCancelled");
   assert.deepEqual(eventDocument.organizer, [
     {
       "@type": "Organization",
@@ -1812,8 +1827,7 @@ test("Calendar permanently redirects to the Events Calendar view and preserves m
     const response = await fetchPath(sourcePath, { redirect: "manual" });
     assert.equal(response.status, 308, sourcePath);
     assert.equal(
-      new URL(response.headers.get("location"), "https://preview.example")
-        .href,
+      new URL(response.headers.get("location"), "https://preview.example").href,
       new URL(destinationPath, "https://preview.example").href,
       sourcePath,
     );
@@ -1831,8 +1845,7 @@ test("same-name same-slug compatibility Program routes redirect to their canonic
     const response = await fetchPath(programPath, { redirect: "manual" });
     assert.equal(response.status, 308, programPath);
     assert.equal(
-      new URL(response.headers.get("location"), "https://preview.example")
-        .href,
+      new URL(response.headers.get("location"), "https://preview.example").href,
       new URL(clubPath, "https://preview.example").href,
       programPath,
     );
@@ -1903,9 +1916,7 @@ test("robots and sitemap contain only public canonical routes", async () => {
     assert.match(
       sitemap,
       new RegExp(
-        escapeRegex(
-          new URL(path, "https://preview.example").toString(),
-        ),
+        escapeRegex(new URL(path, "https://preview.example").toString()),
         "u",
       ),
       `sitemap missing ${path}`,
@@ -2002,16 +2013,19 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
       ORGANIZATION_ID,
     )
     .first();
-  assert.deepEqual({ ...privateFacts }, {
-    calendar_token_count: 1,
-    conflict_reason_count: 1,
-    media_count: 1,
-    meetup_source_count: 1,
-    note_count: 1,
-    preview_row_count: 2,
-    rate_window_count: 3,
-    submission_count: 1,
-  });
+  assert.deepEqual(
+    { ...privateFacts },
+    {
+      calendar_token_count: 1,
+      conflict_reason_count: 1,
+      media_count: 1,
+      meetup_source_count: 1,
+      note_count: 1,
+      preview_row_count: 2,
+      rate_window_count: 3,
+      submission_count: 1,
+    },
+  );
 
   for (const path of [
     ...PUBLIC_PATHS,
@@ -2094,15 +2108,12 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
     assertNoPrivateSentinels(existingBody);
   }
 
-  const backup = await fetchPath(
-    "/api/organizer/exports/backup.json",
-    {
-      body: JSON.stringify({ confirm: true }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-      redirect: "manual",
-    },
-  );
+  const backup = await fetchPath("/api/organizer/exports/backup.json", {
+    body: JSON.stringify({ confirm: true }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+    redirect: "manual",
+  });
   assert.ok([401, 403].includes(backup.status));
   assertOrganizerPrivateResponse(backup);
   assertNoPrivateSentinels(await backup.text());
@@ -2269,10 +2280,7 @@ test("the owner workspace renders private records without public chrome or cachi
     ["/organizer/events", /PRIVATE_PHASE3_TITLE_SENTINEL/u],
     ["/organizer/events/new", /Create private record/u],
     ["/organizer/calendar", /PRIVATE_PHASE3_TITLE_SENTINEL/u],
-    [
-      "/organizer/events/phase3-private-idea",
-      /PRIVATE_PHASE3_NOTES_SENTINEL/u,
-    ],
+    ["/organizer/events/phase3-private-idea", /PRIVATE_PHASE3_NOTES_SENTINEL/u],
     ["/organizer/notifications", /PRIVATE_NOTIFICATION_SENTINEL/u],
   ]) {
     const response = await fetchPath(path, {
@@ -2283,6 +2291,11 @@ test("the owner workspace renders private records without public chrome or cachi
       response.headers.get("cache-control") ?? "",
       /(?:^|,\s*)no-store(?:,|$)/u,
       `${path} cache control`,
+    );
+    assert.equal(
+      response.headers.get("server-timing"),
+      null,
+      `${path} must not expose private request timing`,
     );
     assert.equal(
       response.headers.get("x-robots-tag"),
@@ -2355,10 +2368,7 @@ test("rendered organizer event filters are server-validated and truthful", async
     );
     const html = await response.text();
     assert.match(html, /temporarily unavailable/u);
-    assertNoPrivateSentinels(
-      html,
-      new Set(["PRIVATE_ORGANIZER_SENTINEL"]),
-    );
+    assertNoPrivateSentinels(html, new Set(["PRIVATE_ORGANIZER_SENTINEL"]));
   }
 });
 
@@ -2499,11 +2509,14 @@ test("the built Worker commits a private hold, refuses an unreviewed conflict, a
     )
     .bind(overlapDraft.id)
     .first();
-  assert.deepEqual({ ...persistedReservation }, {
-    planning_status: "confirmed",
-    publication_status: "private",
-    schedule_version: overlapDraft.scheduleVersion + 1,
-  });
+  assert.deepEqual(
+    { ...persistedReservation },
+    {
+      planning_status: "confirmed",
+      publication_status: "private",
+      schedule_version: overlapDraft.scheduleVersion + 1,
+    },
+  );
   const activeOverride = await database
     .prepare(
       `SELECT override.reason, override.invalidated_at,
@@ -2519,12 +2532,15 @@ test("the built Worker commits a private hold, refuses an unreviewed conflict, a
     )
     .bind(overlapDraft.id)
     .first();
-  assert.deepEqual({ ...activeOverride }, {
-    incident_state: "approved",
-    invalidated_at: null,
-    proposed_schedule_version: overlapDraft.scheduleVersion + 1,
-    reason: "Owner reviewed the exact overlap for rendered-Worker proof.",
-  });
+  assert.deepEqual(
+    { ...activeOverride },
+    {
+      incident_state: "approved",
+      invalidated_at: null,
+      proposed_schedule_version: overlapDraft.scheduleVersion + 1,
+      reason: "Owner reviewed the exact overlap for rendered-Worker proof.",
+    },
+  );
 
   const privateDetail = await fetchPath(
     `/organizer/events/${encodeURIComponent(overlapDraft.id)}`,
@@ -2552,11 +2568,7 @@ test("the built Worker commits a private hold, refuses an unreviewed conflict, a
     }
     const publicBody = await response.text();
     assert.doesNotMatch(publicBody, /RENDERED_PHASE4_PRIVATE_/u, path);
-    assert.doesNotMatch(
-      publicBody,
-      /Owner reviewed the exact overlap/iu,
-      path,
-    );
+    assert.doesNotMatch(publicBody, /Owner reviewed the exact overlap/iu, path);
   }
 });
 
@@ -2596,10 +2608,8 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(confirmed.planningStatus, "confirmed");
   assert.equal(confirmed.publicationStatus, "private");
   const detailPath = `/events/${encodeURIComponent(draft.slug)}`;
-  const previewPath =
-    `/organizer/events/${encodeURIComponent(draft.id)}/preview`;
-  const publicationApiPath =
-    `/api/organizer/events/${encodeURIComponent(draft.id)}/publication`;
+  const previewPath = `/organizer/events/${encodeURIComponent(draft.id)}/preview`;
+  const publicationApiPath = `/api/organizer/events/${encodeURIComponent(draft.id)}/publication`;
   const publicationActionsPath = `${publicationApiPath}/actions`;
   const canonicalUrl = new URL(
     detailPath,
@@ -2647,33 +2657,29 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(workspace.event.publicationStatus, "private");
   assert.equal(workspace.permissions.canPreview, false);
 
-  const savedResponse = await organizerMutation(
-    publicationApiPath,
-    "PATCH",
-    {
-      arrivalInstructions: "Use the published entrance.",
-      attendanceMode: "in_person",
-      availabilityState: "open",
-      capacity: 24,
-      confirmMeetupEventUrl: false,
-      costText: "Free",
-      expectedContentVersion: workspace.event.contentVersion,
-      expectedScheduleVersion: workspace.event.scheduleVersion,
-      externalMapUrl: null,
-      meetupEventUrl: workspace.event.meetupEventUrl,
-      preparationInformation: "Bring curiosity.",
-      publicAccessNote: "The published room is step-free.",
-      publicAddress: "123 Published Street, Vancouver",
-      publicHostsEnabled: false,
-      publicLocationName: "Rendered public room",
-      publicOnlineUrl: null,
-      rsvpMode: "coming_soon",
-      selectedHostProfileIds: [],
-      verifiedAccessibilityNotes: "Step-free published entrance.",
-      weatherNote: null,
-      whatToBring: "A question.",
-    },
-  );
+  const savedResponse = await organizerMutation(publicationApiPath, "PATCH", {
+    arrivalInstructions: "Use the published entrance.",
+    attendanceMode: "in_person",
+    availabilityState: "open",
+    capacity: 24,
+    confirmMeetupEventUrl: false,
+    costText: "Free",
+    expectedContentVersion: workspace.event.contentVersion,
+    expectedScheduleVersion: workspace.event.scheduleVersion,
+    externalMapUrl: null,
+    meetupEventUrl: workspace.event.meetupEventUrl,
+    preparationInformation: "Bring curiosity.",
+    publicAccessNote: "The published room is step-free.",
+    publicAddress: "123 Published Street, Vancouver",
+    publicHostsEnabled: false,
+    publicLocationName: "Rendered public room",
+    publicOnlineUrl: null,
+    rsvpMode: "coming_soon",
+    selectedHostProfileIds: [],
+    verifiedAccessibilityNotes: "Step-free published entrance.",
+    weatherNote: null,
+    whatToBring: "A question.",
+  });
   assert.equal(savedResponse.status, 200, await savedResponse.clone().text());
   assertOrganizerPrivateResponse(savedResponse);
   workspace = (await savedResponse.json()).workspace;
@@ -2800,10 +2806,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.match(detailHtml, new RegExp(publicDescription, "u"));
   assert.match(
     detailHtml,
-    new RegExp(
-      `rel="canonical" href="${escapeRegex(canonicalUrl)}"`,
-      "u",
-    ),
+    new RegExp(`rel="canonical" href="${escapeRegex(canonicalUrl)}"`, "u"),
   );
   assert.match(
     detailHtml,
@@ -2823,10 +2826,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.equal(eventDocument.name, publicTitle);
   assert.equal(eventDocument.description, publicSummary);
   assert.equal(eventDocument.url, canonicalUrl);
-  assert.equal(
-    eventDocument.eventStatus,
-    "https://schema.org/EventScheduled",
-  );
+  assert.equal(eventDocument.eventStatus, "https://schema.org/EventScheduled");
 
   for (const downloadPath of [
     `${detailPath}/calendar.ics`,
@@ -2855,16 +2855,11 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
     await downloadResponse.arrayBuffer();
   }
 
-  const clubResponse = await fetchPath(
-    "/clubs/vancouver-curiosity-club",
-  );
+  const clubResponse = await fetchPath("/clubs/vancouver-curiosity-club");
   assert.equal(clubResponse.status, 200);
   const clubHtml = await clubResponse.text();
   assert.match(clubHtml, new RegExp(escapeRegex(publicTitle), "u"));
-  assert.match(
-    clubHtml,
-    new RegExp(`href="${escapeRegex(detailPath)}"`, "u"),
-  );
+  assert.match(clubHtml, new RegExp(`href="${escapeRegex(detailPath)}"`, "u"));
 
   const publishedSitemapResponse = await fetchPath("/sitemap.xml");
   assert.equal(publishedSitemapResponse.status, 200);
@@ -3091,10 +3086,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assertOrganizerPrivateResponse(finalUnpublishResponse);
   const finalUnpublish = await finalUnpublishResponse.json();
   assert.equal(finalUnpublish.outcome, "unpublished");
-  assert.equal(
-    finalUnpublish.workspace.event.publicationStatus,
-    "unpublished",
-  );
+  assert.equal(finalUnpublish.workspace.event.publicationStatus, "unpublished");
   await materializeRenderedPublicEvents();
   await assertAbsentFromPublicSurfaces("cancelled event after unpublish");
 });
@@ -3314,10 +3306,7 @@ test("percent-encoded private paths use one canonical security classification", 
   );
   assert.ok([400, 404].includes(privateCalendar.status));
   assertOrganizerPrivateResponse(privateCalendar);
-  assert.equal(
-    privateCalendar.headers.get("referrer-policy"),
-    "no-referrer",
-  );
+  assert.equal(privateCalendar.headers.get("referrer-policy"), "no-referrer");
   assert.doesNotMatch(
     await privateCalendar.text(),
     new RegExp(privateCalendarToken, "u"),
@@ -3382,10 +3371,9 @@ test("percent-encoded private paths use one canonical security classification", 
     assert.doesNotMatch(body, /x-vcc-request-pathname/iu, path);
   }
 
-  const dotSegment = await fetchPath(
-    "/public/%2e%2e/organizer",
-    { redirect: "manual" },
-  );
+  const dotSegment = await fetchPath("/public/%2e%2e/organizer", {
+    redirect: "manual",
+  });
   assertOrganizerPrivateResponse(dotSegment);
   assert.doesNotMatch(
     await dotSegment.text(),
@@ -3401,7 +3389,10 @@ test("percent-encoded private paths use one canonical security classification", 
     "noindex, nofollow, noarchive",
   );
 
-  assert.doesNotMatch(runtimeLog.output(), new RegExp(privateCalendarToken, "u"));
+  assert.doesNotMatch(
+    runtimeLog.output(),
+    new RegExp(privateCalendarToken, "u"),
+  );
 });
 
 test("local development keeps only the HMR-required relaxed script policy", async () => {
@@ -3524,7 +3515,7 @@ function robotsTokens(content) {
 
 function createBuiltRuntime(
   log = new Log(LogLevel.WARN),
-  { includeDatabase = true } = {},
+  { includeAssets = true, includeDatabase = true } = {},
 ) {
   return new Miniflare({
     modules: [
@@ -3541,13 +3532,17 @@ function createBuiltRuntime(
     bindings: {
       DAILY_MEETUP_REFRESH_SECRET: DURABLE_CAPTURE_SECRET,
     },
-    assets: {
-      binding: "ASSETS",
-      directory: resolve("dist/client"),
-      routerConfig: {
-        has_user_worker: true,
-      },
-    },
+    ...(includeAssets
+      ? {
+          assets: {
+            binding: "ASSETS",
+            directory: resolve("dist/client"),
+            routerConfig: {
+              has_user_worker: true,
+            },
+          },
+        }
+      : {}),
     log,
   });
 }
@@ -3605,10 +3600,7 @@ async function initializePackagedDatabaseInvariants(
       response.headers.get("x-robots-tag"),
       "noindex, nofollow, noarchive",
     );
-    assert.match(
-      await response.text(),
-      /database safety checks were updated/u,
-    );
+    assert.match(await response.text(), /database safety checks were updated/u);
   }
   assert.fail("packaged database invariants did not converge");
 }
@@ -4100,8 +4092,7 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
     formKey: "contact",
     honeypot: "",
     keyHex: protectionKey,
-    networkFacts:
-      "PHASE7_PRIVATE_NETWORK_FACTS_SENTINEL",
+    networkFacts: "PHASE7_PRIVATE_NETWORK_FACTS_SENTINEL",
     nowUtcMs: now,
     organizationId: ORGANIZATION_ID,
     payload: {
@@ -4211,15 +4202,11 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
     OWNER_IDENTITY,
     importInput,
   );
-  const preview = await createCsvImportPreview(
-    database,
-    OWNER_IDENTITY,
-    {
-      ...importInput,
-      headerSelections: importSelections,
-      inspectionBatchId: inspection.inspectionBatchId,
-    },
-  );
+  const preview = await createCsvImportPreview(database, OWNER_IDENTITY, {
+    ...importInput,
+    headerSelections: importSelections,
+    inspectionBatchId: inspection.inspectionBatchId,
+  });
   assert.equal(preview.batch.phase, "previewed");
   assert.equal(typeof preview.previewFingerprint, "string");
   phase7PrivateIds.importBatchId = preview.batch.batchId;
@@ -4289,8 +4276,7 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
     endLocal: "2037-08-15T20:00",
     planningStatus: "draft",
     primaryOrganizerProfileId: PROFILE_ID,
-    privateMeetingDetails:
-      "PHASE7_PRIVATE_EVENT_MEETING_SENTINEL",
+    privateMeetingDetails: "PHASE7_PRIVATE_EVENT_MEETING_SENTINEL",
     privateNotes: "PHASE7_PRIVATE_EVENT_NOTES_SENTINEL",
     publicationStatus: "private",
     scheduleShape: "timed",
@@ -4298,14 +4284,10 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
     timeZone: "America/Vancouver",
     venueId: null,
   };
-  const firstDraft = await createOrganizerEvent(
-    database,
-    OWNER_IDENTITY,
-    {
-      ...conflictInput,
-      title: "Phase 7 private conflict anchor",
-    },
-  );
+  const firstDraft = await createOrganizerEvent(database, OWNER_IDENTITY, {
+    ...conflictInput,
+    title: "Phase 7 private conflict anchor",
+  });
   await performOrganizerLifecycleAction(
     database,
     OWNER_IDENTITY,
@@ -4317,14 +4299,10 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
       holdDurationHours: 72,
     },
   );
-  const secondDraft = await createOrganizerEvent(
-    database,
-    OWNER_IDENTITY,
-    {
-      ...conflictInput,
-      title: "Phase 7 private conflict candidate",
-    },
-  );
+  const secondDraft = await createOrganizerEvent(database, OWNER_IDENTITY, {
+    ...conflictInput,
+    title: "Phase 7 private conflict candidate",
+  });
   await performOrganizerLifecycleAction(
     database,
     OWNER_IDENTITY,
@@ -4367,6 +4345,9 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
 }
 
 async function run(database, sql, ...bindings) {
-  const result = await database.prepare(sql).bind(...bindings).run();
+  const result = await database
+    .prepare(sql)
+    .bind(...bindings)
+    .run();
   assert.notEqual(result.success, false, result.error ?? sql);
 }

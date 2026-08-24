@@ -42,21 +42,19 @@ test("generated migrations retain the indexed durable Events materialization sto
       .all()
       .some(
         (index) =>
-          index.name ===
-          "public_event_calendar_snapshots_org_expiry_idx",
+          index.name === "public_event_calendar_snapshots_org_expiry_idx",
       ),
   );
 });
 
-test("the updater atomically prebuilds DTO-only Home and Events materializations that visitors only read", async (t) => {
+test("the updater atomically prebuilds fallback and compact public-event materializations that visitors only read", async (t) => {
   const database = await materializationDatabase(t);
   const {
     readPublicHomeEventMaterialization,
     refreshPublicEventMaterializations,
   } = await import("../../lib/server/public/event-materializations.ts");
-  const { loadPublicEventsPageData } = await import(
-    "../../lib/server/public/events-page.ts"
-  );
+  const { loadPublicEventsPageData } =
+    await import("../../lib/server/public/events-page.ts");
   const bundleCalls = [];
 
   const refreshed = await refreshPublicEventMaterializations(
@@ -75,7 +73,7 @@ test("the updater atomically prebuilds DTO-only Home and Events materializations
   assert.equal(refreshed.eventDetailCount, 8);
   assert.equal(refreshed.eventsSnapshotCount, 1);
   assert.equal(refreshed.homeEventCount, 8);
-  assert.equal(snapshotCount(database), 3);
+  assert.equal(snapshotCount(database), 28);
   assert.ok(
     snapshotRows(database).every(
       (row) => row.expires_at === 8_640_000_000_000_000,
@@ -136,14 +134,11 @@ test("the updater atomically prebuilds DTO-only Home and Events materializations
   );
 
   const homeRead = readOnlyVisitorDatabase(database);
-  const home = await readPublicHomeEventMaterialization(
-    homeRead.database,
-    {
-      nowUtcMs: NOW_UTC_MS,
-      organizationId: ORGANIZATION_ID,
-      todayDate: TODAY_DATE,
-    },
-  );
+  const home = await readPublicHomeEventMaterialization(homeRead.database, {
+    nowUtcMs: NOW_UTC_MS,
+    organizationId: ORGANIZATION_ID,
+    todayDate: TODAY_DATE,
+  });
   assert.equal(homeRead.readCount(), 1);
   assert.equal(homeRead.writeCount(), 0);
   assert.equal(home?.length, 6);
@@ -152,31 +147,25 @@ test("the updater atomically prebuilds DTO-only Home and Events materializations
 
 test("Upcoming pagination is chronological, filterable, and derived by one visitor read", async (t) => {
   const database = await materializationDatabase(t);
-  const { refreshPublicEventMaterializations } = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
-  const { loadPublicEventsPageData } = await import(
-    "../../lib/server/public/events-page.ts"
-  );
+  const { refreshPublicEventMaterializations } =
+    await import("../../lib/server/public/event-materializations.ts");
+  const { loadPublicEventsPageData } =
+    await import("../../lib/server/public/events-page.ts");
   const calendarEvents = Array.from({ length: 14 }, (_unused, index) =>
     publicEventCard(`paged-${String(index + 1).padStart(2, "0")}`, {
       lane: { name: "Explore", slug: "explore" },
       startsAtUtc: `2026-08-${String(index + 12).padStart(2, "0")}T19:00:00.000Z`,
     }),
   );
-  await refreshPublicEventMaterializations(
-    database,
-    materializationInput(),
-    {
-      async projectBundle() {
-        return {
-          calendarEvents,
-          eventDetails: calendarEvents.map(publicEventDetailFromCard),
-          upcomingEvents: calendarEvents,
-        };
-      },
+  await refreshPublicEventMaterializations(database, materializationInput(), {
+    async projectBundle() {
+      return {
+        calendarEvents,
+        eventDetails: calendarEvents.map(publicEventDetailFromCard),
+        upcomingEvents: calendarEvents,
+      };
     },
-  );
+  });
 
   const visitor = readOnlyVisitorDatabase(database);
   const loaded = await loadPublicEventsPageData(
@@ -216,9 +205,8 @@ test("Upcoming pagination is chronological, filterable, and derived by one visit
 
 test("visitors never cold-project or write when a materialization is absent or invalid", async (t) => {
   const database = await materializationDatabase(t);
-  const { loadPublicEventsPageData } = await import(
-    "../../lib/server/public/events-page.ts"
-  );
+  const { loadPublicEventsPageData } =
+    await import("../../lib/server/public/events-page.ts");
   const visitor = readOnlyVisitorDatabase(database);
 
   const missing = await loadPublicEventsPageData(
@@ -258,15 +246,12 @@ test("failed projections, private DTO drift, and failed promotion preserve the c
     readPublicHomeEventMaterialization,
     refreshPublicEventMaterializations,
   } = await import("../../lib/server/public/event-materializations.ts");
-  const { loadPublicEventsPageData } = await import(
-    "../../lib/server/public/events-page.ts"
-  );
+  const { loadPublicEventsPageData } =
+    await import("../../lib/server/public/events-page.ts");
 
-  await refreshPublicEventMaterializations(
-    database,
-    materializationInput(),
-    { projectBundle: async () => publicBundle("stable-v1") },
-  );
+  await refreshPublicEventMaterializations(database, materializationInput(), {
+    projectBundle: async () => publicBundle("stable-v1"),
+  });
   const beforeRows = snapshotRows(database);
   const beforeEvents = await loadPublicEventsPageData(database, loaderInput());
   const beforeHome = await readPublicHomeEventMaterialization(database, {
@@ -314,8 +299,7 @@ test("failed projections, private DTO drift, and failed promotion preserve the c
       database,
       materializationInput({ nowUtcMs: NOW_UTC_MS + 180_000 }),
       {
-        projectBundle: async () =>
-          publicBundle("atomic-failure-sentinel"),
+        projectBundle: async () => publicBundle("atomic-failure-sentinel"),
       },
     ),
     /synthetic atomic promotion failure/iu,
@@ -335,12 +319,11 @@ test("failed projections, private DTO drift, and failed promotion preserve the c
   );
 });
 
-test("the production materializer uses one bounded unified projection and three atomic writes", async (t) => {
+test("the production materializer uses one bounded unified projection and one sub-50 atomic batch", async (t) => {
   const database = await materializationDatabase(t);
   const counter = countStatements(database);
-  const { refreshPublicEventMaterializations } = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
+  const { refreshPublicEventMaterializations } =
+    await import("../../lib/server/public/event-materializations.ts");
 
   await refreshPublicEventMaterializations(
     counter.database,
@@ -348,12 +331,12 @@ test("the production materializer uses one bounded unified projection and three 
   );
 
   assert.equal(counter.materializationProjectionCount(), 1);
-  assert.equal(counter.batchStatementCount(), 3);
+  assert.equal(counter.batchStatementCount(), 28);
   assert.ok(
     counter.executedStatementCount() < 50,
     `the updater used ${counter.executedStatementCount()} D1 statements`,
   );
-  assert.equal(snapshotCount(database), 3);
+  assert.equal(snapshotCount(database), 28);
 });
 
 test("the durable DTO boundary stays separate from dynamic HTML and nonce handling", async () => {
@@ -366,10 +349,7 @@ test("the durable DTO boundary stays separate from dynamic HTML and nonce handli
       ),
       readFile(new URL("lib/server/public/home.ts", projectRoot), "utf8"),
       readFile(
-        new URL(
-          "lib/server/public/event-materializations.ts",
-          projectRoot,
-        ),
+        new URL("lib/server/public/event-materializations.ts", projectRoot),
         "utf8",
       ),
       readFile(new URL("app/events/loading.tsx", projectRoot), "utf8"),
@@ -385,10 +365,7 @@ test("the durable DTO boundary stays separate from dynamic HTML and nonce handli
   );
   assert.match(materializations, /queryPublicEventMaterializationBundle/u);
   assert.match(materializations, /database\.batch\(/u);
-  assert.doesNotMatch(
-    materializations,
-    /\.rsc\b|text\/html|handler\.fetch/iu,
-  );
+  assert.doesNotMatch(materializations, /\.rsc\b|text\/html|handler\.fetch/iu);
   assert.match(
     worker,
     /const nonce = isLocalRequest\(url\) \? null : createCspNonce\(\)/u,
@@ -471,8 +448,7 @@ function publicEventDetailFromCard(card) {
 }
 
 function publicEventCard(slug, overrides = {}) {
-  const startsAtUtc =
-    overrides.startsAtUtc ?? "2026-08-20T19:00:00.000Z";
+  const startsAtUtc = overrides.startsAtUtc ?? "2026-08-20T19:00:00.000Z";
   return {
     agePolicyText: null,
     arrivalInstructions: null,
@@ -489,7 +465,9 @@ function publicEventCard(slug, overrides = {}) {
     rsvpMode: "meetup",
     rsvpUrl: `https://www.meetup.com/vancouver-meetup-group/events/${eventNumber(slug)}/`,
     schedule: {
-      endsAtUtc: new Date(Date.parse(startsAtUtc) + 2 * 60 * 60_000).toISOString(),
+      endsAtUtc: new Date(
+        Date.parse(startsAtUtc) + 2 * 60 * 60_000,
+      ).toISOString(),
       kind: "timed",
       startsAtUtc,
       timeZone: "America/Vancouver",
@@ -575,7 +553,10 @@ function readOnlyVisitorDatabase(database) {
         throw new Error("A visitor must not batch or write snapshots.");
       },
       prepare(sql) {
-        assert.match(sql, /^\s*SELECT snapshot_json\s+FROM public_event_calendar_snapshots/u);
+        assert.match(
+          sql,
+          /^\s*SELECT snapshot_json\s+FROM public_event_calendar_snapshots/u,
+        );
         const statement = database.prepare(sql);
         return {
           bind(...values) {

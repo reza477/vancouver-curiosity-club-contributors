@@ -1,5 +1,9 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
-import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
+import {
+  handleImageOptimization,
+  DEFAULT_DEVICE_SIZES,
+  DEFAULT_IMAGE_SIZES,
+} from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import {
   ensureDatabaseInvariants,
@@ -48,7 +52,10 @@ interface Env {
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
-        output(options: { format: string; quality: number }): Promise<{ response(): Response }>;
+        output(options: {
+          format: string;
+          quality: number;
+        }): Promise<{ response(): Response }>;
       };
     };
   };
@@ -62,14 +69,15 @@ interface ExecutionContext {
 const TRUSTED_REQUEST_ORIGIN_HEADER = "x-vcc-request-origin";
 const TRUSTED_REQUEST_PATHNAME_HEADER = "x-vcc-request-pathname";
 const TRUSTED_CSP_NONCE_HEADER = "x-vcc-csp-nonce";
-const ORGANIZER_FORCE_MAINTENANCE_PATH =
-  "/api/organizer/maintenance/reconcile";
+const ORGANIZER_FORCE_MAINTENANCE_PATH = "/api/organizer/maintenance/reconcile";
 const DURABLE_PUBLIC_RESPONSE_CAPTURE_PATH =
   "/api/maintenance/public-snapshots/capture";
 const PUBLIC_REQUEST_MAINTENANCE_INTERVAL_MS = 15_000;
+const PUBLIC_SERVER_TIMING_MAX_DURATION_MS = 60_000;
 let publicRequestMaintenanceInFlight: Promise<void> | null = null;
 let publicRequestMaintenanceNextEligibleAtUtcMs = 0;
 const publicResponseFallback = createPublicResponseFallback();
+const requestStartedAtUtcMs = new WeakMap<Request, number>();
 
 function isLocalRequest(requestUrl: URL): boolean {
   return (
@@ -103,8 +111,7 @@ function shouldRunSynchronousRequestMaintenance(
   if (pathname === ORGANIZER_FORCE_MAINTENANCE_PATH) return false;
   if (pathname === DURABLE_PUBLIC_RESPONSE_CAPTURE_PATH) return false;
   return (
-    (method !== "GET" && method !== "HEAD") ||
-    isPrivateOrIdentityPath(pathname)
+    (method !== "GET" && method !== "HEAD") || isPrivateOrIdentityPath(pathname)
   );
 }
 
@@ -242,8 +249,7 @@ function secureResponse(
   const requestUrl = new URL(request.url);
   const headers = new Headers(response.headers);
   const isPrivateRequest =
-    requestPathname === null ||
-    isPrivateOrIdentityPath(requestPathname);
+    requestPathname === null || isPrivateOrIdentityPath(requestPathname);
   const containsPublicFormInstance =
     requestPathname === "/contact" || requestPathname === "/contact.rsc";
 
@@ -251,15 +257,17 @@ function secureResponse(
   headers.delete("Content-Security-Policy-Report-Only");
   headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   headers.set("Cross-Origin-Resource-Policy", "same-origin");
-  headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
+  headers.set(
+    "Permissions-Policy",
+    "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+  );
   headers.set(
     "Referrer-Policy",
-    isPrivateRequest
-      ? "no-referrer"
-      : "strict-origin-when-cross-origin",
+    isPrivateRequest ? "no-referrer" : "strict-origin-when-cross-origin",
   );
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("X-Frame-Options", "DENY");
+  headers.delete("x-vinext-timing");
 
   if (requestUrl.protocol === "https:") {
     headers.set(
@@ -268,16 +276,11 @@ function secureResponse(
     );
   }
 
-  if (
-    isPrivateRequest ||
-    response.status >= 400
-  ) {
+  if (isPrivateRequest || response.status >= 400) {
     headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   } else if (
     requestUrl.search.length > 0 &&
-    !/(?:^|,\s*)noindex(?:\s*,|$)/iu.test(
-      headers.get("X-Robots-Tag") ?? "",
-    )
+    !/(?:^|,\s*)noindex(?:\s*,|$)/iu.test(headers.get("X-Robots-Tag") ?? "")
   ) {
     headers.set("X-Robots-Tag", "noindex, follow, noarchive");
   }
@@ -308,11 +311,47 @@ function secureResponse(
     }
   }
 
+  const startedAt = requestStartedAtUtcMs.get(request);
+  const responseContentType = (headers.get("Content-Type") ?? "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (
+    startedAt !== undefined &&
+    !isPrivateRequest &&
+    (request.method === "GET" || request.method === "HEAD") &&
+    !requestHasIdentityFacts(request) &&
+    (responseContentType === "text/html" ||
+      responseContentType === "text/x-component")
+  ) {
+    const durationMs = Math.min(
+      PUBLIC_SERVER_TIMING_MAX_DURATION_MS,
+      Math.max(0, Date.now() - startedAt),
+    );
+    headers.set("Server-Timing", `app;dur=${durationMs}`);
+  } else {
+    headers.delete("Server-Timing");
+  }
+
   return new Response(response.body, {
     headers,
     status: response.status,
     statusText: response.statusText,
   });
+}
+
+function requestHasIdentityFacts(request: Request): boolean {
+  if (
+    request.headers.has("authorization") ||
+    request.headers.has("cookie") ||
+    request.headers.has("proxy-authorization")
+  ) {
+    return true;
+  }
+  for (const name of request.headers.keys()) {
+    if (name.toLowerCase().startsWith("oai-authenticated-user")) return true;
+  }
+  return false;
 }
 
 async function recoverPublicResponseAfterFailure(
@@ -386,10 +425,7 @@ async function captureDurableResponseAfterProtectedRequest(
     return response;
   }
 
-  const origin = trustedPublicRequestOrigin(
-    requestUrl,
-    env.PUBLIC_SITE_URL,
-  );
+  const origin = trustedPublicRequestOrigin(requestUrl, env.PUBLIC_SITE_URL);
   try {
     const captured = await captureDurablePublicResponseFallbackSlot(env.MEDIA, {
       batchId: payload.batchId,
@@ -410,18 +446,21 @@ async function captureDurableResponseAfterProtectedRequest(
     );
     const headers = new Headers(response.headers);
     headers.set("Content-Type", "application/json; charset=utf-8");
-    return new Response(JSON.stringify({
-      batchId: payload.batchId,
-      capturedEntryCount: captured.capturedEntryCount,
-      promoted: captured.promoted,
-      promotedByteSize: captured.promotedByteSize,
-      slot: payload.slot,
-      status: captured.promoted ? "succeeded" : "continue",
-    }), {
-      headers,
-      status: response.status,
-      statusText: response.statusText,
-    });
+    return new Response(
+      JSON.stringify({
+        batchId: payload.batchId,
+        capturedEntryCount: captured.capturedEntryCount,
+        promoted: captured.promoted,
+        promotedByteSize: captured.promotedByteSize,
+        slot: payload.slot,
+        status: captured.promoted ? "succeeded" : "continue",
+      }),
+      {
+        headers,
+        status: response.status,
+        statusText: response.statusText,
+      },
+    );
   } catch {
     console.error(
       JSON.stringify({
@@ -543,155 +582,179 @@ function captureInvitationToken(
 // const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
 
 const worker = {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    const nonce = isLocalRequest(url) ? null : createCspNonce();
-    const policy = contentSecurityPolicy(url, nonce);
-    const publicDomainRedirect = canonicalPublicRedirectTarget(
-      url,
-      env.PUBLIC_SITE_URL,
-    );
-    if (publicDomainRedirect) {
-      return secureResponse(
-        request,
-        new Response(null, {
-          headers: {
-            "Cache-Control": "public, max-age=3600",
-            Location: publicDomainRedirect.toString(),
-          },
-          status: 308,
-        }),
-        policy,
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    requestStartedAtUtcMs.set(request, Date.now());
+    try {
+      const url = new URL(request.url);
+      const nonce = isLocalRequest(url) ? null : createCspNonce();
+      const policy = contentSecurityPolicy(url, nonce);
+      const publicDomainRedirect = canonicalPublicRedirectTarget(
+        url,
+        env.PUBLIC_SITE_URL,
+      );
+      if (publicDomainRedirect) {
+        return secureResponse(
+          request,
+          new Response(null, {
+            headers: {
+              "Cache-Control": "public, max-age=3600",
+              Location: publicDomainRedirect.toString(),
+            },
+            status: 308,
+          }),
+          policy,
+          url.pathname,
+        );
+      }
+      const requestMethod = request.method.toUpperCase();
+      const trailingSlashPathname = canonicalPathnameWithoutTrailingSlash(
         url.pathname,
       );
-    }
-    const requestMethod = request.method.toUpperCase();
-    const trailingSlashPathname = canonicalPathnameWithoutTrailingSlash(
-      url.pathname,
-    );
-    if (
-      trailingSlashPathname !== null &&
-      (requestMethod === "GET" || requestMethod === "HEAD") &&
-      !isPrivateOrIdentityPath(trailingSlashPathname)
-    ) {
-      const redirectUrl = new URL(url);
-      redirectUrl.pathname = trailingSlashPathname;
-      return secureResponse(
-        request,
-        new Response(null, {
-          headers: {
-            "Cache-Control": "public, max-age=3600",
-            Location: redirectUrl.toString(),
-          },
-          status: 308,
-        }),
-        policy,
-        trailingSlashPathname,
-      );
-    }
-    const normalizedPathname = normalizeEncodedRequestPathname(url.pathname);
-    if (normalizedPathname === null) {
-      return secureResponse(
-        request,
-        new Response("The request path is invalid.", { status: 400 }),
-        policy,
-        null,
-      );
-    }
-    const requestPathname = safeRequestPathname(normalizedPathname);
-    const canonicalUrl = new URL(url);
-    canonicalUrl.pathname = normalizedPathname;
-    if (
-      normalizedPathname === "/favicon.ico" &&
-      (requestMethod === "GET" || requestMethod === "HEAD")
-    ) {
-      const faviconUrl = new URL(canonicalUrl);
-      faviconUrl.pathname = "/favicon-32.png";
-      return secureResponse(
-        request,
-        new Response(null, {
-          headers: {
-            "Cache-Control": "public, max-age=86400",
-            Location: faviconUrl.toString(),
-          },
-          status: 308,
-        }),
-        policy,
-        normalizedPathname,
-      );
-    }
-    const assetOriginPath = publicAssetOriginPath({
-      method: request.method,
-      pathname: normalizedPathname,
-    });
-    if (assetOriginPath) {
-      const assetUrl = new URL(request.url);
-      assetUrl.pathname = assetOriginPath;
-      const assetResponse = await env.ASSETS.fetch(
-        new Request(assetUrl, {
-          headers: request.headers,
-          method: request.method,
-        }),
-      );
-      const publicAsset =
-        assetResponse.status >= 400
-          ? responseWithNoStore(assetResponse)
-          : assetResponse;
-      return secureResponse(
-        request,
-        publicAsset,
-        policy,
-        normalizedPathname,
-      );
-    }
-    const invitationCapture = captureInvitationToken(
-      request,
-      canonicalUrl,
-      normalizedPathname,
-    );
-    if (invitationCapture) {
-      return secureResponse(
-        request,
-        invitationCapture,
-        policy,
-        normalizedPathname,
-      );
-    }
-
-    if (normalizedPathname === "/_vinext/image") {
-      const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      const response = await handleImageOptimization(request, {
-        fetchAsset: (path) =>
-          env.ASSETS.fetch(new Request(new URL(path, request.url))),
-        transformImage: async (body, { width, format, quality }) => {
-          const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
-          return result.response();
-        },
-      }, allowedWidths);
-      return secureResponse(
-        request,
-        response,
-        policy,
-        normalizedPathname,
-      );
-    }
-
-    try {
-      const invariantStatus = await ensureDatabaseInvariantsForRequest(env.DB, {
+      if (
+        trailingSlashPathname !== null &&
+        (requestMethod === "GET" || requestMethod === "HEAD") &&
+        !isPrivateOrIdentityPath(trailingSlashPathname)
+      ) {
+        const redirectUrl = new URL(url);
+        redirectUrl.pathname = trailingSlashPathname;
+        return secureResponse(
+          request,
+          new Response(null, {
+            headers: {
+              "Cache-Control": "public, max-age=3600",
+              Location: redirectUrl.toString(),
+            },
+            status: 308,
+          }),
+          policy,
+          trailingSlashPathname,
+        );
+      }
+      const normalizedPathname = normalizeEncodedRequestPathname(url.pathname);
+      if (normalizedPathname === null) {
+        return secureResponse(
+          request,
+          new Response("The request path is invalid.", { status: 400 }),
+          policy,
+          null,
+        );
+      }
+      const requestPathname = safeRequestPathname(normalizedPathname);
+      const canonicalUrl = new URL(url);
+      canonicalUrl.pathname = normalizedPathname;
+      if (
+        normalizedPathname === "/favicon.ico" &&
+        (requestMethod === "GET" || requestMethod === "HEAD")
+      ) {
+        const faviconUrl = new URL(canonicalUrl);
+        faviconUrl.pathname = "/favicon-32.png";
+        return secureResponse(
+          request,
+          new Response(null, {
+            headers: {
+              "Cache-Control": "public, max-age=86400",
+              Location: faviconUrl.toString(),
+            },
+            status: 308,
+          }),
+          policy,
+          normalizedPathname,
+        );
+      }
+      const assetOriginPath = publicAssetOriginPath({
         method: request.method,
-        pathname: requestPathname,
+        pathname: normalizedPathname,
       });
-      if (invariantStatus === "repaired") {
-        console.info(
-          JSON.stringify({
-            code: "database_invariants_repaired",
-            event: "database_invariant_retry_required",
-            level: "info",
+      if (assetOriginPath) {
+        const assetUrl = new URL(request.url);
+        assetUrl.pathname = assetOriginPath;
+        const assetResponse = await env.ASSETS.fetch(
+          new Request(assetUrl, {
+            headers: request.headers,
+            method: request.method,
           }),
         );
-        const unavailable = databaseInvariantUnavailableResponse(
-          "The database safety checks were updated. Please try again shortly so the fresh state can be verified.",
+        const publicAsset =
+          assetResponse.status >= 400
+            ? responseWithNoStore(assetResponse)
+            : assetResponse;
+        return secureResponse(request, publicAsset, policy, normalizedPathname);
+      }
+      const invitationCapture = captureInvitationToken(
+        request,
+        canonicalUrl,
+        normalizedPathname,
+      );
+      if (invitationCapture) {
+        return secureResponse(
+          request,
+          invitationCapture,
+          policy,
+          normalizedPathname,
         );
+      }
+
+      if (normalizedPathname === "/_vinext/image") {
+        const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
+        const response = await handleImageOptimization(
+          request,
+          {
+            fetchAsset: (path) =>
+              env.ASSETS.fetch(new Request(new URL(path, request.url))),
+            transformImage: async (body, { width, format, quality }) => {
+              const result = await env.IMAGES.input(body)
+                .transform(width > 0 ? { width } : {})
+                .output({ format, quality });
+              return result.response();
+            },
+          },
+          allowedWidths,
+        );
+        return secureResponse(request, response, policy, normalizedPathname);
+      }
+
+      try {
+        const invariantStatus = await ensureDatabaseInvariantsForRequest(env.DB, {
+          method: request.method,
+          pathname: requestPathname,
+        });
+        if (invariantStatus === "repaired") {
+          console.info(
+            JSON.stringify({
+              code: "database_invariants_repaired",
+              event: "database_invariant_retry_required",
+              level: "info",
+            }),
+          );
+          const unavailable = databaseInvariantUnavailableResponse(
+            "The database safety checks were updated. Please try again shortly so the fresh state can be verified.",
+          );
+          return (
+            (await recoverPublicResponseAfterFailure(
+              env.MEDIA,
+              request,
+              requestPathname,
+              nonce,
+              policy,
+              { kind: "response", status: unavailable.status },
+              "database_invariants",
+            )) ??
+            secureResponse(request, unavailable, policy, normalizedPathname)
+          );
+        }
+      } catch {
+        console.error(
+          JSON.stringify({
+            code: "database_invariants_unavailable",
+            event: "database_invariant_initialization_failed",
+            level: "error",
+          }),
+        );
+        const unavailable = databaseInvariantUnavailableResponse();
         return (
           (await recoverPublicResponseAfterFailure(
             env.MEDIA,
@@ -699,160 +762,168 @@ const worker = {
             requestPathname,
             nonce,
             policy,
-            { kind: "response", status: unavailable.status },
+            { kind: "throw" },
             "database_invariants",
-          )) ??
-          secureResponse(
-            request,
-            unavailable,
-            policy,
-            normalizedPathname,
-          )
+          )) ?? secureResponse(request, unavailable, policy, normalizedPathname)
         );
       }
-    } catch {
-      console.error(
-        JSON.stringify({
-          code: "database_invariants_unavailable",
-          event: "database_invariant_initialization_failed",
-          level: "error",
-        }),
-      );
-      const unavailable = databaseInvariantUnavailableResponse();
-      return (
-        (await recoverPublicResponseAfterFailure(
-          env.MEDIA,
-          request,
-          requestPathname,
-          nonce,
-          policy,
-          { kind: "throw" },
-          "database_invariants",
-        )) ??
-        secureResponse(
-          request,
-          unavailable,
-          policy,
-          normalizedPathname,
-        )
-      );
-    }
 
-    if (
-      shouldRunSynchronousRequestMaintenance(
-        request.method,
-        requestPathname,
-      )
-    ) {
-      const maintenance = await runRequestMaintenance(
-        env.DB,
-        {
+      if (
+        shouldRunSynchronousRequestMaintenance(request.method, requestPathname)
+      ) {
+        const maintenance = await runRequestMaintenance(env.DB, {
           method: request.method,
           pathname: requestPathname,
-        },
-      );
-      if (maintenance.kind === "unavailable") {
-        if (maintenance.source === "publication") {
-          console.error(
-            JSON.stringify({
-              code: "publication_reconciliation_deferred",
-              event: "scheduled_publication_reconciliation_failed",
-              level: "error",
-            }),
-          );
-        } else {
-          console.error(
-            JSON.stringify({
-              code: "starter_copy_reconciliation_deferred",
-              event: "starter_copy_reconciliation_failed",
-              level: "error",
-            }),
+        });
+        if (maintenance.kind === "unavailable") {
+          if (maintenance.source === "publication") {
+            console.error(
+              JSON.stringify({
+                code: "publication_reconciliation_deferred",
+                event: "scheduled_publication_reconciliation_failed",
+                level: "error",
+              }),
+            );
+          } else {
+            console.error(
+              JSON.stringify({
+                code: "starter_copy_reconciliation_deferred",
+                event: "starter_copy_reconciliation_failed",
+                level: "error",
+              }),
+            );
+          }
+          return secureResponse(
+            request,
+            maintenanceUnavailableResponse(),
+            policy,
+            normalizedPathname,
           );
         }
-        return secureResponse(
-          request,
-          maintenanceUnavailableResponse(),
-          policy,
-          normalizedPathname,
-        );
+        if (maintenance.kind === "redirect") {
+          return secureResponse(
+            request,
+            maintenanceRedirect(canonicalUrl),
+            policy,
+            normalizedPathname,
+          );
+        }
       }
-      if (maintenance.kind === "redirect") {
-        return secureResponse(
-          request,
-          maintenanceRedirect(canonicalUrl),
-          policy,
-          normalizedPathname,
-        );
-      }
-    }
 
-    const securedRequest = requestWithSecurityContext(
-      request,
-      policy,
-      nonce,
-      trustedPublicRequestOrigin(url, env.PUBLIC_SITE_URL),
-      requestPathname,
-    );
-    const response = await handler.fetch(securedRequest, env, ctx).catch(
-      async (error: unknown) => {
-        const recovered = await recoverPublicResponseAfterFailure(
-          env.MEDIA,
-          request,
-          requestPathname,
-          nonce,
-          policy,
-          { kind: "throw" },
-          "handler",
-        );
-        if (recovered) return recovered;
-        throw error;
-      },
-    );
-    const responseAfterDurableRefresh =
-      await captureDurableResponseAfterProtectedRequest(
+      const securedRequest = requestWithSecurityContext(
         request,
-        response,
-        env,
-        ctx,
+        policy,
+        nonce,
+        trustedPublicRequestOrigin(url, env.PUBLIC_SITE_URL),
+        requestPathname,
       );
-    if (
-      (request.method === "GET" || request.method === "HEAD") &&
-      !isPrivateOrIdentityPath(requestPathname)
-    ) {
-      schedulePublicRequestMaintenance(ctx, env.DB, {
-        method: request.method,
-        pathname: requestPathname,
-      });
-    }
-    const responseAfterFailure =
-      responseAfterDurableRefresh.status >= 500
-        ? (await recoverPublicResponseAfterFailure(
+      const response = await handler.fetch(securedRequest, env, ctx).catch(
+        async (error: unknown) => {
+          const recovered = await recoverPublicResponseAfterFailure(
             env.MEDIA,
             request,
             requestPathname,
             nonce,
             policy,
-            {
-              kind: "response",
-              status: responseAfterDurableRefresh.status,
-            },
+            { kind: "throw" },
             "handler",
-          )) ?? responseAfterDurableRefresh
-        : responseAfterDurableRefresh;
-    const securedResponse = secureResponse(
-      request,
-      responseAfterFailure,
-      policy,
-      normalizedPathname,
-    );
-    const capture = publicResponseFallback.scheduleCapture({
-      nonce,
-      pathname: requestPathname,
-      request,
-      response: securedResponse,
-    });
-    if (capture) ctx.waitUntil(capture);
-    return securedResponse;
+          );
+          if (recovered) return recovered;
+          throw error;
+        },
+      );
+      const responseAfterDurableRefresh =
+        await captureDurableResponseAfterProtectedRequest(
+          request,
+          response,
+          env,
+          ctx,
+        );
+      if (
+        (request.method === "GET" || request.method === "HEAD") &&
+        !isPrivateOrIdentityPath(requestPathname)
+      ) {
+        schedulePublicRequestMaintenance(ctx, env.DB, {
+          method: request.method,
+          pathname: requestPathname,
+        });
+      }
+      const responseAfterFailure =
+        responseAfterDurableRefresh.status >= 500
+          ? ((await recoverPublicResponseAfterFailure(
+              env.MEDIA,
+              request,
+              requestPathname,
+              nonce,
+              policy,
+              {
+                kind: "response",
+                status: responseAfterDurableRefresh.status,
+              },
+              "handler",
+            )) ?? responseAfterDurableRefresh)
+          : responseAfterDurableRefresh;
+      const securedResponse = secureResponse(
+        request,
+        responseAfterFailure,
+        policy,
+        normalizedPathname,
+      );
+      const capture = publicResponseFallback.scheduleCapture({
+        nonce,
+        pathname: requestPathname,
+        request,
+        response: securedResponse,
+      });
+      if (capture) ctx.waitUntil(capture);
+      return securedResponse;
+    } catch (error) {
+      const requestUrl = new URL(request.url);
+      const method = request.method.toUpperCase();
+      const normalizedPathname = normalizeEncodedRequestPathname(
+        requestUrl.pathname,
+      );
+      const requestPathname =
+        normalizedPathname === null
+          ? null
+          : safeRequestPathname(normalizedPathname);
+      if (
+        requestPathname === null ||
+        (method !== "GET" && method !== "HEAD") ||
+        isPrivateOrIdentityPath(requestPathname)
+      ) {
+        throw error;
+      }
+      const nonce = isLocalRequest(requestUrl) ? null : createCspNonce();
+      const policy = contentSecurityPolicy(requestUrl, nonce);
+      console.error(
+        JSON.stringify({
+          event: "public_request_dispatch_failed",
+          level: "error",
+          source: "worker",
+        }),
+      );
+      const recovered = await recoverPublicResponseAfterFailure(
+        env.MEDIA,
+        request,
+        requestPathname,
+        nonce,
+        policy,
+        { kind: "throw" },
+        "handler",
+      ).catch(() => null);
+      return (
+        recovered ??
+        secureResponse(
+          request,
+          databaseInvariantUnavailableResponse(
+            "The request could not be completed safely. Please try again shortly.",
+          ),
+          policy,
+          requestPathname,
+        )
+      );
+    }
   },
 };
 

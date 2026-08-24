@@ -14,12 +14,10 @@ import {
 import {
   getRequestPublicNavigation,
   getRequestPublicOrganization,
+  getRequestPublishedSiteLogo,
   getRequestPublicSiteContext,
 } from "@/lib/server/public/request-cache";
-import {
-  resolveMediaAssetsForRendering,
-  type ResponsiveMediaAssetDto,
-} from "@/lib/server/media/usage";
+import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 import {
   buildRootMetadataIcons,
   resolvePublicBrandPalette,
@@ -54,11 +52,9 @@ const exactApplicationPaths = new Set([
 function isKnownApplicationPath(pathname: string | null): boolean {
   if (!pathname || exactApplicationPaths.has(pathname)) return true;
   if (isPrivateOrIdentityPath(pathname)) return true;
-  return [
-    "/clubs/",
-    "/events/",
-    "/media/",
-  ].some((prefix) => pathname.startsWith(prefix));
+  return ["/clubs/", "/events/", "/media/"].some((prefix) =>
+    pathname.startsWith(prefix),
+  );
 }
 
 function isPrivateApplicationPath(pathname: string | null): boolean {
@@ -94,21 +90,10 @@ export async function generateMetadata(): Promise<Metadata> {
           resolvePublicBrandPalette(site.palette)?.foreground ??
           publishedThemeColor;
         if (organization && site.logoAssetId) {
-          publicLogo =
-            (
-              await resolveMediaAssetsForRendering(database, {
-                organizationId: organization.id,
-                publicationScope: "published",
-                usages: [
-                  {
-                    assetId: site.logoAssetId,
-                    entityKey: organization.id,
-                    entityType: "site_logo",
-                    usageKind: "logo",
-                  },
-                ],
-              })
-            )[0] ?? null;
+          publicLogo = await getRequestPublishedSiteLogo(database, {
+            assetId: site.logoAssetId,
+            organizationId: organization.id,
+          });
         }
       }
     } catch {
@@ -184,19 +169,11 @@ export default async function RootLayout({
         if (organization && site.logoAssetId) {
           logoAssetId =
             (
-              await resolveMediaAssetsForRendering(database, {
+              await getRequestPublishedSiteLogo(database, {
+                assetId: site.logoAssetId,
                 organizationId: organization.id,
-                publicationScope: "published",
-                usages: [
-                  {
-                    assetId: site.logoAssetId,
-                    entityKey: organization.id,
-                    entityType: "site_logo",
-                    usageKind: "logo",
-                  },
-                ],
               })
-            )[0]?.assetId ?? null;
+            )?.assetId ?? null;
         }
         shell = {
           brandName: site.brandName,

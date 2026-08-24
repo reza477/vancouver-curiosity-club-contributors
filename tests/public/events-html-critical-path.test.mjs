@@ -27,6 +27,7 @@ test("public reads use vinext request scope across metadata, probes, and renderi
     "organization",
     "pages",
     "programDetails",
+    "publishedSiteLogos",
     "slugRedirects",
   ]) {
     assert.match(requestCache, new RegExp(`${publicRead}: Map<`, "u"));
@@ -38,12 +39,62 @@ test("public reads use vinext request scope across metadata, probes, and renderi
   );
 });
 
-test("event and club detail lookups share one D1 read per request", async () => {
+test("root metadata and layout share one published-logo media read per request", async () => {
+  const layoutSource = await readFile(
+    new URL("app/layout.tsx", projectRoot),
+    "utf8",
+  );
+  assert.equal(
+    (layoutSource.match(/getRequestPublishedSiteLogo\(/gu) ?? []).length,
+    2,
+  );
+  assert.doesNotMatch(layoutSource, /resolveMediaAssetsForRendering/u);
   const [{ createRequestContext, runWithRequestContext }, requestCache] =
     await Promise.all([
-      import(
-        "../../node_modules/vinext/dist/shims/unified-request-context.js"
-      ),
+      import("../../node_modules/vinext/dist/shims/unified-request-context.js"),
+      import("../../lib/server/public/request-cache.ts"),
+    ]);
+  let reads = 0;
+  const database = {
+    prepare(sql) {
+      assert.match(sql, /FROM media_assets AS asset/u);
+      reads += 1;
+      return {
+        bind() {
+          return this;
+        },
+        async all() {
+          return { results: [], success: true };
+        },
+      };
+    },
+  };
+  const input = {
+    assetId: "site-logo-asset",
+    organizationId: "organization-1",
+  };
+
+  await runWithRequestContext(createRequestContext(), async () => {
+    assert.deepEqual(
+      await Promise.all([
+        requestCache.getRequestPublishedSiteLogo(database, input),
+        requestCache.getRequestPublishedSiteLogo(database, input),
+      ]),
+      [null, null],
+    );
+    assert.equal(reads, 1);
+  });
+
+  await runWithRequestContext(createRequestContext(), async () => {
+    await requestCache.getRequestPublishedSiteLogo(database, input);
+  });
+  assert.equal(reads, 2, "a later request must revalidate published media");
+});
+
+test("event and club detail lookup chains deduplicate within one request", async () => {
+  const [{ createRequestContext, runWithRequestContext }, requestCache] =
+    await Promise.all([
+      import("../../node_modules/vinext/dist/shims/unified-request-context.js"),
       import("../../lib/server/public/request-cache.ts"),
     ]);
   const reads = {
@@ -125,7 +176,9 @@ test("event and club detail lookups share one D1 read per request", async () => 
     assert.deepEqual(reads, {
       club: 1,
       event: 1,
-      materialized: 2,
+      // The empty test database exercises compact lookup plus the durable v1
+      // rollout fallback. Duplicate metadata/page calls share both reads.
+      materialized: 4,
       redirect: 1,
     });
   });
@@ -147,7 +200,7 @@ test("event and club detail lookups share one D1 read per request", async () => 
   });
   assert.deepEqual(
     reads,
-    { club: 2, event: 2, materialized: 4, redirect: 2 },
+    { club: 2, event: 2, materialized: 8, redirect: 2 },
     "a later request must observe newly published event and club state",
   );
 });
@@ -155,9 +208,7 @@ test("event and club detail lookups share one D1 read per request", async () => 
 test("program metadata and club/program event view loads deduplicate per request", async () => {
   const [{ createRequestContext, runWithRequestContext }, requestCache] =
     await Promise.all([
-      import(
-        "../../node_modules/vinext/dist/shims/unified-request-context.js"
-      ),
+      import("../../node_modules/vinext/dist/shims/unified-request-context.js"),
       import("../../lib/server/public/request-cache.ts"),
     ]);
   const reads = {
@@ -244,10 +295,10 @@ test("program metadata and club/program event view loads deduplicate per request
   await runWithRequestContext(createRequestContext(), async () => {
     await readEverySurfaceTwice();
     assert.deepEqual(reads, {
-      // Each distinct view performs the bounded detail-row read plus the
-      // backward-compatible Events-row fallback when the test database is
-      // empty. Duplicate calls must not double either pair.
-      materialized: 4,
+      // Each distinct view tries its compact shard, the coherent detail row,
+      // and the backward-compatible Events row in this empty test database.
+      // Duplicate calls must not double that rollout fallback chain.
+      materialized: 6,
       organization: 1,
       program: 1,
       redirect: 1,
@@ -261,7 +312,7 @@ test("program metadata and club/program event view loads deduplicate per request
   assert.deepEqual(
     reads,
     {
-      materialized: 8,
+      materialized: 12,
       organization: 2,
       program: 2,
       redirect: 2,
@@ -276,26 +327,26 @@ test("event and club detail routes use request-scoped and materialized seams", a
     readFile(new URL("app/events/[slug]/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/clubs/[slug]/page.tsx", projectRoot), "utf8"),
     readFile(
-      new URL(
-        "app/clubs/[slug]/programs/[programSlug]/page.tsx",
-        projectRoot,
-      ),
+      new URL("app/clubs/[slug]/programs/[programSlug]/page.tsx", projectRoot),
       "utf8",
     ),
   ]);
   assert.doesNotMatch(eventRoute, /getRequestPublicEventBySlug/u);
-  assert.match(
-    eventRoute,
-    /getRequestPublicEventDetailViewMaterialization/u,
-  );
+  assert.match(eventRoute, /getRequestPublicEventDetailViewMaterialization/u);
   assert.doesNotMatch(
     eventRoute,
     /listRelatedPublicEvents|materializedIsCurrent|currentEvent|JSON\.stringify\(materialized\.event\)/u,
     "event detail must fail closed on its one protected-updater snapshot instead of running the unified live projection",
   );
   assert.doesNotMatch(eventRoute, /\bgetPublicEventBySlug\b/u);
-  assert.match(eventRoute, /if \(!organization\) publicServiceUnavailable\(\)/u);
-  assert.match(eventRoute, /if \(!materialized\) publicServiceUnavailable\(\)/u);
+  assert.match(
+    eventRoute,
+    /if \(!organization\) publicServiceUnavailable\(\)/u,
+  );
+  assert.match(
+    eventRoute,
+    /if \(!materialized\) publicServiceUnavailable\(\)/u,
+  );
   assert.match(
     eventRoute,
     /if \(materialized\.kind !== "available"\) return null/u,
@@ -305,25 +356,16 @@ test("event and club detail routes use request-scoped and materialized seams", a
   assert.match(clubRoute, /getRequestPublicSlugRedirect/u);
   assert.match(clubRoute, /getRequestPublicOrganization/u);
   assert.match(clubRoute, /getRequestPublicSiteContext/u);
-  assert.match(
-    clubRoute,
-    /getRequestPublicClubEventViewMaterialization/u,
-  );
+  assert.match(clubRoute, /getRequestPublicClubEventViewMaterialization/u);
   assert.doesNotMatch(clubRoute, /\bgetPublicClubBySlug\b/u);
   assert.doesNotMatch(clubRoute, /\bgetPublicSlugRedirect\b/u);
-  assert.doesNotMatch(
-    clubRoute,
-    /\breadPublicClubEventViewMaterialization\b/u,
-  );
+  assert.doesNotMatch(clubRoute, /\breadPublicClubEventViewMaterialization\b/u);
   assert.doesNotMatch(clubRoute, /\bqueryPublicEvents\b/u);
   assert.match(programRoute, /getRequestPublicProgramBySlugs/u);
   assert.match(programRoute, /getRequestPublicSlugRedirect/u);
   assert.match(programRoute, /getRequestPublicOrganization/u);
   assert.match(programRoute, /getRequestPublicSiteContext/u);
-  assert.match(
-    programRoute,
-    /getRequestPublicClubEventViewMaterialization/u,
-  );
+  assert.match(programRoute, /getRequestPublicClubEventViewMaterialization/u);
   assert.doesNotMatch(programRoute, /\bgetPublicProgramBySlugs\b/u);
   assert.doesNotMatch(programRoute, /\bgetPublicSlugRedirect\b/u);
   assert.doesNotMatch(
@@ -354,9 +396,7 @@ test("Events metadata starts independent page and supporting reads together", as
 test("vinext request scope shares one public D1 promise and resets for the next request", async () => {
   const [{ createRequestContext, runWithRequestContext }, requestCache] =
     await Promise.all([
-      import(
-        "../../node_modules/vinext/dist/shims/unified-request-context.js"
-      ),
+      import("../../node_modules/vinext/dist/shims/unified-request-context.js"),
       import("../../lib/server/public/request-cache.ts"),
     ]);
   let reads = 0;
@@ -397,10 +437,7 @@ test("vinext request scope shares one public D1 promise and resets for the next 
     assert.equal(second, null);
     assert.equal(reads, 1, "one request must share the exact D1 promise");
     assert.equal(
-      await requestCache.getRequestPublicPageContent(
-        otherDatabase,
-        "events",
-      ),
+      await requestCache.getRequestPublicPageContent(otherDatabase, "events"),
       null,
     );
     assert.equal(otherReads, 1, "different D1 bindings must stay isolated");

@@ -3,7 +3,7 @@ name: Daily Meetup refresh
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 4 * * *"
+    - cron: "17 0 * * *"
       timezone: "America/Vancouver"
 
 permissions:

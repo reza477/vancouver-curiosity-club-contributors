@@ -314,6 +314,12 @@ test("public routes keep one combined Events renderer and private previews keep 
 
 test("published shell and editorial metadata use live media readiness and truthful fallbacks", () => {
   const layout = source("app", "layout.tsx");
+  const requestCache = source(
+    "lib",
+    "server",
+    "public",
+    "request-cache.ts",
+  );
   const home = source("app", "page.tsx");
   const routeBodies = source(
     "app",
@@ -332,13 +338,14 @@ test("published shell and editorial metadata use live media readiness and truthf
   );
   const css = readPublicCssSync();
 
-  assert.match(layout, /resolveMediaAssetsForRendering/u);
+  assert.match(layout, /getRequestPublishedSiteLogo/u);
+  assert.match(requestCache, /resolveMediaAssetsForRendering/u);
   assert.match(
-    layout,
-    /assetId: site\.logoAssetId,[\s\S]*entityKey: organization\.id,[\s\S]*entityType: "site_logo",[\s\S]*usageKind: "logo"/u,
+    requestCache,
+    /assetId: input\.assetId,[\s\S]*entityKey: input\.organizationId,[\s\S]*entityType: "site_logo",[\s\S]*usageKind: "logo"/u,
   );
-  assert.match(layout, /publicationScope: "published"/u);
-  assert.match(layout, /\)\[0\]\?\.assetId \?\? null/u);
+  assert.match(requestCache, /publicationScope: "published"/u);
+  assert.match(layout, /\)\?\.assetId \?\? null/u);
   assert.match(home, /absoluteTitle:\s*true/u);
   assert.match(
     source("app", "_components", "EditorialPage.tsx"),

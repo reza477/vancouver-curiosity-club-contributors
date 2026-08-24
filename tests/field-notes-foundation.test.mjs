@@ -382,4 +382,9 @@ test("the worker applies a security and noindex header foundation", async () => 
   );
   assert.match(worker, /database_invariants_unavailable/);
   assert.match(worker, /The site is temporarily unavailable\./);
+  assert.match(
+    worker,
+    /requestPathname === null[\s\S]*?\(method !== "GET" && method !== "HEAD"\)[\s\S]*?isPrivateOrIdentityPath\(requestPathname\)[\s\S]*?throw error;/u,
+    "the outer recovery seam must preserve private and mutating exceptions",
+  );
 });

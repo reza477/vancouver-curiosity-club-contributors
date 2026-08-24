@@ -6,7 +6,7 @@ Accepted.
 
 ## Decision
 
-GitHub Actions invokes a private, POST-only Sites endpoint every day at 04:17
+GitHub Actions invokes a private, POST-only Sites endpoint every day at 00:17
 America/Vancouver. Every request carries a five-minute timestamp, a canonical
 UUID, and an HMAC-SHA-256 signature over the exact timestamp, UUID, and body.
 The endpoint claims that UUID in D1 before doing work, so a replay cannot run a
@@ -22,11 +22,14 @@ generation.
 After a terminal all-current result, the updater runs one bounded unified
 public-event projection. It validates and atomically promotes a durable Home
 event rail, the full supported Events-calendar/club-card window, and a bounded
-public event-detail dataset. Home, Events, event-detail, Club, and Program
-visitor loaders perform indexed reads of those last-known-good
-materializations; related and club/program rails are derived in memory. They
-cannot call the Meetup importer, run the heavy public-event projection, or
-write a replacement snapshot.
+public event-detail dataset, plus fixed compact shards for event-detail,
+related-event, and Club/Program rail views. Home, Events, event-detail, Club,
+and Program visitor loaders perform indexed reads of those last-known-good
+materializations. Compact shards are certified against the active detail
+generation and fall back only to that durable aggregate during rollout,
+corruption, or a time-boundary transition. They cannot call the Meetup
+importer, run the heavy public-event projection, or write a replacement
+snapshot.
 
 ## Reporting and failure behavior
 

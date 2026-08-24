@@ -1,6 +1,10 @@
 import { cacheForRequest } from "vinext/cache";
 import type { D1DatabaseLike } from "../auth";
 import {
+  resolveMediaAssetsForRendering,
+  type ResponsiveMediaAssetDto,
+} from "../media/usage";
+import {
   getPublicClubBySlug,
   getPublicPageContent,
   getPublicProgramBySlugs,
@@ -39,6 +43,7 @@ type PublicRequestCache = Readonly<{
   navigation: Map<string, ReturnType<typeof listPublicNavigation>>;
   organization: Map<string, ReturnType<typeof resolvePublicOrganization>>;
   pages: Map<string, ReturnType<typeof getPublicPageContent>>;
+  publishedSiteLogos: Map<string, Promise<ResponsiveMediaAssetDto | null>>;
   programDetails: Map<string, ReturnType<typeof getPublicProgramBySlugs>>;
   siteContext: Map<string, ReturnType<typeof getPublicSiteContext>>;
   eventDetails: Map<string, ReturnType<typeof getPublicEventBySlug>>;
@@ -59,8 +64,7 @@ function requestDatabaseCache(database: PublicDatabase): PublicRequestCache {
   if (existing) return existing;
   const created = Object.freeze({
     catalog: new Map<string, Promise<PublicCatalogDto | null>>(),
-    clubDetails:
-      new Map<string, ReturnType<typeof getPublicClubBySlug>>(),
+    clubDetails: new Map<string, ReturnType<typeof getPublicClubBySlug>>(),
     clubEventViews: new Map<
       string,
       ReturnType<typeof readPublicClubEventViewMaterialization>
@@ -70,25 +74,32 @@ function requestDatabaseCache(database: PublicDatabase): PublicRequestCache {
       ReturnType<typeof readPublicNextEventsByClubMaterialization>
     >(),
     clubs: new Map<string, ReturnType<typeof listPublicClubs>>(),
-    communityLinks:
-      new Map<string, ReturnType<typeof listPublicCommunityLinks>>(),
+    communityLinks: new Map<
+      string,
+      ReturnType<typeof listPublicCommunityLinks>
+    >(),
     lanes: new Map<string, ReturnType<typeof listPublicLanes>>(),
     navigation: new Map<string, ReturnType<typeof listPublicNavigation>>(),
-    organization:
-      new Map<string, ReturnType<typeof resolvePublicOrganization>>(),
+    organization: new Map<
+      string,
+      ReturnType<typeof resolvePublicOrganization>
+    >(),
     pages: new Map<string, ReturnType<typeof getPublicPageContent>>(),
-    programDetails:
-      new Map<string, ReturnType<typeof getPublicProgramBySlugs>>(),
-    siteContext:
-      new Map<string, ReturnType<typeof getPublicSiteContext>>(),
-    eventDetails:
-      new Map<string, ReturnType<typeof getPublicEventBySlug>>(),
+    publishedSiteLogos: new Map<
+      string,
+      Promise<ResponsiveMediaAssetDto | null>
+    >(),
+    programDetails: new Map<
+      string,
+      ReturnType<typeof getPublicProgramBySlugs>
+    >(),
+    siteContext: new Map<string, ReturnType<typeof getPublicSiteContext>>(),
+    eventDetails: new Map<string, ReturnType<typeof getPublicEventBySlug>>(),
     eventMaterializedViews: new Map<
       string,
       ReturnType<typeof readPublicEventDetailViewMaterialization>
     >(),
-    slugRedirects:
-      new Map<string, ReturnType<typeof getPublicSlugRedirect>>(),
+    slugRedirects: new Map<string, ReturnType<typeof getPublicSlugRedirect>>(),
   });
   caches.set(database, created);
   return created;
@@ -153,10 +164,8 @@ export function getRequestPublicCommunityLinks(database: PublicDatabase) {
 }
 
 export function getRequestPublicNavigation(database: PublicDatabase) {
-  return remember(
-    requestDatabaseCache(database).navigation,
-    "navigation",
-    () => listPublicNavigation(database),
+  return remember(requestDatabaseCache(database).navigation, "navigation", () =>
+    listPublicNavigation(database),
   );
 }
 
@@ -191,6 +200,37 @@ export function getRequestPublicPageContent(
 ) {
   return remember(requestDatabaseCache(database).pages, slug, () =>
     getPublicPageContent(database, slug),
+  );
+}
+
+/**
+ * Root metadata and the rendered shell request the same published logo proof.
+ * Keep that exact D1 promise inside the Vinext request so those two render
+ * phases cannot repeat the media-usage query.
+ */
+export function getRequestPublishedSiteLogo(
+  database: PublicDatabase,
+  input: Readonly<{ assetId: string; organizationId: string }>,
+): Promise<ResponsiveMediaAssetDto | null> {
+  const key = JSON.stringify([input.organizationId, input.assetId]);
+  return remember(
+    requestDatabaseCache(database).publishedSiteLogos,
+    key,
+    async () =>
+      (
+        await resolveMediaAssetsForRendering(database, {
+          organizationId: input.organizationId,
+          publicationScope: "published",
+          usages: [
+            {
+              assetId: input.assetId,
+              entityKey: input.organizationId,
+              entityType: "site_logo",
+              usageKind: "logo",
+            },
+          ],
+        })
+      )[0] ?? null,
   );
 }
 

@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { SqliteD1TestDatabase } from "../auth/sqlite-d1.mjs";
+import {
+  DATABASE_INVARIANT_STATEMENT_LIMIT,
+  ensureDatabaseInvariantsForRequest,
+} from "../../lib/server/database/invariants.ts";
+import { runDailyMeetupRefresh } from "../../lib/server/maintenance/daily-meetup-refresh.ts";
+import { authenticateMaintenanceRequest } from "../../lib/server/maintenance/request-signature.ts";
+import { ensureDatabaseInvariantsReady } from "../database/invariant-ready.mjs";
 
 const NOW_UTC_MS = Date.parse("2026-08-11T19:00:00.000Z");
 const ORGANIZATION_ID = "org_event_materializations";
@@ -10,9 +18,8 @@ const TODAY_DATE = "2026-08-11";
 const projectRoot = new URL("../../", import.meta.url);
 
 test("one updater-owned dataset serves Home, arbitrary months, lanes, and date rollover", async (t) => {
-  const materializations = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
   const database = await materializationDatabase(t);
   let bundleCalls = 0;
   const bundle = materializationBundle("daily-v1", 8);
@@ -39,11 +46,13 @@ test("one updater-owned dataset serves Home, arbitrary months, lanes, and date r
   );
   assert.equal(home?.length, 6);
   assert.ok(home?.every((event) => event.title.startsWith("daily-v1")));
-  const homeReserve =
-    await materializations.readPublicHomeEventMaterialization(database, {
+  const homeReserve = await materializations.readPublicHomeEventMaterialization(
+    database,
+    {
       ...materializationInput(),
       maximum: 48,
-    });
+    },
+  );
   assert.equal(homeReserve?.length, 9);
   await assert.rejects(
     materializations.readPublicHomeEventMaterialization(database, {
@@ -113,9 +122,8 @@ test("one updater-owned dataset serves Home, arbitrary months, lanes, and date r
 });
 
 test("Events derives club intersections and bounded pages from one durable dataset", async (t) => {
-  const materializations = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
   const database = await materializationDatabase(t);
   const alphaEvents = Array.from({ length: 13 }, (_unused, index) =>
     eventCard(`Alpha gathering ${index + 1}`, {
@@ -186,14 +194,16 @@ test("Events derives club intersections and bounded pages from one durable datas
     },
   );
 
-  const secondPage =
-    await materializations.readPublicEventsPageMaterialization(database, {
+  const secondPage = await materializations.readPublicEventsPageMaterialization(
+    database,
+    {
       nowUtcMs: NOW_UTC_MS,
       organizationId: ORGANIZATION_ID,
       rawMonth: "2026-08",
       rawPage: "2",
       todayDate: TODAY_DATE,
-    });
+    },
+  );
   assert.equal(secondPage?.upcoming.invalidPage, false);
   assert.equal(secondPage?.upcoming.page, 2);
   assert.equal(secondPage?.upcoming.events.length, 3);
@@ -278,9 +288,8 @@ test("Events derives club intersections and bounded pages from one durable datas
 });
 
 test("materialized ordering matches timed, all-day noon, title NOCASE, and slug SQL ties", async (t) => {
-  const materializations = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
   const events = [
     eventCard("Timed 1 p.m.", { ordinal: 430, startHour: 13 }),
     eventCard("All day at noon", { allDay: true, ordinal: 431 }),
@@ -324,10 +333,9 @@ test("materialized ordering matches timed, all-day noon, title NOCASE, and slug 
   );
 });
 
-test("one bounded detail row serves event, related, club, and program views without visitor writes", async (t) => {
-  const materializations = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
+test("compact detail and rail shards serve event, related, club, and program views without visitor writes", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
   const database = await materializationDatabase(t);
   const target = eventDetail("Target gathering", {
     category: { name: "Ideas", slug: "ideas" },
@@ -372,6 +380,15 @@ test("one bounded detail row serves event, related, club, and program views with
     ordinal: 305,
     program: { name: "Alpha Series", slug: "alpha-series" },
   });
+  const cancelledUpcoming = eventDetail("Cancelled gathering", {
+    clubName: "Alpha Club",
+    clubSlug: "alpha-club",
+    day: 24,
+    isCancelled: true,
+    ordinal: 306,
+    program: { name: "Alpha Series", slug: "alpha-series" },
+    status: "cancelled",
+  });
   const all = [
     target,
     sameClub,
@@ -379,8 +396,13 @@ test("one bounded detail row serves event, related, club, and program views with
     unrelated,
     pastProgram,
     oldPastProgram,
+    cancelledUpcoming,
   ];
-  const cards = all.slice(0, -1).map(eventCardFromDetail);
+  const cards = all
+    .filter(
+      (event) => event !== oldPastProgram && event !== cancelledUpcoming,
+    )
+    .map(eventCardFromDetail);
 
   const refreshed = await materializations.refreshPublicEventMaterializations(
     database,
@@ -395,7 +417,54 @@ test("one bounded detail row serves event, related, club, and program views with
       },
     },
   );
-  assert.equal(refreshed.eventDetailCount, 6);
+  assert.equal(refreshed.eventDetailCount, 7);
+
+  const persistedRows = database.sqlite
+    .prepare(
+      `SELECT cache_key, snapshot_json
+       FROM public_event_calendar_snapshots
+       WHERE organization_id = ?
+       ORDER BY cache_key`,
+    )
+    .all(ORGANIZATION_ID);
+  assert.equal(persistedRows.length, 28);
+  const compactRows = persistedRows.filter(
+    (row) => JSON.parse(row.cache_key)[1] === 2,
+  );
+  assert.equal(compactRows.length, 25);
+  assert.ok(
+    compactRows.every(
+      (row) =>
+        new TextEncoder().encode(row.snapshot_json).byteLength <= 1_000_000,
+    ),
+  );
+  const legacyDetailRow = persistedRows.find(
+    (row) => JSON.parse(row.cache_key)[3] === "details",
+  );
+  const targetCompactRow = compactRows.find((row) => {
+    const key = JSON.parse(row.cache_key);
+    return (
+      key[3] === "event-view" &&
+      JSON.parse(row.snapshot_json).views.some(
+        (view) => view.event.slug === target.slug,
+      )
+    );
+  });
+  assert.ok(legacyDetailRow && targetCompactRow);
+  assert.ok(
+    new TextEncoder().encode(targetCompactRow.snapshot_json).byteLength <
+      new TextEncoder().encode(legacyDetailRow.snapshot_json).byteLength,
+    "the warm event-detail read must parse a smaller row than the v1 fallback",
+  );
+  for (const row of compactRows.filter(
+    (candidate) => JSON.parse(candidate.cache_key)[3] === "rail-view",
+  )) {
+    assert.doesNotMatch(
+      row.snapshot_json,
+      /"(?:description|descriptionBlocks|organizers|preparationInformation)"/u,
+      "compact club/program rails must contain card DTOs only",
+    );
+  }
 
   const counter = countDatabaseStatements(database);
   const detail =
@@ -421,9 +490,10 @@ test("one bounded detail row serves event, related, club, and program views with
     run: 0,
   });
   assert.equal(
-    counter.sql().filter((sql) =>
-      sql.includes("FROM public_event_calendar_snapshots"),
-    ).length,
+    counter
+      .sql()
+      .filter((sql) => sql.includes("FROM public_event_calendar_snapshots"))
+      .length,
     1,
   );
   assert.ok(
@@ -445,8 +515,8 @@ test("one bounded detail row serves event, related, club, and program views with
   assert.deepEqual(missing, { kind: "missing" });
   assert.deepEqual(counter.counts(), {
     batch: 0,
-    executions: 1,
-    first: 1,
+    executions: 2,
+    first: 2,
     run: 0,
   });
 
@@ -495,7 +565,7 @@ test("one bounded detail row serves event, related, club, and program views with
   assert.deepEqual(counter.counts(), {
     batch: 0,
     executions: 1,
-    first: 1,
+    first: 0,
     run: 0,
   });
   assert.ok(
@@ -526,8 +596,9 @@ test("one bounded detail row serves event, related, club, and program views with
     materializations.readPublicNextEventsByClubMaterialization(
       counter.database,
       {
-        clubSlugs: Array.from({ length: 13 }, (_unused, index) =>
-          `club-${index + 1}`
+        clubSlugs: Array.from(
+          { length: 13 },
+          (_unused, index) => `club-${index + 1}`,
         ),
         nowUtcMs: NOW_UTC_MS,
         organizationId: ORGANIZATION_ID,
@@ -543,18 +614,17 @@ test("one bounded detail row serves event, related, club, and program views with
   );
 
   counter.reset();
-  const program =
-    await materializations.readPublicClubEventViewMaterialization(
-      counter.database,
-      {
-        clubSlug: "alpha-club",
-        nowUtcMs: NOW_UTC_MS,
-        organizationId: ORGANIZATION_ID,
-        pageSize: 6,
-        programSlug: "alpha-series",
-        todayDate: TODAY_DATE,
-      },
-    );
+  const program = await materializations.readPublicClubEventViewMaterialization(
+    counter.database,
+    {
+      clubSlug: "alpha-club",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      pageSize: 6,
+      programSlug: "alpha-series",
+      todayDate: TODAY_DATE,
+    },
+  );
   assert.deepEqual(
     program?.upcoming.events.map((event) => event.title),
     ["Target gathering", "Same club gathering"],
@@ -569,6 +639,174 @@ test("one bounded detail row serves event, related, club, and program views with
     first: 1,
     run: 0,
   });
+
+  const nextLocalDateUtcMs = Date.parse("2026-08-12T19:00:00.000Z");
+  counter.reset();
+  const nextDateDetail =
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: nextLocalDateUtcMs,
+        organizationId: ORGANIZATION_ID,
+        slug: target.slug,
+        todayDate: "2026-08-12",
+      },
+    );
+  assert.equal(nextDateDetail?.event.title, "Target gathering");
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 1,
+    run: 0,
+  });
+  counter.reset();
+  const nextDateDirectory =
+    await materializations.readPublicNextEventsByClubMaterialization(
+      counter.database,
+      {
+        clubSlugs: ["alpha-club", "beta-club"],
+        nowUtcMs: nextLocalDateUtcMs,
+        organizationId: ORGANIZATION_ID,
+        todayDate: "2026-08-12",
+      },
+    );
+  assert.deepEqual(
+    nextDateDirectory?.map((event) => event.title),
+    ["Target gathering", "Same category gathering"],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 1,
+    first: 0,
+    run: 0,
+  });
+
+  const omittedEventEnvelope = JSON.parse(targetCompactRow.snapshot_json);
+  omittedEventEnvelope.views = omittedEventEnvelope.views.filter(
+    (view) => view.event.slug !== target.slug,
+  );
+  database.sqlite
+    .prepare(
+      `UPDATE public_event_calendar_snapshots
+       SET snapshot_json = ?
+       WHERE cache_key = ? AND organization_id = ?`,
+    )
+    .run(
+      JSON.stringify(omittedEventEnvelope),
+      targetCompactRow.cache_key,
+      ORGANIZATION_ID,
+    );
+  counter.reset();
+  const detailAfterCompactOmission =
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        slug: target.slug,
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.equal(detailAfterCompactOmission?.event.title, "Target gathering");
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 2,
+    first: 2,
+    run: 0,
+  });
+  database.sqlite
+    .prepare(
+      `UPDATE public_event_calendar_snapshots
+       SET snapshot_json = ?
+       WHERE cache_key = ? AND organization_id = ?`,
+    )
+    .run(
+      targetCompactRow.snapshot_json,
+      targetCompactRow.cache_key,
+      ORGANIZATION_ID,
+    );
+
+  const targetRailRow = compactRows.find((row) => {
+    const key = JSON.parse(row.cache_key);
+    return (
+      key[3] === "rail-view" &&
+      JSON.parse(row.snapshot_json).views.some(
+        (view) =>
+          view.clubSlug === "alpha-club" && view.programSlug === null,
+      )
+    );
+  });
+  assert.ok(targetRailRow);
+  const omittedRailEnvelope = JSON.parse(targetRailRow.snapshot_json);
+  omittedRailEnvelope.views = omittedRailEnvelope.views.filter(
+    (view) =>
+      view.clubSlug !== "alpha-club" || view.programSlug !== null,
+  );
+  database.sqlite
+    .prepare(
+      `UPDATE public_event_calendar_snapshots
+       SET snapshot_json = ?
+       WHERE cache_key = ? AND organization_id = ?`,
+    )
+    .run(
+      JSON.stringify(omittedRailEnvelope),
+      targetRailRow.cache_key,
+      ORGANIZATION_ID,
+    );
+  counter.reset();
+  const clubAfterCompactOmission =
+    await materializations.readPublicClubEventViewMaterialization(
+      counter.database,
+      {
+        clubSlug: "alpha-club",
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        pageSize: 6,
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.deepEqual(
+    clubAfterCompactOmission?.upcoming.events.map((event) => event.title),
+    ["Target gathering", "Same club gathering"],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 2,
+    first: 2,
+    run: 0,
+  });
+  counter.reset();
+  const directoryAfterCompactOmission =
+    await materializations.readPublicNextEventsByClubMaterialization(
+      counter.database,
+      {
+        clubSlugs: ["alpha-club", "beta-club"],
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.deepEqual(
+    directoryAfterCompactOmission?.map((event) => event.title),
+    ["Target gathering", "Same category gathering"],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 2,
+    first: 1,
+    run: 0,
+  });
+  database.sqlite
+    .prepare(
+      `UPDATE public_event_calendar_snapshots
+       SET snapshot_json = ?
+       WHERE cache_key = ? AND organization_id = ?`,
+    )
+    .run(
+      targetRailRow.snapshot_json,
+      targetRailRow.cache_key,
+      ORGANIZATION_ID,
+    );
 
   const detailCacheKey = JSON.stringify([
     "public-event-materializations",
@@ -594,33 +832,37 @@ test("one bounded detail row serves event, related, club, and program views with
     .run("{}", detailCacheKey, ORGANIZATION_ID);
   counter.reset();
   assert.equal(
-    await materializations.readPublicEventDetailViewMaterialization(
-      counter.database,
-      {
-        nowUtcMs: NOW_UTC_MS,
-        organizationId: ORGANIZATION_ID,
-        slug: target.slug,
-        todayDate: TODAY_DATE,
-      },
-    ),
-    null,
+    (
+      await materializations.readPublicEventDetailViewMaterialization(
+        counter.database,
+        {
+          nowUtcMs: NOW_UTC_MS,
+          organizationId: ORGANIZATION_ID,
+          slug: target.slug,
+          todayDate: TODAY_DATE,
+        },
+      )
+    )?.event.title,
+    "Target gathering",
   );
-  assert.equal(
-    await materializations.readPublicNextEventsByClubMaterialization(
-      counter.database,
-      {
-        clubSlugs: ["alpha-club"],
-        nowUtcMs: NOW_UTC_MS,
-        organizationId: ORGANIZATION_ID,
-        todayDate: TODAY_DATE,
-      },
-    ),
-    null,
+  assert.deepEqual(
+    (
+      await materializations.readPublicNextEventsByClubMaterialization(
+        counter.database,
+        {
+          clubSlugs: ["alpha-club"],
+          nowUtcMs: NOW_UTC_MS,
+          organizationId: ORGANIZATION_ID,
+          todayDate: TODAY_DATE,
+        },
+      )
+    )?.map((event) => event.title),
+    ["Target gathering"],
   );
   assert.deepEqual(counter.counts(), {
     batch: 0,
     executions: 2,
-    first: 2,
+    first: 1,
     run: 0,
   });
 
@@ -652,8 +894,8 @@ test("one bounded detail row serves event, related, club, and program views with
   );
   assert.deepEqual(counter.counts(), {
     batch: 0,
-    executions: 1,
-    first: 1,
+    executions: 2,
+    first: 2,
     run: 0,
   });
 
@@ -685,16 +927,204 @@ test("one bounded detail row serves event, related, club, and program views with
   );
   assert.deepEqual(counter.counts(), {
     batch: 0,
+    executions: 2,
+    first: 2,
+    run: 0,
+  });
+});
+
+test("a rolling deployment falls back to the coherent v1 detail row until compact shards exist", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
+  const database = await materializationDatabase(t);
+  await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    bundleService("rolling-v1"),
+  );
+  database.exec(`
+    DELETE FROM public_event_calendar_snapshots
+    WHERE json_extract(cache_key, '$[1]') = 2;
+  `);
+  const counter = countDatabaseStatements(database);
+  const detail =
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        slug: "materialized-event-61",
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.equal(detail?.kind, "available");
+  assert.equal(detail?.event.title, "rolling-v1 current-all");
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 2,
+    first: 2,
+    run: 0,
+  });
+});
+
+test("compact detail keeps a valid requested rail while club totals fall back at an exact timed boundary", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
+  const database = await materializationDatabase(t);
+  const target = eventDetail("Boundary target", {
+    clubName: "Boundary Club",
+    clubSlug: "boundary-club",
+    day: 20,
+    ordinal: 410,
+  });
+  const longRelated = Array.from({ length: 3 }, (_unused, index) => ({
+    ...eventDetail(`Long related ${index + 1}`, {
+      clubName: "Boundary Club",
+      clubSlug: "boundary-club",
+      day: 11,
+      ordinal: 411 + index,
+    }),
+    schedule: {
+      endsAtUtc: "2026-08-11T23:00:00.000Z",
+      kind: "timed",
+      startsAtUtc: "2026-08-11T19:00:00.000Z",
+      timeZone: "America/Vancouver",
+    },
+  }));
+  const shortRelated = Array.from({ length: 3 }, (_unused, index) => ({
+    ...eventDetail(`Short related ${index + 1}`, {
+      clubName: "Boundary Club",
+      clubSlug: "boundary-club",
+      day: 11,
+      ordinal: 414 + index,
+    }),
+    schedule: {
+      endsAtUtc: "2026-08-11T21:00:00.000Z",
+      kind: "timed",
+      startsAtUtc: "2026-08-11T20:00:00.000Z",
+      timeZone: "America/Vancouver",
+    },
+  }));
+  const details = [target, ...longRelated, ...shortRelated];
+  const cards = details.map(eventCardFromDetail);
+  await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    {
+      async projectBundle() {
+        return {
+          calendarEvents: cards,
+          eventDetails: details,
+          upcomingEvents: cards,
+        };
+      },
+    },
+  );
+
+  const afterShortEventsEnd = Date.parse("2026-08-11T21:30:00.000Z");
+  const counter = countDatabaseStatements(database);
+  const detail =
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        limit: 3,
+        nowUtcMs: afterShortEventsEnd,
+        organizationId: ORGANIZATION_ID,
+        slug: target.slug,
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.deepEqual(
+    detail?.related.map((event) => event.title),
+    ["Long related 1", "Long related 2", "Long related 3"],
+  );
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
     executions: 1,
     first: 1,
+    run: 0,
+  });
+
+  counter.reset();
+  const club = await materializations.readPublicClubEventViewMaterialization(
+    counter.database,
+    {
+      clubSlug: "boundary-club",
+      nowUtcMs: afterShortEventsEnd,
+      organizationId: ORGANIZATION_ID,
+      pageSize: 6,
+      todayDate: TODAY_DATE,
+    },
+  );
+  assert.equal(club?.past.totalCount, 3);
+  assert.equal(club?.upcoming.totalCount, 4);
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 2,
+    first: 2,
+    run: 0,
+  });
+});
+
+test("a newer legacy generation invalidates stale compact shards in the same indexed read", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
+  const database = await materializationDatabase(t);
+  await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    bundleService("compact-generation"),
+  );
+  const detailCacheKey = JSON.stringify([
+    "public-event-materializations",
+    1,
+    ORGANIZATION_ID,
+    "details",
+  ]);
+  const row = database.sqlite
+    .prepare(
+      `SELECT snapshot_json, updated_at
+       FROM public_event_calendar_snapshots
+       WHERE cache_key = ?`,
+    )
+    .get(detailCacheKey);
+  const nextGeneration = Number(row.updated_at) + 1_000;
+  const nextEnvelope = {
+    ...JSON.parse(row.snapshot_json),
+    generatedAtUtcMs: nextGeneration,
+  };
+  database.sqlite
+    .prepare(
+      `UPDATE public_event_calendar_snapshots
+       SET snapshot_json = ?, updated_at = ?
+       WHERE cache_key = ?`,
+    )
+    .run(JSON.stringify(nextEnvelope), nextGeneration, detailCacheKey);
+
+  const counter = countDatabaseStatements(database);
+  const detail =
+    await materializations.readPublicEventDetailViewMaterialization(
+      counter.database,
+      {
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        slug: "materialized-event-61",
+        todayDate: TODAY_DATE,
+      },
+    );
+  assert.equal(detail?.kind, "available");
+  assert.equal(detail?.event.title, "compact-generation current-all");
+  assert.deepEqual(counter.counts(), {
+    batch: 0,
+    executions: 2,
+    first: 2,
     run: 0,
   });
 });
 
 test("failed projection and failed atomic promotion preserve all prior rows", async (t) => {
-  const materializations = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
   const database = await materializationDatabase(t);
   await materializations.refreshPublicEventMaterializations(
     database,
@@ -723,7 +1153,11 @@ test("failed projection and failed atomic promotion preserve all prior rows", as
     materializations.refreshPublicEventMaterializations(
       database,
       materializationInput({ nowUtcMs: NOW_UTC_MS + 90_000 }),
-      { async projectBundle() { return missingDetails; } },
+      {
+        async projectBundle() {
+          return missingDetails;
+        },
+      },
     ),
     /event-detail projection was not supplied safely/iu,
   );
@@ -735,16 +1169,17 @@ test("failed projection and failed atomic promotion preserve all prior rows", as
     materializations.refreshPublicEventMaterializations(
       database,
       materializationInput({ nowUtcMs: NOW_UTC_MS + 95_000 }),
-      { async projectBundle() { return emptyDetails; } },
+      {
+        async projectBundle() {
+          return emptyDetails;
+        },
+      },
     ),
     /event-detail projection did not match/iu,
   );
   assert.deepEqual(snapshots(database), before);
 
-  const mismatchedDetails = materializationBundle(
-    "mismatched-details-v2",
-    8,
-  );
+  const mismatchedDetails = materializationBundle("mismatched-details-v2", 8);
   mismatchedDetails.eventDetails[0] = {
     ...mismatchedDetails.eventDetails[0],
     title: "Mismatched detail title",
@@ -753,7 +1188,11 @@ test("failed projection and failed atomic promotion preserve all prior rows", as
     materializations.refreshPublicEventMaterializations(
       database,
       materializationInput({ nowUtcMs: NOW_UTC_MS + 100_000 }),
-      { async projectBundle() { return mismatchedDetails; } },
+      {
+        async projectBundle() {
+          return mismatchedDetails;
+        },
+      },
     ),
     /event-detail projection did not match/iu,
   );
@@ -808,12 +1247,11 @@ test("failed projection and failed atomic promotion preserve all prior rows", as
     bundleService("newest-v3"),
   );
   const newestRows = snapshots(database);
-  const superseded =
-    await materializations.refreshPublicEventMaterializations(
-      database,
-      materializationInput({ nowUtcMs: NOW_UTC_MS + 240_000 }),
-      bundleService("delayed-older-v2"),
-    );
+  const superseded = await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput({ nowUtcMs: NOW_UTC_MS + 240_000 }),
+    bundleService("delayed-older-v2"),
+  );
   assert.deepEqual(
     superseded,
     newest,
@@ -827,22 +1265,24 @@ test("failed projection and failed atomic promotion preserve all prior rows", as
 });
 
 test("production materialization stays below D1 limits and visitor reads never write", async (t) => {
-  const materializations = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
   const database = await materializationDatabase(t, true);
   const counter = countDatabaseStatements(database);
 
-  await materializations.refreshPublicEventMaterializations(
-    counter.database,
-    { nowUtcMs: NOW_UTC_MS },
-  );
+  await materializations.refreshPublicEventMaterializations(counter.database, {
+    nowUtcMs: NOW_UTC_MS,
+  });
   assert.ok(
-    counter.count() < 50,
-    `updater used ${counter.count()} D1 statements; expected < 50`,
+    counter.count() <= 32,
+    `updater used ${counter.count()} D1 statements; expected at least 18 statements of whole-request headroom`,
   );
   assert.equal(counter.batchCount(), 1);
-  assert.equal(counter.runCount(), 3, "one atomic batch promotes three rows");
+  assert.equal(
+    counter.runCount(),
+    28,
+    "one atomic batch promotes three fallbacks, one marker, and 24 compact shards",
+  );
 
   counter.reset();
   await materializations.readPublicHomeEventMaterialization(
@@ -857,20 +1297,65 @@ test("production materialization stays below D1 limits and visitor reads never w
   });
 
   counter.reset();
-  await materializations.readPublicEventsPageMaterialization(
-    counter.database,
-    {
-      organizationId: ORGANIZATION_ID,
-      rawMonth: "2026-08",
-      todayDate: TODAY_DATE,
-    },
-  );
+  await materializations.readPublicEventsPageMaterialization(counter.database, {
+    organizationId: ORGANIZATION_ID,
+    rawMonth: "2026-08",
+    todayDate: TODAY_DATE,
+  });
   assert.deepEqual(counter.counts(), {
     batch: 0,
     executions: 1,
     first: 1,
     run: 0,
   });
+});
+
+test("the complete signed terminal refresh retains whole-Worker D1 headroom", async (t) => {
+  const database = await materializationDatabase(t, true);
+  await ensureDatabaseInvariantsReady(database);
+  const counter = countDatabaseStatements(database);
+  const pathname = "/api/maintenance/meetup/refresh";
+  assert.equal(
+    await ensureDatabaseInvariantsForRequest(counter.database, {
+      method: "POST",
+      pathname,
+    }),
+    "ready",
+  );
+
+  const nowUtcMs = NOW_UTC_MS;
+  const timestamp = String(Math.floor(nowUtcMs / 1_000));
+  const requestId = "97eed73e-aa01-4a8a-a373-9b37b3eb24a4";
+  const body = "{}";
+  const secret = "event-materialization-budget-secret-is-long-enough";
+  const signature = createHmac("sha256", secret)
+    .update(JSON.stringify([timestamp, requestId, pathname, body]))
+    .digest("hex");
+  const authenticated = await authenticateMaintenanceRequest(
+    new Request(`https://vancouvercuriosityclub.com${pathname}`, {
+      body,
+      headers: {
+        "content-type": "application/json",
+        "x-maintenance-request-id": requestId,
+        "x-maintenance-signature": `sha256=${signature}`,
+        "x-maintenance-timestamp": timestamp,
+      },
+      method: "POST",
+    }),
+    counter.database,
+    { nowUtcMs, secret },
+  );
+  assert.equal(authenticated.rawBody, body);
+
+  const result = await runDailyMeetupRefresh(counter.database, {
+    nowUtcMs,
+    requestId: authenticated.requestId,
+  });
+  assert.equal(result.outcome, "not_connected");
+  assert.equal(result.status, "succeeded");
+  assert.ok(result.counts.materializations);
+  assert.equal(counter.count(), 35);
+  assert.ok(counter.count() < DATABASE_INVARIANT_STATEMENT_LIMIT);
 });
 
 test("ordinary Home and Events loaders contain no projection or write escape hatch", async () => {
@@ -883,20 +1368,31 @@ test("ordinary Home and Events loaders contain no projection or write escape hat
     ),
   ]);
   assert.match(home, /readPublicHomeEventMaterialization/u);
-  assert.doesNotMatch(home, /queryPublicEventSlice|refreshMeetup|fetchMeetup/iu);
+  assert.doesNotMatch(
+    home,
+    /queryPublicEventSlice|refreshMeetup|fetchMeetup/iu,
+  );
   assert.match(eventsPage, /readPublicEventsPageMaterialization/u);
   assert.doesNotMatch(
     eventsPage,
     /queryPublicCalendar|queryPublicEventSlice|writePublicEventsSnapshot|refreshMeetup|fetchMeetup/iu,
   );
   assert.match(materializations, /database\.batch\(/u);
+  assert.match(
+    materializations,
+    /marker\.snapshot_json AS marker_json/u,
+  );
+  assert.doesNotMatch(
+    materializations,
+    /json_extract\(details\.snapshot_json/u,
+    "compact reads must not parse the large fallback detail JSON",
+  );
   assert.doesNotMatch(materializations, /projectEventsPage|projectHomeEvents/u);
 });
 
 test("Home rejects an oversized durable row before parsing it", async () => {
-  const materializations = await import(
-    "../../lib/server/public/event-materializations.ts"
-  );
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
   const oversizedJson = `${JSON.stringify({
     generatedAtUtcMs: NOW_UTC_MS,
     schemaVersion: 1,
@@ -905,8 +1401,12 @@ test("Home rejects an oversized durable row before parsing it", async () => {
   const database = {
     prepare() {
       return {
-        bind() { return this; },
-        async first() { return { snapshot_json: oversizedJson }; },
+        bind() {
+          return this;
+        },
+        async first() {
+          return { snapshot_json: oversizedJson };
+        },
       };
     },
   };
@@ -930,7 +1430,11 @@ function materializationInput(overrides = {}) {
 }
 
 function bundleService(version) {
-  return { async projectBundle() { return materializationBundle(version, 8); } };
+  return {
+    async projectBundle() {
+      return materializationBundle(version, 8);
+    },
+  };
 }
 
 function materializationBundle(version, homeCount) {
@@ -940,19 +1444,17 @@ function materializationBundle(version, homeCount) {
       ordinal: index + 1,
     }),
   );
-  home.push(
-    eventCard(`${version} reserve-later`, { day: 25, ordinal: 50 }),
-  );
+  home.push(eventCard(`${version} reserve-later`, { day: 25, ordinal: 50 }));
   const calendarEvents = [
-      eventCard(`${version} old-bound`, { month: "2025-08", ordinal: 60 }),
-      eventCard(`${version} current-all`, { ordinal: 61 }),
-      eventCard(`${version} current-explore`, {
-        laneSlug: "explore",
-        ordinal: 62,
-      }),
-      eventCard(`${version} next-month`, { month: "2026-09", ordinal: 63 }),
-      eventCard(`${version} future-bound`, { month: "2027-08", ordinal: 64 }),
-    ];
+    eventCard(`${version} old-bound`, { month: "2025-08", ordinal: 60 }),
+    eventCard(`${version} current-all`, { ordinal: 61 }),
+    eventCard(`${version} current-explore`, {
+      laneSlug: "explore",
+      ordinal: 62,
+    }),
+    eventCard(`${version} next-month`, { month: "2026-09", ordinal: 63 }),
+    eventCard(`${version} future-bound`, { month: "2027-08", ordinal: 64 }),
+  ];
   return {
     calendarEvents,
     eventDetails: [...calendarEvents, ...home].map(eventDetailFromCard),
@@ -972,7 +1474,9 @@ function eventCard(
     month = "2026-08",
     ordinal = 1,
     program = null,
+    isCancelled = false,
     startHour = 19,
+    status = "confirmed",
   } = {},
 ) {
   const dayKey = String(day).padStart(2, "0");
@@ -986,7 +1490,7 @@ function eventCard(
     category,
     club: { name: clubName, slug: clubSlug },
     costText: null,
-    isCancelled: false,
+    isCancelled,
     lane: laneSlug ? { name: "Explore", slug: laneSlug } : null,
     program,
     rsvpMode: "meetup",
@@ -1004,7 +1508,7 @@ function eventCard(
           timeZone: "America/Vancouver",
         },
     slug: `materialized-event-${ordinal}`,
-    status: "confirmed",
+    status,
     summary: "A public materialized event.",
     title,
     venue: null,
@@ -1118,7 +1622,9 @@ function countDatabaseStatements(database) {
     },
     async batch(statements) {
       batches += 1;
-      const results = await database.batch(statements.map((statement) => inner.get(statement)));
+      const results = await database.batch(
+        statements.map((statement) => inner.get(statement)),
+      );
       runs += statements.length;
       executions += statements.length;
       return results;
@@ -1141,10 +1647,23 @@ function countDatabaseStatements(database) {
   };
   function wrap(statement) {
     const result = {
-      bind(...values) { return wrap(statement.bind(...values)); },
-      async all(...args) { executions += 1; return statement.all(...args); },
-      async first(...args) { executions += 1; first += 1; return statement.first(...args); },
-      async run(...args) { executions += 1; runs += 1; return statement.run(...args); },
+      bind(...values) {
+        return wrap(statement.bind(...values));
+      },
+      async all(...args) {
+        executions += 1;
+        return statement.all(...args);
+      },
+      async first(...args) {
+        executions += 1;
+        first += 1;
+        return statement.first(...args);
+      },
+      async run(...args) {
+        executions += 1;
+        runs += 1;
+        return statement.run(...args);
+      },
     };
     inner.set(result, statement);
     return result;
@@ -1158,7 +1677,9 @@ async function generatedMigrationSql() {
     .sort();
   return (
     await Promise.all(
-      migrationNames.map((name) => readFile(join(migrationDirectory, name), "utf8")),
+      migrationNames.map((name) =>
+        readFile(join(migrationDirectory, name), "utf8"),
+      ),
     )
   ).join("\n");
 }

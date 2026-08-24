@@ -1,6 +1,4 @@
-export type PublicLinkHref =
-  | string
-  | Readonly<{ pathname?: string | null }>;
+export type PublicLinkHref = string | Readonly<{ pathname?: string | null }>;
 
 export type PublicLinkPrefetch = boolean | "auto" | null | undefined;
 
@@ -20,7 +18,8 @@ export function isExpensivePublicRouteHref(href: PublicLinkHref): boolean {
     pathname === "/events" ||
     pathname.startsWith("/events/") ||
     pathname === "/clubs" ||
-    pathname.startsWith("/clubs/")
+    pathname.startsWith("/clubs/") ||
+    pathname === "/for-organizations"
   );
 }
 

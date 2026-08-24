@@ -7,6 +7,7 @@ const DEFAULT_ROUTES = Object.freeze([
   "/events",
   "/clubs",
   "/about",
+  "/for-organizations",
   "/contact",
 ]);
 const DEFAULT_SAMPLES = 20;
@@ -36,8 +37,9 @@ export async function benchmarkPublicRoutes(options) {
   );
   const fetchImpl = options.fetchImpl ?? fetch;
 
+  const warmup = [];
   for (const route of routes) {
-    await timedGet(fetchImpl, new URL(route, baseUrl), timeoutMs);
+    warmup.push(await timedGet(fetchImpl, new URL(route, baseUrl), timeoutMs));
   }
 
   const sequential = [];
@@ -65,6 +67,7 @@ export async function benchmarkPublicRoutes(options) {
     generatedAt: new Date().toISOString(),
     routes,
     samples: summarizeResults(sequential),
+    warmup: summarizeResults(warmup),
     waves,
   });
   assertAcceptance(summary);
@@ -76,8 +79,30 @@ export function summarizeResults(results) {
     .filter((result) => result.ok)
     .map((result) => result.durationMs)
     .sort((left, right) => left - right);
+  const applicationDurations = results
+    .flatMap((result) => {
+      const duration = serverTimingDuration(result.serverTiming);
+      return duration === null ? [] : [duration];
+    })
+    .sort((left, right) => left - right);
   return Object.freeze({
+    appP50Ms: percentile(applicationDurations, 0.5),
+    appP95Ms: percentile(applicationDurations, 0.95),
+    appP99Ms: percentile(applicationDurations, 0.99),
+    cacheControls: Object.freeze(
+      [
+        ...new Set(
+          results.map((result) => result.cacheControl).filter(Boolean),
+        ),
+      ].sort(),
+    ),
     cancelled: results.filter((result) => result.kind === "cancelled").length,
+    clientErrors: results.filter(
+      (result) =>
+        result.kind === "response" &&
+        result.status >= 400 &&
+        result.status < 500,
+    ).length,
     count: results.length,
     failed: results.filter((result) => !result.ok).length,
     p50Ms: percentile(durations, 0.5),
@@ -86,18 +111,36 @@ export function summarizeResults(results) {
     serverErrors: results.filter(
       (result) => result.kind === "response" && result.status >= 500,
     ).length,
-    serviceStates: results.filter(
-      (result) => result.kind === "service_state",
+    serviceStates: results.filter((result) => result.kind === "service_state")
+      .length,
+    serverTimingInvalid: results.filter(
+      (result) =>
+        result.ok &&
+        result.serverTiming != null &&
+        serverTimingDuration(result.serverTiming) === null,
+    ).length,
+    serverTimingMissing: results.filter(
+      (result) => result.ok && result.serverTiming == null,
     ).length,
     timedOut: results.filter((result) => result.kind === "timeout").length,
   });
 }
 
 function assertAcceptance(summary) {
-  const all = [summary.samples, ...summary.waves];
+  const all = [summary.warmup, summary.samples, ...summary.waves];
   if (all.some((result) => result.failed > 0)) {
     throw new Error(
       `Public benchmark failed: ${JSON.stringify(summary, null, 2)}`,
+    );
+  }
+  if (
+    all.some(
+      (result) =>
+        result.serverTimingMissing > 0 || result.serverTimingInvalid > 0,
+    )
+  ) {
+    throw new Error(
+      `Public benchmark is missing valid Server-Timing evidence: ${JSON.stringify(summary, null, 2)}`,
     );
   }
   if (summary.samples.p95Ms >= 2_000 || summary.samples.p99Ms >= 3_000) {
@@ -122,26 +165,41 @@ async function timedGet(fetchImpl, url, timeoutMs) {
       signal: controller.signal,
     });
     const body = await response.text();
-    const serviceState = response.status < 500 && isUnavailablePage(body);
+    const successStatus = response.status >= 200 && response.status < 300;
+    const serviceState = successStatus && isUnavailablePage(body);
     return Object.freeze({
+      cacheControl: response.headers.get("cache-control"),
       durationMs: performance.now() - startedAt,
       kind: serviceState ? "service_state" : "response",
-      ok: response.status < 500 && !serviceState,
+      ok: successStatus && !serviceState,
+      serverTiming: response.headers.get("server-timing"),
       status: response.status,
       url: url.pathname,
     });
   } catch {
     const timedOut = controller.signal.aborted;
     return Object.freeze({
+      cacheControl: null,
       durationMs: performance.now() - startedAt,
       kind: timedOut ? "timeout" : "cancelled",
       ok: false,
+      serverTiming: null,
       status: 0,
       url: url.pathname,
     });
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function serverTimingDuration(value) {
+  if (typeof value !== "string") return null;
+  const match = /(?:^|,\s*)app;dur=((?:0|[1-9]\d*)(?:\.\d+)?)(?:;|,|$)/u.exec(
+    value,
+  );
+  if (!match) return null;
+  const duration = Number(match[1]);
+  return Number.isFinite(duration) ? duration : null;
 }
 
 function isUnavailablePage(body) {
@@ -178,7 +236,11 @@ function parseRoutes(values) {
   }
   return Object.freeze(
     values.map((value) => {
-      if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+      if (
+        typeof value !== "string" ||
+        !value.startsWith("/") ||
+        value.startsWith("//")
+      ) {
         throw new Error("Benchmark routes must be root-relative paths.");
       }
       const url = new URL(value, "https://benchmark.invalid");
@@ -216,13 +278,18 @@ function parseArguments(argv) {
   return options;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   benchmarkPublicRoutes(parseArguments(process.argv.slice(2)))
     .then((summary) => {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
     })
     .catch((error) => {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.stderr.write(
+        `${error instanceof Error ? error.message : String(error)}\n`,
+      );
       process.exitCode = 1;
     });
 }
