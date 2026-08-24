@@ -10,8 +10,9 @@ Club. Read it before the historical phase documents.
 - Runtime: Cloudflare Worker managed by ChatGPT Sites
 - Data/media: Sites-managed D1 and R2 bindings named `DB` and `MEDIA`
 - Authentication: Sign in with ChatGPT plus server-side membership and roles
-- Event source: one-way Meetup synchronization, refreshed by authorized
-  organizer action or a bounded due public check; there is no scheduler
+- Event source: one-way Meetup synchronization, refreshed by the protected
+  daily GitHub Actions scheduler or an authorized organizer action; ordinary
+  visitor requests only read the last completed publication
 
 GitHub CI validates source, tests, and the built Worker. It does **not** deploy
 production. Production access, settings, data, media, and Sites releases remain
@@ -220,8 +221,9 @@ The organizer Meetup screen retains the manual refresh for urgent changes.
 ## Current intentional limits
 
 - no public visitor accounts, on-site RSVP, ticketing, payments, chat, or DMs;
-- form submissions live in the private organizer inbox and are not
-  automatically emailed;
+- form submissions live in the private organizer inbox and eligible
+  submissions queue one private organizer email to the configured recipient;
+  visitors do not receive an automatic email confirmation;
 - no automatic Meetup write-back or two-way calendar sync;
 - not every event has approved art or venue-specific accessibility facts;
 - contributors receive no production dataset or production credentials.

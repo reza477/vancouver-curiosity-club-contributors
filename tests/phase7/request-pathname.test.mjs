@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canonicalPathnameWithoutTrailingSlash,
   isPrivateCalendarSubscriptionPath,
   isPrivateOrIdentityPath,
   isCanonicalTrustedRequestPathname,
@@ -8,6 +9,24 @@ import {
   normalizeEncodedRequestPathname,
   safeRequestPathname,
 } from "../../lib/request-pathname.ts";
+
+test("one terminal slash can be canonicalized without accepting ambiguous paths", () => {
+  assert.equal(canonicalPathnameWithoutTrailingSlash("/about/"), "/about");
+  assert.equal(
+    canonicalPathnameWithoutTrailingSlash("/caf%C3%A9/"),
+    "/caf\u00e9",
+  );
+  for (const pathname of [
+    "/",
+    "/about",
+    "//about/",
+    "/events//",
+    "/events//detail/",
+    "/%252e%252e/",
+  ]) {
+    assert.equal(canonicalPathnameWithoutTrailingSlash(pathname), null);
+  }
+});
 
 test("request pathname normalization uses one strict canonical trust contract", () => {
   assert.equal(MAX_TRUSTED_REQUEST_PATHNAME_LENGTH, 2_048);

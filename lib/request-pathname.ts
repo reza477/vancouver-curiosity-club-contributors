@@ -95,6 +95,20 @@ export function normalizeEncodedRequestPathname(
   return isCanonicalTrustedRequestPathname(normalized) ? normalized : null;
 }
 
+/**
+ * Returns the canonical pathname for one otherwise-valid terminal slash.
+ *
+ * Interior duplicate slashes and every other ambiguous encoding still fail
+ * the strict normalization contract above. Callers remain responsible for
+ * limiting redirects to public, read-only requests.
+ */
+export function canonicalPathnameWithoutTrailingSlash(
+  pathname: string,
+): string | null {
+  if (pathname.length <= 1 || !pathname.endsWith("/")) return null;
+  return normalizeEncodedRequestPathname(pathname.slice(0, -1));
+}
+
 export function isCanonicalTrustedRequestPathname(
   value: unknown,
 ): value is string {

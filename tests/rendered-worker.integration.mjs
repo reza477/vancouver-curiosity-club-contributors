@@ -1109,7 +1109,7 @@ test("the built Worker promotes a nonce-free Events RSC through the protected fo
   }
 });
 
-test("the built Worker serves event posters through its D1-free cache-policy fast path", async (t) => {
+test("the built Worker serves public media through its D1-free cache-policy fast path", async (t) => {
   assert.deepEqual(packagedWrangler.assets, {
     binding: "ASSETS",
     directory: "../client",
@@ -1224,10 +1224,15 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
     "https://preview.example/fonts/inter-latin-400-700.woff2",
   );
   assert.equal(fontResponse.status, 200);
+  assert.equal(fontResponse.headers.get("content-type"), "font/woff2");
+  assert.equal(
+    fontResponse.headers.get("cache-control"),
+    "public, max-age=3600, must-revalidate",
+  );
   assert.equal(
     fontResponse.headers.get("x-frame-options"),
-    null,
-    "non-relocated public assets remain asset-first",
+    "DENY",
+    "relocated fonts pass through the D1-free User Worker branch",
   );
 
   const missingPoster = await posterRuntime.dispatchFetch(
@@ -1239,6 +1244,42 @@ test("the built Worker serves event posters through its D1-free cache-policy fas
     "private, no-store, max-age=0",
   );
   assert.equal(missingPoster.headers.get("x-frame-options"), "DENY");
+});
+
+test("public terminal slashes and the legacy favicon canonicalize without weakening strict paths", async () => {
+  for (const method of ["GET", "HEAD"]) {
+    const response = await fetchPath("/about/?from=qa", {
+      method,
+      redirect: "manual",
+    });
+    assert.equal(response.status, 308, method);
+    assert.equal(
+      response.headers.get("location"),
+      "https://preview.example/about?from=qa",
+      method,
+    );
+  }
+
+  const favicon = await fetchPath("/favicon.ico?v=1", {
+    redirect: "manual",
+  });
+  assert.equal(favicon.status, 308);
+  assert.equal(
+    favicon.headers.get("location"),
+    "https://preview.example/favicon-32.png?v=1",
+  );
+
+  for (const path of ["/events//", "/organizer/"]) {
+    const response = await fetchPath(path, { redirect: "manual" });
+    assert.equal(response.status, 400, path);
+  }
+  const postResponse = await fetchPath("/about/", {
+    body: "qa=1",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    method: "POST",
+    redirect: "manual",
+  });
+  assert.equal(postResponse.status, 400);
 });
 
 test("all required public pages render shared chrome without private sentinels", async () => {

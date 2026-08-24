@@ -14,8 +14,10 @@ import { relocateWorkerOwnedAssetDirectories } from "../../build/sites-vite-plug
 import {
   EVENT_POSTER_CACHE_CONTROL,
   HASHED_ASSET_CACHE_CONTROL,
+  PUBLIC_FONT_CACHE_CONTROL,
   WORKER_ASSET_ORIGIN_PREFIX,
   publicAssetCacheControl,
+  publicAssetContentType,
   publicAssetOriginPath,
 } from "../../lib/public-asset-cache.ts";
 
@@ -97,6 +99,54 @@ test("bounded regenerable event posters receive one-day SWR caching without immu
   );
 });
 
+test("flat public fonts receive bounded caching and exact MIME types", () => {
+  for (const method of ["GET", "HEAD"]) {
+    const cacheControl = publicAssetCacheControl({
+      method,
+      pathname: "/fonts/inter-latin-400-700.woff2",
+      status: 200,
+    });
+    assert.equal(cacheControl, PUBLIC_FONT_CACHE_CONTROL);
+    assert.doesNotMatch(cacheControl, /immutable|stale-while-revalidate/u);
+  }
+  assert.equal(
+    publicAssetCacheControl({
+      method: "GET",
+      pathname: "/fonts/inter-latin-400-700.woff2",
+      status: 304,
+    }),
+    PUBLIC_FONT_CACHE_CONTROL,
+  );
+  for (const input of [
+    { method: "POST", pathname: "/fonts/inter.woff2", status: 200 },
+    { method: "GET", pathname: "/fonts/inter.woff", status: 200 },
+    { method: "GET", pathname: "/fonts/nested/inter.woff2", status: 200 },
+    { method: "GET", pathname: `/fonts/${"x".repeat(181)}.woff2`, status: 200 },
+    { method: "GET", pathname: "/fonts/inter.woff2", status: 404 },
+  ]) {
+    assert.equal(publicAssetCacheControl(input), null);
+  }
+
+  assert.equal(
+    publicAssetContentType("/event-posters/meetup-1.avif"),
+    "image/avif",
+  );
+  assert.equal(
+    publicAssetContentType("/event-posters/meetup-1.webp"),
+    "image/webp",
+  );
+  assert.equal(
+    publicAssetContentType("/event-posters/meetup-1.jpeg"),
+    "image/jpeg",
+  );
+  assert.equal(
+    publicAssetContentType("/fonts/inter-latin-400-700.woff2"),
+    "font/woff2",
+  );
+  assert.equal(publicAssetContentType("/fonts/inter.woff"), null);
+  assert.equal(publicAssetContentType("/event-posters/nested/a.webp"), null);
+});
+
 test("only safe read-only public asset paths map to the internal static origin", () => {
   for (const method of ["GET", "HEAD"]) {
     assert.equal(
@@ -120,12 +170,21 @@ test("only safe read-only public asset paths map to the internal static origin",
       }),
       `${WORKER_ASSET_ORIGIN_PREFIX}/_next/static/chunks/framework-JGc2HF7T.js`,
     );
+    assert.equal(
+      publicAssetOriginPath({
+        method,
+        pathname: "/fonts/inter-latin-400-700.woff2",
+      }),
+      `${WORKER_ASSET_ORIGIN_PREFIX}/fonts/inter-latin-400-700.woff2`,
+    );
   }
 
   for (const input of [
     { method: "POST", pathname: "/assets/framework-12345678.js" },
     { method: "GET", pathname: "/assets/unhashed.js" },
     { method: "GET", pathname: "/event-posters/nested/poster.webp" },
+    { method: "GET", pathname: "/fonts/inter.woff" },
+    { method: "GET", pathname: "/fonts/nested/inter.woff2" },
     { method: "GET", pathname: "/_next/static/../server/index.js" },
     { method: "GET", pathname: "/_next/static/chunks/" },
     { method: "GET", pathname: "/_next/static/chunks/no-extension" },
@@ -209,6 +268,10 @@ test("the build relocates Worker-owned directories and leaves other public asset
     "fonts",
   );
   writeFileSync(
+    resolve(root, "dist", "client", "fonts", "inter.woff2"),
+    "font",
+  );
+  writeFileSync(
     resolve(root, "dist", "client", "_headers"),
     "generated Pages metadata",
   );
@@ -283,6 +346,24 @@ test("the build relocates Worker-owned directories and leaves other public asset
       "utf8",
     ),
     "fonts",
+  );
+  assert.equal(
+    existsSync(resolve(root, "dist", "client", "fonts", "inter.woff2")),
+    false,
+  );
+  assert.equal(
+    readFileSync(
+      resolve(
+        root,
+        "dist",
+        "client",
+        WORKER_ASSET_ORIGIN_PREFIX.slice(1),
+        "fonts",
+        "inter.woff2",
+      ),
+      "utf8",
+    ),
+    "font",
   );
   assert.equal(existsSync(resolve(root, "dist", "client", "_headers")), false);
 });

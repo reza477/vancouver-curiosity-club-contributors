@@ -15,6 +15,7 @@ import {
   isInvitationToken,
 } from "../lib/server/organizer/invitation-token-cookie";
 import {
+  canonicalPathnameWithoutTrailingSlash,
   isPrivateOrIdentityPath,
   normalizeEncodedRequestPathname,
   safeRequestPathname,
@@ -25,6 +26,7 @@ import {
 } from "../lib/public-domain";
 import {
   publicAssetCacheControl,
+  publicAssetContentType,
   publicAssetOriginPath,
 } from "../lib/public-asset-cache";
 import {
@@ -296,6 +298,15 @@ function secureResponse(
       headers.set("Cache-Control", assetCacheControl);
     }
   }
+  if (
+    requestPathname !== null &&
+    (response.status === 200 || response.status === 304)
+  ) {
+    const assetContentType = publicAssetContentType(requestPathname);
+    if (assetContentType) {
+      headers.set("Content-Type", assetContentType);
+    }
+  }
 
   return new Response(response.body, {
     headers,
@@ -554,6 +565,30 @@ const worker = {
         url.pathname,
       );
     }
+    const requestMethod = request.method.toUpperCase();
+    const trailingSlashPathname = canonicalPathnameWithoutTrailingSlash(
+      url.pathname,
+    );
+    if (
+      trailingSlashPathname !== null &&
+      (requestMethod === "GET" || requestMethod === "HEAD") &&
+      !isPrivateOrIdentityPath(trailingSlashPathname)
+    ) {
+      const redirectUrl = new URL(url);
+      redirectUrl.pathname = trailingSlashPathname;
+      return secureResponse(
+        request,
+        new Response(null, {
+          headers: {
+            "Cache-Control": "public, max-age=3600",
+            Location: redirectUrl.toString(),
+          },
+          status: 308,
+        }),
+        policy,
+        trailingSlashPathname,
+      );
+    }
     const normalizedPathname = normalizeEncodedRequestPathname(url.pathname);
     if (normalizedPathname === null) {
       return secureResponse(
@@ -566,6 +601,25 @@ const worker = {
     const requestPathname = safeRequestPathname(normalizedPathname);
     const canonicalUrl = new URL(url);
     canonicalUrl.pathname = normalizedPathname;
+    if (
+      normalizedPathname === "/favicon.ico" &&
+      (requestMethod === "GET" || requestMethod === "HEAD")
+    ) {
+      const faviconUrl = new URL(canonicalUrl);
+      faviconUrl.pathname = "/favicon-32.png";
+      return secureResponse(
+        request,
+        new Response(null, {
+          headers: {
+            "Cache-Control": "public, max-age=86400",
+            Location: faviconUrl.toString(),
+          },
+          status: 308,
+        }),
+        policy,
+        normalizedPathname,
+      );
+    }
     const assetOriginPath = publicAssetOriginPath({
       method: request.method,
       pathname: normalizedPathname,
