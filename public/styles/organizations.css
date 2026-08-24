@@ -8,6 +8,150 @@
   font-size: var(--public-page-title);
 }
 
+.for-organizations-page > .organizations-hero {
+  grid-template-columns: minmax(0, 0.9fr) minmax(25rem, 1.1fr);
+  align-items: center;
+  gap: clamp(2.5rem, 6vw, 7rem);
+}
+
+.organizations-hero__copy {
+  min-width: 0;
+}
+
+.organizations-hero__copy .page-masthead__deck {
+  max-width: 58ch;
+}
+
+.organizations-hero__actions {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem 1.15rem;
+  margin-top: 1.5rem;
+  display: flex;
+}
+
+.organizations-hero__actions > a {
+  min-height: 2.75rem;
+  justify-content: center;
+  align-items: center;
+  font-weight: 700;
+  display: inline-flex;
+}
+
+.organizations-hero__proof {
+  min-width: 0;
+  padding: clamp(1rem, 2vw, 1.4rem);
+  border: 1px solid var(--ink);
+  border-top: 0.35rem solid var(--coral);
+  background: var(--paper-deep);
+  box-shadow: 0.45rem 0.45rem 0 var(--amber);
+}
+
+.organizations-hero__proof-heading {
+  grid-template-columns: minmax(0, 0.55fr) minmax(12rem, 1fr);
+  align-items: end;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  display: grid;
+}
+
+.organizations-hero__proof-heading .section-kicker {
+  margin: 0;
+}
+
+.organizations-hero__proof-heading h2 {
+  max-width: 19ch;
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.55rem, 2.4vw, 2.25rem);
+  font-weight: 400;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.organizations-hero__proof .organizations-activity-card__body {
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+  align-items: end;
+  gap: 0.65rem 1.25rem;
+  display: grid;
+}
+
+.organizations-hero__proof .organizations-activity-card__body .section-kicker {
+  grid-column: 1 / -1;
+}
+
+.organizations-hero__proof .organizations-activity-card__body time {
+  margin-top: 0;
+  text-align: right;
+}
+
+.organizations-hero__proof-empty {
+  min-height: 14rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  align-content: center;
+}
+
+.organizations-hero__proof-empty p {
+  max-width: 42ch;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.organizations-hero__proof-empty a {
+  min-height: 2.75rem;
+  align-items: center;
+  font-weight: 700;
+  display: inline-flex;
+}
+
+.organizations-hero__facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  list-style: none;
+  display: grid;
+}
+
+.organizations-hero__facts li {
+  min-width: 0;
+  min-height: 4.75rem;
+  padding: 0.75rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  align-content: center;
+}
+
+.organizations-hero__facts strong,
+.organizations-hero__facts span {
+  display: block;
+}
+
+.organizations-hero__facts strong {
+  font-family: var(--display);
+  font-size: 1.55rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.organizations-hero__facts span,
+.organizations-hero__facts a {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.organizations-hero__facts a {
+  min-height: 2.75rem;
+  align-items: center;
+  font-weight: 700;
+  display: inline-flex;
+}
+
 .organizations-introduction,
 .organizations-evidence,
 .organizations-footprint,
@@ -86,7 +230,7 @@
 }
 
 .organizations-evidence__gallery {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: clamp(0.75rem, 1.5vw, 1.25rem);
   display: grid;
 }
@@ -373,6 +517,7 @@
 }
 
 @media (max-width: 52rem) {
+  .for-organizations-page > .organizations-hero,
   .organizations-introduction,
   .organizations-heading--split,
   .organizations-footprint__columns,
@@ -382,12 +527,17 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .organizations-hero__proof {
+    max-width: 44rem;
+  }
+
   .organizations-collaboration__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 42rem) {
+  .for-organizations-page > .organizations-hero,
   .organizations-introduction,
   .organizations-evidence,
   .organizations-footprint,
@@ -397,6 +547,16 @@
   .organizations-contact {
     padding-right: max(1rem, env(safe-area-inset-right));
     padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .organizations-hero__proof-heading,
+  .organizations-hero__proof .organizations-activity-card__body,
+  .organizations-hero__facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .organizations-hero__proof .organizations-activity-card__body time {
+    text-align: left;
   }
 
   .organizations-evidence__gallery,

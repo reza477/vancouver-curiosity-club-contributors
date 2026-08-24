@@ -6,7 +6,6 @@ import {
   formatEventSchedule,
 } from "@/app/_components/EventCard";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
-import { PageMasthead } from "@/app/_components/PageMasthead";
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import {
   discoveryArtworkCredit,
@@ -134,6 +133,14 @@ export default async function ForOrganizationsPage() {
   const { catalog, events } = loaded;
   const lanes = catalog.lanes.slice(0, 4);
   const clubs = selectCanonicalPublicCommunities(catalog.clubs);
+  const featuredEvent =
+    events?.find((event) => event.artwork !== null) ?? events?.[0] ?? null;
+  const additionalEvents =
+    events === null
+      ? []
+      : featuredEvent
+        ? events.filter((event) => event.slug !== featuredEvent.slug)
+        : events;
 
   return (
     <main className="for-organizations-page">
@@ -148,11 +155,72 @@ export default async function ForOrganizationsPage() {
           { label: "For Organizations" },
         ]}
       />
-      <PageMasthead
-        eyebrow="For organizations"
-        title="Build thoughtful public programs with us"
-        deck="Vancouver Curiosity Club creates recurring gatherings across learning, culture, creativity, and shared experience. We welcome organizations that can strengthen access, space, expertise, outreach, or sustainable program support."
-      />
+      <header
+        className="page-masthead page-masthead--compact organizations-hero"
+        aria-labelledby="organizations-title"
+      >
+        <div className="page-masthead__copy organizations-hero__copy">
+          <p className="eyebrow">For organizations</p>
+          <h1 id="organizations-title">Build thoughtful public programs with us</h1>
+          <p className="page-masthead__deck">
+            Vancouver Curiosity Club creates recurring gatherings across
+            learning, culture, creativity, and shared experience. We welcome
+            organizations that can strengthen access, space, expertise,
+            outreach, or sustainable program support.
+          </p>
+          <div className="organizations-hero__actions">
+            <Link
+              className="primary-action"
+              href="/contact?topic=partnerships#contact-form"
+            >
+              Discuss a partnership
+            </Link>
+            <Link href="#public-work">Review public work</Link>
+          </div>
+        </div>
+
+        <aside
+          className="organizations-hero__proof"
+          aria-labelledby="organizations-proof-title"
+        >
+          <div className="organizations-hero__proof-heading">
+            <p className="section-kicker">Current public work</p>
+            <h2 id="organizations-proof-title">
+              {featuredEvent
+                ? "See a current public program."
+                : "Review the public program structure."}
+            </h2>
+          </div>
+          {featuredEvent ? (
+            <OrganizationActivityCard event={featuredEvent} prominent />
+          ) : (
+            <div className="organizations-hero__proof-empty" aria-live="polite">
+              <p>
+                {events === null
+                  ? "Current event details are temporarily unavailable."
+                  : "The next confirmed public listing is being prepared."}
+              </p>
+              <Link href="/events">View the public event calendar</Link>
+            </div>
+          )}
+          <ul
+            className="organizations-hero__facts"
+            aria-label="Public program scope"
+          >
+            <li>
+              <strong>{lanes.length}</strong>
+              <span>Program streams</span>
+            </li>
+            <li>
+              <strong>{clubs.length}</strong>
+              <span>Public communities</span>
+            </li>
+            <li>
+              <Link href="/events">Open the current calendar</Link>
+            </li>
+          </ul>
+        </aside>
+      </header>
 
       <section
         className="organizations-introduction"
@@ -182,13 +250,14 @@ export default async function ForOrganizationsPage() {
 
       <section
         className="organizations-evidence"
+        id="public-work"
         aria-labelledby="organizations-evidence-title"
       >
         <div className="organizations-heading organizations-heading--split">
           <div>
             <p className="section-kicker">Current public activity</p>
             <h2 id="organizations-evidence-title">
-              A program partners can review.
+              Public work partners can review.
             </h2>
           </div>
           <div>
@@ -204,16 +273,16 @@ export default async function ForOrganizationsPage() {
             <h3>Current event details are temporarily unavailable.</h3>
             <p>Please use the public calendar to try again shortly.</p>
           </div>
-        ) : events.length > 0 ? (
+        ) : additionalEvents.length > 0 ? (
           <div
             className="organizations-evidence__gallery"
-            aria-label="Current public event examples"
+            aria-label="More current public event examples"
           >
-            {events.map((event) => (
+            {additionalEvents.map((event) => (
               <OrganizationActivityCard event={event} key={event.slug} />
             ))}
           </div>
-        ) : (
+        ) : featuredEvent ? null : (
           <div className="organizations-evidence__empty">
             <h3>The next public listings are being prepared.</h3>
             <p>The public calendar will show the next confirmed programs.</p>
@@ -468,14 +537,17 @@ async function loadOrganizationPageData(): Promise<{
 
 function OrganizationActivityCard({
   event,
-}: Readonly<{ event: PublicEventCardDto }>) {
+  prominent = false,
+}: Readonly<{ event: PublicEventCardDto; prominent?: boolean }>) {
   const displayTitle = institutionalEventTitle(event);
   const artworkCredit = event.artwork
     ? discoveryArtworkCredit(event.artwork.credit)
     : null;
 
   return (
-    <article className="organizations-activity-card">
+    <article
+      className={`organizations-activity-card${prominent ? " organizations-activity-card--featured" : ""}`}
+    >
       {event.artwork ? (
         <figure className="organizations-activity-card__artwork">
           <div className="organizations-activity-card__artwork-frame">
@@ -489,8 +561,13 @@ function OrganizationActivityCard({
                 />
               }
               height={event.artwork.dimensions.large.height}
-              loading="lazy"
-              sizes="(max-width: 42rem) calc(100vw - 2rem), 31vw"
+              fetchPriority={prominent ? "high" : undefined}
+              loading={prominent ? "eager" : "lazy"}
+              sizes={
+                prominent
+                  ? "(max-width: 52rem) calc(100vw - 2rem), 42vw"
+                  : "(max-width: 42rem) calc(100vw - 2rem), 46vw"
+              }
               src={event.artwork.url}
               srcSet={responsiveImageSrcSet([
                 {

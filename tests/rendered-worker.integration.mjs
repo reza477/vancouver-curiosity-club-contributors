@@ -1284,6 +1284,51 @@ test("the built About page renders the exact shared mission and metadata", async
   assertNoPrivateSentinels(html);
 });
 
+test("the built For Organizations hero shows public proof and an immediate partnership path", async () => {
+  const response = await fetchPath("/for-organizations");
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+  const html = await response.text();
+  const hero =
+    /<header class="page-masthead page-masthead--compact organizations-hero"[\s\S]*?<\/header>/u.exec(
+      html,
+    )?.[0];
+
+  assert.ok(hero, "For Organizations must render its partnership hero");
+  assert.match(hero, /<h1 id="organizations-title">Build thoughtful public programs with us<\/h1>/u);
+  assert.match(hero, /class="organizations-hero__proof"/u);
+  const hasFeaturedEvent = hero.includes(
+    "organizations-activity-card organizations-activity-card--featured",
+  );
+  const hasFallback = hero.includes("organizations-hero__proof-empty");
+  assert.notEqual(
+    hasFeaturedEvent,
+    hasFallback,
+    "the partnership proof must render exactly one truthful current state",
+  );
+  if (hasFeaturedEvent) {
+    assert.match(hero, />See a current public program\.<\/h2>/u);
+    assert.match(hero, /<img[^>]*fetchpriority="high"[^>]*loading="eager"/u);
+  } else {
+    assert.match(hero, />Review the public program structure\.<\/h2>/u);
+    assert.match(
+      hero,
+      /Current event details are temporarily unavailable\.|The next confirmed public listing is being prepared\./u,
+    );
+  }
+  assert.match(
+    hero,
+    /href="\/contact\?topic=partnerships#contact-form"[^>]*>Discuss a partnership<\/a>/u,
+  );
+  assert.match(hero, /href="#public-work"[^>]*>Review public work<\/a>/u);
+  assert.match(html, />Public work partners can review\.<\/h2>/u);
+  assert.doesNotMatch(html, /A program partners can review\./u);
+  assert.equal((html.match(/<h1\b/gu) ?? []).length, 1);
+  assertSharedChrome(html);
+  assertNoPrivateSentinels(html);
+});
+
 test("public terminal slashes and the legacy favicon canonicalize without weakening strict paths", async () => {
   for (const method of ["GET", "HEAD"]) {
     const response = await fetchPath("/about/?from=qa", {
