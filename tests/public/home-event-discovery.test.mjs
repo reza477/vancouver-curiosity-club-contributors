@@ -28,11 +28,11 @@ test("Home renders the approved institutional story in the exact section order",
     requiredSections,
   );
   assert.equal((markup.match(/<h1\b/gu) ?? []).length, 1);
-  assert.match(markup, />A Vancouver community organization</u);
+  assert.match(markup, />Our mission</u);
   assert.match(markup, />Building community through curiosity\.<\/h1>/u);
   assert.match(
     markup,
-    /Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\. Our gatherings are open to the public, while partnerships with organizations, venues, and supporters help this work grow\./u,
+    /Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university\. Through Vancouver Curiosity Club, we organize free, facilitated public discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life\. Our purpose is to encourage curiosity, thoughtful dialogue and meaningful community connection\./u,
   );
   assert.match(markup, /href="#our-work"[^>]*>Explore our work<\/a>/u);
   assert.match(markup, /href="\/for-organizations"[^>]*>Partner with us<\/a>/u);

@@ -301,9 +301,9 @@ test("homepage leads with the institutional mission and eight focused sections",
   assert.doesNotMatch(page, /CalendarPage|PublicMonthCalendar/u);
 
   for (const copy of [
-    "A Vancouver community organization",
+    "Our mission",
     "Building community through curiosity.",
-    "Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience.",
+    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.",
     "Explore our work",
     "Partner with us",
     "Organization at a glance",

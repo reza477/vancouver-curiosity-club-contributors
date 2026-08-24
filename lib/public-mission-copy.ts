@@ -1,17 +1,19 @@
+export const PUBLIC_MISSION_STATEMENT =
+  "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated public discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life. Our purpose is to encourage curiosity, thoughtful dialogue and meaningful community connection.";
+
+const PUBLIC_MISSION_METADATA_DESCRIPTION =
+  "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.";
+
 export const PUBLIC_HOME_MISSION_COPY = Object.freeze({
-  body:
-    "Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience. Our gatherings are open to the public, while partnerships with organizations, venues, and supporters help this work grow.",
-  eyebrow: "A Vancouver community organization",
+  body: PUBLIC_MISSION_STATEMENT,
+  eyebrow: "Our mission",
   heading: "Building community through curiosity.",
-  metadataDescription:
-    "Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience.",
+  metadataDescription: PUBLIC_MISSION_METADATA_DESCRIPTION,
 });
 
 export const PUBLIC_ABOUT_MISSION_COPY = Object.freeze({
-  eyebrow: "Mission-led community in Vancouver",
+  eyebrow: "Our mission",
   heading: "Building belonging through curiosity.",
-  introduction:
-    "Vancouver Curiosity Club is a Vancouver-based community organization creating recurring public gatherings around ideas, culture, creativity, play, and shared experience.",
-  metadataDescription:
-    "Learn how Vancouver Curiosity Club creates recurring public gatherings and structured ways for people to connect around shared interests.",
+  introduction: PUBLIC_MISSION_STATEMENT,
+  metadataDescription: PUBLIC_MISSION_METADATA_DESCRIPTION,
 });

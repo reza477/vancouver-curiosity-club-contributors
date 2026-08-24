@@ -164,7 +164,6 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
         heading: PUBLIC_ABOUT_MISSION_COPY.heading,
         text: PUBLIC_ABOUT_MISSION_COPY.introduction,
         paragraphs: [
-          "Our mission is to create welcoming, well-prepared spaces where curiosity becomes conversation, participation, and belonging.",
           "We are building for the long term through recurring programs, clear public standards, and partnerships that can support steady growth.",
         ],
       }),

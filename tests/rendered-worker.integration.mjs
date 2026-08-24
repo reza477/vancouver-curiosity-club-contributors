@@ -774,16 +774,16 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(
     html,
-    /name="description" content="Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\."/iu,
+    /name="description" content="Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university\."/iu,
   );
   assert.match(
     html,
-    /A Vancouver community organization/u,
+    /Our mission/u,
   );
   assert.match(html, /Building community through curiosity\./u);
   assert.match(
     html,
-    /Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\. Our gatherings are open to the public, while partnerships with organizations, venues, and supporters help this work grow\./u,
+    /Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university\. Through Vancouver Curiosity Club, we organize free, facilitated public discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life\. Our purpose is to encourage curiosity, thoughtful dialogue and meaningful community connection\./u,
   );
   assert.match(html, />Explore our work<\/a>/u);
   assert.match(html, />Partner with us<\/a>/u);
@@ -829,11 +829,11 @@ test("the built public root is indexable and carries the production security con
   );
   assert.match(
     html,
-    /property="og:description" content="Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\."/iu,
+    /property="og:description" content="Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university\."/iu,
   );
   assert.match(
     html,
-    /name="twitter:description" content="Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience\."/iu,
+    /name="twitter:description" content="Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university\."/iu,
   );
   assert.match(
     html,
@@ -1244,6 +1244,30 @@ test("the built Worker serves public media through its D1-free cache-policy fast
     "private, no-store, max-age=0",
   );
   assert.equal(missingPoster.headers.get("x-frame-options"), "DENY");
+});
+
+test("the built About page renders the exact shared mission and metadata", async () => {
+  const response = await fetchPath("/about");
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+  const html = await response.text();
+  const mission =
+    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated public discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life. Our purpose is to encourage curiosity, thoughtful dialogue and meaningful community connection.";
+  const metadataDescription =
+    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.";
+
+  assert.match(html, />Our mission</u);
+  assert.ok(html.includes(mission), "About must render the complete mission verbatim");
+  for (const metadata of [
+    `name="description" content="${metadataDescription}"`,
+    `property="og:description" content="${metadataDescription}"`,
+    `name="twitter:description" content="${metadataDescription}"`,
+  ]) {
+    assert.ok(html.includes(metadata), metadata);
+  }
+  assertSharedChrome(html);
+  assertNoPrivateSentinels(html);
 });
 
 test("public terminal slashes and the legacy favicon canonicalize without weakening strict paths", async () => {

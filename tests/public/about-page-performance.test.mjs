@@ -27,8 +27,9 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "About must keep the approved institutional narrative order",
   );
   for (const copy of [
-    "Mission-led community in Vancouver",
+    "Our mission",
     "Building belonging through curiosity.",
+    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.",
     "Organization at a glance",
     "How the model works",
     "What we organize",

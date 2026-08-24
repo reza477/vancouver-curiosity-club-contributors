@@ -104,9 +104,9 @@ test("Phase 2 exposes the complete public route contract", async () => {
   );
   assert.doesNotMatch(home, /CalendarPage|PublicMonthCalendar/u);
   for (const copy of [
-    "A Vancouver community organization",
+    "Our mission",
     "Building community through curiosity.",
-    "Vancouver Curiosity Club creates thoughtful public programs across learning, culture, creativity, and shared experience.",
+    "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.",
     "Explore our work",
     "Organization at a glance",
     "Four ways into community life.",
