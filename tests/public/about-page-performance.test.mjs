@@ -29,7 +29,6 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   for (const copy of [
     "Our mission",
-    "Building belonging through curiosity.",
     "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university.",
     "free, facilitated, in-person discussions and learning events",
     "At a time when much of social life takes place through screens",
@@ -60,6 +59,11 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   ]) {
     assert.ok(aboutPositioning.includes(copy), copy);
   }
+  assert.doesNotMatch(
+    aboutPositioning,
+    /Building belonging through curiosity\./u,
+    "the removed split-layout headline must not remain in the About experience",
+  );
   assert.match(
     about,
     /Vancouver Curiosity Club is the public-facing program of Vancouver[\s\S]*?Curiosity and Education Society/u,
@@ -112,8 +116,18 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     styles,
-    /\.about-hero\s*\{[^}]*align-items:\s*start;/su,
-    "the mission heading and mission copy must begin at the same vertical position",
+    /\.about-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*justify-items:\s*center;/su,
+    "the mission must use one centered page column",
+  );
+  assert.match(
+    styles,
+    /\.about-hero__content\s*\{[^}]*width:\s*min\(100%, 52rem\);[^}]*margin:\s*0 auto;/su,
+    "the mission statement must stay centered in a readable measure",
+  );
+  assert.match(
+    styles,
+    /\.about-hero h1\s*\{[^}]*font-size:\s*var\(--public-page-title\);[^}]*text-align:\s*center;/su,
+    "Our mission must be the large centered page heading",
   );
 });
 

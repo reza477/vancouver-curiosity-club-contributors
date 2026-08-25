@@ -486,7 +486,7 @@ test("About presents a professional mission, impact, continuity, and partnership
     /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
   );
   for (const phrase of [
-    "Building belonging through curiosity.",
+    "Our mission",
     "Make meaningful community easier to find.",
     "Board of Directors",
     "Reza Rahnama",
@@ -507,6 +507,10 @@ test("About presents a professional mission, impact, continuity, and partnership
   ]) {
     assert.ok(aboutPositioning.includes(phrase), phrase);
   }
+  assert.doesNotMatch(
+    aboutPositioning,
+    /Building belonging through curiosity\./u,
+  );
   assert.doesNotMatch(
     about,
     /\bOrganizerNote\b|about-founder-note(?:-title)?/u,

@@ -35,26 +35,32 @@
 }
 
 .about-hero {
-  grid-template-columns: minmax(0, 1.08fr) minmax(18rem, 0.92fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: clamp(2rem, 6vw, 6rem);
+  justify-items: center;
   padding-top: clamp(2.5rem, 4.5vw, 4rem);
   padding-bottom: clamp(2.25rem, 4vw, 3.5rem);
   display: grid;
 }
 
+.about-hero__content {
+  width: min(100%, 52rem);
+  margin: 0 auto;
+}
+
 .about-hero h1 {
-  max-width: 13ch;
-  margin: 0;
+  max-width: none;
+  margin: 0 0 clamp(1.5rem, 3vw, 2.25rem);
   font-family: var(--display);
   font-size: var(--public-page-title);
   font-weight: 400;
   letter-spacing: -0.06em;
   line-height: 0.98;
+  text-align: center;
 }
 
 .about-hero__introduction > p {
-  max-width: 47rem;
+  max-width: none;
   margin-bottom: 0;
   color: var(--ink-soft);
   font-size: clamp(1.05rem, 1.45vw, 1.25rem);
@@ -73,6 +79,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 0.75rem 1.2rem;
 }
 

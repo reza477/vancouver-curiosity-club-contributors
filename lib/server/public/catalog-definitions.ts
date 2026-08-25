@@ -160,7 +160,6 @@ export const PUBLIC_CATALOG_PAGES: readonly PublicCatalogPageDefinition[] =
     ]),
     page("about", "About", [
       section("intro", "intro", 10, {
-        eyebrow: PUBLIC_ABOUT_MISSION_COPY.eyebrow,
         heading: PUBLIC_ABOUT_MISSION_COPY.heading,
         text: PUBLIC_ABOUT_MISSION_COPY.introduction,
         paragraphs: [

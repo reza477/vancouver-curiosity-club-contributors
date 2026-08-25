@@ -110,19 +110,18 @@ export default async function AboutPage() {
       />
 
       <header className="about-hero" aria-labelledby="about-title">
-        <div className="about-hero__copy">
-          <p className="section-kicker">{PUBLIC_ABOUT_MISSION_COPY.eyebrow}</p>
+        <div className="about-hero__content">
           <h1 id="about-title">{PUBLIC_ABOUT_MISSION_COPY.heading}</h1>
-        </div>
-        <div className="about-hero__introduction">
-          {PUBLIC_ABOUT_MISSION_COPY.paragraphs.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
-          <div className="about-actions">
-            <Link className="primary-action" href="/for-organizations">
-              For organizations
-            </Link>
-            <Link href="/events">View public events</Link>
+          <div className="about-hero__introduction">
+            {PUBLIC_ABOUT_MISSION_COPY.paragraphs.map((paragraph) => (
+              <p key={paragraph}>{paragraph}</p>
+            ))}
+            <div className="about-actions">
+              <Link className="primary-action" href="/for-organizations">
+                For organizations
+              </Link>
+              <Link href="/events">View public events</Link>
+            </div>
           </div>
         </div>
       </header>

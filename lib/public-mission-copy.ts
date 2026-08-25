@@ -18,8 +18,7 @@ export const PUBLIC_HOME_MISSION_COPY = Object.freeze({
 });
 
 export const PUBLIC_ABOUT_MISSION_COPY = Object.freeze({
-  eyebrow: "Our mission",
-  heading: "Building belonging through curiosity.",
+  heading: "Our mission",
   introduction: PUBLIC_MISSION_STATEMENT,
   metadataDescription: PUBLIC_MISSION_METADATA_DESCRIPTION,
   paragraphs: PUBLIC_MISSION_PARAGRAPHS,
