@@ -228,9 +228,8 @@ function expectedCacheControl(pathname) {
 }
 
 function isUnavailablePage(body) {
-  return (
-    body.includes("could not be prepared.") ||
-    body.includes("The public site is not available yet.")
+  return /<(?:h1|p)\b[^>]*>[^<]*(?:could not be prepared\.|The public site is not available yet\.)[^<]*<\/(?:h1|p)>/u.test(
+    body,
   );
 }
 
