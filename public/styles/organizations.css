@@ -166,7 +166,6 @@
   display: inline-flex;
 }
 
-.organizations-evidence,
 .organizations-collaboration,
 .organizations-standards,
 .organizations-contact {
@@ -196,37 +195,15 @@
   text-wrap: balance;
 }
 
-.organizations-heading--split a {
-  min-height: 2.75rem;
-  align-items: center;
-  font-weight: 700;
-  display: inline-flex;
-}
-
 .organizations-heading {
   max-width: 64rem;
   margin-bottom: clamp(1.75rem, 3.5vw, 3rem);
 }
 
-.organizations-heading--split {
-  max-width: none;
-  grid-template-columns: minmax(15rem, 0.74fr) minmax(0, 1.26fr);
-  align-items: end;
-  gap: clamp(2rem, 6vw, 6rem);
-  display: grid;
-}
-
-.organizations-heading--split > div:last-child p,
 .organizations-heading > p:not(.section-kicker) {
   max-width: 55ch;
   color: var(--ink-soft);
   line-height: 1.6;
-}
-
-.organizations-evidence__gallery {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(0.75rem, 1.5vw, 1.25rem);
-  display: grid;
 }
 
 .organizations-activity-card {
@@ -291,54 +268,6 @@
   font-size: 0.88rem;
   line-height: 1.5;
   display: block;
-}
-
-.organizations-evidence__empty {
-  padding: clamp(1.25rem, 3vw, 2rem);
-  border: 1px solid var(--line);
-  background: var(--paper-deep);
-}
-
-.organizations-evidence__empty h3 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.organizations-evidence__empty p {
-  margin: 0.5rem 0 0;
-  color: var(--ink-soft);
-}
-
-.organizations-evidence__facts {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: clamp(2rem, 4vw, 3rem) 0 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
-  list-style: none;
-  display: grid;
-}
-
-.organizations-evidence__facts li {
-  min-height: 7.25rem;
-  padding: 1rem;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.organizations-evidence__facts strong,
-.organizations-evidence__facts span {
-  display: block;
-}
-
-.organizations-evidence__facts strong {
-  margin-bottom: 0.45rem;
-}
-
-.organizations-evidence__facts span {
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-  line-height: 1.45;
 }
 
 .organizations-collaboration {
@@ -425,14 +354,7 @@
   border-radius: 0;
 }
 
-@media (max-width: 64rem) {
-  .organizations-evidence__facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 52rem) {
-  .organizations-heading--split,
   .organizations-standards,
   .organizations-contact {
     grid-template-columns: minmax(0, 1fr);
@@ -449,7 +371,6 @@
 
 @media (max-width: 42rem) {
   .for-organizations-page > .organizations-hero,
-  .organizations-evidence,
   .organizations-collaboration,
   .organizations-standards,
   .organizations-contact {
@@ -471,14 +392,11 @@
     text-align: left;
   }
 
-  .organizations-evidence__gallery,
-  .organizations-evidence__facts,
   .organizations-collaboration__grid,
   .organizations-standards nav {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .organizations-evidence__facts li,
   .organizations-collaboration article {
     min-height: 0;
   }

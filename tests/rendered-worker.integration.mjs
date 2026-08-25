@@ -1344,8 +1344,16 @@ test("the built For Organizations hero shows public proof and an immediate partn
     hero,
     /href="\/contact\?topic=partnerships#contact-form"[^>]*>Discuss a partnership<\/a>/u,
   );
-  assert.match(hero, /href="#public-work"[^>]*>Review public work<\/a>/u);
-  assert.match(html, />Public work partners can review\.<\/h2>/u);
+  assert.match(hero, /href="\/events"[^>]*>View public events<\/a>/u);
+  assert.doesNotMatch(
+    html,
+    /Current public activity|Public work partners can review\.|organizations-evidence|id="public-work"|Review public work/u,
+  );
+  assert.ok(
+    html.indexOf('class="organizations-collaboration"') >
+      html.indexOf('class="page-masthead page-masthead--compact organizations-hero"'),
+    "the collaboration section must follow the hero after public activity is removed",
+  );
   assert.doesNotMatch(html, /A program partners can review\./u);
   assert.equal((html.match(/<h1\b/gu) ?? []).length, 1);
   assertSharedChrome(html);

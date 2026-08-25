@@ -108,12 +108,6 @@ export default async function ForOrganizationsPage() {
   const clubs = selectCanonicalPublicCommunities(catalog.clubs);
   const featuredEvent =
     events?.find((event) => event.artwork !== null) ?? events?.[0] ?? null;
-  const additionalEvents =
-    events === null
-      ? []
-      : featuredEvent
-        ? events.filter((event) => event.slug !== featuredEvent.slug)
-        : events;
 
   return (
     <main className="for-organizations-page">
@@ -153,7 +147,7 @@ export default async function ForOrganizationsPage() {
               >
                 Discuss a partnership
               </Link>
-              <Link href="#public-work">Review public work</Link>
+              <Link href="/events">View public events</Link>
             </div>
           </div>
         </div>
@@ -200,96 +194,6 @@ export default async function ForOrganizationsPage() {
           </ul>
         </aside>
       </header>
-
-      <section
-        className="organizations-evidence"
-        id="public-work"
-        aria-labelledby="organizations-evidence-title"
-      >
-        <div className="organizations-heading organizations-heading--split">
-          <div>
-            <p className="section-kicker">Current public activity</p>
-            <h2 id="organizations-evidence-title">
-              Public work partners can review.
-            </h2>
-          </div>
-          <div>
-            <p>
-              Public event materials show the range of subjects and formats.
-              The calendar and community pages provide current program details.
-            </p>
-            <Link href="/events">View the public event calendar</Link>
-          </div>
-        </div>
-        {events === null ? (
-          <div className="organizations-evidence__empty" aria-live="polite">
-            <h3>Current event details are temporarily unavailable.</h3>
-            <p>Please use the public calendar to try again shortly.</p>
-          </div>
-        ) : additionalEvents.length > 0 ? (
-          <div
-            className="organizations-evidence__gallery"
-            aria-label="More current public event examples"
-          >
-            {additionalEvents.map((event) => (
-              <OrganizationActivityCard event={event} key={event.slug} />
-            ))}
-          </div>
-        ) : featuredEvent ? null : (
-          <div className="organizations-evidence__empty">
-            <h3>The next public listings are being prepared.</h3>
-            <p>The public calendar will show the next confirmed programs.</p>
-          </div>
-        )}
-        <ul className="organizations-evidence__facts">
-          {catalog.site.locationLabel ? (
-            <li>
-              <strong>{catalog.site.locationLabel}</strong>
-              <span>Local base</span>
-            </li>
-          ) : null}
-          {catalog.site.legalName ? (
-            <li>
-              <strong>{catalog.site.legalName}</strong>
-              <span>Legal name</span>
-            </li>
-          ) : null}
-          {catalog.site.institutionalFacts.foundedYear !== null ? (
-            <li>
-              <strong>{catalog.site.institutionalFacts.foundedYear}</strong>
-              <span>Established</span>
-            </li>
-          ) : null}
-          {catalog.site.institutionalFacts.attendanceTotal !== null &&
-          catalog.site.institutionalFacts.attendanceTotalAsOf ? (
-            <li>
-              <strong>
-                {new Intl.NumberFormat("en-CA").format(
-                  catalog.site.institutionalFacts.attendanceTotal,
-                )}
-              </strong>
-              <span>
-                Recorded participation through{" "}
-                {catalog.site.institutionalFacts.attendanceTotalAsOf}
-              </span>
-            </li>
-          ) : null}
-          {catalog.site.institutionalFacts.memberTotal !== null &&
-          catalog.site.institutionalFacts.memberTotalAsOf ? (
-            <li>
-              <strong>
-                {new Intl.NumberFormat("en-CA").format(
-                  catalog.site.institutionalFacts.memberTotal,
-                )}
-              </strong>
-              <span>
-                Recorded community size as of{" "}
-                {catalog.site.institutionalFacts.memberTotalAsOf}
-              </span>
-            </li>
-          ) : null}
-        </ul>
-      </section>
 
       <section
         className="organizations-collaboration"
@@ -395,7 +299,7 @@ async function loadOrganizationPageData(): Promise<{
     const organization = await getRequestPublicOrganization(database);
     if (!organization) return null;
     const events = await readPublicHomeEventMaterialization(database, {
-      maximum: 3,
+      maximum: 1,
       nowUtcMs: readServerUtcMs(),
       organizationId: organization.id,
     });

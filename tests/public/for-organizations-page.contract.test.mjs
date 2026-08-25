@@ -13,7 +13,7 @@ test("For Organizations presents the institutional partnership story in a clear 
   );
   assert.match(
     page,
-    /className="page-masthead page-masthead--compact organizations-hero"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?Discuss a partnership[\s\S]*?className="organizations-evidence"/u,
+    /className="page-masthead page-masthead--compact organizations-hero"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?Discuss a partnership[\s\S]*?href="\/events"[\s\S]*?View public events[\s\S]*?className="organizations-collaboration"/u,
   );
   assert.match(
     page,
@@ -24,11 +24,9 @@ test("For Organizations presents the institutional partnership story in a clear 
   assert.match(page, /"Review the public program structure\."/u);
   assert.match(
     page,
-    /className="organizations-evidence"[\s\S]*?className="organizations-collaboration"[\s\S]*?className="organizations-standards"[\s\S]*?className="organizations-contact"/u,
+    /className="organizations-collaboration"[\s\S]*?className="organizations-standards"[\s\S]*?className="organizations-contact"/u,
   );
   for (const phrase of [
-    "Current public activity",
-    "Public work partners can review.",
     "Collaboration pathways",
     "Public operating standards",
     "Discuss a partnership",
@@ -43,20 +41,22 @@ test("For Organizations presents the institutional partnership story in a clear 
     page,
     /organizations-(?:introduction|footprint|conversation)/u,
   );
+  assert.doesNotMatch(
+    page,
+    /organizations-evidence|Current public activity|Public work partners can review\.|Review public work|id="public-work"/u,
+  );
 });
 
-test("For Organizations uses bounded current activity with truthful states and poster fallbacks", async () => {
+test("For Organizations uses one bounded current activity with truthful states and poster fallbacks", async () => {
   const page = await source("app/for-organizations/page.tsx");
 
   assert.match(page, /readPublicHomeEventMaterialization/u);
   assert.match(page, /getRequestPublicOrganization/u);
-  assert.match(page, /maximum:\s*3/u);
+  assert.match(page, /maximum:\s*1/u);
   assert.match(page, /events\?\.find\(\(event\) => event\.artwork !== null\)/u);
   assert.match(page, /featuredEvent/u);
-  assert.match(page, /additionalEvents/u);
   assert.match(page, /events === null/u);
-  assert.match(page, /additionalEvents\.length > 0/u);
-  assert.match(page, /additionalEvents\.map\(\(event\)/u);
+  assert.doesNotMatch(page, /additionalEvents/u);
   assert.match(page, /<EventPosterImage/u);
   assert.match(page, /<EventArtworkFallback/u);
   assert.match(page, /responsiveImageSrcSet/u);
@@ -73,19 +73,6 @@ test("For Organizations uses bounded current activity with truthful states and p
 test("For Organizations keeps claims evidence-safe and exposes the review and contact paths", async () => {
   const page = await source("app/for-organizations/page.tsx");
 
-  assert.match(page, /catalog\.site\.legalName \?/u);
-  assert.match(
-    page,
-    /catalog\.site\.institutionalFacts\.foundedYear !== null/u,
-  );
-  assert.match(
-    page,
-    /catalog\.site\.institutionalFacts\.attendanceTotal !== null/u,
-  );
-  assert.match(
-    page,
-    /catalog\.site\.institutionalFacts\.memberTotal !== null/u,
-  );
   assert.doesNotMatch(
     page,
     /\b(?:registered nonprofit|nonprofit organization|registered charity|charitable organization|tax[- ]deductible|tax receipt)\b/iu,
@@ -109,7 +96,7 @@ test("For Organizations keeps claims evidence-safe and exposes the review and co
   assert.doesNotMatch(page, /FIRST_CONVERSATION_TOPICS/u);
 });
 
-test("For Organizations route styles remain bounded and stack the evidence cleanly", async () => {
+test("For Organizations route styles remain bounded and stack its remaining sections cleanly", async () => {
   const stylesheetPath = new URL(
     "public/styles/organizations.css",
     projectRoot,
@@ -120,10 +107,6 @@ test("For Organizations route styles remain bounded and stack the evidence clean
   ]);
 
   assert.ok(file.size < 30_000, "the route stylesheet must remain bounded");
-  assert.match(
-    css,
-    /\.organizations-evidence__gallery\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/su,
-  );
   assert.match(
     css,
     /\.organizations-collaboration__grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/su,
@@ -143,6 +126,7 @@ test("For Organizations route styles remain bounded and stack the evidence clean
     css,
     /\.organizations-(?:introduction|footprint|conversation)\b/u,
   );
+  assert.doesNotMatch(css, /organizations-evidence|organizations-heading--split/u);
   const tabletStyles = css.slice(
     css.indexOf("@media (max-width: 52rem)"),
     css.indexOf("@media (max-width: 42rem)"),
@@ -155,10 +139,6 @@ test("For Organizations route styles remain bounded and stack the evidence clean
   assert.match(
     css,
     /@media \(max-width: 42rem\)[\s\S]*?\.organizations-hero__copy\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u,
-  );
-  assert.match(
-    css,
-    /@media \(max-width: 42rem\)[\s\S]*?\.organizations-evidence__gallery,[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,
   );
   assert.doesNotMatch(css, /font-size:\s*0\.[0-6][0-9]*rem/u);
 });
