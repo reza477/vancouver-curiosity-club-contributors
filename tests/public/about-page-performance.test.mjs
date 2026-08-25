@@ -129,6 +129,33 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     /\.about-hero h1\s*\{[^}]*font-size:\s*var\(--public-page-title\);[^}]*text-align:\s*center;/su,
     "Our mission must be the large centered page heading",
   );
+  for (const [emoji, name] of [
+    ["🧭", "Reza Rahnama"],
+    ["🤝", "Nawar Alsaadi"],
+    ["💬", "Nataliia Ivanova"],
+    ["💻", "Anurag Kapale"],
+  ]) {
+    assert.match(
+      about,
+      new RegExp(`emoji: "${emoji}"[\\s\\S]*?name: "${name}"`, "u"),
+      `${name} must keep the approved decorative badge`,
+    );
+  }
+  assert.match(
+    about,
+    /className="about-board__badge" aria-hidden="true"[\s\S]*?\{director\.emoji\}/u,
+    "board emojis must stay decorative for assistive technology",
+  );
+  assert.match(
+    styles,
+    /\.about-board__list > li\s*\{[^}]*grid-template-columns:\s*2\.5rem minmax\(0, 1fr\);[^}]*display:\s*grid;/su,
+    "each director card must reserve a compact badge column",
+  );
+  assert.match(
+    styles,
+    /\.about-board__badge\s*\{[^}]*width:\s*2\.5rem;[^}]*border:\s*1px solid var\(--accent\);[^}]*border-radius:\s*50%;/su,
+    "board badges must remain small and professionally restrained",
+  );
 });
 
 test("primary navigation applies selective public prefetching", async () => {

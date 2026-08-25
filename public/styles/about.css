@@ -167,6 +167,26 @@
   padding: 1.2rem;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.9rem;
+  display: grid;
+}
+
+.about-board__badge {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--paper-deep);
+  place-items: center;
+  font-size: 1.1rem;
+  line-height: 1;
+  display: grid;
+}
+
+.about-board__member {
+  min-width: 0;
 }
 
 .about-board__list h3 {

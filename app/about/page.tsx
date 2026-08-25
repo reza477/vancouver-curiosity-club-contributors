@@ -63,18 +63,22 @@ const COMMUNITY_PROGRAMS = Object.freeze([
 
 const BOARD_DIRECTORS = Object.freeze([
   Object.freeze({
+    emoji: "🧭",
     name: "Reza Rahnama",
     role: "Founder, President and Executive Director",
   }),
   Object.freeze({
+    emoji: "🤝",
     name: "Nawar Alsaadi",
     role: "Vice-President and Treasurer; Strategy and Partnerships",
   }),
   Object.freeze({
+    emoji: "💬",
     name: "Nataliia Ivanova",
     role: "Digital Experience and Communications",
   }),
   Object.freeze({
+    emoji: "💻",
     name: "Anurag Kapale",
     role: "Director-at-Large; Technology, AI and Data",
   }),
@@ -175,8 +179,13 @@ export default async function AboutPage() {
         <ul className="about-board__list">
           {BOARD_DIRECTORS.map((director) => (
             <li key={director.name}>
-              <h3>{director.name}</h3>
-              <p>{director.role}</p>
+              <span className="about-board__badge" aria-hidden="true">
+                {director.emoji}
+              </span>
+              <div className="about-board__member">
+                <h3>{director.name}</h3>
+                <p>{director.role}</p>
+              </div>
             </li>
           ))}
         </ul>
