@@ -5,7 +5,7 @@ import test from "node:test";
 const projectRoot = new URL("../../", import.meta.url);
 
 test("About keeps its CMS gate and a truthful institutional narrative without loading projections", async () => {
-  const [about, editorial, missionCopy, catalogDefinitions] = await Promise.all([
+  const [about, editorial, missionCopy, catalogDefinitions, styles] = await Promise.all([
     readFile(new URL("app/about/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/_components/EditorialPage.tsx", projectRoot), "utf8"),
     readFile(new URL("lib/public-mission-copy.ts", projectRoot), "utf8"),
@@ -13,6 +13,7 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
       new URL("lib/server/public/catalog-definitions.ts", projectRoot),
       "utf8",
     ),
+    readFile(new URL("public/styles/about.css", projectRoot), "utf8"),
   ]);
   const aboutPositioning = `${about}\n${missionCopy}\n${catalogDefinitions}`;
 
@@ -98,6 +99,11 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     about,
     /\b(?:members?|attendees?)\s+(?:say|said|report(?:ed)?|tell|told)\b|\btestimonial(?:s)?\b|<blockquote\b/iu,
     "About must not present invented member testimony as impact evidence",
+  );
+  assert.match(
+    styles,
+    /\.about-hero\s*\{[^}]*align-items:\s*start;/su,
+    "the mission heading and mission copy must begin at the same vertical position",
   );
 });
 

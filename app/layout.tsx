@@ -34,7 +34,6 @@ const exactApplicationPaths = new Set([
   "/",
   "/about",
   "/accept-invitation",
-  "/accessibility",
   "/calendar",
   "/clubs",
   "/community",

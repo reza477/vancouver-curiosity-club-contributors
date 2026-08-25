@@ -1597,7 +1597,6 @@ export async function listPublicNavigation(
     "/get-involved",
     "/host-an-event",
     "/contact",
-    "/accessibility",
     "/conduct",
     "/privacy",
   ]);
@@ -2867,6 +2866,7 @@ function cleanPublicContentUrl(value: unknown): string | null {
     try {
       const parsed = new URL(value, "https://public.invalid");
       if (parsed.origin !== "https://public.invalid" || parsed.hash) return null;
+      if (parsed.pathname === "/accessibility") return null;
       return `${parsed.pathname}${parsed.search}`;
     } catch {
       return null;
@@ -2880,7 +2880,6 @@ function publicPagePath(slug: string): string | null {
   if (
     [
       "about",
-      "accessibility",
       "clubs",
       "community",
       "conduct",

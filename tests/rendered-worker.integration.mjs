@@ -126,7 +126,6 @@ const PUBLIC_PATHS = [
   "/host-an-event",
   "/contact",
   "/conduct",
-  "/accessibility",
   "/privacy",
 ];
 const PRODUCTION_ALTERNATE_ORIGINS = [
@@ -1907,7 +1906,6 @@ test("robots and sitemap contain only public canonical routes", async () => {
     "/host-an-event",
     "/contact",
     "/conduct",
-    "/accessibility",
     "/privacy",
     "/clubs/vancouver-curiosity-club",
     "/clubs/vancouver-literature-and-film",
@@ -1925,6 +1923,10 @@ test("robots and sitemap contain only public canonical routes", async () => {
   assert.doesNotMatch(
     sitemap,
     /<loc>https:\/\/preview\.example\/calendar<\/loc>/u,
+  );
+  assert.doesNotMatch(
+    sitemap,
+    /<loc>https:\/\/preview\.example\/accessibility<\/loc>/u,
   );
   assert.doesNotMatch(
     sitemap,
@@ -2137,6 +2139,7 @@ test("unknown, guessed, and draft routes use the custom noindex 404", async () =
     "/events/private-phase3-idea-sentinel",
     "/clubs/off-radar-eats",
     "/clubs/contemplative-meditation-journaling-circle",
+    "/accessibility",
     "/resources",
   ]) {
     const response = await fetchPath(path);
@@ -3424,7 +3427,6 @@ function assertSharedChrome(html) {
   assert.match(html, /Organizer Login/u);
   assert.match(html, /aria-label="Footer navigation"/u);
   assert.match(html, /Code of Conduct/u);
-  assert.match(html, /Accessibility/u);
   assert.match(html, /Privacy/u);
 }
 

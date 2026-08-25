@@ -29,7 +29,6 @@ const REQUIRED_TARGETS = new Set([
   "/get-involved",
   "/host-an-event",
   "/contact",
-  "/accessibility",
   "/conduct",
   "/privacy",
 ]);

@@ -34,7 +34,6 @@ test("only data-heavy public route families disable speculative prefetch", () =>
     "/about",
     "/get-involved",
     "/conduct",
-    "/accessibility",
     "/privacy",
     "/host-an-event",
     "https://www.meetup.com/example",

@@ -183,12 +183,12 @@ test("the footer contains the approved institutional groups and keeps organizer 
     ["/host-an-event", "Host an Event"],
     ["/contact", "Contact"],
     ["/conduct", "Code of Conduct"],
-    ["/accessibility", "Accessibility"],
     ["/privacy", "Privacy"],
     ["/organizer", "Organizer Login"],
   ]) {
     assert.match(markup, new RegExp(`href="${href}"[^>]*>${label}<`, "u"));
   }
+  assert.doesNotMatch(markup, /href="\/accessibility"/u);
   assert.match(markup, /Legal name: Verified Legal Name/u);
   const requiredHeaderNavigation = header.match(
     /const requiredNavigation\s*=\s*\[([\s\S]*?)\]\s*as const;/u,

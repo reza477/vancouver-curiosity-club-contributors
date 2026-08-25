@@ -270,7 +270,6 @@ export default async function AboutPage() {
           </p>
           <ul>
             <li><Link href="/conduct">Code of Conduct</Link></li>
-            <li><Link href="/accessibility">Accessibility</Link></li>
             <li><Link href="/privacy">Privacy</Link></li>
           </ul>
         </div>

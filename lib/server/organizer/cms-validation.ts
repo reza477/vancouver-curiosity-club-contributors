@@ -237,7 +237,6 @@ const REQUIRED_FOOTER_ITEMS = new Map([
   ["/host-an-event", "Host an Event"],
   ["/contact", "Contact"],
   ["/conduct", "Code of Conduct"],
-  ["/accessibility", "Accessibility"],
   ["/privacy", "Privacy"],
 ]);
 const LEGACY_HEADER_TARGETS = new Set([

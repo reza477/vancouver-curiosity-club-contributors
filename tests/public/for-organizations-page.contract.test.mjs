@@ -94,12 +94,12 @@ test("For Organizations keeps claims evidence-safe and exposes the review and co
     "/about",
     "/events",
     "/conduct",
-    "/accessibility",
     "/privacy",
     "/contact?topic=partnerships#contact-form",
   ]) {
     assert.match(page, new RegExp(`href="${escapeRegex(href)}"`, "u"));
   }
+  assert.doesNotMatch(page, /href="\/accessibility"/u);
   assert.match(page, /selectCanonicalPublicCommunities\(catalog\.clubs\)/u);
   assert.match(page, /collaborationOptions\.map/u);
   assert.doesNotMatch(page, /FIRST_CONVERSATION_TOPICS/u);

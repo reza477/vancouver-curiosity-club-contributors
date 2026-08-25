@@ -26,7 +26,6 @@ const PUBLIC_PAGE_PATHS = new Map([
   ["host-an-event", "/host-an-event"],
   ["contact", "/contact"],
   ["conduct", "/conduct"],
-  ["accessibility", "/accessibility"],
   ["privacy", "/privacy"],
   ["resources", "/resources"],
 ]);

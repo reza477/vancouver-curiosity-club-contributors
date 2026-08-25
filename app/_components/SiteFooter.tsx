@@ -137,7 +137,6 @@ function normalizedFooterNavigation(
   ] as const;
   const fallbackPolicies = [
     { href: "/conduct", label: "Code of Conduct" },
-    { href: "/accessibility", label: "Accessibility" },
     { href: "/privacy", label: "Privacy" },
   ] as const;
   const source = [
@@ -168,6 +167,7 @@ function normalizedFooterNavigation(
     if (
       item.href === "/organizer" ||
       item.href === "/community" ||
+      item.href === "/accessibility" ||
       seen.has(item.href)
     ) {
       continue;

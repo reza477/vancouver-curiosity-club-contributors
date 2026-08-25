@@ -277,8 +277,7 @@ test("navigation requires the exact public header and institutional footer", () 
     ["footer-host", "Host an Event", "footer", 60, "/host-an-event"],
     ["contact", "Contact", "footer", 70, "/contact"],
     ["conduct", "Code of Conduct", "footer", 80, "/conduct"],
-    ["accessibility", "Accessibility", "footer", 90, "/accessibility"],
-    ["privacy", "Privacy", "footer", 100, "/privacy"],
+    ["privacy", "Privacy", "footer", 90, "/privacy"],
   ].map(([id, label, placement, sortOrder, target]) => ({
     id,
     label,
@@ -286,7 +285,7 @@ test("navigation requires the exact public header and institutional footer", () 
     sortOrder,
     target,
   }));
-  assert.equal(parseNavigationSnapshot({ items }).items.length, 15);
+  assert.equal(parseNavigationSnapshot({ items }).items.length, 14);
   assert.throws(() =>
     parseNavigationSnapshot({
       items: items.map((item) =>
@@ -328,7 +327,7 @@ test("navigation requires the exact public header and institutional footer", () 
   );
   const maximumItems = [
     ...items,
-    ...Array.from({ length: 14 }, (_, index) => ({
+    ...Array.from({ length: 15 }, (_, index) => ({
       id: `footer-optional-${index}`,
       label: `Footer optional ${index + 1}`,
       placement: "footer",
@@ -432,6 +431,7 @@ test("legacy v1 navigation stays readable and upgrades to the institutional mode
     ],
   );
   assert.equal(upgraded.some(({ target }) => target === "/organizer"), false);
+  assert.equal(upgraded.some(({ target }) => target === "/accessibility"), false);
 
   const maximumLegacy = parsePersistedNavigationSnapshot({
     items: [
@@ -453,7 +453,7 @@ test("legacy v1 navigation stays readable and upgrades to the institutional mode
   );
   assert.equal(
     maximumUpgrade.filter(({ target }) => target.startsWith("https://")).length,
-    14,
+    15,
   );
   assert.doesNotThrow(() =>
     parseNavigationSnapshot({ items: maximumUpgrade }),
@@ -485,7 +485,7 @@ test("legacy v1 navigation stays readable and upgrades to the institutional mode
   assert.equal(
     resourceUpgrade.filter(({ target }) => target.startsWith("https://"))
       .length,
-    13,
+    14,
   );
   assert.equal(
     resourceUpgrade.some(({ target }) => target === "/resources"),

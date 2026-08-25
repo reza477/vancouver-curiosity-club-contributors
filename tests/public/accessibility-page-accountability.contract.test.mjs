@@ -1,93 +1,87 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import * as nodeModule from "node:module";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
-import { createElement } from "react";
-import { renderToReadableStream } from "react-dom/server";
-import { PUBLIC_CATALOG_PAGES } from "../../lib/server/public/catalog-definitions.ts";
 
 const projectRoot = new URL("../../", import.meta.url);
-const directImportsSupported = typeof nodeModule.registerHooks === "function";
-if (directImportsSupported) {
-  const cloudflareWorkersShim = dataModule("export const env = {};");
-  const serverOnlyShim = dataModule("export {};");
-  nodeModule.registerHooks({
-    resolve(specifier, context, nextResolve) {
-      if (specifier === "cloudflare:workers") {
-        return { shortCircuit: true, url: cloudflareWorkersShim };
-      }
-      if (specifier === "server-only") {
-        return { shortCircuit: true, url: serverOnlyShim };
-      }
-      return nextResolve(specifier, context);
-    },
-  });
-}
-const routeBodies = directImportsSupported
-  ? await import(
-      "../../app/_components/EditorialRouteBodies.tsx?accessibility-accountability-test"
-    )
-  : null;
-const directImportOptions = directImportsSupported
-  ? {}
-  : { skip: "Route rendering requires node:module registerHooks." };
-const accessibilityDefinition = PUBLIC_CATALOG_PAGES.find(
-  (page) => page.slug === "accessibility",
-);
-assert.ok(accessibilityDefinition, "the public Accessibility page must exist");
 
-test("the public and organizer-preview Accessibility route share one accountable statement", directImportOptions, async () => {
-  const { AccessibilityRouteBody } = routeBodies;
-  const [markup, routeSource, previewSource] = await Promise.all([
-    render(
-      createElement(AccessibilityRouteBody, {
-        page: {
-          metaDescription: null,
-          openGraphAssetId: null,
-          sections: accessibilityDefinition.sections,
-          seoTitle: null,
-          slug: accessibilityDefinition.slug,
-          title: accessibilityDefinition.title,
-        },
-        previewCommunityLinks: [],
-        previewMediaAssets: [],
-        privatePreview: true,
-      }),
-    ),
-    readFile(new URL("app/accessibility/page.tsx", projectRoot), "utf8"),
-    readFile(
-      new URL("app/_organizer/PublicPreviewShell.tsx", projectRoot),
-      "utf8",
-    ),
+test("the retired Accessibility page cannot be rendered, linked, or indexed", async () => {
+  await assert.rejects(
+    access(new URL("app/accessibility/page.tsx", projectRoot)),
+    (error) => error?.code === "ENOENT",
+  );
+
+  const [
+    dynamicRoute,
+    layout,
+    sitemap,
+    footer,
+    about,
+    organizations,
+    catalog,
+  ] = await Promise.all([
+    source("app/[slug]/page.tsx"),
+    source("app/layout.tsx"),
+    source("app/sitemap.ts"),
+    source("app/_components/SiteFooter.tsx"),
+    source("app/about/page.tsx"),
+    source("app/for-organizations/page.tsx"),
+    source("lib/server/public/catalog.ts"),
   ]);
 
-  assert.match(markup, /We aim to meet WCAG 2\.2 Level AA\./u);
-  assert.match(
-    markup,
-    /<time dateTime="2026-08-12">August 12, 2026<\/time>/u,
-    "the statement needs a semantic, visible review date",
+  assert.match(dynamicRoute, /retiredPublicPageSlugs = new Set\(\["accessibility"\]\)/u);
+  assert.equal(
+    (dynamicRoute.match(/retiredPublicPageSlugs\.has\(slug\)\) notFound\(\)/gu) ?? [])
+      .length,
+    2,
+    "metadata and page rendering must both stop before reading the retired CMS page",
   );
-  assert.match(markup, /<h3>Known limitations<\/h3>/u);
   assert.match(
-    markup,
-    /event listings do not yet include venue-access details/u,
+    dynamicRoute,
+    /redirect\.kind === "available"[\s\S]*retiredPublicPageSlugs\.has\(redirect\.slug\)\) notFound\(\)/u,
+    "legacy CMS redirects must not restore the retired page",
   );
-  assert.match(markup, /external RSVP destinations/u);
-  assert.match(markup, /<a[^>]*href="\/contact"[^>]*>Contact form<\/a>/u);
+  assert.doesNotMatch(layout, /^\s*"\/accessibility",?$/mu);
+  assert.doesNotMatch(sitemap, /\["accessibility", "\/accessibility"\]/u);
+  assert.doesNotMatch(about, /href="\/accessibility"/u);
+  assert.doesNotMatch(organizations, /href="\/accessibility"/u);
+  assert.doesNotMatch(
+    footer.slice(footer.indexOf("function normalizedFooterNavigation")),
+    /\{ href: "\/accessibility", label: "Accessibility" \}/u,
+  );
+  assert.match(footer, /item\.href === "\/accessibility"/u);
 
-  assert.match(routeSource, /<AccessibilityRouteBody page=\{loaded\.page\} \/>/u);
+  const publicPagePath = sourceSection(
+    catalog,
+    "function publicPagePath",
+    "function isProtectedNavigationHref",
+  );
+  assert.doesNotMatch(publicPagePath, /"accessibility"/u);
   assert.match(
-    previewSource,
-    /snapshot\.slug === "accessibility"[\s\S]*<AccessibilityRouteBody[\s\S]*privatePreview/u,
-    "the organizer preview must render the same statement as the public route",
+    sourceSection(
+      catalog,
+      "function cleanPublicContentUrl",
+      "function publicPagePath",
+    ),
+    /parsed\.pathname === "\/accessibility"\) return null/u,
   );
 });
 
-async function render(element) {
-  const stream = await renderToReadableStream(element);
-  return new Response(stream).text();
+test("retiring the standalone page preserves event-specific accessibility information", async () => {
+  const eventDetail = await source(
+    "app/_components/PublicEventDetailRenderer.tsx",
+  );
+  assert.match(eventDetail, /event\.verifiedAccessibilityNotes/u);
+  assert.match(eventDetail, /heading="Accessibility information"/u);
+});
+
+function sourceSection(sourceText, startMarker, endMarker) {
+  const start = sourceText.indexOf(startMarker);
+  const end = sourceText.indexOf(endMarker, start);
+  assert.ok(start >= 0, `${startMarker} must exist`);
+  assert.ok(end > start, `${endMarker} must follow ${startMarker}`);
+  return sourceText.slice(start, end);
 }
 
-function dataModule(sourceText) {
-  return `data:text/javascript,${encodeURIComponent(sourceText)}`;
+function source(path) {
+  return readFile(new URL(path, projectRoot), "utf8");
 }

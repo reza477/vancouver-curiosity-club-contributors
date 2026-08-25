@@ -22,7 +22,6 @@ const requiredPublicRoutes = [
   "app/host-an-event/page.tsx",
   "app/contact/page.tsx",
   "app/conduct/page.tsx",
-  "app/accessibility/page.tsx",
   "app/privacy/page.tsx",
   "app/not-found.tsx",
   "app/robots.ts",
@@ -82,7 +81,6 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "/get-involved",
     "/contact",
     "/conduct",
-    "/accessibility",
     "/privacy",
     "/organizer",
   ]) {
@@ -91,6 +89,7 @@ test("Phase 2 exposes the complete public route contract", async () => {
       new RegExp(`href[:=]\\s*["']${href}["']|href:\\s*["']${href}["']`),
     );
   }
+  assert.doesNotMatch(footer, /href[:=]\s*["']\/accessibility["']/u);
   assert.doesNotMatch(header, /\{ href: "\/community", label: "Community" \}/u);
   assert.doesNotMatch(footer, /\{ href: "\/community", label: "Community" \}/u);
   assert.match(footer, /item\.href === "\/community"/u);

@@ -332,7 +332,6 @@ export default async function ForOrganizationsPage() {
           </p>
           <nav aria-label="Public operating standards">
             <Link href="/conduct">Code of Conduct</Link>
-            <Link href="/accessibility">Accessibility</Link>
             <Link href="/privacy">Privacy</Link>
             <Link href="/about">Mission and operating model</Link>
           </nav>
