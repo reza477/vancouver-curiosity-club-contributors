@@ -133,22 +133,28 @@ export default async function ForOrganizationsPage() {
         aria-labelledby="organizations-title"
       >
         <div className="page-masthead__copy organizations-hero__copy">
-          <p className="eyebrow">For organizations</p>
-          <h1 id="organizations-title">Build thoughtful public programs with us</h1>
-          <p className="page-masthead__deck">
-            Vancouver Curiosity Club creates recurring gatherings across
-            learning, culture, creativity, and shared experience. We welcome
-            organizations that can strengthen access, space, expertise,
-            outreach, or sustainable program support.
-          </p>
-          <div className="organizations-hero__actions">
-            <Link
-              className="primary-action"
-              href="/contact?topic=partnerships#contact-form"
-            >
-              Discuss a partnership
-            </Link>
-            <Link href="#public-work">Review public work</Link>
+          <div className="organizations-hero__heading">
+            <p className="eyebrow">For organizations</p>
+            <h1 id="organizations-title">
+              Build thoughtful public programs with us
+            </h1>
+          </div>
+          <div className="organizations-hero__introduction">
+            <p className="page-masthead__deck">
+              Vancouver Curiosity Club creates recurring gatherings across
+              learning, culture, creativity, and shared experience. We welcome
+              organizations that can strengthen access, space, expertise,
+              outreach, or sustainable program support.
+            </p>
+            <div className="organizations-hero__actions">
+              <Link
+                className="primary-action"
+                href="/contact?topic=partnerships#contact-form"
+              >
+                Discuss a partnership
+              </Link>
+              <Link href="#public-work">Review public work</Link>
+            </div>
           </div>
         </div>
 

@@ -9,11 +9,15 @@ test("For Organizations presents the institutional partnership story in a clear 
 
   assert.match(
     page,
-    /<h1 id="organizations-title">Build thoughtful public programs with us<\/h1>/u,
+    /<h1 id="organizations-title">\s*Build thoughtful public programs with us\s*<\/h1>/u,
   );
   assert.match(
     page,
     /className="page-masthead page-masthead--compact organizations-hero"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?Discuss a partnership[\s\S]*?className="organizations-evidence"/u,
+  );
+  assert.match(
+    page,
+    /className="organizations-hero__heading"[\s\S]*?<h1 id="organizations-title">[\s\S]*?className="organizations-hero__introduction"[\s\S]*?className="page-masthead__deck"/u,
   );
   assert.match(page, /className="organizations-hero__proof"/u);
   assert.match(page, /featuredEvent\s*\?\s*"See a current public program\."/u);
@@ -126,7 +130,11 @@ test("For Organizations route styles remain bounded and stack the evidence clean
   );
   assert.match(
     css,
-    /\.for-organizations-page > \.organizations-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 0\.9fr\) minmax\(25rem, 1\.1fr\);/su,
+    /\.for-organizations-page > \.organizations-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/su,
+  );
+  assert.match(
+    css,
+    /\.organizations-hero__copy\s*\{[^}]*grid-template-columns:\s*minmax\(15rem, 0\.74fr\) minmax\(0, 1\.26fr\);/su,
   );
   assert.match(css, /\.organizations-activity-card__artwork-frame/u);
   assert.match(css, /\.organizations-hero__proof/u);
@@ -135,11 +143,19 @@ test("For Organizations route styles remain bounded and stack the evidence clean
     css,
     /\.organizations-(?:introduction|footprint|conversation)\b/u,
   );
-  assert.match(
-    css,
-    /@media \(max-width: 52rem\)[\s\S]*?\.for-organizations-page > \.organizations-hero,[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,
+  const tabletStyles = css.slice(
+    css.indexOf("@media (max-width: 52rem)"),
+    css.indexOf("@media (max-width: 42rem)"),
+  );
+  assert.doesNotMatch(
+    tabletStyles,
+    /\.for-organizations-page > \.organizations-hero,/u,
   );
   assert.match(css, /@media \(max-width: 42rem\)/u);
+  assert.match(
+    css,
+    /@media \(max-width: 42rem\)[\s\S]*?\.organizations-hero__copy\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u,
+  );
   assert.match(
     css,
     /@media \(max-width: 42rem\)[\s\S]*?\.organizations-evidence__gallery,[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,

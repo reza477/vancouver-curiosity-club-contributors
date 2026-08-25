@@ -9,16 +9,28 @@
 }
 
 .for-organizations-page > .organizations-hero {
-  grid-template-columns: minmax(0, 0.9fr) minmax(25rem, 1.1fr);
-  align-items: center;
-  gap: clamp(2.5rem, 6vw, 7rem);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(2rem, 4vw, 3.5rem);
 }
 
 .organizations-hero__copy {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  grid-template-columns: minmax(15rem, 0.74fr) minmax(0, 1.26fr);
+  align-items: end;
+  gap: clamp(2rem, 6vw, 6rem);
+  display: grid;
+}
+
+.organizations-hero__heading,
+.organizations-hero__introduction {
   min-width: 0;
 }
 
 .organizations-hero__copy .page-masthead__deck {
+  margin-top: 0;
   max-width: 58ch;
 }
 
@@ -39,7 +51,9 @@
 }
 
 .organizations-hero__proof {
+  width: min(100%, 64rem);
   min-width: 0;
+  justify-self: center;
   padding: clamp(1rem, 2vw, 1.4rem);
   border: 1px solid var(--ink);
   border-top: 0.35rem solid var(--coral);
@@ -418,7 +432,6 @@
 }
 
 @media (max-width: 52rem) {
-  .for-organizations-page > .organizations-hero,
   .organizations-heading--split,
   .organizations-standards,
   .organizations-contact {
@@ -442,6 +455,10 @@
   .organizations-contact {
     padding-right: max(1rem, env(safe-area-inset-right));
     padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .organizations-hero__copy {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .organizations-hero__proof-heading,
