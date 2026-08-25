@@ -739,6 +739,11 @@ test("the built public root is indexable and carries the production security con
   assert.equal(response.headers.get("x-robots-tag"), null);
   assert.match(response.headers.get("server-timing") ?? "", /^app;dur=\d+$/u);
   assert.equal(response.headers.get("x-vinext-timing"), null);
+  assert.equal(
+    response.headers.get("cache-control"),
+    "private, max-age=60, must-revalidate",
+  );
+  assert.equal(response.headers.get("pragma"), null);
 
   const html = await response.text();
   assert.match(html, /<title>Vancouver Curiosity Club<\/title>/iu);
@@ -1009,7 +1014,7 @@ test("the built public root is indexable and carries the production security con
   assert.match(secondHtml, /https:\/\/preview\.example\/og\.png/u);
 });
 
-test("public RSC receives aggregate timing while identity-bearing HTML does not", async () => {
+test("public documents keep aggregate timing with operational cookies but not authenticated identity", async () => {
   const rsc = await fetchPath("/events.rsc?_rsc=timing", {
     headers: {
       accept: "text/x-component",
@@ -1020,15 +1025,46 @@ test("public RSC receives aggregate timing while identity-bearing HTML does not"
   assert.match(rsc.headers.get("content-type") ?? "", /^text\/x-component\b/iu);
   assert.match(rsc.headers.get("server-timing") ?? "", /^app;dur=\d+$/u);
   assert.equal(rsc.headers.get("x-vinext-timing"), null);
+  assert.equal(
+    rsc.headers.get("cache-control"),
+    "private, max-age=60, must-revalidate",
+  );
   await rsc.arrayBuffer();
 
-  const cookieBearingHtml = await fetchPath("/", {
-    headers: { cookie: "visitor_test=1" },
-  });
-  assert.equal(cookieBearingHtml.status, 200);
-  assert.equal(cookieBearingHtml.headers.get("server-timing"), null);
-  assert.equal(cookieBearingHtml.headers.get("x-vinext-timing"), null);
-  await cookieBearingHtml.arrayBuffer();
+  for (const cookie of [
+    "__cf_bm=cloudflare-browser-cookie",
+    "__Host-vcc-form-client=anonymous-form-client",
+  ]) {
+    const cookieBearingHtml = await fetchPath("/about", {
+      headers: { cookie },
+    });
+    assert.equal(cookieBearingHtml.status, 200);
+    assert.match(
+      cookieBearingHtml.headers.get("server-timing") ?? "",
+      /^app;dur=\d+$/u,
+    );
+    assert.equal(cookieBearingHtml.headers.get("x-vinext-timing"), null);
+    assert.equal(
+      cookieBearingHtml.headers.get("cache-control"),
+      "private, max-age=60, must-revalidate",
+    );
+    await cookieBearingHtml.arrayBuffer();
+  }
+
+  for (const headers of [
+    { authorization: "Bearer public-route-test" },
+    { "oai-authenticated-user-id": "user_test" },
+  ]) {
+    const authenticatedHtml = await fetchPath("/about", { headers });
+    assert.equal(authenticatedHtml.status, 200);
+    assert.equal(authenticatedHtml.headers.get("server-timing"), null);
+    assert.equal(authenticatedHtml.headers.get("x-vinext-timing"), null);
+    assert.match(
+      authenticatedHtml.headers.get("cache-control") ?? "",
+      /(?:^|,\s*)no-store(?:,|$)/u,
+    );
+    await authenticatedHtml.arrayBuffer();
+  }
 });
 
 test("the built Worker promotes a nonce-free Events RSC through the protected four-slot flow", async () => {
@@ -1384,6 +1420,12 @@ test("public form routes render editable fields immediately while secure send pr
   ]) {
     const response = await fetchPath(path);
     assert.equal(response.status, 200, `${path} status`);
+    assert.equal(
+      response.headers.get("cache-control"),
+      "private, no-store, max-age=0",
+      `${path} cache control`,
+    );
+    assert.equal(response.headers.get("pragma"), "no-cache", `${path} pragma`);
     const html = await response.text();
     if (!renderedCss) renderedCss = await readRenderedStyles(html);
 

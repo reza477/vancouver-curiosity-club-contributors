@@ -8,6 +8,7 @@ import {
   isStoredPublicResponseFallbackEntry,
   publicResponseFallbackKey,
 } from "../../lib/server/public/warm-response-fallback.ts";
+import { PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL } from "../../lib/public-document-cache.ts";
 
 const projectRoot = new URL("../../", import.meta.url);
 const OLD_NONCE = "old_nonce_1234567890";
@@ -512,6 +513,21 @@ test("private, personalized, cookie-setting, private-cache, and Vary-star respon
     }),
     null,
   );
+});
+
+test("the exact browser-only public document policy remains capturable for outage recovery", async () => {
+  const fallback = createPublicResponseFallback({ captureIntervalMs: 0 });
+  const capture = fallback.scheduleCapture({
+    nonce: OLD_NONCE,
+    pathname: "/events",
+    request: request("/events"),
+    response: htmlResponse("bounded public document", OLD_NONCE, {
+      "cache-control": PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL,
+    }),
+  });
+  assert.ok(capture);
+  assert.equal(await capture, true);
+  assert.ok(recover(fallback, "/events", "/events", NEW_NONCE));
 });
 
 test("the Worker uses the fallback only around invariant and handler failures and captures via waitUntil", async () => {

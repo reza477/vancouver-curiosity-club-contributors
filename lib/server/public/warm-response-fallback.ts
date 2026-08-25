@@ -1,3 +1,5 @@
+import { PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL } from "../../public-document-cache";
+
 export const PUBLIC_RESPONSE_FALLBACK_MAX_ENTRIES = 12;
 export const PUBLIC_RESPONSE_FALLBACK_MAX_ENTRY_BYTES = 1_500_000;
 export const PUBLIC_RESPONSE_FALLBACK_MAX_TOTAL_BYTES = 6_000_000;
@@ -525,6 +527,7 @@ function isCapturableResponse(
   response: Response,
   representation: PublicResponseRepresentation,
 ): boolean {
+  const cacheControl = response.headers.get("cache-control") ?? "";
   if (
     response.status !== 200 ||
     response.headers.has("set-cookie") ||
@@ -532,9 +535,8 @@ function isCapturableResponse(
     response.headers.has("www-authenticate") ||
     response.headers.has("content-range") ||
     response.headers.has("content-encoding") ||
-    /(?:^|,)\s*private(?:\s*(?:=|,|$))/iu.test(
-      response.headers.get("cache-control") ?? "",
-    )
+    (/(?:^|,)\s*private(?:\s*(?:=|,|$))/iu.test(cacheControl) &&
+      cacheControl !== PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL)
   ) {
     return false;
   }

@@ -20,6 +20,10 @@ import {
   publicAssetContentType,
   publicAssetOriginPath,
 } from "../../lib/public-asset-cache.ts";
+import {
+  isPublicFormDocumentPathname,
+  PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL,
+} from "../../lib/public-document-cache.ts";
 
 const worker = readFileSync("worker/index.ts", "utf8");
 const viteConfig = readFileSync("vite.config.ts", "utf8");
@@ -482,11 +486,35 @@ test("the build accepts Vinext's _next/static output when the legacy assets dire
   }
 });
 
-test("nonce-bearing public HTML is never placed in a shared response cache", () => {
+test("nonce-bearing public HTML uses only a bounded private browser cache", () => {
   assert.doesNotMatch(worker, /s-maxage=/u);
   assert.match(worker, /createCspNonce\(\)/u);
   assert.match(
     worker,
     /requestWithSecurityContext\([\s\S]*?nonce[\s\S]*?secureResponse/u,
   );
+  assert.match(
+    worker,
+    /PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL/u,
+  );
+  assert.equal(
+    PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL,
+    "private, max-age=60, must-revalidate",
+  );
+  assert.match(
+    worker,
+    /isPublicDocument[\s\S]*?headers\.set\("Cache-Control", PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL\)/u,
+  );
+  assert.match(worker, /!headers\.has\("Set-Cookie"\)/u);
+  for (const path of [
+    "/contact",
+    "/contact.rsc",
+    "/get-involved",
+    "/get-involved.rsc",
+    "/host-an-event",
+    "/host-an-event.rsc",
+  ]) {
+    assert.equal(isPublicFormDocumentPathname(path), true, path);
+  }
+  assert.equal(isPublicFormDocumentPathname("/about"), false);
 });

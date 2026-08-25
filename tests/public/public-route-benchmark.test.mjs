@@ -13,7 +13,10 @@ test("public benchmark reports warm percentiles and three concurrent waves", asy
     fetchImpl: async () => {
       calls += 1;
       return new Response("ok", {
-        headers: { "server-timing": "app;dur=12" },
+        headers: {
+          "cache-control": "private, max-age=60, must-revalidate",
+          "server-timing": "app;dur=12",
+        },
         status: 200,
       });
     },
@@ -28,6 +31,7 @@ test("public benchmark reports warm percentiles and three concurrent waves", asy
   assert.equal(summary.samples.failed, 0);
   assert.equal(summary.samples.serverTimingMissing, 0);
   assert.equal(summary.samples.serverTimingInvalid, 0);
+  assert.equal(summary.samples.cacheControlUnexpected, 0);
   assert.equal(summary.samples.appP95Ms, 12);
   assert.equal(summary.warmup.count, 3);
   assert.equal(summary.warmup.failed, 0);
@@ -83,6 +87,28 @@ test("public benchmark rejects missing or malformed Server-Timing evidence", asy
       waveCount: 1,
     }),
     /missing valid Server-Timing evidence/u,
+  );
+});
+
+test("public benchmark rejects uncacheable public documents", async () => {
+  await assert.rejects(
+    benchmarkPublicRoutes({
+      baseUrl: "https://club.example",
+      concurrency: 1,
+      fetchImpl: async () =>
+        new Response("ok", {
+          headers: {
+            "cache-control": "no-store, must-revalidate",
+            "server-timing": "app;dur=12",
+          },
+          status: 200,
+        }),
+      routes: ["/about"],
+      sampleCount: 1,
+      timeoutMs: 1_000,
+      waveCount: 1,
+    }),
+    /cache policy mismatch/u,
   );
 });
 

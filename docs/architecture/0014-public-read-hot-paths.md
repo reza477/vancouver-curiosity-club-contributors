@@ -43,13 +43,18 @@ generation-mismatched compact rows fall back only to the coherent durable
   verification immediately before any maintenance write.
   Missing or stale certification enters the existing bounded fail-closed
   repair path before application dispatch.
-- Public HTML keeps `Cache-Control: no-store, must-revalidate` because every
-  response carries a fresh CSP nonce and some public forms carry fresh private
-  tokens. This header does not disable the request-local promise cache or the
-  updater-owned D1 materializations above. Anonymous public HTML and RSC
-  responses expose only aggregate response-preparation timing as
-  `Server-Timing: app;dur=N`; identity-bearing and private responses expose no
-  timing header, and raw framework timing is removed.
+- Successful public HTML and RSC use a bounded one-minute private browser cache.
+  The response body and its fresh CSP nonce stay together inside one browser;
+  nonce-bearing documents are never placed in a shared CDN cache. Contact,
+  volunteer, and host forms remain `private, no-store` because they prepare
+  request-specific submission state. Errors, authenticated requests, and
+  private routes also remain `private, no-store`. This policy does not replace
+  the request-local promise cache or updater-owned D1 materializations above.
+  Public HTML and RSC responses expose only aggregate response-preparation
+  timing as `Server-Timing: app;dur=N`; authenticated and private responses
+  expose no timing header, and raw framework timing is removed. Operational
+  cookies such as Cloudflare bot management and the anonymous form-client key
+  do not suppress that aggregate timing.
 
 ## Bounds and failure behavior
 

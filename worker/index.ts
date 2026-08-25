@@ -34,6 +34,10 @@ import {
   publicAssetOriginPath,
 } from "../lib/public-asset-cache";
 import {
+  isPublicFormDocumentPathname,
+  PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL,
+} from "../lib/public-document-cache";
+import {
   createPublicResponseFallback,
   type PublicResponseFallbackFailure,
 } from "../lib/server/public/warm-response-fallback";
@@ -251,7 +255,7 @@ function secureResponse(
   const isPrivateRequest =
     requestPathname === null || isPrivateOrIdentityPath(requestPathname);
   const containsPublicFormInstance =
-    requestPathname === "/contact" || requestPathname === "/contact.rsc";
+    isPublicFormDocumentPathname(requestPathname);
 
   headers.set("Content-Security-Policy", contentSecurityPolicyValue);
   headers.delete("Content-Security-Policy-Report-Only");
@@ -311,16 +315,35 @@ function secureResponse(
     }
   }
 
-  const startedAt = requestStartedAtUtcMs.get(request);
   const responseContentType = (headers.get("Content-Type") ?? "")
     .split(";", 1)[0]
     .trim()
     .toLowerCase();
+  const isPublicDocument =
+    !isPrivateRequest &&
+    !containsPublicFormInstance &&
+    response.status === 200 &&
+    (request.method === "GET" || request.method === "HEAD") &&
+    !headers.has("Set-Cookie") &&
+    !requestHasAuthenticatedIdentityFacts(request) &&
+    (responseContentType === "text/html" ||
+      responseContentType === "text/x-component");
+  if (isPublicDocument) {
+    // Every render still receives a fresh CSP nonce. A short private cache lets
+    // one browser reuse the matching response body and CSP header without
+    // placing nonce-bearing HTML in a shared CDN cache or delaying publication
+    // changes for more than one minute.
+    headers.set("Cache-Control", PUBLIC_DOCUMENT_BROWSER_CACHE_CONTROL);
+    headers.delete("Expires");
+    headers.delete("Pragma");
+  }
+
+  const startedAt = requestStartedAtUtcMs.get(request);
   if (
     startedAt !== undefined &&
     !isPrivateRequest &&
     (request.method === "GET" || request.method === "HEAD") &&
-    !requestHasIdentityFacts(request) &&
+    !requestHasAuthenticatedIdentityFacts(request) &&
     (responseContentType === "text/html" ||
       responseContentType === "text/x-component")
   ) {
@@ -340,10 +363,9 @@ function secureResponse(
   });
 }
 
-function requestHasIdentityFacts(request: Request): boolean {
+function requestHasAuthenticatedIdentityFacts(request: Request): boolean {
   if (
     request.headers.has("authorization") ||
-    request.headers.has("cookie") ||
     request.headers.has("proxy-authorization")
   ) {
     return true;

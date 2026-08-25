@@ -14,6 +14,9 @@ const DEFAULT_SAMPLES = 20;
 const DEFAULT_WAVES = 3;
 const DEFAULT_CONCURRENCY = 20;
 const DEFAULT_TIMEOUT_MS = 10_000;
+const PUBLIC_DOCUMENT_CACHE_CONTROL =
+  "private, max-age=60, must-revalidate";
+const PUBLIC_FORM_CACHE_CONTROL = "private, no-store, max-age=0";
 
 export async function benchmarkPublicRoutes(options) {
   const baseUrl = parseBaseUrl(options.baseUrl);
@@ -96,6 +99,11 @@ export function summarizeResults(results) {
         ),
       ].sort(),
     ),
+    cacheControlUnexpected: results.filter(
+      (result) =>
+        result.ok &&
+        result.cacheControl !== expectedCacheControl(result.url),
+    ).length,
     cancelled: results.filter((result) => result.kind === "cancelled").length,
     clientErrors: results.filter(
       (result) =>
@@ -141,6 +149,11 @@ function assertAcceptance(summary) {
   ) {
     throw new Error(
       `Public benchmark is missing valid Server-Timing evidence: ${JSON.stringify(summary, null, 2)}`,
+    );
+  }
+  if (all.some((result) => result.cacheControlUnexpected > 0)) {
+    throw new Error(
+      `Public benchmark cache policy mismatch: ${JSON.stringify(summary, null, 2)}`,
     );
   }
   if (summary.samples.p95Ms >= 2_000 || summary.samples.p99Ms >= 3_000) {
@@ -200,6 +213,18 @@ function serverTimingDuration(value) {
   if (!match) return null;
   const duration = Number(match[1]);
   return Number.isFinite(duration) ? duration : null;
+}
+
+function expectedCacheControl(pathname) {
+  if (typeof pathname !== "string") return null;
+  const routePathname = pathname.endsWith(".rsc")
+    ? pathname.slice(0, -4) || "/"
+    : pathname;
+  return ["/contact", "/get-involved", "/host-an-event"].includes(
+    routePathname,
+  )
+    ? PUBLIC_FORM_CACHE_CONTROL
+    : PUBLIC_DOCUMENT_CACHE_CONTROL;
 }
 
 function isUnavailablePage(body) {
