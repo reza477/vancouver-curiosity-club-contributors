@@ -327,7 +327,7 @@ export function formatEventSchedule(event: PublicEventCardDto): Readonly<{
       day: "2-digit",
       timeZone: displayTimeZone,
     }).format(start),
-    label: `${localDate} · ${startTime}–${endTime}`,
+    label: `${localDate} · ${startTime} to ${endTime}`,
   });
 }
 

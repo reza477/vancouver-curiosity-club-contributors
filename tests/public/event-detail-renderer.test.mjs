@@ -732,8 +732,8 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
 test("public schedule formatting uses the event's IANA timezone", () => {
   const schedule = formatEventSchedule(TORONTO_EVENT);
 
-  assert.match(schedule.label, /2:00 p\.m\./u);
-  assert.match(schedule.label, /3:00 p\.m\. EDT/u);
+  assert.match(schedule.label, /2:00 p\.m\. to 3:00 p\.m\. EDT/u);
+  assert.doesNotMatch(schedule.label, /p\.m\.[-–—]3:00/u);
   assert.doesNotMatch(schedule.label, /11:00 a\.m\.|PDT/u);
 });
 

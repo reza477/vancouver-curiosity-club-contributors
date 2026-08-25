@@ -191,7 +191,7 @@ export function formatPublicCalendarEventTime(
     timeZone: event.schedule.timeZone,
     timeZoneName: "short",
   }).format(end);
-  return `${startTime}-${endTime}`;
+  return `${startTime} to ${endTime}`;
 }
 
 export function googleCalendarEventUrl(

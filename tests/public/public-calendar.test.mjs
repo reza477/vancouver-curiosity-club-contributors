@@ -9,6 +9,7 @@ import { PublicMonthCalendar } from "../../app/_components/PublicMonthCalendar.t
 import { publicEventAvailabilityLabel } from "../../lib/public-event-facts.ts";
 import {
   eventOccursOnCalendarDate,
+  formatPublicCalendarEventTime,
   googleCalendarEventUrl,
   publicCalendarMonthBounds,
   publicCalendarMonthCells,
@@ -17,6 +18,13 @@ import {
   resolvePublicCalendarMonth,
   shiftPublicCalendarMonth,
 } from "../../lib/public-calendar.ts";
+
+test("public calendar time ranges use words instead of a dash", () => {
+  const label = formatPublicCalendarEventTime(timedEvent());
+
+  assert.equal(label, "11:30 p.m. to 1:30 a.m. PDT");
+  assert.doesNotMatch(label, /[-–—]/u);
+});
 
 const projectRoot = new URL("../../", import.meta.url);
 
