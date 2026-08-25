@@ -60,7 +60,7 @@ export function ClubDetailRenderer({
           club.description ??
           "A Vancouver Curiosity Club program."
         }
-        eyebrow={club.lane.name}
+        eyebrow={clubDetailEyebrow(club)}
         title={club.name}
         tone={clubArtworkTone(club.lane.slug)}
       />
@@ -275,12 +275,14 @@ export function ClubDetailRenderer({
             heading="Upcoming"
             id="club-upcoming"
           />
-          <ClubEventList
-            emptyCopy="No past events are listed for this club."
-            events={events.past.events}
-            heading="Past"
-            id="club-past"
-          />
+          {events.past.events.length > 0 ? (
+            <ClubEventList
+              emptyCopy="No past events are listed for this club."
+              events={events.past.events}
+              heading="Past"
+              id="club-past"
+            />
+          ) : null}
         </div>
       ) : (
         <section className="public-service-state" aria-live="polite">
@@ -319,6 +321,12 @@ export function ClubDetailRenderer({
       ) : null}
     </main>
   );
+}
+
+function clubDetailEyebrow(club: PublicClubDto): string {
+  return club.slug === "vancouver-curiosity-club"
+    ? "Multiple program streams"
+    : club.lane.name;
 }
 
 export function clubArtworkTone(laneSlug: string) {
