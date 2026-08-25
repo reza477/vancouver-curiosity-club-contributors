@@ -587,6 +587,21 @@ test("About presents a professional mission, impact, continuity, and partnership
     /\.about-hero,[\s\S]*?\.about-closing\s*\{[^}]*padding:\s*var\(--public-section-space\)/u,
     "About sections must keep compact, responsive page padding",
   );
+  assert.match(
+    styles,
+    /\.about-model__steps\s*\{[^}]*border-top:\s*1px solid var\(--line\);[^}]*border-left:\s*1px solid var\(--line\);[^}]*display:\s*grid;/su,
+    "the model cards must share a connected top and left frame",
+  );
+  assert.match(
+    styles,
+    /\.about-model__steps > li\s*\{[^}]*border-right:\s*1px solid var\(--line\);[^}]*border-bottom:\s*1px solid var\(--line\);/su,
+    "every model card must complete the connected grid frame",
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.about-model__steps > li:not\(:last-child\)/u,
+    "model cards must not use margins that break the shared border",
+  );
 });
 
 test("Events defaults to Upcoming, keeps Calendar, and exposes no public diagnostics", async () => {
