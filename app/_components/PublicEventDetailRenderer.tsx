@@ -34,12 +34,6 @@ export function PublicEventDetailRenderer({
   const locationParts = publicEventLocationParts(event);
   const availability = publicEventAvailabilityLabel(event);
   const capacity = publicEventCapacityLabel(event);
-  const hasPlanningDetails =
-    event.status === "tentative" ||
-    availability !== null ||
-    event.costText !== null ||
-    capacity !== null ||
-    event.agePolicyText !== null;
 
   return (
     <>
@@ -155,6 +149,38 @@ export function PublicEventDetailRenderer({
                     ) : null}
                   </dd>
                 </div>
+                {event.status === "tentative" ? (
+                  <div>
+                    <dt>Status</dt>
+                    <dd>
+                      Tentative — check the official listing before travel.
+                    </dd>
+                  </div>
+                ) : null}
+                {availability ? (
+                  <div>
+                    <dt>Availability</dt>
+                    <dd>{availability}</dd>
+                  </div>
+                ) : null}
+                {event.costText ? (
+                  <div>
+                    <dt>Cost</dt>
+                    <dd>{event.costText}</dd>
+                  </div>
+                ) : null}
+                {capacity ? (
+                  <div>
+                    <dt>Capacity</dt>
+                    <dd>{capacity}</dd>
+                  </div>
+                ) : null}
+                {event.agePolicyText ? (
+                  <div>
+                    <dt>Age</dt>
+                    <dd>{event.agePolicyText}</dd>
+                  </div>
+                ) : null}
               </dl>
               {event.rsvpMode === "coming_soon" && !event.isCancelled ? (
                 <p className="event-detail__rsvp-note">
@@ -220,56 +246,10 @@ export function PublicEventDetailRenderer({
                 lane={event.lane}
               />
             )}
-            {event.summary ? (
-              <p className="event-detail__deck">{event.summary}</p>
-            ) : null}
             {showCalendarDownload ? (
               <AddToCalendar canonicalUrl={canonicalUrl} event={event} />
             ) : null}
           </div>
-
-          {hasPlanningDetails ? (
-            <section
-              aria-labelledby="planning-details-title"
-              className="event-detail__facts event-detail__facts--secondary"
-            >
-              <h2 id="planning-details-title">Planning details</h2>
-              <dl>
-                {event.status === "tentative" ? (
-                  <div>
-                    <dt>Status</dt>
-                    <dd>
-                      Tentative — check the official listing before travel.
-                    </dd>
-                  </div>
-                ) : null}
-                {availability ? (
-                  <div>
-                    <dt>Availability</dt>
-                    <dd>{availability}</dd>
-                  </div>
-                ) : null}
-                {event.costText ? (
-                  <div>
-                    <dt>Cost</dt>
-                    <dd>{event.costText}</dd>
-                  </div>
-                ) : null}
-                {capacity ? (
-                  <div>
-                    <dt>Capacity</dt>
-                    <dd>{capacity}</dd>
-                  </div>
-                ) : null}
-                {event.agePolicyText ? (
-                  <div>
-                    <dt>Age</dt>
-                    <dd>{event.agePolicyText}</dd>
-                  </div>
-                ) : null}
-              </dl>
-            </section>
-          ) : null}
         </div>
 
         <section className="event-detail__story" aria-labelledby="about-title">

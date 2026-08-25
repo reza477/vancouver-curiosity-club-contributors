@@ -84,9 +84,10 @@ test("desktop event details place the primary RSVP and essentials beside the pos
     essentialsIndex < storyIndex,
     "essentials must remain above the long-form event story",
   );
-  assert.ok(
-    deckIndex > essentialsIndex && deckIndex < storyIndex,
-    "the short summary must fill the poster column before the long-form story",
+  assert.equal(deckIndex, -1, "the duplicate teaser deck must not render");
+  assert.doesNotMatch(
+    markup,
+    /Planning details|planning-details-title|event-detail__facts--secondary/u,
   );
   assert.equal(
     (markup.match(/class="primary-action"/gu) ?? []).length,

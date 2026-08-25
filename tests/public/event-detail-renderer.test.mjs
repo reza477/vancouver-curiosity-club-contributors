@@ -550,7 +550,7 @@ test("Wednesday Night Reset surfaces its room and waitlist capacity on event car
   );
 });
 
-test("Wednesday Night Reset surfaces its room and waitlist capacity in detail facts", () => {
+test("Wednesday Night Reset keeps useful facts without a separate planning panel", () => {
   const detailMarkup = renderToStaticMarkup(
     createElement(PublicEventDetailRenderer, {
       canonicalUrl: "https://preview.example/events/wednesday-night-reset",
@@ -564,7 +564,11 @@ test("Wednesday Night Reset surfaces its room and waitlist capacity in detail fa
   assert.match(
     detailMarkup.replace(/<[^>]+>/gu, " "),
     /Capacity\s+12\s+\+\s+waitlist/iu,
-    "capacity and waitlist status must appear as one useful planning fact",
+    "capacity and waitlist status must remain in The essentials",
+  );
+  assert.doesNotMatch(
+    detailMarkup,
+    /Planning details|planning-details-title|event-detail__facts--secondary/u,
   );
 });
 
@@ -665,8 +669,12 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
   assert.ok(primaryRsvpIndex > headingIndex, "the primary RSVP follows the title");
   assert.ok(factsIndex > primaryRsvpIndex, "date and location follow the RSVP");
   assert.ok(posterIndex > factsIndex, "the poster follows the early essentials");
-  assert.ok(deckIndex > posterIndex, "the short deck fills the poster column");
-  assert.ok(storyIndex > deckIndex, "long-form copy follows the complete lead");
+  assert.equal(deckIndex, -1, "the duplicate teaser deck must not render");
+  assert.ok(storyIndex > posterIndex, "long-form copy follows the poster lead");
+  assert.doesNotMatch(
+    markup,
+    /Planning details|planning-details-title|event-detail__facts--secondary/u,
+  );
   assert.match(markup, /<dt>When<\/dt>/u);
   assert.match(markup, /<dt>Location<\/dt>/u);
   assert.match(markup, /VIFF Centre/u);
@@ -692,6 +700,12 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
   );
   const tabletStyles = detailStyles.slice(tabletStart, mobileStart);
   const mobileStyles = detailStyles.slice(mobileStart, mobileEnd);
+
+  assert.doesNotMatch(
+    detailStyles,
+    /\.event-detail__deck|\.event-detail__facts--secondary|:has\(\.event-detail__facts--secondary\)/u,
+    "removed teaser and planning-panel styles must not return",
+  );
 
   assert.match(
     css,
@@ -747,7 +761,8 @@ test("the shared detail renderer supports a preview-safe discovery mode", async 
   );
   assert.match(previewMarkup, /Times shown in America\/Toronto\./u);
   assert.doesNotMatch(previewMarkup, />Format<\/dt>/u);
-  assert.match(previewMarkup, /The event uses its own IANA timezone\./u);
+  assert.match(previewMarkup, /A public renderer fixture\./u);
+  assert.doesNotMatch(previewMarkup, /event-detail__deck/u);
   assert.match(previewMarkup, /RSVP information coming soon\./u);
   assert.doesNotMatch(previewMarkup, /RSVP on Meetup/u);
   assert.doesNotMatch(previewMarkup, /Share this event|Email link/u);

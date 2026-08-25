@@ -103,13 +103,10 @@ test("the imported long-form description remains complete on the event detail pa
   assert.ok(finalParagraph);
   assert.ok(markup.includes(firstParagraph));
   assert.ok(markup.includes(finalParagraph));
-  assert.match(
+  assert.doesNotMatch(
     markup,
-    new RegExp(
-      `<p class="event-detail__deck">${escapeRegex(importedEvent.summary)}</p>`,
-      "u",
-    ),
-    "the event-detail deck must retain the complete imported summary",
+    /event-detail__deck/u,
+    "the event detail must start its narrative in About this event instead of a duplicate teaser",
   );
   assert.doesNotMatch(
     markup,
