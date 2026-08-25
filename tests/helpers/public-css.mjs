@@ -11,7 +11,6 @@ export const publicCssModulePaths = Object.freeze([
   "app/styles/components/editorial.css",
   "app/styles/components/catalog.css",
   "app/styles/components/event-card.css",
-  "app/styles/components/calendar.css",
   "app/styles/components/forms.css",
   "app/styles/pages/home.css",
   "app/styles/pages/event-detail.css",
@@ -20,22 +19,36 @@ export const publicCssModulePaths = Object.freeze([
 
 const publicRouteCssPaths = Object.freeze({
   about: "public/styles/about.css",
-  events: "public/styles/events.css",
+  events: Object.freeze([
+    "public/styles/calendar.css",
+    "public/styles/events.css",
+  ]),
   organizations: "public/styles/organizations.css",
 });
 
+const publicSupplementalCssPaths = Object.freeze([
+  "public/styles/calendar.css",
+]);
+
 export async function readPublicCss() {
-  return readCssGraph(publicCssEntry, new Set());
+  const [globalCss, ...supplementalCss] = await Promise.all([
+    readCssGraph(publicCssEntry, new Set()),
+    ...publicSupplementalCssPaths.map((file) =>
+      readFile(new URL(file, projectRoot), "utf8"),
+    ),
+  ]);
+  return `${globalCss}\n${supplementalCss.join("\n")}`;
 }
 
 export async function readPublicRouteCss(route) {
-  const routeCssPath = publicRouteCssPaths[route];
-  if (!routeCssPath) throw new Error(`Unknown public route stylesheet: ${route}`);
-  const [globalCss, routeCss] = await Promise.all([
-    readPublicCss(),
-    readFile(new URL(routeCssPath, projectRoot), "utf8"),
+  const routeCssPaths = publicRouteCssPaths[route];
+  if (!routeCssPaths) throw new Error(`Unknown public route stylesheet: ${route}`);
+  const paths = Array.isArray(routeCssPaths) ? routeCssPaths : [routeCssPaths];
+  const [globalCss, ...routeCss] = await Promise.all([
+    readCssGraph(publicCssEntry, new Set()),
+    ...paths.map((file) => readFile(new URL(file, projectRoot), "utf8")),
   ]);
-  return `${globalCss}\n${routeCss}`;
+  return `${globalCss}\n${routeCss.join("\n")}`;
 }
 
 export function readPublicCssSync() {

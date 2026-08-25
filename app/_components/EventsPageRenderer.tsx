@@ -55,6 +55,7 @@ export function EventsPageRenderer({
 
   return (
     <main className="public-page events-page">
+      <link rel="stylesheet" href="/styles/calendar.css" precedence="calendar" />
       <link rel="stylesheet" href="/styles/events.css" precedence="events" />
       <header
         aria-labelledby="events-page-title"

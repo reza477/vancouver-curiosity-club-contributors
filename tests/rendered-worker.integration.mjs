@@ -789,6 +789,23 @@ test("the built public root is indexable and carries the production security con
       `${orderedHomeSections[index]} must follow ${orderedHomeSections[index - 1]}`,
     );
   }
+  for (const [section, layout] of [
+    ["hero", "(?:image-led-split|text-only-statement)"],
+    ["at-a-glance", "compact-editorial-index"],
+    ["programs", "full-width-colour"],
+    ["work-in-action", "staggered-poster-composition"],
+    ["why-it-matters", "large-statement"],
+    ["communities", "alternating-image-splits"],
+  ]) {
+    assert.match(
+      html,
+      new RegExp(
+        `data-home-section="${section}"[^>]*data-home-layout="${layout}"`,
+        "u",
+      ),
+      `${section} must use its distinct homepage composition`,
+    );
+  }
   assert.doesNotMatch(html, /Month at a glance|public-calendar__grid/u);
   assert.doesNotMatch(
     html,

@@ -46,6 +46,21 @@ test("Home renders the approved institutional story in the exact section order",
   );
   assert.match(markup, /href="\/events"[^>]*>Explore upcoming events<\/a>/u);
   assert.doesNotMatch(markup, /home-section-heading--split/u);
+  assert.deepEqual(
+    [...markup.matchAll(/data-home-layout="([^"]+)"/gu)].map(
+      (match) => match[1],
+    ),
+    [
+      "image-led-split",
+      "compact-editorial-index",
+      "full-width-colour",
+      "staggered-poster-composition",
+      "large-statement",
+      "full-width-colour",
+      "alternating-image-splits",
+      "compact-callout",
+    ],
+  );
 });
 
 test("Home features one real poster and three distinct later event posters", () => {
@@ -101,17 +116,30 @@ test("Home fails closed without artwork instead of showing a blank or fake poste
   assert.match(work, /href="\/events"[^>]*>View the public event calendar<\/a>/u);
 });
 
-test("Only the featured poster receives eager high-priority loading", () => {
+test("Only the featured poster receives eager high-priority loading while community artwork stays lazy", () => {
   const markup = renderHome(upcomingEvents(6));
-  const images = [...markup.matchAll(/<img\b[^>]*>/gu)].map(
+  const eventMarkup = `${homeSection(markup, "hero")}\n${homeSection(
+    markup,
+    "work-in-action",
+  )}`;
+  const eventImages = [...eventMarkup.matchAll(/<img\b[^>]*>/gu)].map(
     (match) => match[0],
   );
+  const communityImages = [
+    ...homeSection(markup, "communities").matchAll(/<img\b[^>]*>/gu),
+  ].map((match) => match[0]);
 
-  assert.equal(images.length, 4);
-  assert.match(images[0], /fetchPriority="high"/u);
-  assert.match(images[0], /loading="eager"/u);
-  for (const image of images.slice(1)) {
+  assert.equal(eventImages.length, 4);
+  assert.match(eventImages[0], /fetchPriority="high"/u);
+  assert.match(eventImages[0], /loading="eager"/u);
+  for (const image of eventImages.slice(1)) {
     assert.match(image, /loading="lazy"/u);
+    assert.doesNotMatch(image, /fetchPriority="high"|loading="eager"/u);
+  }
+  assert.equal(communityImages.length, 3);
+  for (const image of communityImages) {
+    assert.match(image, /loading="lazy"/u);
+    assert.match(image, /alt="[^"]+"/u);
     assert.doesNotMatch(image, /fetchPriority="high"|loading="eager"/u);
   }
 });
@@ -175,15 +203,27 @@ function catalogFixture() {
       }),
   );
   const clubs = [
-    ["Vancouver Curiosity Club", "vancouver-curiosity-club"],
-    ["Vancouver Fantasy & Sci-Fi Group", "vancouver-fantasy-scifi-group"],
-    ["Vancouver Literature and Film", "vancouver-literature-and-film"],
-  ].map(([name, slug]) =>
+    [
+      "Vancouver Curiosity Club",
+      "vancouver-curiosity-club",
+      "vancouver-meetup-group",
+    ],
+    [
+      "Vancouver Fantasy & Sci-Fi Group",
+      "vancouver-fantasy-scifi-group",
+      "vancouver-fantasy-scifi-meetup-group",
+    ],
+    [
+      "Vancouver Literature and Film",
+      "vancouver-literature-and-film",
+      "vancouver-literature-and-film",
+    ],
+  ].map(([name, slug, meetupSlug]) =>
     Object.freeze({
       archived: false,
       description: `${name} public community.`,
       name,
-      publicGroupUrl: `https://www.meetup.com/${slug}/`,
+      publicGroupUrl: `https://www.meetup.com/${meetupSlug}/`,
       slug,
     }),
   );

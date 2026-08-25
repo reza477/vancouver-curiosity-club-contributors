@@ -17,6 +17,11 @@ const organizationsCss = new URL(
 );
 const aboutCss = new URL("public/styles/about.css", projectRoot);
 const eventsCss = new URL("public/styles/events.css", projectRoot);
+const calendarCss = new URL("public/styles/calendar.css", projectRoot);
+const eventsRenderer = new URL(
+  "app/_components/EventsPageRenderer.tsx",
+  projectRoot,
+);
 
 test("the public stylesheet entrypoint owns only an explicit layered module graph", async () => {
   const entry = await readFile(publicCssEntry, "utf8");
@@ -51,7 +56,6 @@ test("route and component selectors stay in their named modules", async () => {
     ["app/styles/components/editorial.css", ".editorial-section"],
     ["app/styles/components/catalog.css", ".club-directory"],
     ["app/styles/components/event-card.css", ".event-card"],
-    ["app/styles/components/calendar.css", ".public-calendar"],
     ["app/styles/components/forms.css", ".public-submission"],
     ["app/styles/pages/home.css", ".home-hero"],
     ["app/styles/pages/event-detail.css", ".event-detail"],
@@ -63,6 +67,16 @@ test("route and component selectors stay in their named modules", async () => {
   assert.ok(about.includes(".about-hero"), ".about-hero must stay in the About route module");
 
   const events = await readFile(eventsCss, "utf8");
+  const calendar = await readFile(calendarCss, "utf8");
+  const renderer = await readFile(eventsRenderer, "utf8");
+  assert.ok(
+    calendar.includes(".public-calendar"),
+    ".public-calendar must stay in the calendar route module",
+  );
+  assert.match(
+    renderer,
+    /href="\/styles\/calendar\.css"[^>]*precedence="calendar"/u,
+  );
   for (const selector of [
     ".events-page__discovery",
     ".events-page__controls",
@@ -84,6 +98,10 @@ test("route and component selectors stay in their named modules", async () => {
   assert.ok(
     (await stat(organizationsCss)).size < 30_000,
     "the route-scoped organizations stylesheet must remain bounded",
+  );
+  assert.ok(
+    (await stat(calendarCss)).size < 30_000,
+    "the route-scoped calendar stylesheet must remain bounded",
   );
   assert.ok(
     (await stat(eventsCss)).size < 30_000,

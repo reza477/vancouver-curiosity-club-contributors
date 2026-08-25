@@ -1,4 +1,4 @@
-/* Public month calendar, agenda, and calendar notice components. */
+/* Route-scoped public month calendar, agenda, and calendar notice components. */
 .calendar-notice {
   margin: 1rem max(var(--public-gutter), env(safe-area-inset-right)) 0 max(var(--public-gutter), env(safe-area-inset-left));
   border: 1px solid var(--ink);

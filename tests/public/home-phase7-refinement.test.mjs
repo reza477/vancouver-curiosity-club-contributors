@@ -57,4 +57,32 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
     /\.home-hero__poster-preview\s*\{[^}]*position:\s*absolute;/su,
   );
   assert.doesNotMatch(css, /\.home-section-heading--split|\.home-hero__events-link/u);
+  assert.match(
+    css,
+    /\.home-glance\s*\{[^}]*grid-template-columns:\s*minmax\(16rem, 0\.72fr\) minmax\(0, 1\.28fr\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-programs\s*\{[^}]*background:\s*var\(--coral-strong\);[^}]*color:\s*var\(--warm-surface-inverse\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-work__grid\s*\{[^}]*grid-template-columns:\s*repeat\(12, minmax\(0, 1fr\)\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-impact__statement h2\s*\{[^}]*font-size:\s*clamp\(3\.4rem, 6\.6vw, 7rem\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-community\s*\{[^}]*grid-template-columns:\s*minmax\(20rem, 1\.08fr\) minmax\(0, 0\.92fr\);/su,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 56rem\)[\s\S]*?\.home-community,[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.home-glance__facts,\s*\.home-impact|\.home-programs__list,\s*\.home-communities__list/u,
+  );
 });

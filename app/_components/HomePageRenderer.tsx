@@ -8,6 +8,7 @@ import {
 } from "@/lib/media/presentation";
 import { publicEventLocationParts } from "@/lib/public-event-facts";
 import { institutionalEventTitle } from "@/lib/public-event-display-title";
+import { clubCoverArtworkForSlug } from "@/lib/club-cover-art";
 import type {
   PublicCatalogDto,
   PublicClubDto,
@@ -67,12 +68,43 @@ export function HomePageRenderer({
   const verifiedFacts = verifiedInstitutionalFacts(
     catalog.site.institutionalFacts,
   );
+  const glanceFacts = [
+    ...(catalog.site.locationLabel
+      ? [
+          {
+            body: "Locally based and publicly accessible",
+            heading: catalog.site.locationLabel,
+          },
+        ]
+      : []),
+    ...(lanes.length > 0
+      ? [
+          {
+            body: "Learning, culture, creativity, and shared experience",
+            heading: `${lanes.length} program ${lanes.length === 1 ? "stream" : "streams"}`,
+          },
+        ]
+      : []),
+    ...(publicClubs.length > 0
+      ? [
+          {
+            body: "Distinct interests under one organizational home",
+            heading: `${publicClubs.length} public ${publicClubs.length === 1 ? "community" : "communities"}`,
+          },
+        ]
+      : []),
+    {
+      body: "Published event details, conduct, accessibility, and privacy information",
+      heading: "Public calendar and standards",
+    },
+  ];
 
   return (
     <main className="home-page" data-page-slug={page.slug}>
       <section
         className={`home-hero${heroEvent ? "" : " home-hero--text-only"}`}
         data-home-section="hero"
+        data-home-layout={heroEvent ? "image-led-split" : "text-only-statement"}
         aria-labelledby="home-title"
       >
         <div className="home-hero__copy">
@@ -105,56 +137,45 @@ export function HomePageRenderer({
       <section
         className="home-glance"
         data-home-section="at-a-glance"
+        data-home-layout="compact-editorial-index"
         aria-labelledby="home-glance-title"
       >
         <div className="home-section-heading">
           <p className="section-kicker">Organization at a glance</p>
           <h2 id="home-glance-title">Public programs with a clear community purpose.</h2>
         </div>
-        <ul className="home-glance__facts">
-          {catalog.site.locationLabel ? (
-            <li>
-              <strong>{catalog.site.locationLabel}</strong>
-              <span>Locally based and publicly accessible</span>
-            </li>
-          ) : null}
-          {lanes.length > 0 ? (
-            <li>
-              <strong>
-                {lanes.length} program {lanes.length === 1 ? "stream" : "streams"}
-              </strong>
-              <span>Learning, culture, creativity, and shared experience</span>
-            </li>
-          ) : null}
-          {publicClubs.length > 0 ? (
-            <li>
-              <strong>
-                {publicClubs.length} public {publicClubs.length === 1 ? "community" : "communities"}
-              </strong>
-              <span>Distinct interests under one organizational home</span>
-            </li>
-          ) : null}
-          <li>
-            <strong>Public calendar and standards</strong>
-            <span>Published event details, conduct, accessibility, and privacy information</span>
-          </li>
-        </ul>
-        {verifiedFacts.length > 0 ? (
-          <dl className="home-glance__verified">
-            {verifiedFacts.map((fact) => (
-              <div key={fact.label}>
-                <dt>{fact.label}</dt>
-                <dd>{fact.value}</dd>
-              </div>
+        <div className="home-glance__index">
+          <ol className="home-glance__facts">
+            {glanceFacts.map((fact, index) => (
+              <li key={fact.heading}>
+                <span className="home-glance__number" aria-hidden="true">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <div>
+                  <strong>{fact.heading}</strong>
+                  <span>{fact.body}</span>
+                </div>
+              </li>
             ))}
-          </dl>
-        ) : null}
+          </ol>
+          {verifiedFacts.length > 0 ? (
+            <dl className="home-glance__verified">
+              {verifiedFacts.map((fact) => (
+                <div key={fact.label}>
+                  <dt>{fact.label}</dt>
+                  <dd>{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+        </div>
       </section>
 
       <section
         className="home-programs"
         id="our-work"
         data-home-section="programs"
+        data-home-layout="full-width-colour"
         aria-labelledby="home-programs-title"
       >
         <div className="home-section-heading">
@@ -184,6 +205,7 @@ export function HomePageRenderer({
       <section
         className="home-work"
         data-home-section="work-in-action"
+        data-home-layout="staggered-poster-composition"
         aria-labelledby="home-work-title"
       >
         <div className="home-section-heading">
@@ -216,26 +238,30 @@ export function HomePageRenderer({
       <section
         className="home-impact"
         data-home-section="why-it-matters"
+        data-home-layout="large-statement"
         aria-labelledby="home-impact-title"
       >
-        <div className="home-section-heading">
+        <div className="home-impact__statement">
           <p className="section-kicker">Why this work matters</p>
           <h2 id="home-impact-title">Shared curiosity makes connection easier to begin.</h2>
         </div>
-        <div className="home-impact__grid">
+        <ol className="home-impact__sequence">
           {communityModel.map((item, index) => (
-            <article key={item.heading}>
+            <li key={item.heading}>
               <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-              <h3>{item.heading}</h3>
-              <p>{item.body}</p>
-            </article>
+              <div>
+                <h3>{item.heading}</h3>
+                <p>{item.body}</p>
+              </div>
+            </li>
           ))}
-        </div>
+        </ol>
       </section>
 
       <section
         className="home-partnerships"
         data-home-section="partnerships"
+        data-home-layout="full-width-colour"
         aria-labelledby="home-partnerships-title"
       >
         <div className="home-partnerships__intro">
@@ -265,6 +291,7 @@ export function HomePageRenderer({
       <section
         className="home-communities"
         data-home-section="communities"
+        data-home-layout="alternating-image-splits"
         aria-labelledby="home-communities-title"
       >
         <div className="home-section-heading">
@@ -285,6 +312,7 @@ export function HomePageRenderer({
       <section
         className="home-public-invitation"
         data-home-section="public-invitation"
+        data-home-layout="compact-callout"
         aria-labelledby="home-public-title"
       >
         <div>
@@ -477,6 +505,7 @@ function HomeCommunity({
   club,
   index,
 }: Readonly<{ club: PublicClubDto; index: number }>) {
+  const artwork = clubCoverArtworkForSlug(club.slug);
   const descriptions: Record<string, string> = {
     "vancouver-curiosity-club": "Broad, mixed-interest public programming",
     "vancouver-fantasy-scifi-group":
@@ -484,19 +513,41 @@ function HomeCommunity({
     "vancouver-literature-and-film": "Books, literature, cinema, and discussion",
   };
   return (
-    <article>
-      <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-      <div>
+    <article
+      className={`home-community${artwork ? "" : " home-community--text-only"}`}
+    >
+      {artwork ? (
+        <figure className="home-community__artwork">
+          <picture>
+            <source
+              sizes="(max-width: 42rem) calc(100vw - 2rem), (max-width: 70rem) 52vw, 46vw"
+              srcSet={artwork.srcSet}
+              type="image/jpeg"
+            />
+            <img
+              alt={artwork.altText}
+              decoding="async"
+              height={artwork.height}
+              loading="lazy"
+              src={artwork.src}
+              width={artwork.width}
+            />
+          </picture>
+          <figcaption>{artwork.credit}</figcaption>
+        </figure>
+      ) : null}
+      <div className="home-community__body">
+        <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
         <h3>{club.name}</h3>
         <p>{descriptions[club.slug] ?? club.description}</p>
-      </div>
-      <div className="home-community__links">
-        <Link href={`/clubs/${club.slug}`}>View community</Link>
-        {club.publicGroupUrl ? (
-          <a href={club.publicGroupUrl} rel="noreferrer noopener" target="_blank">
-            Meetup group<span className="sr-only"> (opens in a new tab)</span>
-          </a>
-        ) : null}
+        <div className="home-community__links">
+          <Link href={`/clubs/${club.slug}`}>View community</Link>
+          {club.publicGroupUrl ? (
+            <a href={club.publicGroupUrl} rel="noreferrer noopener" target="_blank">
+              Meetup group<span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          ) : null}
+        </div>
       </div>
     </article>
   );

@@ -7,7 +7,6 @@
 @import "./styles/components/editorial.css" layer(components);
 @import "./styles/components/catalog.css" layer(components);
 @import "./styles/components/event-card.css" layer(components);
-@import "./styles/components/calendar.css" layer(components);
 @import "./styles/components/forms.css" layer(components);
 @import "./styles/pages/home.css" layer(components);
 @import "./styles/pages/event-detail.css" layer(components);
