@@ -1,0 +1,42 @@
+name: UI or UX improvement
+description: Propose a focused visual, responsive, interaction, or accessibility improvement.
+title: "[Design]: "
+labels: [design]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is difficult or unclear now?
+      description: Describe the user experience problem before proposing a visual solution.
+    validations:
+      required: true
+  - type: input
+    id: route
+    attributes:
+      label: Page or component
+      placeholder: /about or app/_components/SiteHeader.tsx
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Intended outcome
+      description: Explain what should become easier, clearer, or more consistent.
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Add privacy-safe screenshots, Figma links, or existing design patterns.
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Required checks
+      options:
+        - label: The proposal preserves confirmed content and event facts.
+          required: true
+        - label: Phone, desktop, keyboard, zoom, focus, contrast, and reduced motion will be considered.
+          required: true
+        - label: No production data, credentials, or private submissions are included.
+          required: true

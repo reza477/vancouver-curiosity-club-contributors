@@ -6,6 +6,7 @@ Club. Read it before the historical phase documents.
 ## What you are working on
 
 - Production: [vancouvercuriosityclub.com](https://vancouvercuriosityclub.com)
+- Supported source baseline: Version 1.0 (`v1.0.0`)
 - Application: React 19 with Next.js App Router APIs, compiled by vinext
 - Runtime: Cloudflare Worker managed by ChatGPT Sites
 - Data/media: Sites-managed D1 and R2 bindings named `DB` and `MEDIA`
@@ -91,7 +92,7 @@ Important boundaries:
 | Change                | Start here                                                       |
 | --------------------- | ---------------------------------------------------------------- |
 | Public route/metadata | `app/`, `app/_components/`, `lib/server/public/`                 |
-| Responsive styling    | `app/globals.css` plus a focused visual contract                 |
+| Responsive styling    | `app/styles/` plus shared components in `app/_components/`       |
 | Organizer workflow    | `app/_organizer/`, `app/api/organizer/`, `lib/server/organizer/` |
 | Authentication        | `lib/server/auth/` and organizer service boundaries              |
 | Meetup import/sync    | `lib/server/meetup/`                                             |
@@ -108,6 +109,11 @@ The root `MASTER_BUILD_SPEC.md` is likewise the historical initial-build brief,
 not an instruction to rebuild the application. `examples/` contains isolated
 framework samples and is not a source of production architecture.
 
+For visual work, read [docs/UI_UX_HANDOFF.md](docs/UI_UX_HANDOFF.md). It maps
+the token, layout, component, route, artwork, responsive, and accessibility
+boundaries that are intentionally easy to miss when starting from a single
+page.
+
 ### Event data flow
 
 `lib/server/public/events.ts` unifies three read branches: legacy/manual
@@ -118,12 +124,13 @@ branch rather than patching the final union or mutating the wrong table.
 
 ## Safe change workflow
 
-1. Pull current `main`; create a focused branch.
+1. Pull current `main`; create a focused branch. Never push directly to `main`.
 2. Reproduce the problem and find the owning service/shared renderer.
 3. Add or update the smallest behavioral regression test.
 4. Change only that boundary; run focused tests while iterating.
-5. Run the release gates below and open a pull request.
-6. Leave content, media, migration, and deployment effects for owner approval.
+5. Run the release gates below and open a pull request against `main`.
+6. Wait for CI and maintainer review; do not merge or deploy your own change.
+7. Leave content, media, migration, and deployment effects for owner approval.
 
 Keep these rules fixed:
 
@@ -199,6 +206,9 @@ Only an owner or explicitly authorized release maintainer should deploy:
 Do not put Sites tokens or production secrets in GitHub Actions.
 `.openai/hosting.json` contains the Sites project identifier and logical
 binding names, but no credentials or secrets.
+
+For the exact release, rollback, and source-recovery process, see
+[docs/RELEASE_AND_ROLLBACK.md](docs/RELEASE_AND_ROLLBACK.md).
 
 ### Scheduled Meetup maintenance
 

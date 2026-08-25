@@ -14,8 +14,18 @@ active backlog.
 
 1. Open an issue or discuss the change with a maintainer before substantial work.
 2. Use Node.js 22.16 or newer and install dependencies with `npm ci`.
-3. Create a focused branch from the current default branch.
+3. Update local `main`, then create a focused branch. Never commit directly to `main`.
 4. Never commit credentials, `.env` files, local databases, exports, submission data, or unapproved media.
+
+UI/UX contributors should also read [docs/UI_UX_HANDOFF.md](docs/UI_UX_HANDOFF.md)
+before changing shared components, typography, responsive behavior, or visual
+assets.
+
+An invitation to the private contributor workspace, together with an assigned
+change, authorizes the invited contributor to clone and modify a working copy
+solely to prepare and submit that contribution. It does not grant broader
+reuse, distribution, publication, or branding rights; [LICENSE](LICENSE)
+remains controlling.
 
 ## Development
 
@@ -62,13 +72,19 @@ npm run test:rendered
 
 ## Pull requests
 
+Push the focused branch and open a pull request against `main`. Wait for CI and
+maintainer review; do not merge your own contribution or attempt a production
+deployment. Only the owner or an explicitly authorized release maintainer
+publishes a reviewed revision.
+
 A pull request should explain:
 
 - what changed and why;
 - the visitor or organizer impact;
 - any security, privacy, accessibility, content, data, or migration implications;
 - the tests and manual checks completed;
-- screenshots for intentional visual changes at relevant desktop and phone widths.
+- screenshots for intentional visual changes at relevant desktop and phone widths;
+- the risk level and a practical rollback plan.
 
 Keep unrelated changes in separate pull requests. Maintainers may request revisions before a production release.
 GitHub CI validates pull requests but does not deploy them. Do not add Sites or

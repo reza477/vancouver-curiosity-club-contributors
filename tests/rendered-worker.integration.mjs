@@ -2767,7 +2767,11 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   assert.match(previewHtml, /Protected preview/u);
   assert.match(previewHtml, /Not a public page/u);
   assert.match(previewHtml, new RegExp(escapeRegex(publicTitle), "u"));
-  assert.match(previewHtml, new RegExp(publicSummary, "u"));
+  assert.doesNotMatch(
+    previewHtml,
+    new RegExp(publicSummary, "u"),
+    "the protected preview should not restore the retired duplicate summary teaser",
+  );
   assert.match(previewHtml, /Rendered public room/u);
   assert.doesNotMatch(previewHtml, /rel="canonical"/iu);
   assert.doesNotMatch(previewHtml, /application\/ld\+json/iu);

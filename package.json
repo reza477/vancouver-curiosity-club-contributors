@@ -1,7 +1,7 @@
 {
   "name": "vancouver-curiosity-club",
-  "version": "0.1.0",
-  "description": "Calendar-first community website for Vancouver Curiosity Club.",
+  "version": "1.0.0",
+  "description": "Institutional and public-program website for Vancouver Curiosity and Education Society and Vancouver Curiosity Club.",
   "private": true,
   "license": "UNLICENSED",
   "homepage": "https://vancouvercuriosityclub.com",
@@ -22,6 +22,7 @@
     "test": "node scripts/run-tests.mjs",
     "test:rendered": "node --import tsx --test tests/rendered-worker.integration.mjs",
     "bench:public": "node scripts/bench-public-routes.mjs",
+    "brand:generate": "node scripts/generate-brand-artwork.mjs",
     "posters:optimize": "node scripts/generate-event-poster-formats.mjs",
     "meetup:enrichment:refresh": "node scripts/refresh-curated-meetup-enrichment.mjs && node scripts/generate-event-poster-formats.mjs",
     "typecheck": "tsc --noEmit",

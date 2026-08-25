@@ -5,9 +5,19 @@
 
 ![Vancouver Curiosity Club social preview](public/og.png)
 
-A calendar-first community website for finding thoughtful, creative, and social gatherings in Vancouver.
+The institutional website for Vancouver Curiosity and Education Society and its
+public program, Vancouver Curiosity Club. It presents the organization, its
+mission, community programs, and a source-faithful calendar of public events.
 
 **Live website:** [vancouvercuriosityclub.com](https://vancouvercuriosityclub.com)
+
+**Current supported release:** Version 1.0
+
+[Contributor onboarding](docs/UI_UX_HANDOFF.md) ·
+[Developer handoff](DEVELOPMENT.md) ·
+[Architecture decisions](docs/architecture/) ·
+[Release and recovery](docs/RELEASE_AND_ROLLBACK.md) ·
+[Security policy](SECURITY.md)
 
 ## Product highlights
 
@@ -54,6 +64,19 @@ safe change workflow, test selection, and release boundaries.
 
 Copy `.env.example` to an ignored local environment file only when organizer bootstrap settings are needed. Never commit credentials, local D1 files, generated output, or production exports.
 
+## Collaboration workflow
+
+All changes begin on a focused branch and are proposed through a pull request
+to `main`. GitHub CI validates the source, tests, and built Worker; a maintainer
+then reviews the change before it is accepted. Merging source code never
+deploys production automatically. Only the owner or an explicitly authorized
+release maintainer can publish the reviewed revision through ChatGPT Sites.
+
+Do not push directly to `main`, share production credentials, or copy
+production D1/R2 data into a development environment. UI/UX contributors
+should begin with [the focused handoff guide](docs/UI_UX_HANDOFF.md), then read
+[CONTRIBUTING.md](CONTRIBUTING.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Quality checks
 
 ```powershell
@@ -89,7 +112,10 @@ worker/              Cloudflare Worker entry point and response hardening
 
 ## Documentation
 
+- [Documentation index](docs/README.md)
+- [UI/UX contributor handoff](docs/UI_UX_HANDOFF.md)
 - [Developer handoff and architecture](DEVELOPMENT.md)
+- [Release and recovery](docs/RELEASE_AND_ROLLBACK.md)
 - [Architecture decisions](docs/architecture/)
 - [Owner guides](docs/owner-guide-phase8.md)
 - [Organizer guides](docs/organizer-guide-phase8.md)
@@ -103,11 +129,18 @@ The application is built and deployed through ChatGPT Sites. `.openai/hosting.js
 
 Production releases are built from a clean, committed source revision. Database migrations remain additive and must be reviewed before deployment.
 
+The `v1.0.0` Git tag and GitHub Release identify the first supported
+collaboration baseline. Recovery uses a reviewed revert or a known-good Sites
+version; shared history is never force-rewritten. See
+[Release and recovery](docs/RELEASE_AND_ROLLBACK.md).
+
 ## Contributing and security
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Report security concerns using the private process in [SECURITY.md](SECURITY.md), not a public issue.
 
 Community participation is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Project roles and decision boundaries are documented in
+[GOVERNANCE.md](GOVERNANCE.md).
 
 ## License
 

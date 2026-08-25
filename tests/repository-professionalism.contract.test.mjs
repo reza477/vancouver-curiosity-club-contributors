@@ -30,6 +30,7 @@ test("repository publishes a concise, safe, professional project surface", () =>
   assert.ok(readme.length < 12_000, "README should stay useful and scannable");
 
   assert.equal(packageJson.private, true);
+  assert.equal(packageJson.version, "1.0.0");
   assert.equal(packageJson.license, "UNLICENSED");
   assert.equal(nodeVersion, "22.16.0");
   assert.equal(packageJson.engines.node, ">=22.16.0");
@@ -46,6 +47,12 @@ test("repository publishes a concise, safe, professional project surface", () =>
     "SECURITY.md",
     "CODE_OF_CONDUCT.md",
     "DEVELOPMENT.md",
+    "CHANGELOG.md",
+    "GOVERNANCE.md",
+    "docs/README.md",
+    "docs/UI_UX_HANDOFF.md",
+    "docs/RELEASE_AND_ROLLBACK.md",
+    "design-assets/README.md",
     "examples/README.md",
     ".editorconfig",
     ".gitattributes",
@@ -54,6 +61,7 @@ test("repository publishes a concise, safe, professional project surface", () =>
     ".github/pull_request_template.md",
     ".github/ISSUE_TEMPLATE/bug_report.yml",
     ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ".github/ISSUE_TEMPLATE/design_change.yml",
     ".github/ISSUE_TEMPLATE/config.yml",
   ]) {
     assert.ok(source(path).trim().length > 0, path);
@@ -76,6 +84,8 @@ test("repository publishes a concise, safe, professional project surface", () =>
   );
   assert.match(readme, /normally `http:\/\/localhost:5173`/u);
   assert.match(readme, /dirty Git working tree/u);
+  assert.match(readme, /Current supported release:\*\* Version 1\.0/u);
+  assert.match(readme, /## Collaboration workflow/u);
   assert.match(development, /no reusable synthetic dev seed/u);
   assert.match(development, /Event data flow/u);
   assert.match(development, /0008.*0022/u);
@@ -88,6 +98,7 @@ test("repository publishes a concise, safe, professional project surface", () =>
   assert.match(readme, /github\.com\/reza477\/vancouver-curiosity-club/u);
   assert.match(development, /github\.com\/reza477\/vancouver-curiosity-club\.git/u);
   assert.match(codeowners, /^\* @reza477$/mu);
+  assert.equal(packageJson.scripts["brand:generate"], "node scripts/generate-brand-artwork.mjs");
   assert.match(issueConfig, /https:\/\/vancouvercuriosityclub\.com\/contact/u);
   assert.doesNotMatch(issueConfig, /security\/advisories/u);
   assert.match(packageJson.bugs.url, /github\.com\/reza477\/vancouver-curiosity-club\/issues/u);
@@ -108,11 +119,15 @@ test("repository publishes a concise, safe, professional project surface", () =>
 
 test("continuous integration and dependency maintenance cover the release gates", () => {
   const workflow = source(".github/workflows/ci.yml");
+  const maintenanceWorkflow = source(".github/workflows/daily-meetup-refresh.yml");
   const dependabot = source(".github/dependabot.yml");
 
   assert.match(workflow, /^permissions:\s*\r?\n\s+contents: read$/mu);
-  assert.match(workflow, /actions\/checkout@v6/u);
-  assert.match(workflow, /actions\/setup-node@v6/u);
+  assert.match(workflow, /actions\/checkout@[0-9a-f]{40} # v6/u);
+  assert.match(workflow, /actions\/setup-node@[0-9a-f]{40} # v6/u);
+  assert.match(maintenanceWorkflow, /actions\/checkout@[0-9a-f]{40} # v6/u);
+  assert.match(workflow, /persist-credentials: false/u);
+  assert.match(maintenanceWorkflow, /persist-credentials: false/u);
   assert.match(workflow, /node-version-file: \.nvmrc/u);
   for (const command of [
     "npm ci",

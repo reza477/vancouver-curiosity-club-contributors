@@ -10,6 +10,12 @@ Describe what changed and why.
 - Accessibility impact:
 - Data or migration impact:
 
+## Risk and recovery
+
+- Risk level: Low / Medium / High
+- What could fail?
+- How should this change be reverted or disabled if verification fails?
+
 ## Verification
 
 - [ ] Type-check passed
@@ -19,6 +25,7 @@ Describe what changed and why.
 - [ ] Production build passed
 - [ ] Visual changes were checked at relevant desktop and phone widths
 - [ ] No credentials, personal data, local databases, exports, or unapproved media are included
+- [ ] This branch targets `main`; I did not push directly to `main` or attempt a production deployment
 
 ## Screenshots
 
