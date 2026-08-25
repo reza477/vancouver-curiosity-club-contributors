@@ -6,10 +6,14 @@ const projectRoot = resolve(import.meta.dirname, "..");
 const masterPath = resolve(
   projectRoot,
   "design-assets",
-  "brand-icon-master.svg",
+  "brand-icon-master.png",
 );
-const masterSvg = await readFile(masterPath);
+const masterArtwork = await readFile(masterPath);
 const deepNavy = Object.freeze({ b: 51, g: 28, r: 19 });
+const normalizedMaster = await sharp(masterArtwork, { failOn: "warning" })
+  .trim({ background: "#ffffff", threshold: 12 })
+  .png({ compressionLevel: 9, palette: false })
+  .toBuffer();
 
 const iconTargets = Object.freeze([
   ["favicon-16.png", 16],
@@ -23,18 +27,12 @@ const iconTargets = Object.freeze([
 
 await Promise.all(
   iconTargets.map(async ([fileName, size]) => {
-    const output = await sharp(masterSvg, { density: 384 })
-      .resize(size, size, { fit: "fill", kernel: sharp.kernel.lanczos3 })
-      .png({ compressionLevel: 9, palette: false })
-      .toBuffer();
+    const output = await renderMark(size);
     await writeFile(resolve(projectRoot, "public", fileName), output);
   }),
 );
 
-const maskableMark = await sharp(masterSvg, { density: 384 })
-  .resize(400, 400, { fit: "fill", kernel: sharp.kernel.lanczos3 })
-  .png({ compressionLevel: 9, palette: false })
-  .toBuffer();
+const maskableMark = await renderMark(400);
 await sharp({
   create: {
     background: { ...deepNavy, alpha: 1 },
@@ -47,18 +45,7 @@ await sharp({
   .png({ compressionLevel: 9, palette: false })
   .toFile(resolve(projectRoot, "public", "icon-maskable-512.png"));
 
-await sharp(masterSvg, { density: 384 })
-  .resize(2048, 2048, {
-    fit: "fill",
-    kernel: sharp.kernel.lanczos3,
-  })
-  .png({ compressionLevel: 9, palette: false })
-  .toFile(resolve(projectRoot, "design-assets", "brand-icon-master.png"));
-
-const socialMark = await sharp(masterSvg, { density: 384 })
-  .resize(430, 430, { fit: "fill", kernel: sharp.kernel.lanczos3 })
-  .png({ compressionLevel: 9, palette: false })
-  .toBuffer();
+const socialMark = await renderMark(430);
 const socialType = Buffer.from(`
   <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
     <style>
@@ -98,3 +85,19 @@ await sharp({
   ])
   .png({ compressionLevel: 9, palette: false })
   .toFile(resolve(projectRoot, "public", "og.png"));
+
+async function renderMark(size) {
+  const radius = Math.max(2, Math.round(size * 0.145));
+  const resized = await sharp(normalizedMaster)
+    .resize(size, size, { fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .ensureAlpha()
+    .png({ compressionLevel: 9, palette: false })
+    .toBuffer();
+  const mask = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${radius}" fill="#fff"/></svg>`,
+  );
+  return sharp(resized)
+    .composite([{ blend: "dest-in", input: mask }])
+    .png({ compressionLevel: 9, palette: false })
+    .toBuffer();
+}
