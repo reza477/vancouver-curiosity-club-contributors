@@ -130,47 +130,6 @@ export default async function AboutPage() {
         </div>
       </header>
 
-      <section className="about-overview" aria-labelledby="about-overview-title">
-        <div className="about-section-heading">
-          <p className="section-kicker">Our purpose</p>
-          <h2 id="about-overview-title">
-            Make meaningful community easier to find.
-          </h2>
-        </div>
-        <div className="about-overview__body">
-          <p className="about-lead">
-            Vancouver Curiosity Club is the public-facing program of Vancouver
-            Curiosity and Education Society, based in Vancouver, British
-            Columbia. Shared subjects and activities give people a clear reason
-            to gather and enough structure for conversation to begin.
-          </p>
-          <h3 className="about-at-a-glance__title" id="about-at-a-glance-title">
-            Organization at a glance
-          </h3>
-          <dl className="about-at-a-glance" aria-labelledby="about-at-a-glance-title">
-            <div>
-              <dt>Organization</dt>
-              <dd>Vancouver Curiosity and Education Society</dd>
-            </div>
-            <div>
-              <dt>Public program</dt>
-              <dd>Vancouver Curiosity Club</dd>
-            </div>
-            <div>
-              <dt>Based in</dt>
-              <dd>Vancouver, British Columbia</dd>
-            </div>
-            <div>
-              <dt>Responsible contact</dt>
-              <dd>
-                <Link href="/contact">Organizing team</Link> for public
-                inquiries and partnerships
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
       <section className="about-board" aria-labelledby="about-board-title">
         <div className="about-section-heading">
           <p className="section-kicker">Leadership and governance</p>

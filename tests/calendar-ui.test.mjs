@@ -483,11 +483,14 @@ test("About presents a professional mission, impact, continuity, and partnership
   assert.match(about, /<main className="about-page"/u);
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+  );
+  assert.match(
+    about,
+    /<\/header>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
   );
   for (const phrase of [
     "Our mission",
-    "Make meaningful community easier to find.",
     "Board of Directors",
     "Reza Rahnama",
     "Nawar Alsaadi",
@@ -555,13 +558,15 @@ test("About presents a professional mission, impact, continuity, and partnership
   assert.match(about, /poster\.file\}-960\.jpeg/u);
   assert.match(about, /poster\.file\}-480\.avif/u);
   assert.match(about, /<picture>[\s\S]*?loading="lazy"/u);
-  assert.match(about, />\s*Organization at a glance\s*<\/h3>/u);
-  assert.match(about, /aria-labelledby="about-at-a-glance-title"/u);
+  assert.doesNotMatch(
+    about,
+    /about-overview|about-at-a-glance|Make meaningful community easier to find\.|Organization at a glance/u,
+  );
   assert.match(about, /href: "\/clubs\/vancouver-curiosity-club"/u);
   assert.match(about, /href: "\/clubs\/vancouver-literature-and-film"/u);
   assert.match(about, /href: "\/clubs\/vancouver-fantasy-scifi-group"/u);
   assert.match(about, /<Link href=\{program\.href\}>/u);
-  assert.match(styles, /\.about-overview,/u);
+  assert.doesNotMatch(styles, /\.about-overview|\.about-at-a-glance|\.about-lead/u);
   assert.match(
     styles,
     /\.about-page h2, \.event-detail h2,[^{]*\{[^}]*margin:\s*0;/u,

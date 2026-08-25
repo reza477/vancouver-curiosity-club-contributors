@@ -3,7 +3,7 @@
   width: 100%;
 }
 
-.about-page :is(h2, h3, p, dl, dd, ol, ul, figure) {
+.about-page :is(h2, h3, p, ol, ul, figure) {
   margin-block-start: 0;
 }
 
@@ -23,7 +23,6 @@
 }
 
 .about-hero,
-.about-overview,
 .about-board,
 .about-model,
 .about-evidence,
@@ -90,7 +89,6 @@
   display: inline-flex;
 }
 
-.about-overview,
 .about-board,
 .about-model,
 .about-communities,
@@ -101,37 +99,10 @@
   display: grid;
 }
 
-.about-overview__body,
 .about-standards__body {
   max-width: 64rem;
 }
 
-.about-lead {
-  max-width: 54ch;
-  margin-bottom: 2rem;
-  font-size: clamp(1.05rem, 1.35vw, 1.2rem);
-  line-height: 1.7;
-}
-
-.about-at-a-glance {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
-  display: grid;
-}
-
-.about-at-a-glance__title {
-  margin-bottom: 0.85rem;
-}
-
-.about-at-a-glance > div {
-  min-height: 7.5rem;
-  padding: 1.15rem;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.about-at-a-glance dt,
 .about-communities__number,
 .about-model__steps > li > span {
   margin-bottom: 0.65rem;
@@ -141,14 +112,6 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.about-at-a-glance dd {
-  max-width: 28ch;
-  margin-inline-start: 0;
-  color: var(--ink);
-  font-weight: 650;
-  line-height: 1.45;
 }
 
 .about-board__list {
@@ -407,7 +370,6 @@
 
 @media (max-width: 62rem) {
   .about-hero,
-  .about-overview,
   .about-board,
   .about-model,
   .about-evidence__copy,
@@ -433,7 +395,6 @@
 
 @media (max-width: 44rem) {
   .about-hero,
-  .about-overview,
   .about-board,
   .about-model,
   .about-evidence,
@@ -444,16 +405,11 @@
     padding-left: max(1rem, env(safe-area-inset-left));
   }
 
-  .about-at-a-glance,
   .about-board__list,
   .about-evidence__gallery,
   .about-program-streams ul,
   .about-standards__body ul {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .about-at-a-glance > div {
-    min-height: 0;
   }
 
   .about-communities__grid article {

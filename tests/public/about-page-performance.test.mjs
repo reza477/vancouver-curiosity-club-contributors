@@ -24,8 +24,13 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
     "About must keep the approved institutional narrative order",
+  );
+  assert.match(
+    about,
+    /<\/header>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
+    "the Board must follow the mission directly after the purpose summary is removed",
   );
   for (const copy of [
     "Our mission",
@@ -33,10 +38,7 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "free, facilitated, in-person discussions and learning events",
     "At a time when much of social life takes place through screens",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
-    "Organization at a glance",
     "Vancouver Curiosity and Education Society",
-    "Responsible contact",
-    "Organizing team",
     "Leadership and governance",
     "Board of Directors",
     "Reza Rahnama",
@@ -64,9 +66,15 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     /Building belonging through curiosity\./u,
     "the removed split-layout headline must not remain in the About experience",
   );
-  assert.match(
+  assert.doesNotMatch(
     about,
-    /Vancouver Curiosity Club is the public-facing program of Vancouver[\s\S]*?Curiosity and Education Society/u,
+    /about-overview|about-at-a-glance|Make meaningful community easier to find\.|Organization at a glance|Responsible contact/u,
+    "the removed purpose and organization-summary section must not return",
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.about-overview|\.about-at-a-glance|\.about-lead/u,
+    "removed purpose-section styles must not remain in the route stylesheet",
   );
   assert.match(
     about,
