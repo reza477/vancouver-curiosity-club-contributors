@@ -61,6 +61,25 @@ const COMMUNITY_PROGRAMS = Object.freeze([
   }),
 ]);
 
+const BOARD_DIRECTORS = Object.freeze([
+  Object.freeze({
+    name: "Reza Rahnama",
+    role: "Founder, President and Executive Director",
+  }),
+  Object.freeze({
+    name: "Nawar Alsaadi",
+    role: "Vice-President and Treasurer; Strategy and Partnerships",
+  }),
+  Object.freeze({
+    name: "Nataliia Ivanova",
+    role: "Digital Experience and Communications",
+  }),
+  Object.freeze({
+    name: "Anurag Kapale",
+    role: "Director-at-Large; Technology, AI and Data",
+  }),
+]);
+
 export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
@@ -147,6 +166,21 @@ export default async function AboutPage() {
             </div>
           </dl>
         </div>
+      </section>
+
+      <section className="about-board" aria-labelledby="about-board-title">
+        <div className="about-section-heading">
+          <p className="section-kicker">Leadership and governance</p>
+          <h2 id="about-board-title">Board of Directors</h2>
+        </div>
+        <ul className="about-board__list">
+          {BOARD_DIRECTORS.map((director) => (
+            <li key={director.name}>
+              <h3>{director.name}</h3>
+              <p>{director.role}</p>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="about-model" aria-labelledby="about-model-title">

@@ -24,6 +24,7 @@
 
 .about-hero,
 .about-overview,
+.about-board,
 .about-model,
 .about-evidence,
 .about-communities,
@@ -83,6 +84,7 @@
 }
 
 .about-overview,
+.about-board,
 .about-model,
 .about-communities,
 .about-standards,
@@ -140,6 +142,35 @@
   color: var(--ink);
   font-weight: 650;
   line-height: 1.45;
+}
+
+.about-board__list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  list-style: none;
+  display: grid;
+}
+
+.about-board__list > li {
+  min-width: 0;
+  min-height: 8.5rem;
+  padding: 1.2rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.about-board__list h3 {
+  margin-bottom: 0.65rem;
+}
+
+.about-board__list p {
+  max-width: 36ch;
+  margin-bottom: 0;
+  color: var(--ink-soft);
+  line-height: 1.55;
 }
 
 .about-model {
@@ -350,6 +381,7 @@
 @media (max-width: 62rem) {
   .about-hero,
   .about-overview,
+  .about-board,
   .about-model,
   .about-evidence__copy,
   .about-communities,
@@ -375,6 +407,7 @@
 @media (max-width: 44rem) {
   .about-hero,
   .about-overview,
+  .about-board,
   .about-model,
   .about-evidence,
   .about-communities,
@@ -385,6 +418,7 @@
   }
 
   .about-at-a-glance,
+  .about-board__list,
   .about-evidence__gallery,
   .about-program-streams ul,
   .about-standards__body ul {

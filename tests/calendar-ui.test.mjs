@@ -483,11 +483,16 @@ test("About presents a professional mission, impact, continuity, and partnership
   assert.match(about, /<main className="about-page"/u);
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
   );
   for (const phrase of [
     "Building belonging through curiosity.",
     "Make meaningful community easier to find.",
+    "Board of Directors",
+    "Reza Rahnama",
+    "Nawar Alsaadi",
+    "Nataliia Ivanova",
+    "Anurag Kapale",
     "Structure creates room for belonging.",
     "What we organize",
     "Think",

@@ -24,7 +24,7 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-overview"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
     "About must keep the approved institutional narrative order",
   );
   for (const copy of [
@@ -38,6 +38,16 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "Vancouver Curiosity and Education Society",
     "Responsible contact",
     "Organizing team",
+    "Leadership and governance",
+    "Board of Directors",
+    "Reza Rahnama",
+    "Founder, President and Executive Director",
+    "Nawar Alsaadi",
+    "Vice-President and Treasurer; Strategy and Partnerships",
+    "Nataliia Ivanova",
+    "Digital Experience and Communications",
+    "Anurag Kapale",
+    "Director-at-Large; Technology, AI and Data",
     "How the model works",
     "What we organize",
     "Think",
@@ -88,7 +98,7 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   assert.doesNotMatch(
     about,
     /\bOrganizerNote\b|about-founder-note(?:-title)?/u,
-    "About must not import or render unverified leadership copy",
+    "About must not restore the removed self-authored organizer-note block",
   );
   assert.doesNotMatch(
     about,
