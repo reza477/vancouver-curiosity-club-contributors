@@ -709,14 +709,22 @@ function parsePublicDescriptionBlocks(source) {
     const strongHeading = /^\*\*([^*].*?)\*\*$/u.exec(line);
     const malformedStrongHeading = /^\*\*([^*].*?:)\*$/u.exec(line);
     const markdownHeading = /^(#{1,6})\s+(.+)$/u.exec(line);
-    if (strongHeading || malformedStrongHeading || markdownHeading) {
+    const approvedPlainHeading = /^Important note about being late:?$/iu.test(
+      line,
+    );
+    if (
+      strongHeading ||
+      malformedStrongHeading ||
+      markdownHeading ||
+      approvedPlainHeading
+    ) {
       flushParagraph();
       flushList();
       const headingText = normalizeDescriptionHeadingText(
         strongHeading?.[1] ??
           malformedStrongHeading?.[1] ??
           markdownHeading?.[2] ??
-          "",
+          (approvedPlainHeading ? line.replace(/:$/u, "") : ""),
       );
       const sourceLevel = markdownHeading?.[1]?.length ?? 2;
       pushBlock({

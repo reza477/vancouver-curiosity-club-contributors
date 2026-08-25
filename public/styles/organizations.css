@@ -152,11 +152,8 @@
   display: inline-flex;
 }
 
-.organizations-introduction,
 .organizations-evidence,
-.organizations-footprint,
 .organizations-collaboration,
-.organizations-conversation,
 .organizations-standards,
 .organizations-contact {
   padding: var(--public-section-space)
@@ -165,7 +162,6 @@
     max(var(--public-gutter), env(safe-area-inset-left));
 }
 
-.organizations-introduction,
 .organizations-standards,
 .organizations-contact {
   grid-template-columns: minmax(15rem, 0.74fr) minmax(0, 1.26fr);
@@ -173,7 +169,6 @@
   display: grid;
 }
 
-.organizations-introduction h2,
 .organizations-heading h2,
 .organizations-standards h2,
 .organizations-contact h2 {
@@ -187,21 +182,6 @@
   text-wrap: balance;
 }
 
-.organizations-introduction > div:last-child {
-  max-width: 50rem;
-}
-
-.organizations-introduction > div:last-child p {
-  max-width: 58ch;
-  line-height: 1.65;
-}
-
-.organizations-introduction .organizations-lead {
-  color: var(--ink);
-  font-size: clamp(1.05rem, 1.35vw, 1.2rem);
-}
-
-.organizations-introduction > div:last-child a,
 .organizations-heading--split a {
   min-height: 2.75rem;
   align-items: center;
@@ -347,63 +327,12 @@
   line-height: 1.45;
 }
 
-.organizations-footprint {
-  background: var(--paper-deep);
-}
-
-.organizations-footprint__columns {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(2rem, 5vw, 5rem);
-  display: grid;
-}
-
-.organizations-footprint__columns > section > h3 {
-  margin: 0 0 0.9rem;
-  font-size: clamp(1.15rem, 1.6vw, 1.4rem);
-}
-
-.organizations-footprint ul {
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-  list-style: none;
-}
-
-.organizations-footprint li {
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--line);
-  display: grid;
-}
-
-.organizations-footprint li strong,
-.organizations-footprint li span {
-  display: block;
-}
-
-.organizations-footprint li span {
-  max-width: 50ch;
-  margin-top: 0.35rem;
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-  line-height: 1.45;
-}
-
-.organizations-footprint li > a {
-  min-height: 2.75rem;
-  align-items: center;
-  font-size: 0.9rem;
-  font-weight: 700;
-  display: inline-flex;
-}
-
 .organizations-collaboration {
   background: var(--amber-surface);
 }
 
 .organizations-collaboration__grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--line);
   border-left: 1px solid var(--line);
   display: grid;
@@ -417,8 +346,7 @@
   border-bottom: 1px solid var(--line);
 }
 
-.organizations-collaboration article > span,
-.organizations-conversation li > span {
+.organizations-collaboration article > span {
   color: var(--accent);
   font-family: var(--mono);
   font-size: 0.75rem;
@@ -426,45 +354,18 @@
   letter-spacing: 0.07em;
 }
 
-.organizations-collaboration h3,
-.organizations-conversation h3 {
+.organizations-collaboration h3 {
   margin: 1.25rem 0 0;
   font-size: 1.05rem;
   line-height: 1.3;
 }
 
-.organizations-collaboration article p,
-.organizations-conversation li p {
+.organizations-collaboration article p {
   max-width: 42ch;
   margin-bottom: 0;
   color: var(--ink-soft);
   font-size: 0.95rem;
   line-height: 1.55;
-}
-
-.organizations-conversation {
-  grid-template-columns: minmax(15rem, 0.74fr) minmax(0, 1.26fr);
-  gap: clamp(2rem, 6vw, 6rem);
-  display: grid;
-}
-
-.organizations-conversation ol {
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-  list-style: none;
-}
-
-.organizations-conversation li {
-  grid-template-columns: 3rem minmax(0, 1fr);
-  gap: 1rem;
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--line);
-  display: grid;
-}
-
-.organizations-conversation h3 {
-  margin-top: 0;
 }
 
 .organizations-standards {
@@ -518,10 +419,7 @@
 
 @media (max-width: 52rem) {
   .for-organizations-page > .organizations-hero,
-  .organizations-introduction,
   .organizations-heading--split,
-  .organizations-footprint__columns,
-  .organizations-conversation,
   .organizations-standards,
   .organizations-contact {
     grid-template-columns: minmax(0, 1fr);
@@ -538,11 +436,8 @@
 
 @media (max-width: 42rem) {
   .for-organizations-page > .organizations-hero,
-  .organizations-introduction,
   .organizations-evidence,
-  .organizations-footprint,
   .organizations-collaboration,
-  .organizations-conversation,
   .organizations-standards,
   .organizations-contact {
     padding-right: max(1rem, env(safe-area-inset-right));
@@ -569,10 +464,5 @@
   .organizations-evidence__facts li,
   .organizations-collaboration article {
     min-height: 0;
-  }
-
-  .organizations-footprint li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.25rem;
   }
 }

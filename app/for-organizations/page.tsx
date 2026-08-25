@@ -33,47 +33,20 @@ const metadataDescription =
 
 const collaborationOptions = Object.freeze([
   Object.freeze({
-    body: "Support the practical costs behind thoughtful, publicly accessible programming.",
-    title: "Program funding or sponsorship",
-  }),
-  Object.freeze({
     body: "Help make suitable gathering spaces available for talks, workshops, discussions, and activities.",
     title: "Venue and space partnerships",
   }),
   Object.freeze({
-    body: "Develop a public event around a subject or experience that fits both organizations.",
-    title: "Co-presented public programs",
+    body: "Develop a public learning or cultural event around a subject or experience that fits both organizations.",
+    title: "Co-presented learning and culture",
   }),
   Object.freeze({
-    body: "Connect relevant expertise, facilitators, collections, or learning opportunities with the public.",
-    title: "Educational or cultural collaboration",
+    body: "Support confirmed program needs through funding, sponsorship, materials, services, or other practical resources.",
+    title: "Funding and in-kind support",
   }),
   Object.freeze({
-    body: "Help appropriate audiences discover public programs that may interest them.",
-    title: "Community outreach and referrals",
-  }),
-  Object.freeze({
-    body: "Contribute materials, services, or practical resources suited to a confirmed program need.",
-    title: "Appropriate in-kind support",
-  }),
-]);
-
-const FIRST_CONVERSATION_TOPICS = Object.freeze([
-  Object.freeze({
-    body: "What your organization hopes to make possible and how the idea could benefit the public.",
-    title: "Shared objective",
-  }),
-  Object.freeze({
-    body: "The audience, subject, activity, and level of structure that would make the program useful.",
-    title: "Program fit",
-  }),
-  Object.freeze({
-    body: "Possible roles, space, expertise, materials, funding, timing, and decision points.",
-    title: "Practical scope",
-  }),
-  Object.freeze({
-    body: "Accessibility, participant expectations, public communications, and how success would be understood.",
-    title: "Responsible delivery",
+    body: "Connect relevant audiences, expertise, facilitators, collections, or learning opportunities with the public.",
+    title: "Outreach, expertise, and referrals",
   }),
 ]);
 
@@ -223,32 +196,6 @@ export default async function ForOrganizationsPage() {
       </header>
 
       <section
-        className="organizations-introduction"
-        aria-labelledby="organizations-purpose-title"
-      >
-        <div>
-          <p className="section-kicker">Mission and public need</p>
-          <h2 id="organizations-purpose-title">
-            Thoughtful programs can make local connection easier to begin.
-          </h2>
-        </div>
-        <div>
-          <p className="organizations-lead">
-            Vancouver Curiosity Club is a Vancouver-based community
-            organization. We use shared subjects and activities to give people
-            a natural reason to gather, enough structure to start talking, and
-            recurring opportunities to take part.
-          </p>
-          <p>
-            Organizations can help this work reach more people and become more
-            durable through suitable space, aligned expertise, materials,
-            referrals, co-presented programs, sponsorship, or funding.
-          </p>
-          <Link href="/about">Read about our mission and model</Link>
-        </div>
-      </section>
-
-      <section
         className="organizations-evidence"
         id="public-work"
         aria-labelledby="organizations-evidence-title"
@@ -295,18 +242,6 @@ export default async function ForOrganizationsPage() {
               <span>Local base</span>
             </li>
           ) : null}
-          <li>
-            <strong>{lanes.length} program streams</strong>
-            <span>Several formats and interests</span>
-          </li>
-          <li>
-            <strong>{clubs.length} public communities</strong>
-            <span>One organizational home</span>
-          </li>
-          <li>
-            <strong>Current public calendar</strong>
-            <span>Program details available to review</span>
-          </li>
           {catalog.site.legalName ? (
             <li>
               <strong>{catalog.site.legalName}</strong>
@@ -351,51 +286,6 @@ export default async function ForOrganizationsPage() {
       </section>
 
       <section
-        className="organizations-footprint"
-        aria-labelledby="organizations-footprint-title"
-      >
-        <div className="organizations-heading">
-          <p className="section-kicker">Program footprint</p>
-          <h2 id="organizations-footprint-title">
-            Several ways into the same community mission.
-          </h2>
-        </div>
-        <div className="organizations-footprint__columns">
-          <section aria-labelledby="organizations-streams-title">
-            <h3 id="organizations-streams-title">Four program streams</h3>
-            <ul>
-              {lanes.map((lane) => (
-                <li key={lane.slug}>
-                  <div>
-                    <strong>{lane.name}</strong>
-                    {lane.description ? <span>{lane.description}</span> : null}
-                  </div>
-                  <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
-                    View events
-                    <span className="sr-only"> in {lane.name}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section aria-labelledby="organizations-communities-title">
-            <h3 id="organizations-communities-title">Three public communities</h3>
-            <ul>
-              {clubs.map((club) => (
-                <li key={club.slug}>
-                  <div>
-                    <strong>{club.name}</strong>
-                    {club.description ? <span>{club.description}</span> : null}
-                  </div>
-                  <Link href={`/clubs/${club.slug}`}>View community</Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      </section>
-
-      <section
         className="organizations-collaboration"
         aria-labelledby="organizations-collaboration-title"
       >
@@ -408,6 +298,10 @@ export default async function ForOrganizationsPage() {
             Each conversation starts with shared objectives, practical fit,
             and public benefit.
           </p>
+          <p>
+            In a first message, include the audience and format, the practical
+            contribution you have in mind, timing, and any accessibility needs.
+          </p>
         </div>
         <div className="organizations-collaboration__grid">
           {collaborationOptions.map((option, index) => (
@@ -418,29 +312,6 @@ export default async function ForOrganizationsPage() {
             </article>
           ))}
         </div>
-      </section>
-
-      <section
-        className="organizations-conversation"
-        aria-labelledby="organizations-conversation-title"
-      >
-        <div className="organizations-heading">
-          <p className="section-kicker">A useful first conversation</p>
-          <h2 id="organizations-conversation-title">
-            Start with fit before designing the details.
-          </h2>
-        </div>
-        <ol>
-          {FIRST_CONVERSATION_TOPICS.map((topic, index) => (
-            <li key={topic.title}>
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-              <div>
-                <h3>{topic.title}</h3>
-                <p>{topic.body}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
       </section>
 
       <section
@@ -463,7 +334,7 @@ export default async function ForOrganizationsPage() {
             <Link href="/conduct">Code of Conduct</Link>
             <Link href="/accessibility">Accessibility</Link>
             <Link href="/privacy">Privacy</Link>
-            <Link href="/events">Current public events</Link>
+            <Link href="/about">Mission and operating model</Link>
           </nav>
         </div>
       </section>

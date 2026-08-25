@@ -21,6 +21,11 @@ const APPROVED_INSTITUTIONAL_EVENT_TITLES = Object.freeze<
     }),
 });
 
+const LEADING_DECORATIVE_EMOJI_PATTERN =
+  /^(?:(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:\uFE0F|\p{Emoji_Modifier}|\u200D(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}))*\s*)+/u;
+const TRAILING_DECORATIVE_EMOJI_PATTERN =
+  /(?:\s*(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:\uFE0F|\p{Emoji_Modifier}|\u200D(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}))*)+\s*$/u;
+
 export type InstitutionalEventTitleResolution = Readonly<{
   status: "approved" | "canonical" | "stale-override";
   title: string;
@@ -50,5 +55,10 @@ export function resolveInstitutionalEventTitle(
 export function institutionalEventTitle(
   event: InstitutionalEventTitleInput,
 ): string {
-  return resolveInstitutionalEventTitle(event).title;
+  const resolvedTitle = resolveInstitutionalEventTitle(event).title;
+  const professionalTitle = resolvedTitle
+    .replace(LEADING_DECORATIVE_EMOJI_PATTERN, "")
+    .replace(TRAILING_DECORATIVE_EMOJI_PATTERN, "")
+    .trim();
+  return professionalTitle || resolvedTitle;
 }

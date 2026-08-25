@@ -109,9 +109,58 @@
   overflow: hidden;
 }
 
+.home-hero__poster-link {
+  position: relative;
+  min-height: 14rem;
+  background:
+    radial-gradient(circle at 82% 18%, rgb(255 255 255 / 72%) 0 0.35rem, transparent 0.4rem),
+    linear-gradient(135deg, var(--amber-surface) 0 48%, var(--coral-surface) 48% 72%, var(--paper-deep) 72% 100%);
+  color: var(--ink);
+  text-decoration: none;
+  display: block;
+  overflow: hidden;
+}
+
+.home-hero__poster-link:focus-visible {
+  outline: 0.2rem solid var(--forest);
+  outline-offset: -0.3rem;
+}
+
+.home-hero__poster-preview {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  align-content: end;
+  gap: 0.45rem;
+  padding: 1.25rem;
+  display: grid;
+}
+
+.home-hero__poster-preview > span {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.home-hero__poster-preview > strong {
+  max-width: 22ch;
+  font-family: var(--display);
+  font-size: clamp(1.35rem, 2.5vw, 2.25rem);
+  line-height: 1.02;
+}
+
+.home-hero__poster-link > picture,
+.home-hero__poster-link > img,
+.home-hero__poster-link > .home-artwork-fallback {
+  position: relative;
+  z-index: 1;
+}
+
 .home-hero__poster img {
   max-height: 25.5rem;
-  background: var(--paper-deep);
+  background: transparent;
   object-fit: contain;
   width: 100%;
   height: auto;

@@ -381,6 +381,52 @@ test("the paddleboarding compatibility repair is exact, narrow, and idempotent",
   );
 });
 
+test("legacy late-arrival prose regains its heading without changing unrelated paragraphs", () => {
+  const legacy = Object.freeze([
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({
+          text: "Please arrive early. Important note about being late Because the room settles together, late arrivals may not be admitted.",
+          type: "text",
+        }),
+      ]),
+      type: "paragraph",
+    }),
+  ]);
+  const repaired = meetupDescriptionBlocksForDisplay(legacy);
+  assert.deepEqual(repaired, [
+    {
+      content: [{ text: "Please arrive early.", type: "text" }],
+      type: "paragraph",
+    },
+    {
+      content: [{ text: "Important note about being late", type: "text" }],
+      level: 3,
+      type: "heading",
+    },
+    {
+      content: [
+        {
+          text: "Because the room settles together, late arrivals may not be admitted.",
+          type: "text",
+        },
+      ],
+      type: "paragraph",
+    },
+  ]);
+  assert.deepEqual(meetupDescriptionBlocksForDisplay(repaired), repaired);
+
+  const unrelated = Object.freeze([
+    Object.freeze({
+      content: Object.freeze([
+        Object.freeze({ text: "Because this is unrelated.", type: "text" }),
+      ]),
+      type: "paragraph",
+    }),
+  ]);
+  assert.deepEqual(meetupDescriptionBlocksForDisplay(unrelated), unrelated);
+});
+
 test("legacy Autism and summer-cinema placeholders regain only their vetted links", () => {
   const autismBlocks = Object.freeze([
     Object.freeze({

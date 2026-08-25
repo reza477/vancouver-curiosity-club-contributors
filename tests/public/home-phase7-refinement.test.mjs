@@ -19,6 +19,11 @@ test("Home removes repeated introductions while preserving its institutional pat
   assert.match(source, /View the public event calendar/u);
   assert.match(source, /Explore upcoming events/u);
   assert.match(source, /institutionalEventTitle\(event\)/u);
+  assert.match(
+    source,
+    /className="home-hero__poster-link"[\s\S]*?href=\{`\/events\/\$\{event\.slug\}`\}[\s\S]*?<EventPosterImage/u,
+  );
+  assert.match(source, /className="home-hero__poster-preview" aria-hidden="true"/u);
 });
 
 test("Home uses shared spacing and compact responsive fallbacks", async () => {
@@ -42,6 +47,14 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   assert.match(
     css,
     /@media \(max-width: 42rem\)[\s\S]*?\.home-partnerships\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/u,
+  );
+  assert.match(
+    css,
+    /\.home-hero__poster-link\s*\{[^}]*position:\s*relative;[^}]*linear-gradient/su,
+  );
+  assert.match(
+    css,
+    /\.home-hero__poster-preview\s*\{[^}]*position:\s*absolute;/su,
   );
   assert.doesNotMatch(css, /\.home-section-heading--split|\.home-hero__events-link/u);
 });

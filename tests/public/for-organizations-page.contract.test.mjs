@@ -13,22 +13,19 @@ test("For Organizations presents the institutional partnership story in a clear 
   );
   assert.match(
     page,
-    /className="page-masthead page-masthead--compact organizations-hero"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?Discuss a partnership[\s\S]*?className="organizations-introduction"/u,
+    /className="page-masthead page-masthead--compact organizations-hero"[\s\S]*?href="\/contact\?topic=partnerships#contact-form"[\s\S]*?Discuss a partnership[\s\S]*?className="organizations-evidence"/u,
   );
   assert.match(page, /className="organizations-hero__proof"/u);
   assert.match(page, /featuredEvent\s*\?\s*"See a current public program\."/u);
   assert.match(page, /"Review the public program structure\."/u);
   assert.match(
     page,
-    /className="organizations-introduction"[\s\S]*?className="organizations-evidence"[\s\S]*?className="organizations-footprint"[\s\S]*?className="organizations-collaboration"[\s\S]*?className="organizations-conversation"[\s\S]*?className="organizations-standards"[\s\S]*?className="organizations-contact"/u,
+    /className="organizations-evidence"[\s\S]*?className="organizations-collaboration"[\s\S]*?className="organizations-standards"[\s\S]*?className="organizations-contact"/u,
   );
   for (const phrase of [
-    "Mission and public need",
     "Current public activity",
     "Public work partners can review.",
-    "Program footprint",
     "Collaboration pathways",
-    "A useful first conversation",
     "Public operating standards",
     "Discuss a partnership",
   ]) {
@@ -37,6 +34,10 @@ test("For Organizations presents the institutional partnership story in a clear 
   assert.doesNotMatch(
     page,
     /Verified public information|What is available now|claims? about existing partnerships/iu,
+  );
+  assert.doesNotMatch(
+    page,
+    /organizations-(?:introduction|footprint|conversation)/u,
   );
 });
 
@@ -101,7 +102,7 @@ test("For Organizations keeps claims evidence-safe and exposes the review and co
   }
   assert.match(page, /selectCanonicalPublicCommunities\(catalog\.clubs\)/u);
   assert.match(page, /collaborationOptions\.map/u);
-  assert.match(page, /FIRST_CONVERSATION_TOPICS\.map/u);
+  assert.doesNotMatch(page, /FIRST_CONVERSATION_TOPICS/u);
 });
 
 test("For Organizations route styles remain bounded and stack the evidence cleanly", async () => {
@@ -121,11 +122,19 @@ test("For Organizations route styles remain bounded and stack the evidence clean
   );
   assert.match(
     css,
+    /\.organizations-collaboration__grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/su,
+  );
+  assert.match(
+    css,
     /\.for-organizations-page > \.organizations-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 0\.9fr\) minmax\(25rem, 1\.1fr\);/su,
   );
   assert.match(css, /\.organizations-activity-card__artwork-frame/u);
   assert.match(css, /\.organizations-hero__proof/u);
   assert.match(css, /\.organizations-hero__facts/u);
+  assert.doesNotMatch(
+    css,
+    /\.organizations-(?:introduction|footprint|conversation)\b/u,
+  );
   assert.match(
     css,
     /@media \(max-width: 52rem\)[\s\S]*?\.for-organizations-page > \.organizations-hero,[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,

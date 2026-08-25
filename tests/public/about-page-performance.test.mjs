@@ -34,6 +34,9 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "At a time when much of social life takes place through screens",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
     "Organization at a glance",
+    "Vancouver Curiosity and Education Society",
+    "Responsible contact",
+    "Organizing team",
     "How the model works",
     "What we organize",
     "Think",
@@ -46,6 +49,10 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   ]) {
     assert.ok(aboutPositioning.includes(copy), copy);
   }
+  assert.match(
+    about,
+    /Vancouver Curiosity Club is the public-facing program of Vancouver[\s\S]*?Curiosity and Education Society/u,
+  );
   assert.match(
     about,
     /descriptionOverride:\s*PUBLIC_ABOUT_MISSION_COPY\.metadataDescription/u,

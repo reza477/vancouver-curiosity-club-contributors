@@ -354,6 +354,38 @@ Reading Magnifica Humanitas - my summary of it:
   }
 });
 
+test("the generator keeps the approved late-arrival line as a heading", () => {
+  const result = normalizePublicDescription(`A welcoming meditation and journaling session for the public.
+Important note about being late:
+Because the room settles together, late arrivals may not be admitted.`);
+
+  assert.deepEqual(result.blocks, [
+    {
+      content: [
+        {
+          text: "A welcoming meditation and journaling session for the public.",
+          type: "text",
+        },
+      ],
+      type: "paragraph",
+    },
+    {
+      content: [{ text: "Important note about being late", type: "text" }],
+      level: 3,
+      type: "heading",
+    },
+    {
+      content: [
+        {
+          text: "Because the room settles together, late arrivals may not be admitted.",
+          type: "text",
+        },
+      ],
+      type: "paragraph",
+    },
+  ]);
+});
+
 test("the Banking import removes visible Markdown residue while preserving heading semantics", () => {
   const result = normalizePublicDescription(`Short Summary
 This is designed for those with little to no knowledge of Canadian banking and investing.

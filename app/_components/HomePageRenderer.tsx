@@ -330,43 +330,53 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
 
   return (
     <figure className="home-hero__poster" data-home-hero-event={event.slug}>
-      <EventPosterImage
-        alt={event.artwork.altText ?? `${displayTitle} event poster`}
-        decoding="async"
-        fallback={
-          <div
-            aria-label={`${displayTitle} event poster unavailable`}
-            className="home-artwork-fallback"
-            role="img"
-          >
-            <span>{event.club.name}</span>
-            <strong>{displayTitle}</strong>
-          </div>
-        }
-        fetchPriority="high"
-        height={event.artwork.dimensions.large.height}
-        loading="eager"
-        sizes="(max-width: 700px) 100vw, (max-width: 1120px) 46vw, 35vw"
-        src={event.artwork.url}
-        srcSet={responsiveImageSrcSet([
-          {
-            url: event.artwork.srcSet.small,
-            width: event.artwork.dimensions.small.width,
-          },
-          {
-            url: event.artwork.srcSet.medium,
-            width: event.artwork.dimensions.medium.width,
-          },
-          {
-            url: event.artwork.srcSet.large,
-            width: event.artwork.dimensions.large.width,
-          },
-        ])}
-        style={{
-          objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-        }}
-        width={event.artwork.dimensions.large.width}
-      />
+      <Link
+        aria-label={`View event: ${displayTitle}`}
+        className="home-hero__poster-link"
+        href={`/events/${event.slug}`}
+      >
+        <span className="home-hero__poster-preview" aria-hidden="true">
+          <span>{event.club.name}</span>
+          <strong>{displayTitle}</strong>
+        </span>
+        <EventPosterImage
+          alt={event.artwork.altText ?? `${displayTitle} event poster`}
+          decoding="async"
+          fallback={
+            <div
+              aria-label={`${displayTitle} event poster unavailable`}
+              className="home-artwork-fallback"
+              role="img"
+            >
+              <span>{event.club.name}</span>
+              <strong>{displayTitle}</strong>
+            </div>
+          }
+          fetchPriority="high"
+          height={event.artwork.dimensions.large.height}
+          loading="eager"
+          sizes="(max-width: 700px) 100vw, (max-width: 1120px) 46vw, 35vw"
+          src={event.artwork.url}
+          srcSet={responsiveImageSrcSet([
+            {
+              url: event.artwork.srcSet.small,
+              width: event.artwork.dimensions.small.width,
+            },
+            {
+              url: event.artwork.srcSet.medium,
+              width: event.artwork.dimensions.medium.width,
+            },
+            {
+              url: event.artwork.srcSet.large,
+              width: event.artwork.dimensions.large.width,
+            },
+          ])}
+          style={{
+            objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+          }}
+          width={event.artwork.dimensions.large.width}
+        />
+      </Link>
       <figcaption>
         <span>Featured upcoming program</span>
         <Link href={`/events/${event.slug}`}>{displayTitle}</Link>

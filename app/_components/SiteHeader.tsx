@@ -2,6 +2,7 @@
 
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { usePathname } from "next/navigation";
+import { useRef, useState } from "react";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 const requiredNavigation = [
@@ -26,8 +27,20 @@ export function SiteHeader({
   privateMedia?: boolean;
 }>) {
   const primaryNavigation = normalizedPrimaryNavigation(navigation);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
   return (
-    <header className="site-header">
+    <header
+      className="site-header"
+      data-mobile-menu-open={mobileMenuOpen ? "true" : "false"}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !mobileMenuOpen) return;
+        closeMobileMenu();
+        menuButtonRef.current?.focus();
+      }}
+    >
       <Link
         className="wordmark"
         href="/"
@@ -58,12 +71,26 @@ export function SiteHeader({
         <span>{brandName}</span>
       </Link>
 
+      <button
+        aria-controls="primary-navigation"
+        aria-expanded={mobileMenuOpen}
+        className="site-menu-toggle"
+        onClick={() => setMobileMenuOpen((open) => !open)}
+        ref={menuButtonRef}
+        type="button"
+      >
+        <span>{mobileMenuOpen ? "Close" : "Menu"}</span>
+        <span className="site-menu-toggle__icon" aria-hidden="true" />
+      </button>
+
       <nav
+        id="primary-navigation"
         className="primary-nav"
         aria-label="Primary navigation"
       >
         <NavigationLinks
           navigation={primaryNavigation}
+          onNavigate={closeMobileMenu}
           prefetchInternalLinks={prefetchInternalLinks}
         />
       </nav>
@@ -73,9 +100,11 @@ export function SiteHeader({
 
 function NavigationLinks({
   navigation,
+  onNavigate,
   prefetchInternalLinks,
 }: Readonly<{
   navigation: readonly PublicNavigationItemDto[];
+  onNavigate: () => void;
   prefetchInternalLinks: boolean;
 }>) {
   const pathname = usePathname();
@@ -97,6 +126,7 @@ function NavigationLinks({
             data-primary-destination={item.label.toLowerCase()}
             href={item.href}
             key={item.href}
+            onClick={onNavigate}
             prefetch={prefetchInternalLinks}
           >
             {item.label}
@@ -105,6 +135,7 @@ function NavigationLinks({
           <a
             href={item.href}
             key={item.href}
+            onClick={onNavigate}
             rel="noreferrer noopener"
             target="_blank"
           >

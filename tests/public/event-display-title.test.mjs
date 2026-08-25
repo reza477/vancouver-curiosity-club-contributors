@@ -34,20 +34,36 @@ test("an upstream title edit makes the UI override stale instead of guessing", (
   });
 });
 
-test("aliases and ordinary events retain their canonical titles", () => {
-  for (const event of [
-    Object.freeze({
-      ...canonicalOfficeSpace,
-      rsvpUrl:
-        "https://www.meetup.com/vancouver-meetup-group/events/316159366/",
-    }),
-    Object.freeze({
-      rsvpUrl: "https://www.meetup.com/example/events/123456789/",
-      title: "🌙 A canonical Meetup title",
-    }),
-    Object.freeze({ rsvpUrl: null, title: "An organizer event" }),
-  ]) {
-    assert.equal(institutionalEventTitle(event), event.title);
-    assert.equal(resolveInstitutionalEventTitle(event).status, "canonical");
+test("institutional surfaces remove only decorative edge emoji from canonical titles", () => {
+  const examples = [
+    [
+      Object.freeze({
+        ...canonicalOfficeSpace,
+        rsvpUrl:
+          "https://www.meetup.com/vancouver-meetup-group/events/316159366/",
+      }),
+      "Office Space at VIFF - work is fake and the printer deserved it",
+    ],
+    [
+      Object.freeze({
+        rsvpUrl: "https://www.meetup.com/example/events/123456789/",
+        title: "🌙 A canonical Meetup title 🎬",
+      }),
+      "A canonical Meetup title",
+    ],
+    [
+      Object.freeze({
+        rsvpUrl: null,
+        title: "An organizer event with 🎨 inside",
+      }),
+      "An organizer event with 🎨 inside",
+    ],
+  ];
+  for (const [event, expected] of examples) {
+    assert.equal(institutionalEventTitle(event), expected);
+    assert.deepEqual(resolveInstitutionalEventTitle(event), {
+      status: "canonical",
+      title: event.title,
+    });
   }
 });

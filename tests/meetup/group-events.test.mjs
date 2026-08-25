@@ -468,6 +468,33 @@ The session is designed to take \\~30 minutes, but I encourage questions during 
   );
 });
 
+test("preserves the approved late-arrival line as a semantic heading", () => {
+  const state = createApolloState();
+  state[EVENT_REF].description = `A welcoming meditation and journaling session for the public.
+Please arrive a few minutes before the listed start time.
+Important note about being late
+Because the room settles together, late arrivals may not be admitted.`;
+
+  const publicContent = parseMeetupGroupEventsPage(
+    createHtml(state),
+    GROUP_SLUG,
+  ).events[0].publicContent;
+  assert.deepEqual(publicContent.descriptionBlocks[1], {
+    content: [{ text: "Important note about being late", type: "text" }],
+    level: 3,
+    type: "heading",
+  });
+  assert.deepEqual(publicContent.descriptionBlocks[2], {
+    content: [
+      {
+        text: "Because the room settles together, late arrivals may not be admitted.",
+        type: "text",
+      },
+    ],
+    type: "paragraph",
+  });
+});
+
 test("retains the exact paddleboarding lesson link in automatic group-page imports", () => {
   const state = createApolloState();
   state[EVENT_REF].description = `Finding Your People: Last-Minute Paddleboarding at Deep Cove 🏄

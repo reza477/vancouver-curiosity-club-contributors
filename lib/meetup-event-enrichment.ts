@@ -239,7 +239,64 @@ export function meetupDescriptionBlocksForDisplay(
     }
     merged.push(block);
   }
-  return removeOrphanMeetupTicketAndRsvpCallToActions(merged);
+  return removeOrphanMeetupTicketAndRsvpCallToActions(
+    restoreApprovedPlainDescriptionHeadings(merged),
+  );
+}
+
+function restoreApprovedPlainDescriptionHeadings(
+  blocks: readonly CuratedMeetupDescriptionBlock[],
+): readonly CuratedMeetupDescriptionBlock[] {
+  const restored: CuratedMeetupDescriptionBlock[] = [];
+  for (const block of blocks) {
+    if (
+      block.type !== "paragraph" ||
+      block.content.length !== 1 ||
+      block.content[0]?.type !== "text"
+    ) {
+      restored.push(block);
+      continue;
+    }
+    const match =
+      /^(.*?)\s*Important note about being late:?\s+(Because\b[\s\S]*)$/iu.exec(
+        block.content[0].text,
+      );
+    if (!match) {
+      restored.push(block);
+      continue;
+    }
+    const prefix = match[1].trim();
+    const followingParagraph = match[2].trim();
+    if (prefix) {
+      restored.push(
+        Object.freeze({
+          content: Object.freeze([
+            Object.freeze({ text: prefix, type: "text" as const }),
+          ]),
+          type: "paragraph" as const,
+        }),
+      );
+    }
+    restored.push(
+      Object.freeze({
+        content: Object.freeze([
+          Object.freeze({
+            text: "Important note about being late",
+            type: "text" as const,
+          }),
+        ]),
+        level: 3 as const,
+        type: "heading" as const,
+      }),
+      Object.freeze({
+        content: Object.freeze([
+          Object.freeze({ text: followingParagraph, type: "text" as const }),
+        ]),
+        type: "paragraph" as const,
+      }),
+    );
+  }
+  return Object.freeze(restored);
 }
 
 const LEGACY_PADDLEBOARDING_EVENT_URL =

@@ -154,6 +154,10 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
     );
   }
   assert.doesNotMatch(header, /<details|<summary|site-navigation/u);
+  assert.match(header, /aria-controls="primary-navigation"/u);
+  assert.match(header, /aria-expanded=\{mobileMenuOpen\}/u);
+  assert.match(header, /event\.key !== "Escape"/u);
+  assert.equal((header.match(/<nav\b/gu) ?? []).length, 1);
   assert.match(
     header,
     /href === "\/events"[\s\S]*?pathname === "\/events"[\s\S]*?pathname\.startsWith\("\/events\/"\)[\s\S]*?pathname === "\/calendar"/u,
@@ -178,13 +182,54 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
   const tabletStyles = atRuleBlocks(css, "@media (max-width: 70rem)")[0] ?? "";
   assertRuleContains(tabletStyles, ".primary-nav", [/width:\s*100%;/u]);
 
-  const phoneStyles = atRuleBlocks(css, "@media (max-width: 30rem)")[0] ?? "";
-  assertRuleContains(phoneStyles, ".primary-nav", [
-    /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/u,
-  ]);
-  assertRuleContains(phoneStyles, ".primary-nav a", [
+  const phoneStyles = atRuleBlocks(css, "@media (max-width: 38rem)")[0] ?? "";
+  assertRuleContains(phoneStyles, ".site-menu-toggle", [
+    /display:\s*inline-flex;/u,
     /min-height:\s*2\.75rem;/u,
-    /white-space:\s*normal;/u,
+  ]);
+  assertRuleContains(phoneStyles, ".site-header > .primary-nav", [
+    /visibility:\s*hidden;/u,
+    /grid-template-columns:\s*minmax\(0, 1fr\);/u,
+    /position:\s*absolute;/u,
+  ]);
+  assertRuleContains(
+    phoneStyles,
+    '.site-header[data-mobile-menu-open="true"] > .primary-nav',
+    [/visibility:\s*visible;/u, /pointer-events:\s*auto;/u],
+  );
+  assertRuleContains(phoneStyles, ".site-header > .primary-nav a", [
+    /min-height:\s*2\.75rem;/u,
+    /justify-content:\s*flex-start;/u,
+  ]);
+  assert.doesNotMatch(phoneStyles, /repeat\(3, minmax\(0, 1fr\)\)/u);
+});
+
+test("inner-page mastheads use compact split layouts without wasting desktop space", () => {
+  const layout = source("app", "styles", "layout.css");
+  const events = source("public", "styles", "events.css");
+
+  assertRuleContains(layout, ".page-masthead--compact", [
+    /padding-top:\s*clamp\(1\.75rem, 3vw, 2\.75rem\);/u,
+    /padding-bottom:\s*clamp\(1\.5rem, 2\.5vw, 2\.25rem\);/u,
+  ]);
+  const desktopLayout =
+    atRuleBlocks(layout, "@media (min-width: 52.001rem)")[0] ?? "";
+  assertRuleContains(
+    desktopLayout,
+    ".page-masthead:not(.organizations-hero) > .page-masthead__copy",
+    [
+      /grid-template-columns:\s*minmax\(0, 0\.88fr\) minmax\(18rem, 1\.12fr\);/u,
+      /display:\s*grid;/u,
+    ],
+  );
+  assertRuleContains(events, ".events-page-masthead", [
+    /padding:\s*clamp\(1\.75rem, 3vw, 2\.75rem\)/u,
+  ]);
+  const desktopEvents =
+    atRuleBlocks(events, "@media (min-width: 52.001rem)")[0] ?? "";
+  assertRuleContains(desktopEvents, ".events-page-masthead", [
+    /grid-template-columns:\s*minmax\(0, 0\.88fr\) minmax\(18rem, 1\.12fr\);/u,
+    /display:\s*grid;/u,
   ]);
 });
 

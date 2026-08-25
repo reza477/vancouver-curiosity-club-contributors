@@ -86,7 +86,12 @@ test("homepage discovery hides the repeated Meetup credit in both hero and cards
   );
   assert.equal(
     (meetupMarkup.match(/href="\/events\/fixture-event-1"/gu) ?? []).length,
-    1,
+    2,
+    "the hero artwork and caption must both link to the first event",
+  );
+  assert.doesNotMatch(
+    meetupMarkup,
+    /data-home-event-slug="fixture-event-1"/u,
     "the first hero event must not be repeated as a following card",
   );
 

@@ -312,8 +312,18 @@ test("event posters stay uncropped while established discovery frames remain hor
         "background",
         viewportWidth,
       ),
-      "var(--paper-deep)",
-      `the homepage hero must keep a light loading surface at ${viewportWidth}px`,
+      "transparent",
+      `the poster image must reveal its lightweight preview while loading at ${viewportWidth}px`,
+    );
+    assert.match(
+      lastDeclarationAtViewport(
+        styles,
+        ".home-hero__poster-link",
+        "background",
+        viewportWidth,
+      ) ?? "",
+      /linear-gradient/u,
+      `the homepage hero must keep a zero-request branded preview at ${viewportWidth}px`,
     );
   }
 
