@@ -1057,7 +1057,7 @@ test("exact cross-post aliases share canonical events and publish a later unique
     "https://www.meetup.com/vancouver-meetup-group/events/315511480/";
   assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlOne), canonicalUrlOne);
   assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlTwo), canonicalUrlTwo);
-  assert.equal(MEETUP_EVENT_ALIASES.length, 14);
+  assert.equal(MEETUP_EVENT_ALIASES.length, 17);
   assert.deepEqual(
     [
       "315776403",
@@ -1065,6 +1065,9 @@ test("exact cross-post aliases share canonical events and publish a later unique
       "315777485",
       "316159366",
       "316050934",
+      "316263002",
+      "316263346",
+      "316248155",
     ].map((aliasId) =>
       canonicalMeetupEventUrlForAlias(
         `https://www.meetup.com/vancouver-meetup-group/events/${aliasId}/`,
@@ -1076,6 +1079,9 @@ test("exact cross-post aliases share canonical events and publish a later unique
       "https://www.meetup.com/vancouver-literature-and-film/events/315777434/",
       "https://www.meetup.com/vancouver-literature-and-film/events/316159440/",
       "https://www.meetup.com/vancouver-literature-and-film/events/316050915/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316263063/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316263362/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316248163/",
     ],
   );
   assert.equal(

@@ -582,6 +582,38 @@ Free general admission — first come, first served.`;
   assert.doesNotMatch(cinema.description, /External resource/u);
 });
 
+test("retains the exact September documentary and magazine source links", () => {
+  for (const sourceUrl of [
+    "https://www.pbs.org/pov/films/mindingthegap/",
+    "https://www.vogue.com/article/on-the-podcast-behind-chloe-malles-first-september-issue",
+  ]) {
+    const state = createApolloState();
+    state[EVENT_REF].description = `Discussion material to review before the event.
+
+Official source page:
+[${sourceUrl}](${sourceUrl})
+
+Review the source beforehand and come ready to discuss it.`;
+    const publicContent = parseMeetupGroupEventsPage(
+      createHtml(state),
+      GROUP_SLUG,
+    ).events[0].publicContent;
+    const links = publicContent.descriptionBlocks
+      .flatMap((block) =>
+        "content" in block ? block.content : "items" in block ? block.items.flat() : [],
+      )
+      .filter((inline) => inline.type === "link");
+    assert.deepEqual(links, [
+      {
+        href: sourceUrl,
+        text: "Official source page",
+        type: "link",
+      },
+    ]);
+    assert.doesNotMatch(publicContent.description, /External resource/u);
+  }
+});
+
 test("keeps source spacing without emitting whitespace-only description inlines", () => {
   const state = createApolloState();
   state[EVENT_REF].description = `Quarry Rock sunset hike and dinner.
@@ -617,6 +649,8 @@ test("new public-description hosts remain exact and fail closed", () => {
     "https://deepcovekayak.com:444/lesson/intro-to-sup/",
     "https://deepcovekayak.com.attacker.invalid/lesson/intro-to-sup/",
     "https://deepcovekayak.com/lesson/intro-to-sup/?offer=private",
+    "https://www.pbs.org.attacker.invalid/pov/films/mindingthegap/",
+    "https://www.vogue.com/article/on-the-podcast-behind-chloe-malles-first-september-issue?private=1",
   ]) {
     const state = createApolloState();
     state[EVENT_REF].description =
