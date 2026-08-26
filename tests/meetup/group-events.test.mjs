@@ -610,6 +610,9 @@ Review the source beforehand and come ready to discuss it.`;
         type: "link",
       },
     ]);
+    assert.doesNotThrow(() =>
+      validateMeetupDescriptionBlocks(publicContent.descriptionBlocks),
+    );
     assert.doesNotMatch(publicContent.description, /External resource/u);
   }
 });
