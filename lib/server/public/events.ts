@@ -100,8 +100,10 @@ const MEETUP_PUBLICATION_END_UTC_MS_EXCLUSIVE = localDateTimeToUtcMs(
   "earlier",
 );
 const PUBLICATION_CUTOFF_MEETUP_GROUP_SQL = CANONICAL_PUBLIC_COMMUNITY_URLS.map(
-  (groupUrl) =>
-    `snapshot.event_url GLOB '${`${groupUrl}events/*`.replaceAll("'", "''")}'`,
+  (groupUrl) => {
+    const eventUrlPrefix = `${groupUrl}events/`;
+    return `substr(snapshot.event_url, 1, ${eventUrlPrefix.length}) = '${eventUrlPrefix.replaceAll("'", "''")}'`;
+  },
 ).join("\n  OR ");
 export const PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL = `(
   NOT (

@@ -332,16 +332,20 @@ test("applies the September Meetup publication horizon to every public source pr
     PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
     /snapshot\.timezone = 'America\/Vancouver'/u,
   );
-  for (const groupSlug of [
-    "vancouver-meetup-group",
-    "vancouver-fantasy-scifi-meetup-group",
-    "vancouver-literature-and-film",
+  for (const eventUrlPrefix of [
+    "https://www.meetup.com/vancouver-meetup-group/events/",
+    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/",
+    "https://www.meetup.com/vancouver-literature-and-film/events/",
   ]) {
     assert.match(
       PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
-      new RegExp(`${groupSlug}/events/\\*`, "u"),
+      new RegExp(
+        `substr\\(snapshot\\.event_url, 1, ${eventUrlPrefix.length}\\) = '${eventUrlPrefix.replaceAll("/", "\\/")}'`,
+        "u",
+      ),
     );
   }
+  assert.doesNotMatch(PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL, /\b(?:GLOB|LIKE)\b/u);
   assert.match(
     PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
     /snapshot\.starts_at_utc < 1790838000000/u,
