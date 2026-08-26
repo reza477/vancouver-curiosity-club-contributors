@@ -8,7 +8,11 @@ import { ensureCmsAdoption } from "../../lib/server/organizer/cms-adoption.ts";
 import { ensurePublicCatalog } from "../../lib/server/public/catalog.ts";
 import {
   LEGACY_PUBLIC_EVENT_ORGANIZER_ENRICHMENT_SQL,
+  PUBLIC_EVENT_IDENTITY_CTE_SQL,
+  PUBLIC_EVENT_SELECTION_PROOF_CTE_SQL,
   PUBLIC_EVENT_SELECT_SQL,
+  PUBLIC_MEETUP_EVENT_SELECT_SQL,
+  PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
   UNIFIED_PUBLIC_EVENT_CTE_SQL,
   listUpcomingPublicEvents,
   toPublicEventDto,
@@ -319,6 +323,50 @@ test("uses an explicit public SQL allowlist and publication filters", () => {
         forbiddenColumn.toLowerCase(),
       ),
       false,
+    );
+  }
+});
+
+test("applies the September Meetup publication horizon to every public source projection", () => {
+  assert.match(
+    PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
+    /snapshot\.timezone = 'America\/Vancouver'/u,
+  );
+  for (const groupSlug of [
+    "vancouver-meetup-group",
+    "vancouver-fantasy-scifi-meetup-group",
+    "vancouver-literature-and-film",
+  ]) {
+    assert.match(
+      PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
+      new RegExp(`${groupSlug}/events/\\*`, "u"),
+    );
+  }
+  assert.match(
+    PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
+    /snapshot\.starts_at_utc < 1790838000000/u,
+  );
+  assert.match(
+    PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
+    /generation\.published_at < 1787702400000/u,
+  );
+  assert.match(
+    PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
+    /snapshot\.all_day_start_date < '2026-10-01'/u,
+  );
+
+  for (const sql of [
+    PUBLIC_MEETUP_EVENT_SELECT_SQL,
+    PUBLIC_EVENT_IDENTITY_CTE_SQL,
+    PUBLIC_EVENT_SELECTION_PROOF_CTE_SQL,
+    UNIFIED_PUBLIC_EVENT_CTE_SQL,
+  ]) {
+    assert.equal(
+      sql
+        .replace(/\s+/gu, " ")
+        .includes(PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL.replace(/\s+/gu, " ").trim()),
+      true,
+      "every Meetup-backed public projection must use the same cutoff",
     );
   }
 });

@@ -25,6 +25,9 @@ export type ApprovedMeetupEventEditorialOverride = Readonly<{
 }>;
 
 export const MEETUP_EDITORIAL_OVERRIDE_POLICY_VERSION: string;
+export const MEETUP_PUBLICATION_END_DATE: "2026-09-30";
+export const MEETUP_PUBLICATION_END_DATE_EXCLUSIVE: "2026-10-01";
+export const MEETUP_PUBLICATION_WINDOW_EFFECTIVE_AT_UTC_MS: 1787702400000;
 export const APPROVED_MEETUP_EVENT_EDITORIAL_OVERRIDES: Readonly<
   Record<string, ApprovedMeetupEventEditorialOverride>
 >;

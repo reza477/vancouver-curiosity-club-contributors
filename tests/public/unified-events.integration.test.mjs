@@ -18,6 +18,7 @@ import {
   queryPublicCalendarMonth,
   queryPublicEvents,
   queryPublicCalendarLandingBundle,
+  queryPublicEventMaterializationBundle,
   queryPublicEventsForExport,
   resolveEditorialPublishedEventSelectionProofs,
   resolvePublishedEventSelections,
@@ -775,6 +776,175 @@ test("active Meetup snapshots project only first-party synchronized poster URLs"
   const serialized = JSON.stringify({ active, detail });
   assert.equal(serialized.includes("secure.meetupstatic.com"), false);
   assert.equal(serialized.includes("PENDING POSTER"), false);
+});
+
+test("the September cutoff keeps source snapshots while excluding October Meetup events everywhere public", async (t) => {
+  const database = await createFixture(t);
+  const activeSlug = "meetup-active-event";
+  const activeUrl =
+    "https://www.meetup.com/vancouver-meetup-group/events/9001/";
+
+  database
+    .prepare(
+      `UPDATE meetup_event_snapshots
+       SET event_url = ?
+       WHERE id = 'snapshot_active'`,
+    )
+    .bind(activeUrl)
+    .runSynchronously();
+  database
+    .prepare(
+      `UPDATE external_source_links
+       SET external_url = ?
+       WHERE id = 'source_link_active'`,
+    )
+    .bind(activeUrl)
+    .runSynchronously();
+  database.exec(`
+    UPDATE meetup_sync_generations
+    SET published_at = 1787702400000
+    WHERE id = 'generation_active';
+  `);
+
+  const updateTimedSnapshot = (startsAt, endsAt) =>
+    database
+      .prepare(
+        `UPDATE meetup_event_snapshots
+         SET time_kind = 'timed',
+             starts_at_utc = ?,
+             ends_at_utc = ?,
+             timezone = 'America/Vancouver',
+             all_day_start_date = NULL,
+             all_day_end_date_exclusive = NULL
+         WHERE id = 'snapshot_active'`,
+      )
+      .bind(Date.parse(startsAt), Date.parse(endsAt))
+      .runSynchronously();
+  const updateAllDaySnapshot = (startDate, endDateExclusive) =>
+    database
+      .prepare(
+        `UPDATE meetup_event_snapshots
+         SET time_kind = 'all_day',
+             starts_at_utc = NULL,
+             ends_at_utc = NULL,
+             timezone = 'America/Vancouver',
+             all_day_start_date = ?,
+             all_day_end_date_exclusive = ?
+         WHERE id = 'snapshot_active'`,
+      )
+      .bind(startDate, endDateExclusive)
+      .runSynchronously();
+  const publicPageContainsActive = async () =>
+    (await queryPublicEvents(database, upcomingInput())).events.some(
+      ({ slug }) => slug === activeSlug,
+    );
+
+  updateTimedSnapshot(
+    "2026-10-01T06:30:00.000Z",
+    "2026-10-01T08:30:00.000Z",
+  );
+  assert.equal(
+    await publicPageContainsActive(),
+    true,
+    "a September 30 Vancouver start remains public even when it ends October 1",
+  );
+
+  updateAllDaySnapshot("2026-09-30", "2026-10-02");
+  assert.equal(
+    await publicPageContainsActive(),
+    true,
+    "an all-day event beginning September 30 remains public",
+  );
+
+  updateTimedSnapshot(
+    "2026-10-01T07:00:00.000Z",
+    "2026-10-01T09:00:00.000Z",
+  );
+  assert.equal(await publicPageContainsActive(), false);
+
+  updateAllDaySnapshot("2026-10-01", "2026-10-02");
+  assert.equal(await publicPageContainsActive(), false);
+
+  database
+    .prepare(
+      `UPDATE events
+       SET starts_at_utc = ?, ends_at_utc = ?
+       WHERE id = 'event_manual_upcoming'`,
+    )
+    .bind(
+      Date.parse("2026-10-05T02:00:00.000Z"),
+      Date.parse("2026-10-05T04:00:00.000Z"),
+    )
+    .runSynchronously();
+
+  const [page, compatibility, meetupCompatibility, exports, sitemap, detail, materialized] =
+    await Promise.all([
+      queryPublicEvents(database, upcomingInput()),
+      listUpcomingPublicEvents(database, {
+        fromUtcMs: NOW_UTC_MS,
+        limit: 100,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      }),
+      listUpcomingPublicMeetupEvents(database, {
+        fromUtcMs: NOW_UTC_MS,
+        limit: 100,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      }),
+      queryPublicEventsForExport(database, {
+        ...upcomingInput(),
+        maxEvents: 500,
+      }),
+      listPublicEventSitemapSlugs(database, {
+        organizationId: ORGANIZATION_ID,
+      }),
+      getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: activeSlug,
+      }),
+      queryPublicEventMaterializationBundle(database, {
+        calendar: {
+          fromDate: "2026-07-01",
+          nowUtcMs: NOW_UTC_MS,
+          organizationId: ORGANIZATION_ID,
+          todayDate: TODAY_DATE,
+          toDate: "2026-12-31",
+        },
+      }),
+    ]);
+
+  assert.equal(detail, null);
+  assert.equal(sitemap.includes(activeSlug), false);
+  assert.equal(
+    page.events.some(({ slug }) => slug === "manual-ideas-gathering"),
+    true,
+    "the Meetup-only policy must not suppress unrelated manual events",
+  );
+  const serialized = JSON.stringify({
+    compatibility,
+    exports,
+    materialized,
+    meetupCompatibility,
+    page,
+    sitemap,
+  });
+  assert.equal(serialized.includes(activeSlug), false);
+  assert.equal(serialized.includes(activeUrl), false);
+
+  const retainedSource = await database
+    .prepare(
+      `SELECT external_id, status, time_kind, all_day_start_date
+       FROM meetup_event_snapshots
+       WHERE id = 'snapshot_active'`,
+    )
+    .first();
+  assert.deepEqual({ ...retainedSource }, {
+    all_day_start_date: "2026-10-01",
+    external_id: "synthetic-active-uid",
+    status: "confirmed",
+    time_kind: "all_day",
+  });
 });
 
 test("poster-bearing Events data round-trips from updater projection to a durable visitor read", async (t) => {

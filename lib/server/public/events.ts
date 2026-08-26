@@ -39,6 +39,11 @@ import {
   type CuratedMeetupEventEnrichment,
   validateMeetupDescriptionBlocks,
 } from "../../meetup-event-enrichment";
+import {
+  MEETUP_PUBLICATION_END_DATE_EXCLUSIVE,
+  MEETUP_PUBLICATION_WINDOW_EFFECTIVE_AT_UTC_MS,
+} from "../../meetup-publication-policy.js";
+import { CANONICAL_PUBLIC_COMMUNITY_URLS } from "../../public-community-order";
 import { PUBLIC_EVENT_LANE_SLUGS } from "../../public-event-lanes";
 
 export type PublicEventDto = Readonly<{
@@ -89,6 +94,34 @@ const MAX_PUBLIC_ORGANIZER_NAME_LENGTH = 120;
 const PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL = `snapshot.event_url NOT IN (${MEETUP_EVENT_ALIAS_URLS.map(
   (eventUrl) => `'${eventUrl.replaceAll("'", "''")}'`,
 ).join(", ")})`;
+const MEETUP_PUBLICATION_END_UTC_MS_EXCLUSIVE = localDateTimeToUtcMs(
+  `${MEETUP_PUBLICATION_END_DATE_EXCLUSIVE}T00:00`,
+  DEFAULT_TIME_ZONE,
+  "earlier",
+);
+const PUBLICATION_CUTOFF_MEETUP_GROUP_SQL = CANONICAL_PUBLIC_COMMUNITY_URLS.map(
+  (groupUrl) =>
+    `snapshot.event_url GLOB '${`${groupUrl}events/*`.replaceAll("'", "''")}'`,
+).join("\n  OR ");
+export const PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL = `(
+  NOT (
+    ${PUBLICATION_CUTOFF_MEETUP_GROUP_SQL}
+  )
+  OR generation.published_at < ${MEETUP_PUBLICATION_WINDOW_EFFECTIVE_AT_UTC_MS}
+  OR (
+    snapshot.timezone = '${DEFAULT_TIME_ZONE}'
+    AND (
+      (
+        snapshot.time_kind = 'timed'
+        AND snapshot.starts_at_utc < ${MEETUP_PUBLICATION_END_UTC_MS_EXCLUSIVE}
+      )
+      OR (
+        snapshot.time_kind = 'all_day'
+        AND snapshot.all_day_start_date < '${MEETUP_PUBLICATION_END_DATE_EXCLUSIVE}'
+      )
+    )
+  )
+)`;
 const MAX_PUBLIC_ORGANIZER_BIOGRAPHY_LENGTH = 800;
 const MAX_PUBLIC_ORGANIZER_MEDIA_ID_LENGTH = 128;
 const MAX_PUBLIC_ORGANIZER_ALT_LENGTH = 300;
@@ -576,6 +609,7 @@ export const PUBLIC_MEETUP_EVENT_SELECT_SQL = `
     AND source.last_success_at IS NOT NULL
     AND source.deleted_at IS NULL
     AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
+    AND ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
     AND event.visibility = 'public'
     AND snapshot.status = 'confirmed'
     AND event.published_at IS NOT NULL
@@ -1792,6 +1826,7 @@ export const PUBLIC_EVENT_IDENTITY_CTE_SQL = `
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
       AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
+      AND ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
@@ -2281,6 +2316,7 @@ export const PUBLIC_EVENT_SELECTION_PROOF_CTE_SQL = `
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
       AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
+      AND ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
@@ -2803,6 +2839,7 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
       AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
+      AND ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
