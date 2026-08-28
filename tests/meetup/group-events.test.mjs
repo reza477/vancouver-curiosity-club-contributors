@@ -757,8 +757,8 @@ test("follows every GraphQL cursor with one fixed cutoff and stable totals", asy
         : graphqlResponse({
             events: [
               createGraphqlEventNode({
-                dateTime: "2026-08-14T18:00:00-07:00",
-                endTime: "2026-08-14T20:00:00-07:00",
+                dateTime: "2026-08-13T18:00:00-07:00",
+                endTime: "2026-08-13T19:00:00-07:00",
                 eventId: "316010052",
               }),
             ],
@@ -775,9 +775,13 @@ test("follows every GraphQL cursor with one fixed cutoff and stable totals", asy
     parsed.events.map((event) => event.uid),
     [
       `event_${EVENT_ID}@meetup.com`,
-      "event_316010051@meetup.com",
       "event_316010052@meetup.com",
+      "event_316010051@meetup.com",
     ],
+  );
+  assert.deepEqual(
+    parsed.events.map((event) => event.componentIndex),
+    [0, 1, 2],
   );
 });
 
@@ -842,6 +846,16 @@ test("rejects partial or drifting GraphQL pagination without returning a calenda
     graphqlResponse({
       events: [createGraphqlEventNode({ eventId: "316010051" })],
       totalCount: 3,
+    }),
+    graphqlResponse({
+      events: [
+        createGraphqlEventNode({
+          dateTime: "2026-08-11T18:00:00-07:00",
+          endTime: "2026-08-11T20:00:00-07:00",
+          eventId: "316010051",
+        }),
+      ],
+      totalCount: 2,
     }),
     new Response(JSON.stringify({ errors: [{ message: "source failure" }] }), {
       headers: { "content-type": "application/json" },
