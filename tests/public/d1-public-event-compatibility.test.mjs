@@ -198,6 +198,12 @@ test("public event statements compile and execute through real Miniflare D1", as
       organizationId: ORGANIZATION_ID,
       records: [
         {
+          clubAssociationsProof: JSON.stringify([
+            {
+              name: "Vancouver Curiosity Club",
+              slug: "vancouver-curiosity-club",
+            },
+          ]),
           clubProjectionToken: "[]",
           event: { slug: "missing-event" },
           programProjectionToken: null,

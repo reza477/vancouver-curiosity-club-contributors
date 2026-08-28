@@ -12,8 +12,8 @@ import {
 } from "@/lib/server/public/catalog";
 import { vancouverCalendarDate } from "@/lib/server/public/date";
 import {
-  type PublicEventCardDto,
-} from "@/lib/server/public/events";
+  type PublicNextEventByClubMaterializedView,
+} from "@/lib/server/public/event-materializations";
 import {
   getRequestPublicClubs,
   getRequestPublicNextEventsByClubMaterialization,
@@ -59,7 +59,9 @@ export default async function ClubsPage() {
       }
       nextEventsByClubSlug={
         clubs.kind === "available"
-          ? new Map(clubs.nextEvents.map((event) => [event.club.slug, event]))
+          ? new Map(
+              clubs.nextEvents.map(({ clubSlug, event }) => [clubSlug, event]),
+            )
           : new Map()
       }
       nextEventsState={
@@ -75,7 +77,7 @@ async function loadClubs(): Promise<
       clubs: readonly PublicClubDto[];
       kind: "available";
       media: readonly ResponsiveMediaAssetDto[];
-      nextEvents: readonly PublicEventCardDto[];
+      nextEvents: readonly PublicNextEventByClubMaterializedView[];
       nextEventsState: "available" | "unavailable";
     }>
   | Readonly<{ kind: "unavailable" }>
@@ -87,7 +89,7 @@ async function loadClubs(): Promise<
       getRequestPublicOrganization(database),
     ]);
     let media: readonly ResponsiveMediaAssetDto[] = [];
-    let nextEvents: readonly PublicEventCardDto[] = [];
+    let nextEvents: readonly PublicNextEventByClubMaterializedView[] = [];
     let nextEventsState: "available" | "unavailable" = "unavailable";
     if (organization) {
       const nowUtcMs = readServerUtcMs();

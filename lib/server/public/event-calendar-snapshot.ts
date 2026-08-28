@@ -485,6 +485,7 @@ const PUBLIC_EVENT_CARD_KEYS = [
   "capacity",
   "category",
   "club",
+  "clubAssociations",
   "costText",
   "isCancelled",
   "lane",
@@ -553,6 +554,11 @@ function parseEventCard(
   if (!club) {
     throw new Error("The cached event club is invalid.");
   }
+  const clubAssociations = parseClubAssociations(
+    event.clubAssociations,
+    club,
+    `${path}.clubAssociations`,
+  );
   const status = parseEnum(
     event.status,
     ["cancelled", "completed", "confirmed", "tentative"] as const,
@@ -598,6 +604,7 @@ function parseEventCard(
       true,
     ),
     club,
+    clubAssociations,
     costText: parseOptionalBoundedString(event.costText, {
       path: `${path}.costText`,
       maxLength: 500,
@@ -624,6 +631,33 @@ function parseEventCard(
       `${path}.waitlistAvailable`,
     ),
   });
+}
+
+function parseClubAssociations(
+  value: unknown,
+  primaryClub: PublicEventCardDto["club"],
+  path: string,
+): PublicEventCardDto["clubAssociations"] {
+  if (value === undefined) return Object.freeze([primaryClub]);
+  if (!Array.isArray(value) || value.length < 1 || value.length > 12) {
+    throw new Error("The cached event Club associations are invalid.");
+  }
+  const associations = value.map((candidate, index) => {
+    const association = parseNamedEntity(candidate, `${path}.${index}`, false);
+    if (!association) {
+      throw new Error("The cached event Club association is invalid.");
+    }
+    return association;
+  });
+  const slugs = new Set(associations.map((association) => association.slug));
+  if (
+    slugs.size !== associations.length ||
+    associations[0]?.slug !== primaryClub.slug ||
+    associations[0]?.name !== primaryClub.name
+  ) {
+    throw new Error("The cached event Club associations are ambiguous.");
+  }
+  return Object.freeze(associations);
 }
 
 function parseEventDetail(

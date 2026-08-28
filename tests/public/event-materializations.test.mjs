@@ -121,6 +121,106 @@ test("one updater-owned dataset serves Home, arbitrary months, lanes, and date r
   assert.equal(laterHome?.[0]?.title, "daily-v1 reserve-later");
 });
 
+test("a rolling reader accepts v1 envelopes while the updater preserves them byte-for-byte", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
+  const database = await materializationDatabase(t);
+  const legacyBundle = materializationBundle("legacy-v1", 2);
+  await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    {
+      async projectBundle() {
+        return legacyBundle;
+      },
+    },
+  );
+
+  const currentRows = snapshots(database).filter(
+    (row) => JSON.parse(row.cache_key)[1] === 2,
+  );
+  assert.equal(currentRows.length, 3);
+  const insertLegacy = database.sqlite.prepare(
+    `INSERT INTO public_event_calendar_snapshots (
+       cache_key, organization_id, snapshot_json, expires_at,
+       created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  for (const row of currentRows) {
+    const currentKey = JSON.parse(row.cache_key);
+    const legacyKey = JSON.stringify([
+      currentKey[0],
+      1,
+      currentKey[2],
+      currentKey[3],
+    ]);
+    const envelope = JSON.parse(row.snapshot_json);
+    envelope.schemaVersion = 1;
+    for (const collection of [
+      envelope.calendarEvents,
+      envelope.eventDetails,
+      envelope.upcomingEvents,
+    ]) {
+      if (!Array.isArray(collection)) continue;
+      for (const event of collection) delete event.clubAssociations;
+    }
+    insertLegacy.run(
+      legacyKey,
+      ORGANIZATION_ID,
+      JSON.stringify(envelope),
+      8_640_000_000_000_000,
+      envelope.generatedAtUtcMs,
+      envelope.generatedAtUtcMs,
+    );
+  }
+  database.exec(`
+    DELETE FROM public_event_calendar_snapshots
+    WHERE json_extract(cache_key, '$[1]') IN (2, 3)
+  `);
+
+  const [home, events, detail] = await Promise.all([
+    materializations.readPublicHomeEventMaterialization(
+      database,
+      materializationInput(),
+    ),
+    materializations.readPublicEventsPageMaterialization(database, {
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    }),
+    materializations.readPublicEventDetailViewMaterialization(database, {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      slug: legacyBundle.eventDetails[0].slug,
+      todayDate: TODAY_DATE,
+    }),
+  ]);
+  assert.deepEqual(home?.[0].clubAssociations, [home[0].club]);
+  assert.deepEqual(
+    events?.calendar.events[0].clubAssociations,
+    [events.calendar.events[0].club],
+  );
+  assert.equal(detail?.kind, "available");
+  assert.deepEqual(detail?.event.clubAssociations, [detail.event.club]);
+
+  const legacyBeforeRefresh = snapshots(database);
+  await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput({ nowUtcMs: NOW_UTC_MS + 1_000 }),
+    bundleService("current-v2"),
+  );
+  const legacyAfterRefresh = snapshots(database).filter(
+    (row) => JSON.parse(row.cache_key)[1] === 1,
+  );
+  assert.deepEqual(legacyAfterRefresh, legacyBeforeRefresh);
+  assert.deepEqual(
+    new Set(
+      snapshots(database).map((row) => JSON.parse(row.cache_key)[1]),
+    ),
+    new Set([1, 2, 3]),
+  );
+});
+
 test("Events derives club intersections and bounded pages from one durable dataset", async (t) => {
   const materializations =
     await import("../../lib/server/public/event-materializations.ts");
@@ -287,6 +387,130 @@ test("Events derives club intersections and bounded pages from one durable datas
   assert.equal(invalidClub?.calendar.events.length, 15);
 });
 
+test("one canonical cross-post appears in every reviewed Club without duplicating the calendar", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
+  const database = await materializationDatabase(t);
+  const event = eventCard("The Two Towers", {
+    clubAssociations: [
+      {
+        name: "Vancouver Literature and Film",
+        slug: "vancouver-literature-and-film",
+      },
+      {
+        name: "Vancouver Fantasy & Sci-Fi Group",
+        slug: "vancouver-fantasy-scifi-group",
+      },
+    ],
+    clubName: "Vancouver Literature and Film",
+    clubSlug: "vancouver-literature-and-film",
+    day: 30,
+    ordinal: 566,
+    rsvpUrl:
+      "https://www.meetup.com/vancouver-literature-and-film/events/315776601/",
+  });
+
+  await materializations.refreshPublicEventMaterializations(
+    database,
+    materializationInput(),
+    {
+      async projectBundle() {
+        return {
+          calendarEvents: [event],
+          eventDetails: [eventDetailFromCard(event)],
+          upcomingEvents: [event],
+        };
+      },
+    },
+  );
+
+  const unfiltered =
+    await materializations.readPublicEventsPageMaterialization(database, {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    });
+  assert.deepEqual(unfiltered?.clubOptions, [
+    {
+      name: "Vancouver Fantasy & Sci-Fi Group",
+      slug: "vancouver-fantasy-scifi-group",
+    },
+    {
+      name: "Vancouver Literature and Film",
+      slug: "vancouver-literature-and-film",
+    },
+  ]);
+  assert.equal(unfiltered?.calendar.events.length, 1);
+  assert.equal(unfiltered?.upcoming.events.length, 1);
+
+  const fantasyFiltered =
+    await materializations.readPublicEventsPageMaterialization(database, {
+      clubSlug: "vancouver-fantasy-scifi-group",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      rawMonth: "2026-08",
+      todayDate: TODAY_DATE,
+    });
+  assert.equal(fantasyFiltered?.activeClubSlug, "vancouver-fantasy-scifi-group");
+  assert.deepEqual(
+    fantasyFiltered?.calendar.events.map((candidate) => candidate.slug),
+    [event.slug],
+  );
+  assert.deepEqual(
+    fantasyFiltered?.upcoming.events.map((candidate) => candidate.slug),
+    [event.slug],
+  );
+
+  const [fantasyClub, literatureClub, directory] = await Promise.all([
+    materializations.readPublicClubEventViewMaterialization(database, {
+      clubSlug: "vancouver-fantasy-scifi-group",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+    }),
+    materializations.readPublicClubEventViewMaterialization(database, {
+      clubSlug: "vancouver-literature-and-film",
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+    }),
+    materializations.readPublicNextEventsByClubMaterialization(database, {
+      clubSlugs: [
+        "vancouver-fantasy-scifi-group",
+        "vancouver-literature-and-film",
+      ],
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: ORGANIZATION_ID,
+      todayDate: TODAY_DATE,
+    }),
+  ]);
+  assert.deepEqual(
+    fantasyClub?.upcoming.events.map((candidate) => candidate.slug),
+    [event.slug],
+  );
+  assert.deepEqual(
+    literatureClub?.upcoming.events.map((candidate) => candidate.slug),
+    [event.slug],
+  );
+  assert.deepEqual(
+    directory?.map((candidate) => ({
+      clubSlug: candidate.clubSlug,
+      eventSlug: candidate.event.slug,
+    })),
+    [
+      {
+        clubSlug: "vancouver-fantasy-scifi-group",
+        eventSlug: event.slug,
+      },
+      {
+        clubSlug: "vancouver-literature-and-film",
+        eventSlug: event.slug,
+      },
+    ],
+  );
+});
+
 test("materialized ordering matches timed, all-day noon, title NOCASE, and slug SQL ties", async (t) => {
   const materializations =
     await import("../../lib/server/public/event-materializations.ts");
@@ -429,7 +653,7 @@ test("compact detail and rail shards serve event, related, club, and program vie
     .all(ORGANIZATION_ID);
   assert.equal(persistedRows.length, 28);
   const compactRows = persistedRows.filter(
-    (row) => JSON.parse(row.cache_key)[1] === 2,
+    (row) => JSON.parse(row.cache_key)[1] === 3,
   );
   assert.equal(compactRows.length, 25);
   assert.ok(
@@ -558,10 +782,10 @@ test("compact detail and rail shards serve event, related, club, and program vie
       },
     );
   assert.deepEqual(
-    directory?.map((event) => event.title),
+    directory?.map(({ event }) => event.title),
     ["Target gathering", "Same category gathering"],
   );
-  assert.equal("descriptionHtml" in directory[0], false);
+  assert.equal("descriptionHtml" in directory[0].event, false);
   assert.deepEqual(counter.counts(), {
     batch: 0,
     executions: 1,
@@ -671,7 +895,7 @@ test("compact detail and rail shards serve event, related, club, and program vie
       },
     );
   assert.deepEqual(
-    nextDateDirectory?.map((event) => event.title),
+    nextDateDirectory?.map(({ event }) => event.title),
     ["Target gathering", "Same category gathering"],
   );
   assert.deepEqual(counter.counts(), {
@@ -787,7 +1011,7 @@ test("compact detail and rail shards serve event, related, club, and program vie
       },
     );
   assert.deepEqual(
-    directoryAfterCompactOmission?.map((event) => event.title),
+    directoryAfterCompactOmission?.map(({ event }) => event.title),
     ["Target gathering", "Same category gathering"],
   );
   assert.deepEqual(counter.counts(), {
@@ -810,7 +1034,7 @@ test("compact detail and rail shards serve event, related, club, and program vie
 
   const detailCacheKey = JSON.stringify([
     "public-event-materializations",
-    1,
+    2,
     ORGANIZATION_ID,
     "details",
   ]);
@@ -856,7 +1080,7 @@ test("compact detail and rail shards serve event, related, club, and program vie
           todayDate: TODAY_DATE,
         },
       )
-    )?.map((event) => event.title),
+    )?.map(({ event }) => event.title),
     ["Target gathering"],
   );
   assert.deepEqual(counter.counts(), {
@@ -933,7 +1157,7 @@ test("compact detail and rail shards serve event, related, club, and program vie
   });
 });
 
-test("a rolling deployment falls back to the coherent v1 detail row until compact shards exist", async (t) => {
+test("a rolling deployment falls back to the coherent detail row until compact shards exist", async (t) => {
   const materializations =
     await import("../../lib/server/public/event-materializations.ts");
   const database = await materializationDatabase(t);
@@ -944,7 +1168,7 @@ test("a rolling deployment falls back to the coherent v1 detail row until compac
   );
   database.exec(`
     DELETE FROM public_event_calendar_snapshots
-    WHERE json_extract(cache_key, '$[1]') = 2;
+    WHERE json_extract(cache_key, '$[1]') = 3;
   `);
   const counter = countDatabaseStatements(database);
   const detail =
@@ -1077,7 +1301,7 @@ test("a newer legacy generation invalidates stale compact shards in the same ind
   );
   const detailCacheKey = JSON.stringify([
     "public-event-materializations",
-    1,
+    2,
     ORGANIZATION_ID,
     "details",
   ]);
@@ -1467,6 +1691,7 @@ function eventCard(
   {
     allDay = false,
     category = null,
+    clubAssociations = null,
     clubName = "Materialization Club",
     clubSlug = "materialization-club",
     day = 20,
@@ -1474,12 +1699,14 @@ function eventCard(
     month = "2026-08",
     ordinal = 1,
     program = null,
+    rsvpUrl = null,
     isCancelled = false,
     startHour = 19,
     status = "confirmed",
   } = {},
 ) {
   const dayKey = String(day).padStart(2, "0");
+  const club = { name: clubName, slug: clubSlug };
   return {
     agePolicyText: null,
     arrivalInstructions: null,
@@ -1488,13 +1715,16 @@ function eventCard(
     availabilityState: "open",
     capacity: 20,
     category,
-    club: { name: clubName, slug: clubSlug },
+    club,
+    clubAssociations: clubAssociations ?? [club],
     costText: null,
     isCancelled,
     lane: laneSlug ? { name: "Explore", slug: laneSlug } : null,
     program,
     rsvpMode: "meetup",
-    rsvpUrl: `https://www.meetup.com/vancouver-meetup-group/events/${900000000 + ordinal}/`,
+    rsvpUrl:
+      rsvpUrl ??
+      `https://www.meetup.com/vancouver-meetup-group/events/${900000000 + ordinal}/`,
     schedule: allDay
       ? {
           endDateExclusive: `${month}-${String(day + 1).padStart(2, "0")}`,
@@ -1567,6 +1797,7 @@ function eventCardFromDetail(detail) {
     capacity: detail.capacity,
     category: detail.category,
     club: detail.club,
+    clubAssociations: detail.clubAssociations,
     costText: detail.costText,
     isCancelled: detail.isCancelled,
     lane: detail.lane,

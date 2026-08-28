@@ -335,6 +335,16 @@ test("the Clubs route uses one materialized grouped read with no live, per-card,
     "bounded media and event reads must start in the same D1 wave",
   );
   assert.match(page, /nextEventsByClubSlug/u);
+  assert.match(
+    page,
+    /map\(\(\{\s*clubSlug,\s*event\s*\}\)\s*=>\s*\[clubSlug,\s*event\]\)/u,
+    "the directory must key a canonical cross-post by the requested Club context",
+  );
+  assert.doesNotMatch(
+    page,
+    /\[event\.club\.slug,\s*event\]/u,
+    "the primary Club must not erase a verified secondary Club context",
+  );
   assert.match(page, /nextEventsState/u);
   assert.match(routeBody, /nextEventsByClubSlug/u);
   assert.match(routeBody, /nextEventsState/u);
