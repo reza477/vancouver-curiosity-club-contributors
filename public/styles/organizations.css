@@ -289,16 +289,8 @@
   border-bottom: 1px solid var(--line);
 }
 
-.organizations-collaboration article > span {
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-}
-
 .organizations-collaboration h3 {
-  margin: 1.25rem 0 0;
+  margin: 0;
   font-size: 1.05rem;
   line-height: 1.3;
 }

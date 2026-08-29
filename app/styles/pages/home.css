@@ -254,9 +254,8 @@
 
 .home-glance__facts li {
   border-bottom: 1px solid var(--ink);
-  grid-template-columns: 2.75rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  gap: 1rem;
   padding: 0.8rem 0;
   display: grid;
 }
@@ -293,14 +292,6 @@
   line-height: 1.3;
 }
 
-.home-glance__facts .home-glance__number {
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.07em;
-  margin-top: 0;
-}
-
 .home-glance__facts span {
   color: var(--ink-soft);
   margin-top: 0.35rem;
@@ -327,7 +318,7 @@
   --program-accent: var(--cobalt);
   background: var(--blue-surface);
   color: var(--ink);
-  grid-template-columns: 3.5rem minmax(0, 1fr) minmax(9rem, auto);
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, auto);
   align-items: start;
   gap: clamp(1rem, 3vw, 3rem);
   width: min(94%, 76rem);
@@ -363,15 +354,6 @@
 .home-program[data-event-lane="eat-and-play"] {
   --program-accent: var(--coral-strong);
   background: var(--coral-surface);
-}
-
-.home-program > span,
-.home-impact__sequence > li > span,
-.home-community__body > span {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.07em;
-  padding-left: 1rem;
 }
 
 .home-program h3,
@@ -572,18 +554,9 @@
 }
 
 .home-impact__sequence li {
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 0.8rem;
   display: grid;
-}
-
-.home-impact__sequence > li > span {
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.07em;
-  padding-left: 0;
 }
 
 .home-impact__sequence h3 {
@@ -723,18 +696,13 @@
   display: grid;
 }
 
-.home-community__body > span {
-  color: var(--accent);
-  padding-left: 0;
-}
-
 .home-communities h3 {
   font-family: var(--display);
   font-size: clamp(2rem, 3.6vw, 3.75rem);
   font-weight: 600;
   letter-spacing: -0.045em;
   line-height: 1;
-  margin-top: clamp(1.5rem, 3vw, 3rem);
+  margin-top: 0;
 }
 
 .home-community__body > p {
@@ -867,7 +835,7 @@
   }
 
   .home-program > a {
-    grid-column: 2;
+    grid-column: 1;
   }
 
   .home-hero h1 {
@@ -887,7 +855,7 @@
 
   .home-program,
   .home-program:nth-child(even) {
-    grid-template-columns: 2rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;
     width: 100%;
     margin-left: 0;
@@ -895,12 +863,6 @@
 
   .home-impact {
     padding-block: 3.5rem;
-  }
-
-  .home-program > span,
-  .home-impact__sequence > li > span,
-  .home-community__body > span {
-    padding-left: 0.45rem;
   }
 
   .home-community,

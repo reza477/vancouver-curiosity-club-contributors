@@ -155,9 +155,8 @@ export default async function AboutPage() {
           <p className="section-kicker">How the model works</p>
           <h2 id="about-model-title">Structure creates room for belonging.</h2>
         </div>
-        <ol className="about-model__steps">
+        <ul className="about-model__steps">
           <li>
-            <span>01</span>
             <h3>Curiosity provides a focus</h3>
             <p>
               A shared subject or activity gives people a natural reason to
@@ -165,7 +164,6 @@ export default async function AboutPage() {
             </p>
           </li>
           <li>
-            <span>02</span>
             <h3>Preparation builds trust</h3>
             <p>
               Clear event information, participation expectations, and a code
@@ -173,14 +171,13 @@ export default async function AboutPage() {
             </p>
           </li>
           <li>
-            <span>03</span>
             <h3>Recurrence supports continuity</h3>
             <p>
               Multiple programs and a dependable public calendar give people
               more than one way—and more than one moment—to take part.
             </p>
           </li>
-        </ol>
+        </ul>
         <div className="about-program-streams">
           <h3>What we organize</h3>
           <ul>
@@ -245,11 +242,8 @@ export default async function AboutPage() {
           <h2 id="about-communities-title">Several doors into the same mission.</h2>
         </div>
         <div className="about-communities__grid">
-          {COMMUNITY_PROGRAMS.map((program, index) => (
+          {COMMUNITY_PROGRAMS.map((program) => (
             <article key={program.href}>
-              <p className="about-communities__number" aria-hidden="true">
-                {String(index + 1).padStart(2, "0")}
-              </p>
               <h3>
                 <Link href={program.href}>{program.name}</Link>
               </h3>

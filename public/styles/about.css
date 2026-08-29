@@ -103,17 +103,6 @@
   max-width: 64rem;
 }
 
-.about-communities__number,
-.about-model__steps > li > span {
-  margin-bottom: 0.65rem;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .about-board__list {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
@@ -302,7 +291,7 @@
 }
 
 .about-communities__grid article {
-  grid-template-columns: 3rem minmax(12rem, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(12rem, 0.8fr) minmax(0, 1.2fr);
   gap: 1rem;
   padding: 1.25rem 0;
   border-bottom: 1px solid var(--line);
@@ -405,11 +394,11 @@
   }
 
   .about-communities__grid article {
-    grid-template-columns: 2.25rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .about-communities__grid article > p:last-child {
-    grid-column: 2;
+    grid-column: 1;
   }
 
   .about-standards__body li:not(:last-child) {

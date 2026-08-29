@@ -66,9 +66,6 @@ export function ClubDirectory({
                   : undefined
               }
             >
-              <p className="club-directory__number" aria-hidden="true">
-                {String(index + 1).padStart(2, "0")}
-              </p>
               {showLaneLabels ? (
                 <p className="club-directory__lane">
                   <span className="sr-only">Activity lane: </span>

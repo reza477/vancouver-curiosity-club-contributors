@@ -214,9 +214,8 @@ export default async function ForOrganizationsPage() {
           </p>
         </div>
         <div className="organizations-collaboration__grid">
-          {collaborationOptions.map((option, index) => (
+          {collaborationOptions.map((option) => (
             <article key={option.title}>
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
               <h3>{option.title}</h3>
               <p>{option.body}</p>
             </article>

@@ -145,19 +145,16 @@ export function HomePageRenderer({
           <h2 id="home-glance-title">Public programs with a clear community purpose.</h2>
         </div>
         <div className="home-glance__index">
-          <ol className="home-glance__facts">
-            {glanceFacts.map((fact, index) => (
+          <ul className="home-glance__facts">
+            {glanceFacts.map((fact) => (
               <li key={fact.heading}>
-                <span className="home-glance__number" aria-hidden="true">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
                 <div>
                   <strong>{fact.heading}</strong>
                   <span>{fact.body}</span>
                 </div>
               </li>
             ))}
-          </ol>
+          </ul>
           {verifiedFacts.length > 0 ? (
             <dl className="home-glance__verified">
               {verifiedFacts.map((fact) => (
@@ -183,13 +180,12 @@ export function HomePageRenderer({
           <h2 id="home-programs-title">Four ways into community life.</h2>
         </div>
         <div className="home-programs__list">
-          {lanes.map((lane, index) => (
+          {lanes.map((lane) => (
             <article
               className="home-program"
               data-event-lane={lane.slug}
               key={lane.slug}
             >
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
               <div>
                 <h3>{lane.name}</h3>
                 {lane.description ? <p>{lane.description}</p> : null}
@@ -245,17 +241,16 @@ export function HomePageRenderer({
           <p className="section-kicker">Why this work matters</p>
           <h2 id="home-impact-title">Shared curiosity makes connection easier to begin.</h2>
         </div>
-        <ol className="home-impact__sequence">
-          {communityModel.map((item, index) => (
+        <ul className="home-impact__sequence">
+          {communityModel.map((item) => (
             <li key={item.heading}>
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
               <div>
                 <h3>{item.heading}</h3>
                 <p>{item.body}</p>
               </div>
             </li>
           ))}
-        </ol>
+        </ul>
       </section>
 
       <section
@@ -303,8 +298,8 @@ export function HomePageRenderer({
           <h2 id="home-communities-title">Different interests, one public home.</h2>
         </div>
         <div className="home-communities__list">
-          {publicClubs.map((club, index) => (
-            <HomeCommunity club={club} index={index} key={club.slug} />
+          {publicClubs.map((club) => (
+            <HomeCommunity club={club} key={club.slug} />
           ))}
         </div>
       </section>
@@ -503,8 +498,7 @@ function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
 
 function HomeCommunity({
   club,
-  index,
-}: Readonly<{ club: PublicClubDto; index: number }>) {
+}: Readonly<{ club: PublicClubDto }>) {
   const artwork = clubCoverArtworkForSlug(club.slug);
   const descriptions: Record<string, string> = {
     "vancouver-curiosity-club": "Broad, mixed-interest public programming",
@@ -537,7 +531,6 @@ function HomeCommunity({
         </figure>
       ) : null}
       <div className="home-community__body">
-        <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
         <h3>{club.name}</h3>
         <p>{descriptions[club.slug] ?? club.description}</p>
         <div className="home-community__links">
