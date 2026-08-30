@@ -128,7 +128,6 @@ export default async function ForOrganizationsPage() {
       >
         <div className="page-masthead__copy organizations-hero__copy">
           <div className="organizations-hero__heading">
-            <p className="eyebrow">For organizations</p>
             <h1 id="organizations-title">
               Build thoughtful public programs with us
             </h1>
@@ -157,7 +156,6 @@ export default async function ForOrganizationsPage() {
           aria-labelledby="organizations-proof-title"
         >
           <div className="organizations-hero__proof-heading">
-            <p className="section-kicker">Current public work</p>
             <h2 id="organizations-proof-title">
               {featuredEvent
                 ? "See a current public program."
@@ -200,7 +198,6 @@ export default async function ForOrganizationsPage() {
         aria-labelledby="organizations-collaboration-title"
       >
         <div className="organizations-heading">
-          <p className="section-kicker">Collaboration pathways</p>
           <h2 id="organizations-collaboration-title">
             Practical ways to strengthen the work.
           </h2>
@@ -228,7 +225,6 @@ export default async function ForOrganizationsPage() {
         aria-labelledby="organizations-standards-title"
       >
         <div>
-          <p className="section-kicker">Public operating standards</p>
           <h2 id="organizations-standards-title">
             Clear expectations are part of the program.
           </h2>
@@ -252,7 +248,6 @@ export default async function ForOrganizationsPage() {
         aria-labelledby="organizations-contact-title"
       >
         <div>
-          <p className="section-kicker">Start a conversation</p>
           <h2 id="organizations-contact-title">
             Tell us what your organization wants to make possible.
           </h2>

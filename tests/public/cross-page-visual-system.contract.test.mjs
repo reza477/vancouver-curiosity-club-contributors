@@ -99,7 +99,8 @@ test("public functional pages no longer present Field notes as a category", asyn
   }
   assert.match(publicSources[0], /return "Public communities"/u);
   assert.match(publicSources[0], /return "Community information"/u);
-  assert.match(publicSources[1], />Event information</u);
+  assert.match(publicSources[1], />About this event</u);
+  assert.doesNotMatch(publicSources[1], />Event information</u);
   assert.match(publicSources[2], />Find a gathering</u);
 });
 

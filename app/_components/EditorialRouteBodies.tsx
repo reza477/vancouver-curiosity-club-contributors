@@ -85,7 +85,7 @@ export function ClubsRouteBody({
     page: PublicPageDto;
   }>) {
   return (
-    <EditorialPage page={page} tone="think" {...preview}>
+    <EditorialPage displayEyebrow={null} page={page} tone="think" {...preview}>
       {clubs ? (
         <ClubDirectory
           clubs={clubs}

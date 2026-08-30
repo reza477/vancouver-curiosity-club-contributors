@@ -26,11 +26,7 @@ test("For Organizations presents the institutional partnership story in a clear 
     page,
     /className="organizations-collaboration"[\s\S]*?className="organizations-standards"[\s\S]*?className="organizations-contact"/u,
   );
-  for (const phrase of [
-    "Collaboration pathways",
-    "Public operating standards",
-    "Discuss a partnership",
-  ]) {
+  for (const phrase of ["Discuss a partnership"]) {
     assert.ok(page.includes(phrase), phrase);
   }
   assert.doesNotMatch(

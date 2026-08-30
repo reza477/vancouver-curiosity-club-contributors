@@ -1706,7 +1706,7 @@ test("Events defaults to Upcoming and exposes Calendar as an explicit view", asy
     /rel="canonical" href="https:\/\/preview\.example\/events"/iu,
   );
   assert.match(html, /<title>Events · Vancouver Curiosity Club<\/title>/iu);
-  assert.match(html, /Vancouver gatherings/u);
+  assert.doesNotMatch(html, /Vancouver gatherings/u);
   assert.match(html, /aria-label="Event views"/u);
   assert.match(
     html,

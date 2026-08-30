@@ -61,7 +61,6 @@ export function EventsPageRenderer({
         aria-labelledby="events-page-title"
         className="events-page-masthead"
       >
-        <p className="section-kicker">Vancouver gatherings</p>
         <h1 id="events-page-title">
           {intro?.content.heading ?? pageContent?.title ?? "Events"}
         </h1>

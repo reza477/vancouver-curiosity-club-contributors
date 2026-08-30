@@ -132,7 +132,6 @@ export default async function AboutPage() {
 
       <section className="about-board" aria-labelledby="about-board-title">
         <div className="about-section-heading">
-          <p className="section-kicker">Leadership and governance</p>
           <h2 id="about-board-title">Board of Directors</h2>
         </div>
         <ul className="about-board__list">
@@ -152,7 +151,6 @@ export default async function AboutPage() {
 
       <section className="about-model" aria-labelledby="about-model-title">
         <div className="about-section-heading">
-          <p className="section-kicker">How the model works</p>
           <h2 id="about-model-title">Structure creates room for belonging.</h2>
         </div>
         <ul className="about-model__steps">
@@ -194,7 +192,6 @@ export default async function AboutPage() {
       <section className="about-evidence" aria-labelledby="about-evidence-title">
         <div className="about-evidence__copy">
           <div>
-            <p className="section-kicker">The work in practice</p>
             <h2 id="about-evidence-title">
               Different interests. A consistent invitation to participate.
             </h2>
@@ -238,7 +235,6 @@ export default async function AboutPage() {
 
       <section className="about-communities" aria-labelledby="about-communities-title">
         <div className="about-section-heading">
-          <p className="section-kicker">Three public communities</p>
           <h2 id="about-communities-title">Several doors into the same mission.</h2>
         </div>
         <div className="about-communities__grid">
@@ -255,7 +251,6 @@ export default async function AboutPage() {
 
       <section className="about-standards" aria-labelledby="about-standards-title">
         <div className="about-section-heading">
-          <p className="section-kicker">Public standards</p>
           <h2 id="about-standards-title">Clear expectations support good participation.</h2>
         </div>
         <div className="about-standards__body">
@@ -272,7 +267,6 @@ export default async function AboutPage() {
 
       <section className="about-closing" aria-labelledby="about-closing-title">
         <div>
-          <p className="section-kicker">For organizations</p>
           <h2 id="about-closing-title">
             Help create the conditions for connection.
           </h2>

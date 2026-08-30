@@ -46,7 +46,6 @@ export function ClubDirectory({
       aria-labelledby="clubs-heading"
     >
       <header>
-        <p className="section-kicker">Clubs</p>
         <h2 id="clubs-heading">Find the room that fits your curiosity.</h2>
       </header>
       <div className="club-directory__list">
@@ -85,7 +84,6 @@ export function ClubDirectory({
               />
               {club.description ? (
                 <div className="club-directory__promise">
-                  <p className="section-kicker">The promise</p>
                   <p>{club.description}</p>
                 </div>
               ) : null}

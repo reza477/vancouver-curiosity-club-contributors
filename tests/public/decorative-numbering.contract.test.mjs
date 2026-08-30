@@ -55,8 +55,7 @@ test("real public counts and count-bearing headings remain intact", async () => 
   assert.match(homeSource, /\$\{lanes\.length\} program/u);
   assert.match(homeSource, /\$\{publicClubs\.length\} public/u);
   assert.match(homeSource, /Four ways into community life\./u);
-  assert.match(homeSource, /One organization, three public communities/u);
-  assert.match(aboutSource, /Three public communities/u);
+  assert.match(aboutSource, /PUBLIC_CATALOG_LANES\.map/u);
   assert.match(organizationsSource, /<strong>\{lanes\.length\}<\/strong>/u);
   assert.match(organizationsSource, /<strong>\{clubs\.length\}<\/strong>/u);
 });

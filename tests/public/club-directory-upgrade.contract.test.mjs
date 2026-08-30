@@ -476,8 +476,8 @@ test("the Clubs-index internal header keeps the first card well inside the deskt
   );
   assert.match(
     clubsHeaderRule,
-    /grid-template-columns:\s*max-content\s+minmax\(0,\s*1fr\)/u,
-    "the desktop kicker and title must share one compact row",
+    /grid-template-columns:\s*minmax\(0,\s*1fr\)/u,
+    "the removed kicker must not leave an empty desktop column",
   );
   assert.match(clubsHeaderRule, /align-items:\s*baseline/u);
   assert.match(clubsHeadingRule, /max-width:\s*none/u);

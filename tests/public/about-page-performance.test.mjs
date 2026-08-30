@@ -39,7 +39,6 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "At a time when much of social life takes place through screens",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
     "Vancouver Curiosity and Education Society",
-    "Leadership and governance",
     "Board of Directors",
     "Reza Rahnama",
     "Founder, President and Executive Director",
@@ -49,14 +48,11 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "Digital Experience and Communications",
     "Anurag Kapale",
     "Director-at-Large; Technology, AI and Data",
-    "How the model works",
     "What we organize",
     "Think",
     "Reset & Make",
     "Explore",
     "Eat & Play",
-    "Three public communities",
-    "Public standards",
     "Help create the conditions for connection.",
   ]) {
     assert.ok(aboutPositioning.includes(copy), copy);

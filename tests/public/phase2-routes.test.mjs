@@ -110,7 +110,6 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "At a time when much of social life takes place through screens",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
     "Explore our work",
-    "Organization at a glance",
     "Four ways into community life.",
     "Upcoming public programs.",
     "Shared curiosity makes connection easier to begin.",

@@ -253,7 +253,6 @@ export function PublicEventDetailRenderer({
         </div>
 
         <section className="event-detail__story" aria-labelledby="about-title">
-          <p className="section-kicker">Event information</p>
           <h2 id="about-title">About this event</h2>
           {event.descriptionBlocks ? (
             <PublicRichDescription
@@ -275,7 +274,6 @@ export function PublicEventDetailRenderer({
               aria-labelledby="public-organizers-title"
               className="event-organizers"
             >
-              <p className="section-kicker">People</p>
               <h3 id="public-organizers-title">
                 {event.organizers.length === 1
                   ? "Your organizer"

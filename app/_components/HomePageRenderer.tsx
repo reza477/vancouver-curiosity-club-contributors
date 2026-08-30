@@ -141,7 +141,6 @@ export function HomePageRenderer({
         aria-labelledby="home-glance-title"
       >
         <div className="home-section-heading">
-          <p className="section-kicker">Organization at a glance</p>
           <h2 id="home-glance-title">Public programs with a clear community purpose.</h2>
         </div>
         <div className="home-glance__index">
@@ -176,7 +175,6 @@ export function HomePageRenderer({
         aria-labelledby="home-programs-title"
       >
         <div className="home-section-heading">
-          <p className="section-kicker">What we do</p>
           <h2 id="home-programs-title">Four ways into community life.</h2>
         </div>
         <div className="home-programs__list">
@@ -205,7 +203,6 @@ export function HomePageRenderer({
         aria-labelledby="home-work-title"
       >
         <div className="home-section-heading">
-          <p className="section-kicker">Our work in action</p>
           <h2 id="home-work-title">Upcoming public programs.</h2>
         </div>
         {upcomingEvents.length > 0 ? (
@@ -238,7 +235,6 @@ export function HomePageRenderer({
         aria-labelledby="home-impact-title"
       >
         <div className="home-impact__statement">
-          <p className="section-kicker">Why this work matters</p>
           <h2 id="home-impact-title">Shared curiosity makes connection easier to begin.</h2>
         </div>
         <ul className="home-impact__sequence">
@@ -260,7 +256,6 @@ export function HomePageRenderer({
         aria-labelledby="home-partnerships-title"
       >
         <div className="home-partnerships__intro">
-          <p className="section-kicker">Partnership opportunities</p>
           <h2 id="home-partnerships-title">Work with us</h2>
           <p>
             Vancouver Curiosity Club welcomes conversations with organizations
@@ -290,11 +285,6 @@ export function HomePageRenderer({
         aria-labelledby="home-communities-title"
       >
         <div className="home-section-heading">
-          <p className="section-kicker">
-            {publicClubs.length === 3
-              ? "One organization, three public communities"
-              : "Public communities"}
-          </p>
           <h2 id="home-communities-title">Different interests, one public home.</h2>
         </div>
         <div className="home-communities__list">
@@ -311,7 +301,6 @@ export function HomePageRenderer({
         aria-labelledby="home-public-title"
       >
         <div>
-          <p className="section-kicker">Open to the public</p>
           <h2 id="home-public-title">
             Our programs are open to curious people across Vancouver.
           </h2>
