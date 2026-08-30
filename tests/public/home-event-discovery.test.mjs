@@ -12,6 +12,7 @@ const requiredSections = [
   "at-a-glance",
   "programs",
   "work-in-action",
+  "participant-feedback",
   "why-it-matters",
   "partnerships",
   "communities",
@@ -46,6 +47,26 @@ test("Home renders the approved institutional story in the exact section order",
   );
   assert.match(markup, /href="\/events"[^>]*>Explore upcoming events<\/a>/u);
   assert.doesNotMatch(markup, /home-section-heading--split/u);
+  const feedback = homeSection(markup, "participant-feedback");
+  assert.match(feedback, />What participants say\.<\/h2>/u);
+  assert.match(feedback, />4\.9 out of 5 on Meetup<\/p>/u);
+  assert.match(feedback, />471 ratings · 415 five-star ratings<\/p>/u);
+  assert.match(
+    feedback,
+    />Meetup ratings and feedback verified August 30, 2026\.<\/p>/u,
+  );
+  assert.equal((feedback.match(/<blockquote\b/gu) ?? []).length, 3);
+  for (const comment of [
+    "“Great discussion! I learnt lots on the topic. Group was excellent.”",
+    "“It was a great evening and I met good people :)”",
+    "“Lively discussion.”",
+  ]) {
+    assert.ok(feedback.includes(comment), comment);
+  }
+  assert.match(
+    feedback,
+    /href="https:\/\/www\.meetup\.com\/vancouver-meetup-group\/"/u,
+  );
   assert.deepEqual(
     [...markup.matchAll(/data-home-layout="([^"]+)"/gu)].map(
       (match) => match[1],
@@ -55,6 +76,7 @@ test("Home renders the approved institutional story in the exact section order",
       "compact-editorial-index",
       "full-width-colour",
       "staggered-poster-composition",
+      "asymmetric-editorial-feedback",
       "large-statement",
       "full-width-colour",
       "alternating-image-splits",

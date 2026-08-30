@@ -123,12 +123,13 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "at-a-glance",
     "programs",
     "work-in-action",
+    "participant-feedback",
     "why-it-matters",
     "partnerships",
     "communities",
     "public-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 9);
   let priorSectionIndex = -1;
   for (const sectionName of homepageSections) {
     const sectionIndex = homeRenderer.indexOf(

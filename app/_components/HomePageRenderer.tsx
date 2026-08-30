@@ -18,6 +18,7 @@ import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 import { publicUrl } from "@/lib/server/public/origin";
 import { PUBLIC_HOME_MISSION_COPY } from "@/lib/public-mission-copy";
+import { PUBLIC_HOME_PARTICIPANT_FEEDBACK } from "@/lib/public-home-participant-feedback";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
 
 const partnershipOpportunities = [
@@ -226,6 +227,48 @@ export function HomePageRenderer({
             </Link>
           </div>
         )}
+      </section>
+
+      <section
+        className="home-feedback"
+        data-home-section="participant-feedback"
+        data-home-layout="asymmetric-editorial-feedback"
+        aria-labelledby="home-feedback-title"
+      >
+        <div className="home-feedback__summary">
+          <h2 id="home-feedback-title">What participants say.</h2>
+          <p className="home-feedback__rating">
+            {`${PUBLIC_HOME_PARTICIPANT_FEEDBACK.rating.toFixed(1)} out of ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingScale} on Meetup`}
+          </p>
+          <p className="home-feedback__counts">
+            {`${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingCount} ratings · ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.fiveStarRatingCount} five-star ratings`}
+          </p>
+          <p className="home-feedback__source">
+            {`Meetup ratings and feedback verified ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.verificationDate}.`}
+          </p>
+          <a
+            className="home-feedback__link"
+            href={PUBLIC_HOME_PARTICIPANT_FEEDBACK.meetupGroupUrl}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            See {PUBLIC_HOME_PARTICIPANT_FEEDBACK.meetupGroupName} on Meetup
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
+        </div>
+        <div className="home-feedback__quotes">
+          {PUBLIC_HOME_PARTICIPANT_FEEDBACK.quotes.map((quote, index) => (
+            <blockquote
+              className={`home-feedback__quote${index === 0 ? " home-feedback__quote--lead" : ""}`}
+              key={`${quote.displayName}-${quote.eventContext}`}
+            >
+              <p>{quote.comment}</p>
+              <footer>
+                — {quote.displayName}, <cite>{quote.eventContext}</cite>
+              </footer>
+            </blockquote>
+          ))}
+        </div>
       </section>
 
       <section

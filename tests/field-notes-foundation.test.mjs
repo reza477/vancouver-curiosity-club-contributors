@@ -145,12 +145,13 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     "at-a-glance",
     "programs",
     "work-in-action",
+    "participant-feedback",
     "why-it-matters",
     "partnerships",
     "communities",
     "public-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 9);
   let previousSection = -1;
   for (const sectionName of homepageSections) {
     const section = homeRenderer.indexOf(

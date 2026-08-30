@@ -777,6 +777,7 @@ test("the built public root is indexable and carries the production security con
     'data-home-section="at-a-glance"',
     'data-home-section="programs"',
     'data-home-section="work-in-action"',
+    'data-home-section="participant-feedback"',
     'data-home-section="why-it-matters"',
     'data-home-section="partnerships"',
     'data-home-section="communities"',
@@ -794,6 +795,7 @@ test("the built public root is indexable and carries the production security con
     ["at-a-glance", "compact-editorial-index"],
     ["programs", "full-width-colour"],
     ["work-in-action", "staggered-poster-composition"],
+    ["participant-feedback", "asymmetric-editorial-feedback"],
     ["why-it-matters", "large-statement"],
     ["communities", "alternating-image-splits"],
   ]) {

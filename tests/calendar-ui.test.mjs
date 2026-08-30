@@ -275,7 +275,7 @@ test("Meetup snapshot identity includes versioned aliases, editorial policy, and
   assert.match(editorialPolicy, /315823081/u);
 });
 
-test("homepage leads with the institutional mission and eight focused sections", async () => {
+test("homepage leads with the institutional mission and nine focused sections", async () => {
   const [page, calendar, month, homeRenderer, homeData, missionCopy] =
     await Promise.all([
       readFile(new URL("app/page.tsx", projectRoot), "utf8"),
@@ -320,12 +320,13 @@ test("homepage leads with the institutional mission and eight focused sections",
     "at-a-glance",
     "programs",
     "work-in-action",
+    "participant-feedback",
     "why-it-matters",
     "partnerships",
     "communities",
     "public-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 9);
   let priorSectionIndex = -1;
   for (const sectionName of sectionNames) {
     const sectionIndex = homeRenderer.indexOf(
