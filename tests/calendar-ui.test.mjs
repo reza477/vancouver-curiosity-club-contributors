@@ -483,11 +483,11 @@ test("About presents a professional mission, impact, continuity, and partnership
   assert.match(about, /<main className="about-page"/u);
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
   );
   assert.match(
     about,
-    /<\/header>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
+    /<\/header>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
   );
   for (const phrase of [
     "Our mission",
@@ -588,18 +588,18 @@ test("About presents a professional mission, impact, continuity, and partnership
   );
   assert.match(
     styles,
-    /\.about-model__steps\s*\{[^}]*border-top:\s*1px solid var\(--line\);[^}]*border-left:\s*1px solid var\(--line\);[^}]*display:\s*grid;/su,
-    "the model cards must share a connected top and left frame",
+    /\.about-model__steps\s*\{[^}]*border-top:\s*1px solid var\(--line\);[^}]*display:\s*grid;/su,
+    "the model principles must form one ruled editorial sequence",
   );
   assert.match(
     styles,
-    /\.about-model__steps > li\s*\{[^}]*border-right:\s*1px solid var\(--line\);[^}]*border-bottom:\s*1px solid var\(--line\);/su,
-    "every model card must complete the connected grid frame",
+    /\.about-model__steps > li\s*\{[^}]*width:\s*100%;[^}]*border-bottom:\s*1px solid var\(--line\);/su,
+    "each principle must remain a readable ruled row rather than an equal card",
   );
-  assert.doesNotMatch(
+  assert.match(
     styles,
-    /\.about-model__steps > li:not\(:last-child\)/u,
-    "model cards must not use margins that break the shared border",
+    /\.about-model__steps > li:nth-child\(2\)\s*\{[^}]*width:\s*88%;[^}]*margin-left:\s*auto;/su,
+    "the principle rows must use a restrained alternating width",
   );
 });
 

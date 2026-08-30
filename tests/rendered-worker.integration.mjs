@@ -794,10 +794,10 @@ test("the built public root is indexable and carries the production security con
     ["hero", "(?:image-led-split|text-only-statement)"],
     ["at-a-glance", "compact-editorial-index"],
     ["programs", "full-width-colour"],
-    ["work-in-action", "staggered-poster-composition"],
+    ["work-in-action", "living-poster-stage"],
     ["participant-feedback", "asymmetric-editorial-feedback"],
     ["why-it-matters", "large-statement"],
-    ["communities", "alternating-image-splits"],
+    ["communities", "interactive-triptych"],
   ]) {
     assert.match(
       html,

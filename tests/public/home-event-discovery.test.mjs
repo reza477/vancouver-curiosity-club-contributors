@@ -30,7 +30,10 @@ test("Home renders the approved institutional story in the exact section order",
   );
   assert.equal((markup.match(/<h1\b/gu) ?? []).length, 1);
   assert.match(markup, />Our mission</u);
-  assert.match(markup, />Building community through curiosity\.<\/h1>/u);
+  assert.match(
+    markup,
+    /<h1 aria-label="Building community through curiosity\." id="home-title">[\s\S]*?class="home-hero__line"[\s\S]*?>Building community\s*<\/[\s\S]*?class="home-hero__line"[\s\S]*?>through curiosity\.\s*<\/[\s\S]*?<\/h1>/u,
+  );
   const missionParagraphs = [
     "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated, in-person discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life.",
     "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
@@ -75,11 +78,11 @@ test("Home renders the approved institutional story in the exact section order",
       "image-led-split",
       "compact-editorial-index",
       "full-width-colour",
-      "staggered-poster-composition",
+      "living-poster-stage",
       "asymmetric-editorial-feedback",
       "large-statement",
       "full-width-colour",
-      "alternating-image-splits",
+      "interactive-triptych",
       "compact-callout",
     ],
   );
@@ -170,6 +173,18 @@ test("Home features one real poster and three distinct later event posters", () 
     [],
   );
   assert.equal((workSection.match(/class="home-work-card"/gu) ?? []).length, 3);
+  assert.match(workSection, /class="home-work__grid" data-living-poster-stage/u);
+  assert.deepEqual(
+    [...workSection.matchAll(/data-stage-event-index="([0-9]+)"/gu)].map(
+      (match) => Number(match[1]),
+    ),
+    [0, 1, 2],
+  );
+  assert.equal((workSection.match(/data-stage-poster="true"/gu) ?? []).length, 3);
+  assert.equal((workSection.match(/data-stage-summary="true"/gu) ?? []).length, 3);
+  const communities = homeSection(markup, "communities");
+  assert.match(communities, /data-community-triptych="true"/u);
+  assert.equal((communities.match(/tabindex="0"/gu) ?? []).length, 3);
 });
 
 test("Home fails closed without artwork instead of showing a blank or fake poster", () => {
@@ -227,7 +242,8 @@ test("Home uses a reviewed institutional title without mutating the Meetup title
     "hero",
   );
 
-  assert.match(hero, />Office Space — Movie Outing at VIFF<\/a>/u);
+  assert.match(hero, /aria-label="View event: Office Space — Movie Outing at VIFF"/u);
+  assert.match(hero, /<strong>Office Space — Movie Outing at VIFF<\/strong>/u);
   assert.doesNotMatch(hero, /printer deserved it/u);
   assert.equal(officeSpace.title, canonicalTitle);
 });

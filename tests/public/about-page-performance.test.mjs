@@ -24,13 +24,13 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
     "About must keep the approved institutional narrative order",
   );
   assert.match(
     about,
-    /<\/header>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
-    "the Board must follow the mission directly after the purpose summary is removed",
+    /<\/header>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
+    "the genuine artwork strip must lead directly from the mission into the Board roster",
   );
   for (const copy of [
     "Our mission",
@@ -133,32 +133,36 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     /\.about-hero h1\s*\{[^}]*font-size:\s*var\(--public-page-title\);[^}]*text-align:\s*center;/su,
     "Our mission must be the large centered page heading",
   );
-  for (const [emoji, name] of [
-    ["🧭", "Reza Rahnama"],
-    ["🤝", "Nawar Alsaadi"],
-    ["💬", "Nataliia Ivanova"],
-    ["💻", "Anurag Kapale"],
-  ]) {
-    assert.match(
-      about,
-      new RegExp(`emoji: "${emoji}"[\\s\\S]*?name: "${name}"`, "u"),
-      `${name} must keep the approved decorative badge`,
-    );
-  }
+  assert.doesNotMatch(
+    about,
+    /\bemoji\s*:|about-board__badge|director\.emoji/u,
+    "the editorial Board roster must not restore non-informational emoji badges",
+  );
+  assert.match(
+    styles,
+    /\.about-board__list\s*\{[^}]*border-top:\s*1px solid var\(--line\);[^}]*list-style:\s*none;[^}]*display:\s*grid;/su,
+    "the Board must remain a semantic ruled roster rather than a card grid",
+  );
+  assert.match(
+    styles,
+    /\.about-board__member\s*\{[^}]*grid-template-columns:\s*minmax\(10rem, 0\.68fr\) minmax\(0, 1\.32fr\);[^}]*display:\s*grid;/su,
+    "each Board row must pair the name and role in an editorial masthead layout",
+  );
+  assert.doesNotMatch(styles, /\.about-board__badge\b/u);
+  assert.match(
+    styles,
+    /\.about-model__steps > li:nth-child\(2\)\s*\{[^}]*width:\s*88%;[^}]*margin-left:\s*auto;/su,
+    "the operating principles must use intentionally varied editorial rows",
+  );
   assert.match(
     about,
-    /className="about-board__badge" aria-hidden="true"[\s\S]*?\{director\.emoji\}/u,
-    "board emojis must stay decorative for assistive technology",
+    /publicProgramStreamVisualForLaneSlug\(lane\.slug\)[\s\S]*?data-program-stream=\{streamVisual\.id\}[\s\S]*?style=\{streamVisual\.style\}/u,
+    "program-stream rows must retain their approved presentation-only colour identities",
   );
   assert.match(
     styles,
-    /\.about-board__list > li\s*\{[^}]*grid-template-columns:\s*2\.5rem minmax\(0, 1fr\);[^}]*display:\s*grid;/su,
-    "each director card must reserve a compact badge column",
-  );
-  assert.match(
-    styles,
-    /\.about-board__badge\s*\{[^}]*width:\s*2\.5rem;[^}]*border:\s*1px solid var\(--accent\);[^}]*border-radius:\s*50%;/su,
-    "board badges must remain small and professionally restrained",
+    /\.about-program-streams li:nth-child\(even\)\s*\{[^}]*width:\s*90%;[^}]*margin-left:\s*auto;/su,
+    "program streams must use alternating editorial row widths rather than equal cards",
   );
 });
 

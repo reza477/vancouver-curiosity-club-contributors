@@ -75,6 +75,9 @@ export function HomePageRenderer({
   privatePreview?: boolean;
 }>) {
   const { heroEvent, upcomingEvents } = selectHomeDiscoveryEvents(events);
+  const heroHeadingLines = splitHomeHeroHeading(
+    PUBLIC_HOME_MISSION_COPY.heading,
+  );
   const lanes = catalog.lanes.slice(0, 4);
   const publicClubs = selectCanonicalPublicCommunities(catalog.clubs);
   const glanceFacts = [
@@ -122,7 +125,16 @@ export function HomePageRenderer({
       >
         <div className="home-hero__copy">
           <p className="eyebrow">{PUBLIC_HOME_MISSION_COPY.eyebrow}</p>
-          <h1 id="home-title">{PUBLIC_HOME_MISSION_COPY.heading}</h1>
+          <h1 aria-label={PUBLIC_HOME_MISSION_COPY.heading} id="home-title">
+            {heroHeadingLines.map((line, index) => (
+              <span className="home-hero__line" aria-hidden="true" key={line}>
+                <span>
+                  {line}
+                  {index < heroHeadingLines.length - 1 ? " " : null}
+                </span>
+              </span>
+            ))}
+          </h1>
           {PUBLIC_HOME_MISSION_COPY.paragraphs.map((paragraph) => (
             <p className="home-hero__deck" key={paragraph}>
               {paragraph}
@@ -199,6 +211,7 @@ export function HomePageRenderer({
             return (
               <article
                 className="home-program"
+                data-artwork-reveal="program-stream"
                 data-event-lane={lane.slug}
                 data-program-stream={streamVisual.id}
                 key={lane.slug}
@@ -220,7 +233,7 @@ export function HomePageRenderer({
       <section
         className="home-work"
         data-home-section="work-in-action"
-        data-home-layout="staggered-poster-composition"
+        data-home-layout="living-poster-stage"
         aria-labelledby="home-work-title"
       >
         <div className="home-section-heading">
@@ -228,9 +241,9 @@ export function HomePageRenderer({
         </div>
         {upcomingEvents.length > 0 ? (
           <>
-            <div className="home-work__grid">
-              {upcomingEvents.map((event) => (
-                <HomeWorkEvent event={event} key={event.slug} />
+            <div className="home-work__grid" data-living-poster-stage>
+              {upcomingEvents.map((event, index) => (
+                <HomeWorkEvent event={event} index={index} key={event.slug} />
               ))}
             </div>
             <Link className="home-work__calendar-link" href="/events">
@@ -344,13 +357,13 @@ export function HomePageRenderer({
       <section
         className="home-communities"
         data-home-section="communities"
-        data-home-layout="alternating-image-splits"
+        data-home-layout="interactive-triptych"
         aria-labelledby="home-communities-title"
       >
         <div className="home-section-heading">
           <h2 id="home-communities-title">Different interests, one public home.</h2>
         </div>
-        <div className="home-communities__list">
+        <div className="home-communities__list" data-community-triptych>
           {publicClubs.map((club) => (
             <HomeCommunity club={club} key={club.slug} />
           ))}
@@ -404,64 +417,69 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
   const displayTitle = institutionalEventTitle(event);
 
   return (
-    <figure className="home-hero__poster" data-home-hero-event={event.slug}>
-      <Link
-        aria-label={`View event: ${displayTitle}`}
-        className="home-hero__poster-link"
-        href={`/events/${event.slug}`}
-      >
-        <span className="home-hero__poster-preview" aria-hidden="true">
-          <span>{event.club.name}</span>
-          <strong>{displayTitle}</strong>
+    <Link
+      aria-label={`View event: ${displayTitle}`}
+      className="home-hero__poster-link"
+      href={`/events/${event.slug}`}
+    >
+      <figure className="home-hero__poster" data-home-hero-event={event.slug}>
+        <span className="home-hero__poster-media">
+          <span className="home-hero__poster-preview" aria-hidden="true">
+            <span>{event.club.name}</span>
+            <strong>{displayTitle}</strong>
+          </span>
+          <EventPosterImage
+            alt={event.artwork.altText ?? `${displayTitle} event poster`}
+            decoding="async"
+            fallback={
+              <span
+                aria-label={`${displayTitle} event poster unavailable`}
+                className="home-artwork-fallback"
+                role="img"
+              >
+                <span>{event.club.name}</span>
+                <strong>{displayTitle}</strong>
+              </span>
+            }
+            fetchPriority="high"
+            height={event.artwork.dimensions.large.height}
+            loading="eager"
+            sizes="(max-width: 700px) 100vw, (max-width: 1120px) 52vw, 56vw"
+            src={event.artwork.url}
+            srcSet={responsiveImageSrcSet([
+              {
+                url: event.artwork.srcSet.small,
+                width: event.artwork.dimensions.small.width,
+              },
+              {
+                url: event.artwork.srcSet.medium,
+                width: event.artwork.dimensions.medium.width,
+              },
+              {
+                url: event.artwork.srcSet.large,
+                width: event.artwork.dimensions.large.width,
+              },
+            ])}
+            style={{
+              objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+            }}
+            width={event.artwork.dimensions.large.width}
+          />
         </span>
-        <EventPosterImage
-          alt={event.artwork.altText ?? `${displayTitle} event poster`}
-          decoding="async"
-          fallback={
-            <div
-              aria-label={`${displayTitle} event poster unavailable`}
-              className="home-artwork-fallback"
-              role="img"
-            >
-              <span>{event.club.name}</span>
-              <strong>{displayTitle}</strong>
-            </div>
-          }
-          fetchPriority="high"
-          height={event.artwork.dimensions.large.height}
-          loading="eager"
-          sizes="(max-width: 700px) 100vw, (max-width: 1120px) 46vw, 35vw"
-          src={event.artwork.url}
-          srcSet={responsiveImageSrcSet([
-            {
-              url: event.artwork.srcSet.small,
-              width: event.artwork.dimensions.small.width,
-            },
-            {
-              url: event.artwork.srcSet.medium,
-              width: event.artwork.dimensions.medium.width,
-            },
-            {
-              url: event.artwork.srcSet.large,
-              width: event.artwork.dimensions.large.width,
-            },
-          ])}
-          style={{
-            objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-          }}
-          width={event.artwork.dimensions.large.width}
-        />
-      </Link>
-      <figcaption>
-        <span>Featured upcoming program</span>
-        <Link href={`/events/${event.slug}`}>{displayTitle}</Link>
-        {artworkCredit ? <small>Artwork: {artworkCredit}</small> : null}
-      </figcaption>
-    </figure>
+        <figcaption>
+          <span>Featured upcoming program</span>
+          <strong>{displayTitle}</strong>
+          {artworkCredit ? <small>Artwork: {artworkCredit}</small> : null}
+        </figcaption>
+      </figure>
+    </Link>
   );
 }
 
-function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
+function HomeWorkEvent({
+  event,
+  index,
+}: Readonly<{ event: PublicEventCardDto; index: number }>) {
   if (!event.artwork) return null;
   const artworkCredit = discoveryArtworkCredit(event.artwork.credit);
   const displayTitle = institutionalEventTitle(event);
@@ -486,50 +504,63 @@ function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
       className="home-work-card"
       data-home-event-slug={event.slug}
       data-program-stream={streamVisual.id}
+      data-stage-event-index={index}
+      role="article"
       style={streamVisual.style}
     >
-      <figure>
-        <div className="home-work-card__media">
-          <EventPosterImage
-            alt={event.artwork.altText ?? `${displayTitle} event poster`}
-            decoding="async"
-            fallback={
-              <div
-                aria-label={`${displayTitle} event poster unavailable`}
-                className="home-artwork-fallback"
-                role="img"
-              >
-                <span>{event.club.name}</span>
-                <strong>{displayTitle}</strong>
-              </div>
-            }
-            height={event.artwork.dimensions.large.height}
-            loading="lazy"
-            sizes="(max-width: 700px) 100vw, (max-width: 1100px) 50vw, 30vw"
-            src={event.artwork.url}
-            srcSet={responsiveImageSrcSet([
-              {
-                url: event.artwork.srcSet.small,
-                width: event.artwork.dimensions.small.width,
-              },
-              {
-                url: event.artwork.srcSet.medium,
-                width: event.artwork.dimensions.medium.width,
-              },
-              {
-                url: event.artwork.srcSet.large,
-                width: event.artwork.dimensions.large.width,
-              },
-            ])}
-            style={{
-              objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-            }}
-            width={event.artwork.dimensions.large.width}
-          />
-        </div>
-        {artworkCredit ? <figcaption>Artwork: {artworkCredit}</figcaption> : null}
-      </figure>
-      <div className="home-work-card__body">
+      <Link
+        aria-label={`View event poster: ${displayTitle}`}
+        className="home-work-card__poster-link"
+        data-stage-poster
+        href={`/events/${event.slug}`}
+      >
+        <figure>
+          <div className="home-work-card__media">
+            <span className="home-work-card__preview" aria-hidden="true">
+              <span>{event.club.name}</span>
+              <strong>{displayTitle}</strong>
+            </span>
+            <EventPosterImage
+              alt={event.artwork.altText ?? `${displayTitle} event poster`}
+              decoding="async"
+              fallback={
+                <div
+                  aria-label={`${displayTitle} event poster unavailable`}
+                  className="home-artwork-fallback"
+                  role="img"
+                >
+                  <span>{event.club.name}</span>
+                  <strong>{displayTitle}</strong>
+                </div>
+              }
+              height={event.artwork.dimensions.large.height}
+              loading="lazy"
+              sizes="(max-width: 700px) 100vw, (max-width: 1023px) 50vw, 54vw"
+              src={event.artwork.url}
+              srcSet={responsiveImageSrcSet([
+                {
+                  url: event.artwork.srcSet.small,
+                  width: event.artwork.dimensions.small.width,
+                },
+                {
+                  url: event.artwork.srcSet.medium,
+                  width: event.artwork.dimensions.medium.width,
+                },
+                {
+                  url: event.artwork.srcSet.large,
+                  width: event.artwork.dimensions.large.width,
+                },
+              ])}
+              style={{
+                objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+              }}
+              width={event.artwork.dimensions.large.width}
+            />
+          </div>
+          {artworkCredit ? <figcaption>Artwork: {artworkCredit}</figcaption> : null}
+        </figure>
+      </Link>
+      <div className="home-work-card__body" data-stage-summary>
         <p className="home-work-card__association">
           <span>{event.club.name}</span>
           {association ? (
@@ -575,6 +606,8 @@ function HomeCommunity({
   return (
     <article
       className={`home-community${artwork ? "" : " home-community--text-only"}`}
+      data-community-slug={club.slug}
+      tabIndex={0}
     >
       {artwork ? (
         <figure className="home-community__artwork">
@@ -598,18 +631,29 @@ function HomeCommunity({
       ) : null}
       <div className="home-community__body">
         <h3>{club.name}</h3>
-        <p>{descriptions[club.slug] ?? club.description}</p>
-        <div className="home-community__links">
-          <Link href={`/clubs/${club.slug}`}>View community</Link>
-          {club.publicGroupUrl ? (
-            <a href={club.publicGroupUrl} rel="noreferrer noopener" target="_blank">
-              Meetup group<span className="sr-only"> (opens in a new tab)</span>
-            </a>
-          ) : null}
+        <div className="home-community__details">
+          <div>
+            <p>{descriptions[club.slug] ?? club.description}</p>
+            <div className="home-community__links">
+              <Link href={`/clubs/${club.slug}`}>View community</Link>
+              {club.publicGroupUrl ? (
+                <a href={club.publicGroupUrl} rel="noreferrer noopener" target="_blank">
+                  Meetup group<span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
     </article>
   );
+}
+
+function splitHomeHeroHeading(heading: string): readonly string[] {
+  const divider = heading.lastIndexOf(" through ");
+  return divider > 0
+    ? Object.freeze([heading.slice(0, divider), heading.slice(divider + 1)])
+    : Object.freeze([heading]);
 }
 
 export function selectHomeDiscoveryEvents(

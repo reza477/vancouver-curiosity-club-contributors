@@ -154,6 +154,7 @@ export default async function ForOrganizationsPage() {
         <aside
           className="organizations-hero__proof"
           aria-labelledby="organizations-proof-title"
+          data-artwork-reveal="organization-hero-artwork"
         >
           <div className="organizations-hero__proof-heading">
             <h2 id="organizations-proof-title">
@@ -174,24 +175,25 @@ export default async function ForOrganizationsPage() {
               <Link href="/events">View the public event calendar</Link>
             </div>
           )}
-          <ul
-            className="organizations-hero__facts"
-            aria-label="Public program scope"
-          >
-            <li>
-              <strong>{lanes.length}</strong>
-              <span>Program streams</span>
-            </li>
-            <li>
-              <strong>{clubs.length}</strong>
-              <span>Public communities</span>
-            </li>
-            <li>
-              <Link href="/events">Open the current calendar</Link>
-            </li>
-          </ul>
         </aside>
       </header>
+
+      <ul
+        className="organizations-hero__facts"
+        aria-label="Public program scope"
+      >
+        <li>
+          <strong>{lanes.length}</strong>
+          <span>Program streams</span>
+        </li>
+        <li>
+          <strong>{clubs.length}</strong>
+          <span>Public communities</span>
+        </li>
+        <li>
+          <Link href="/events">Open the current calendar</Link>
+        </li>
+      </ul>
 
       <section
         className="organizations-collaboration"
@@ -325,6 +327,13 @@ function OrganizationActivityCard({
       {event.artwork ? (
         <figure className="organizations-activity-card__artwork">
           <div className="organizations-activity-card__artwork-frame">
+            <span
+              className="organizations-activity-card__preview"
+              aria-hidden="true"
+            >
+              <span>{event.club.name}</span>
+              <strong>{displayTitle}</strong>
+            </span>
             <EventPosterImage
               alt={event.artwork.altText ?? ""}
               decoding="async"

@@ -10,4 +10,5 @@
 @import "./styles/components/forms.css" layer(components);
 @import "./styles/pages/home.css" layer(components);
 @import "./styles/pages/event-detail.css" layer(components);
+@import "./styles/motion.css" layer(components);
 @import "./styles/components/responsive-overrides.css" layer(components);

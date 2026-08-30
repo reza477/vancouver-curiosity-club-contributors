@@ -226,16 +226,6 @@ body[data-surface="public"] :is(a, button, input, select, summary, textarea) {
   }
 }
 
-@keyframes home-section-enter {
-  0% {
-    transform: translateY(0.4rem);
-  }
-
-  to {
-    transform: translateY(0);
-  }
-}
-
 .route-loading {
   box-sizing: border-box;
   width: 100%;

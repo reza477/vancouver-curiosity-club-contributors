@@ -20,6 +20,11 @@ test("For Organizations presents the institutional partnership story in a clear 
     /className="organizations-hero__heading"[\s\S]*?<h1 id="organizations-title">[\s\S]*?className="organizations-hero__introduction"[\s\S]*?className="page-masthead__deck"/u,
   );
   assert.match(page, /className="organizations-hero__proof"/u);
+  assert.match(
+    page,
+    /<\/header>\s*<ul\s+className="organizations-hero__facts"[\s\S]*?<\/ul>\s*<section\s+className="organizations-collaboration"/u,
+    "the concise public-scope band must sit directly below the artwork-led hero",
+  );
   assert.match(page, /featuredEvent\s*\?\s*"See a current public program\."/u);
   assert.match(page, /"Review the public program structure\."/u);
   assert.match(
@@ -105,36 +110,60 @@ test("For Organizations route styles remain bounded and stack its remaining sect
   assert.ok(file.size < 30_000, "the route stylesheet must remain bounded");
   assert.match(
     css,
-    /\.organizations-collaboration__grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/su,
+    /\.for-organizations-page > \.organizations-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 5fr\) minmax\(28rem, 7fr\);[^}]*align-items:\s*center;/su,
+    "the desktop hero must use the approved artwork-led 5/7 split",
   );
   assert.match(
     css,
-    /\.for-organizations-page > \.organizations-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/su,
-  );
-  assert.match(
-    css,
-    /\.organizations-hero__copy\s*\{[^}]*grid-template-columns:\s*minmax\(15rem, 0\.74fr\) minmax\(0, 1\.26fr\);/su,
+    /\.organizations-hero__copy\s*\{[^}]*display:\s*block;/su,
+    "the hero copy must read as one natural editorial column",
   );
   assert.match(css, /\.organizations-activity-card__artwork-frame/u);
   assert.match(css, /\.organizations-hero__proof/u);
-  assert.match(css, /\.organizations-hero__facts/u);
+  assert.match(
+    css,
+    /\.organizations-hero__facts\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);[^}]*margin:\s*0;[^}]*background:\s*var\(--ink\);[^}]*display:\s*grid;/su,
+    "verified program facts must form a compact horizontal band",
+  );
+  assert.match(
+    css,
+    /\.organizations-collaboration\s*\{[^}]*grid-template-columns:\s*minmax\(15rem, 0\.72fr\) minmax\(0, 1\.28fr\);[^}]*display:\s*grid;/su,
+    "collaboration pathways must use an asymmetric section composition",
+  );
+  assert.match(
+    css,
+    /\.organizations-collaboration__grid\s*\{[^}]*border-top:\s*1px solid var\(--line\);[^}]*display:\s*grid;/su,
+  );
+  assert.match(
+    css,
+    /\.organizations-collaboration article\s*\{[^}]*grid-template-columns:\s*minmax\(11rem, 0\.82fr\) minmax\(0, 1\.18fr\);[^}]*display:\s*grid;/su,
+    "each pathway must read as an editorial index row rather than an equal box",
+  );
+  assert.match(
+    css,
+    /\.organizations-collaboration article:nth-child\(even\)\s*\{[^}]*width:\s*90%;[^}]*margin-left:\s*auto;/su,
+    "the index must preserve its restrained staggered widths",
+  );
   assert.doesNotMatch(
     css,
     /\.organizations-(?:introduction|footprint|conversation)\b/u,
   );
   assert.doesNotMatch(css, /organizations-evidence|organizations-heading--split/u);
-  const tabletStyles = css.slice(
-    css.indexOf("@media (max-width: 52rem)"),
-    css.indexOf("@media (max-width: 42rem)"),
-  );
-  assert.doesNotMatch(
-    tabletStyles,
-    /\.for-organizations-page > \.organizations-hero,/u,
+  assert.match(
+    css,
+    /@media \(max-width: 62rem\)[\s\S]*?\.for-organizations-page > \.organizations-hero,[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,
+    "the hero and collaboration composition must stack before they become cramped",
   );
   assert.match(css, /@media \(max-width: 42rem\)/u);
   assert.match(
     css,
-    /@media \(max-width: 42rem\)[\s\S]*?\.organizations-hero__copy\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u,
+    /@media \(max-width: 42rem\)[\s\S]*?\.organizations-hero__facts\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u,
+    "the public-scope band must preserve a natural mobile reading order",
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 42rem\)[\s\S]*?\.organizations-collaboration article\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*width:\s*100%;[^}]*margin-left:\s*0;/u,
+    "staggered pathway rows must reset cleanly on mobile",
   );
   assert.doesNotMatch(css, /font-size:\s*0\.[0-6][0-9]*rem/u);
 });

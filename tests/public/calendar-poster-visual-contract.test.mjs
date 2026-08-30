@@ -315,15 +315,15 @@ test("event posters stay uncropped while established discovery frames remain hor
       "transparent",
       `the poster image must reveal its lightweight preview while loading at ${viewportWidth}px`,
     );
-    assert.match(
+    assert.equal(
       lastDeclarationAtViewport(
         styles,
-        ".home-hero__poster-link",
+        ".home-hero__poster-media",
         "background",
         viewportWidth,
-      ) ?? "",
-      /linear-gradient/u,
-      `the homepage hero must keep a zero-request branded preview at ${viewportWidth}px`,
+      ),
+      "var(--amber-surface)",
+      `the homepage hero must keep a zero-request solid branded preview at ${viewportWidth}px`,
     );
   }
 

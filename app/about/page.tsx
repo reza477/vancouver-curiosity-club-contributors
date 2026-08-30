@@ -8,6 +8,7 @@ import {
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { PUBLIC_ABOUT_MISSION_COPY } from "@/lib/public-mission-copy";
+import { publicProgramStreamVisualForLaneSlug } from "@/lib/public-program-stream-visuals";
 import { PUBLIC_CATALOG_LANES } from "@/lib/server/public/catalog-definitions";
 
 const route = "/about";
@@ -63,22 +64,18 @@ const COMMUNITY_PROGRAMS = Object.freeze([
 
 const BOARD_DIRECTORS = Object.freeze([
   Object.freeze({
-    emoji: "🧭",
     name: "Reza Rahnama",
     role: "Founder, President and Executive Director",
   }),
   Object.freeze({
-    emoji: "🤝",
     name: "Nawar Alsaadi",
     role: "Vice-President and Treasurer; Strategy and Partnerships",
   }),
   Object.freeze({
-    emoji: "💬",
     name: "Nataliia Ivanova",
     role: "Digital Experience and Communications",
   }),
   Object.freeze({
-    emoji: "💻",
     name: "Anurag Kapale",
     role: "Director-at-Large; Technology, AI and Data",
   }),
@@ -130,6 +127,38 @@ export default async function AboutPage() {
         </div>
       </header>
 
+      <div
+        className="about-artwork-strip"
+        aria-label="Selected event posters"
+        data-artwork-reveal="about-artwork-strip"
+      >
+        {ABOUT_POSTERS.map((poster) => (
+          <figure key={poster.file}>
+            <picture>
+              <source
+                srcSet={`/event-posters/${poster.file}-480.avif 480w, /event-posters/${poster.file}-960.avif ${poster.mediumWidth}w`}
+                type="image/avif"
+              />
+              <source
+                srcSet={`/event-posters/${poster.file}-480.webp 480w, /event-posters/${poster.file}-960.webp ${poster.mediumWidth}w`}
+                type="image/webp"
+              />
+              <img
+                alt={poster.alt}
+                decoding="async"
+                height={poster.height}
+                loading="lazy"
+                sizes="(max-width: 44rem) 100vw, 36vw"
+                src={`/event-posters/${poster.file}-960.jpeg`}
+                srcSet={`/event-posters/${poster.file}-480.jpeg 480w, /event-posters/${poster.file}-960.jpeg ${poster.mediumWidth}w`}
+                width={poster.width}
+              />
+            </picture>
+            <figcaption>{poster.caption}</figcaption>
+          </figure>
+        ))}
+      </div>
+
       <section className="about-board" aria-labelledby="about-board-title">
         <div className="about-section-heading">
           <h2 id="about-board-title">Board of Directors</h2>
@@ -137,9 +166,6 @@ export default async function AboutPage() {
         <ul className="about-board__list">
           {BOARD_DIRECTORS.map((director) => (
             <li key={director.name}>
-              <span className="about-board__badge" aria-hidden="true">
-                {director.emoji}
-              </span>
               <div className="about-board__member">
                 <h3>{director.name}</h3>
                 <p>{director.role}</p>
@@ -179,12 +205,20 @@ export default async function AboutPage() {
         <div className="about-program-streams">
           <h3>What we organize</h3>
           <ul>
-            {PUBLIC_CATALOG_LANES.map((lane) => (
-              <li key={lane.slug}>
-                <strong>{lane.name}</strong>
-                <span>{lane.description}</span>
-              </li>
-            ))}
+            {PUBLIC_CATALOG_LANES.map((lane) => {
+              const streamVisual =
+                publicProgramStreamVisualForLaneSlug(lane.slug);
+              return (
+                <li
+                  data-program-stream={streamVisual.id}
+                  key={lane.slug}
+                  style={streamVisual.style}
+                >
+                  <strong>{lane.name}</strong>
+                  <span>{lane.description}</span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>
@@ -203,33 +237,6 @@ export default async function AboutPage() {
             can see the work through our public program pages, calendar, and
             event materials.
           </p>
-        </div>
-        <div className="about-evidence__gallery" aria-label="Selected event posters">
-          {ABOUT_POSTERS.map((poster) => (
-            <figure key={poster.file}>
-              <picture>
-                <source
-                  srcSet={`/event-posters/${poster.file}-480.avif 480w, /event-posters/${poster.file}-960.avif ${poster.mediumWidth}w`}
-                  type="image/avif"
-                />
-                <source
-                  srcSet={`/event-posters/${poster.file}-480.webp 480w, /event-posters/${poster.file}-960.webp ${poster.mediumWidth}w`}
-                  type="image/webp"
-                />
-                <img
-                  alt={poster.alt}
-                  decoding="async"
-                  height={poster.height}
-                  loading="lazy"
-                  sizes="(max-width: 44rem) calc(100vw - 2rem), 31vw"
-                  src={`/event-posters/${poster.file}-960.jpeg`}
-                  srcSet={`/event-posters/${poster.file}-480.jpeg 480w, /event-posters/${poster.file}-960.jpeg ${poster.mediumWidth}w`}
-                  width={poster.width}
-                />
-              </picture>
-              <figcaption>{poster.caption}</figcaption>
-            </figure>
-          ))}
         </div>
       </section>
 
