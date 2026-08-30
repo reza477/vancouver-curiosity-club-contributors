@@ -316,8 +316,8 @@
 }
 
 .home-program {
-  --program-accent: var(--cobalt);
-  background: var(--blue-surface);
+  --program-stream-accent: var(--ink);
+  background: var(--paper);
   color: var(--ink);
   grid-template-columns: minmax(0, 1fr) minmax(9rem, auto);
   align-items: start;
@@ -335,26 +335,11 @@
 
 .home-program::before {
   content: "";
-  background: var(--program-accent);
-  width: 0.28rem;
+  background: var(--program-stream-accent);
+  width: 0.4rem;
   position: absolute;
   inset-block: 1.25rem;
   left: 0;
-}
-
-.home-program[data-event-lane="reset-and-make"] {
-  --program-accent: var(--teal);
-  background: var(--teal-surface);
-}
-
-.home-program[data-event-lane="explore"] {
-  --program-accent: var(--amber-strong);
-  background: var(--amber-surface);
-}
-
-.home-program[data-event-lane="eat-and-play"] {
-  --program-accent: var(--coral-strong);
-  background: var(--coral-surface);
 }
 
 .home-program h3,
@@ -369,6 +354,10 @@
   font-size: clamp(1.55rem, 2.3vw, 2.35rem);
   font-weight: 600;
   line-height: 1;
+  text-decoration-color: var(--program-stream-accent);
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.17em;
 }
 
 .home-program p {
@@ -422,6 +411,7 @@
 }
 
 .home-work-card figure {
+  border-top: 0.4rem solid var(--program-stream-accent, var(--ink));
   border-bottom: 1px solid var(--ink);
   background: var(--paper-deep);
   margin: 0;
@@ -465,7 +455,7 @@
 }
 
 .home-work-card__association {
-  color: var(--accent);
+  color: var(--ink);
   font-family: var(--mono);
   font-size: 0.825rem;
   font-weight: 700;
@@ -473,6 +463,13 @@
   line-height: 1.45;
   margin: 0 0 0.65rem;
   text-transform: uppercase;
+}
+
+.home-work-card__stream-name {
+  text-decoration-color: var(--program-stream-accent, var(--ink));
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.15em;
+  text-underline-offset: 0.2em;
 }
 
 .home-work-card h3 {
@@ -1028,5 +1025,12 @@
 @media (prefers-reduced-motion: reduce) {
   .home-page > section {
     animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .home-program,
+  .home-work-card {
+    --program-stream-accent: CanvasText !important;
   }
 }

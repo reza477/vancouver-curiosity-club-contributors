@@ -247,6 +247,7 @@ function UpcomingEventsView({
                 key={event.slug}
                 posterSizes="(max-width: 672px) 92vw, (max-width: 832px) 30vw, (max-width: 1400px) 24vw, 352px"
                 priority={eagerPosterIndex === 0}
+                programStreamAccents
               />
             );
           })}

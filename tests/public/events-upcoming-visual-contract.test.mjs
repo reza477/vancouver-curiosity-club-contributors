@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const PHONE_VIEWPORTS = Object.freeze([320, 375]);
-const TABLET_AND_DESKTOP_VIEWPORTS = Object.freeze([768, 1024, 1440]);
+const TABLET_AND_DESKTOP_VIEWPORTS = Object.freeze([
+  768,
+  1024,
+  1366,
+  1440,
+]);
 const VIEWPORTS = Object.freeze([
   ...PHONE_VIEWPORTS,
   ...TABLET_AND_DESKTOP_VIEWPORTS,

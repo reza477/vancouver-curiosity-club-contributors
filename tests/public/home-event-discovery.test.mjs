@@ -216,13 +216,17 @@ function renderHome(events) {
 }
 
 function catalogFixture() {
-  const lanes = ["Think", "Reset & Make", "Explore", "Eat & Play"].map(
-    (name) =>
-      Object.freeze({
-        description: `${name} public programs.`,
-        name,
-        slug: name.toLowerCase().replaceAll(/[^a-z]+/gu, "-").replace(/^-|-$/gu, ""),
-      }),
+  const lanes = [
+    ["Think", "think"],
+    ["Reset & Make", "reset-and-make"],
+    ["Explore", "explore"],
+    ["Eat & Play", "eat-and-play"],
+  ].map(([name, slug]) =>
+    Object.freeze({
+      description: `${name} public programs.`,
+      name,
+      slug,
+    }),
   );
   const clubs = [
     [

@@ -20,6 +20,7 @@ import { publicUrl } from "@/lib/server/public/origin";
 import { PUBLIC_HOME_MISSION_COPY } from "@/lib/public-mission-copy";
 import { PUBLIC_HOME_PARTICIPANT_FEEDBACK } from "@/lib/public-home-participant-feedback";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
+import { publicProgramStreamVisualForLaneSlug } from "@/lib/public-program-stream-visuals";
 
 const partnershipOpportunities = [
   "Program funding or sponsorship",
@@ -179,21 +180,27 @@ export function HomePageRenderer({
           <h2 id="home-programs-title">Four ways into community life.</h2>
         </div>
         <div className="home-programs__list">
-          {lanes.map((lane) => (
-            <article
-              className="home-program"
-              data-event-lane={lane.slug}
-              key={lane.slug}
-            >
-              <div>
-                <h3>{lane.name}</h3>
-                {lane.description ? <p>{lane.description}</p> : null}
-              </div>
-              <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
-                View {lane.name} events
-              </Link>
-            </article>
-          ))}
+          {lanes.map((lane) => {
+            const streamVisual =
+              publicProgramStreamVisualForLaneSlug(lane.slug);
+            return (
+              <article
+                className="home-program"
+                data-event-lane={lane.slug}
+                data-program-stream={streamVisual.id}
+                key={lane.slug}
+                style={streamVisual.style}
+              >
+                <div>
+                  <h3>{lane.name}</h3>
+                  {lane.description ? <p>{lane.description}</p> : null}
+                </div>
+                <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
+                  View {lane.name} events
+                </Link>
+              </article>
+            );
+          })}
         </div>
       </section>
 
@@ -459,9 +466,15 @@ function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
             ? "Location details not published"
             : "Location undecided");
   const association = event.program?.name ?? event.lane?.name;
+  const streamVisual = publicProgramStreamVisualForLaneSlug(event.lane?.slug);
 
   return (
-    <article className="home-work-card" data-home-event-slug={event.slug}>
+    <article
+      className="home-work-card"
+      data-home-event-slug={event.slug}
+      data-program-stream={streamVisual.id}
+      style={streamVisual.style}
+    >
       <figure>
         <div className="home-work-card__media">
           <EventPosterImage
@@ -505,7 +518,15 @@ function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
       </figure>
       <div className="home-work-card__body">
         <p className="home-work-card__association">
-          {event.club.name}{association ? ` · ${association}` : ""}
+          <span>{event.club.name}</span>
+          {association ? (
+            <>
+              <span> · </span>
+              <span className="home-work-card__stream-name">
+                {association}
+              </span>
+            </>
+          ) : null}
         </p>
         <h3>
           <Link href={`/events/${event.slug}`}>{displayTitle}</Link>
