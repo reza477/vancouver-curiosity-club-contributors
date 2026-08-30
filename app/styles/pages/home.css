@@ -230,11 +230,13 @@
 }
 
 .home-glance {
-  background: var(--paper-deep);
-  grid-template-columns: minmax(16rem, 0.72fr) minmax(0, 1.28fr);
-  align-items: start;
-  gap: clamp(2rem, 7vw, 7rem);
-  padding-block: clamp(2.25rem, 3.5vw, 3.5rem);
+  border-bottom: 1px solid var(--paper);
+  background: var(--ink);
+  color: var(--paper);
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  align-items: center;
+  gap: clamp(2rem, 6vw, 6rem);
+  padding-block: clamp(4rem, 4.6vw, 5rem);
   display: grid;
 }
 
@@ -242,62 +244,91 @@
   margin-bottom: 0;
 }
 
+.home-glance .home-section-heading h2 {
+  max-width: 14ch;
+  font-size: clamp(2.75rem, 3.6vw, 3.5rem);
+  line-height: 0.98;
+}
+
 .home-glance__index {
   min-width: 0;
 }
 
 .home-glance__facts {
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid color-mix(in srgb, var(--paper) 48%, transparent);
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  column-gap: clamp(1.5rem, 3vw, 3rem);
   margin: 0;
   padding: 0;
-  list-style: none;
-}
-
-.home-glance__facts li {
-  border-bottom: 1px solid var(--ink);
-  grid-template-columns: minmax(0, 1fr);
-  min-width: 0;
-  padding: 0.8rem 0;
   display: grid;
 }
 
-.home-glance__facts strong,
-.home-glance__facts span {
+.home-glance__fact {
+  border-bottom: 1px solid color-mix(in srgb, var(--paper) 48%, transparent);
+  min-width: 0;
+  padding: 0.25rem 0 0.32rem;
+}
+
+.home-glance__fact--location,
+.home-glance__fact--standards {
+  grid-column: 1 / -1;
+}
+
+.home-glance__fact--streams {
+  grid-column: 1;
+  grid-template-columns: auto minmax(2rem, 1fr);
+  column-gap: 0.75rem;
+  align-items: center;
+  display: grid;
+}
+
+.home-glance__fact--communities {
+  grid-column: 2;
+}
+
+.home-glance__facts dt,
+.home-glance__facts dd {
   display: block;
 }
 
-.home-glance__verified {
-  flex-wrap: wrap;
-  gap: 1rem 2rem;
-  margin: 1rem 0 0;
-  padding: 0;
-  display: flex;
-}
-
-.home-glance__verified div {
-  min-width: min(100%, 13rem);
-}
-
-.home-glance__verified dt {
-  color: var(--ink-soft);
-  font-size: 0.75rem;
-}
-
-.home-glance__verified dd {
-  margin: 0.25rem 0 0;
-  font-weight: 700;
-}
-
-.home-glance__facts strong {
+.home-glance__facts dt {
+  margin: 0;
   font-size: 1rem;
+  font-weight: 700;
   line-height: 1.3;
 }
 
-.home-glance__facts span {
-  color: var(--ink-soft);
-  margin-top: 0.35rem;
+.home-glance__fact--location dt {
+  font-size: clamp(1.08rem, 1.35vw, 1.3rem);
+}
+
+.home-glance__facts dd {
+  color: var(--paper);
+  margin: 0.35rem 0 0;
   font-size: 0.86rem;
-  line-height: 1.45;
+  line-height: 1.4;
+  opacity: 0.82;
+}
+
+.home-glance__stream-rule {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  gap: 0.22rem;
+  width: min(100%, 10rem);
+  height: 0.22rem;
+  margin: 0;
+  display: grid;
+}
+
+.home-glance__fact--streams dd {
+  grid-column: 1 / -1;
+}
+
+.home-glance__stream-rule > span {
+  background: var(--program-stream-accent);
+  display: block;
 }
 
 .home-programs {
@@ -885,8 +916,34 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .home-glance {
+    gap: 1.75rem;
+    padding-block: clamp(2.75rem, 6vw, 3rem);
+  }
+
   .home-glance .home-section-heading {
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
+  }
+
+  .home-glance .home-section-heading h2 {
+    max-width: 17ch;
+    font-size: clamp(2.2rem, 8vw, 2.75rem);
+  }
+
+  .home-glance__facts {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+  }
+
+  .home-glance__fact--location,
+  .home-glance__fact--streams,
+  .home-glance__fact--communities,
+  .home-glance__fact--standards {
+    grid-column: 1;
+  }
+
+  .home-glance__fact {
+    padding-block: 0.78rem 0.88rem;
   }
 
   .home-work__grid {
@@ -947,6 +1004,10 @@
   .home-communities,
   .home-public-invitation {
     padding-block: 2.2rem;
+  }
+
+  .home-glance {
+    padding-block: clamp(2.5rem, 11vw, 3rem);
   }
 
   .home-partnerships {
@@ -1029,6 +1090,21 @@
 }
 
 @media (forced-colors: active) {
+  .home-glance {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .home-glance__facts,
+  .home-glance__fact {
+    border-color: CanvasText;
+  }
+
+  .home-glance__stream-rule {
+    display: none;
+  }
+
   .home-program,
   .home-work-card {
     --program-stream-accent: CanvasText !important;

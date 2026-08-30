@@ -20,7 +20,10 @@ import { publicUrl } from "@/lib/server/public/origin";
 import { PUBLIC_HOME_MISSION_COPY } from "@/lib/public-mission-copy";
 import { PUBLIC_HOME_PARTICIPANT_FEEDBACK } from "@/lib/public-home-participant-feedback";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
-import { publicProgramStreamVisualForLaneSlug } from "@/lib/public-program-stream-visuals";
+import {
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP,
+  publicProgramStreamVisualForLaneSlug,
+} from "@/lib/public-program-stream-visuals";
 
 const partnershipOpportunities = [
   "Program funding or sponsorship",
@@ -50,6 +53,13 @@ const communityModel = [
   },
 ] as const;
 
+const homeGlanceStreamVisuals = [
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP.think,
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP["reset-make"],
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP.explore,
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP["eat-play"],
+] as const;
+
 export function HomePageRenderer({
   catalog,
   events,
@@ -67,15 +77,13 @@ export function HomePageRenderer({
   const { heroEvent, upcomingEvents } = selectHomeDiscoveryEvents(events);
   const lanes = catalog.lanes.slice(0, 4);
   const publicClubs = selectCanonicalPublicCommunities(catalog.clubs);
-  const verifiedFacts = verifiedInstitutionalFacts(
-    catalog.site.institutionalFacts,
-  );
   const glanceFacts = [
     ...(catalog.site.locationLabel
       ? [
           {
             body: "Locally based and publicly accessible",
             heading: catalog.site.locationLabel,
+            id: "location",
           },
         ]
       : []),
@@ -84,6 +92,7 @@ export function HomePageRenderer({
           {
             body: "Learning, culture, creativity, and shared experience",
             heading: `${lanes.length} program ${lanes.length === 1 ? "stream" : "streams"}`,
+            id: "streams",
           },
         ]
       : []),
@@ -92,12 +101,14 @@ export function HomePageRenderer({
           {
             body: "Distinct interests under one organizational home",
             heading: `${publicClubs.length} public ${publicClubs.length === 1 ? "community" : "communities"}`,
+            id: "communities",
           },
         ]
       : []),
     {
       body: "Published event details, conduct, accessibility, and privacy information",
       heading: "Public calendar and standards",
+      id: "standards",
     },
   ];
 
@@ -146,26 +157,28 @@ export function HomePageRenderer({
           <h2 id="home-glance-title">Public programs with a clear community purpose.</h2>
         </div>
         <div className="home-glance__index">
-          <ul className="home-glance__facts">
+          <dl className="home-glance__facts">
             {glanceFacts.map((fact) => (
-              <li key={fact.heading}>
-                <div>
-                  <strong>{fact.heading}</strong>
-                  <span>{fact.body}</span>
-                </div>
-              </li>
+              <div
+                className={`home-glance__fact home-glance__fact--${fact.id}`}
+                data-home-glance-fact={fact.id}
+                key={fact.heading}
+              >
+                <dt>{fact.heading}</dt>
+                <dd>{fact.body}</dd>
+                {fact.id === "streams" ? (
+                  <span
+                    aria-hidden="true"
+                    className="home-glance__stream-rule"
+                  >
+                    {homeGlanceStreamVisuals.map((stream) => (
+                      <span key={stream.id} style={stream.style} />
+                    ))}
+                  </span>
+                ) : null}
+              </div>
             ))}
-          </ul>
-          {verifiedFacts.length > 0 ? (
-            <dl className="home-glance__verified">
-              {verifiedFacts.map((fact) => (
-                <div key={fact.label}>
-                  <dt>{fact.label}</dt>
-                  <dd>{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
+          </dl>
         </div>
       </section>
 
@@ -633,44 +646,4 @@ export function selectHomeDiscoveryEvents(
     heroEvent,
     upcomingEvents: Object.freeze(upcomingEvents),
   });
-}
-
-function verifiedInstitutionalFacts(
-  facts: PublicCatalogDto["site"]["institutionalFacts"] | undefined,
-): readonly Readonly<{ label: string; value: string }>[] {
-  if (!facts) return Object.freeze([]);
-  return Object.freeze([
-    ...(facts.foundedYear !== null
-      ? [{ label: "Founded", value: String(facts.foundedYear) }]
-      : []),
-    ...(facts.attendanceTotal !== null && facts.attendanceTotalAsOf
-      ? [
-          {
-            label: `Recorded attendance through ${formatFactDate(
-              facts.attendanceTotalAsOf,
-            )}`,
-            value: new Intl.NumberFormat("en-CA").format(
-              facts.attendanceTotal,
-            ),
-          },
-        ]
-      : []),
-    ...(facts.memberTotal !== null && facts.memberTotalAsOf
-      ? [
-          {
-            label: `Members as of ${formatFactDate(facts.memberTotalAsOf)}`,
-            value: new Intl.NumberFormat("en-CA").format(facts.memberTotal),
-          },
-        ]
-      : []),
-  ]);
-}
-
-function formatFactDate(value: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T12:00:00.000Z`));
 }

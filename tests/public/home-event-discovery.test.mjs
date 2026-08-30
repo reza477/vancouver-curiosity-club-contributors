@@ -85,6 +85,54 @@ test("Home renders the approved institutional story in the exact section order",
   );
 });
 
+test("Home renders only the four approved identity-band facts in logical order", () => {
+  const markup = renderHome(upcomingEvents(4));
+  const glance = homeSection(markup, "at-a-glance");
+  const approvedCopy = [
+    "Public programs with a clear community purpose.",
+    "Vancouver, British Columbia",
+    "Locally based and publicly accessible",
+    "4 program streams",
+    "Learning, culture, creativity, and shared experience",
+    "3 public communities",
+    "Distinct interests under one organizational home",
+    "Public calendar and standards",
+    "Published event details, conduct, accessibility, and privacy information",
+  ];
+
+  assert.equal((glance.match(/<h2\b/gu) ?? []).length, 1);
+  assert.equal((glance.match(/<dt\b/gu) ?? []).length, 4);
+  assert.equal((glance.match(/<dd\b/gu) ?? []).length, 4);
+  assert.doesNotMatch(
+    glance,
+    /<table\b|class="[^"]*(?:eyebrow|card)[^"]*"|Founded|Recorded attendance|Members as of/iu,
+  );
+  assert.deepEqual(
+    [...glance.matchAll(/data-home-glance-fact="([^"]+)"/gu)].map(
+      (match) => match[1],
+    ),
+    ["location", "streams", "communities", "standards"],
+  );
+
+  let previousIndex = -1;
+  for (const copy of approvedCopy) {
+    const index = glance.indexOf(copy);
+    assert.ok(index > previousIndex, `${copy} must appear in logical order`);
+    previousIndex = index;
+  }
+
+  const streamRule = glance.match(
+    /<span aria-hidden="true" class="home-glance__stream-rule">([\s\S]*?)<\/span><\/div>/u,
+  )?.[1];
+  assert.ok(streamRule, "the decorative stream rule must render");
+  assert.deepEqual(
+    [...streamRule.matchAll(/--program-stream-accent:([^;"]+)/gu)].map(
+      (match) => match[1],
+    ),
+    ["var(--teal)", "var(--coral-strong)", "var(--amber-strong)", "var(--accent)"],
+  );
+});
+
 test("Home features one real poster and three distinct later event posters", () => {
   const hero = eventCard(1);
   const duplicateArtwork = eventCard(2, { artwork: hero.artwork });
@@ -260,13 +308,14 @@ function catalogFixture() {
     site: Object.freeze({
       brandName: "Vancouver Curiosity Club",
       institutionalFacts: Object.freeze({
-        attendanceTotal: null,
-        attendanceTotalAsOf: null,
-        foundedYear: null,
-        memberTotal: null,
-        memberTotalAsOf: null,
+        attendanceTotal: 1234,
+        attendanceTotalAsOf: "2026-08-30",
+        foundedYear: 2020,
+        memberTotal: 567,
+        memberTotalAsOf: "2026-08-30",
       }),
       legalName: null,
+      locationLabel: "Vancouver, British Columbia",
       mission: "A thoughtful Vancouver community.",
     }),
   });

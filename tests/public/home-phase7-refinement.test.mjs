@@ -59,7 +59,27 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   assert.doesNotMatch(css, /\.home-section-heading--split|\.home-hero__events-link/u);
   assert.match(
     css,
-    /\.home-glance\s*\{[^}]*grid-template-columns:\s*minmax\(16rem, 0\.72fr\) minmax\(0, 1\.28fr\);/su,
+    /\.home-glance\s*\{[^}]*background:\s*var\(--ink\);[^}]*color:\s*var\(--paper\);[^}]*grid-template-columns:\s*minmax\(0, 0\.78fr\) minmax\(0, 1\.22fr\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-glance__facts\s*\{[^}]*grid-template-columns:\s*minmax\(0, 0\.82fr\) minmax\(0, 1\.18fr\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-glance__fact--location,[\s\S]*?\.home-glance__fact--standards\s*\{[^}]*grid-column:\s*1 \/ -1;/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 56rem\)[\s\S]*?\.home-glance__facts\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 42rem\)[\s\S]*?\.home-glance\s*\{[^}]*padding-block:\s*clamp\(2\.5rem, 11vw, 3rem\);/u,
+  );
+  assert.match(
+    css,
+    /@media \(forced-colors: active\)[\s\S]*?\.home-glance__stream-rule\s*\{[^}]*display:\s*none;/u,
   );
   assert.match(
     css,
