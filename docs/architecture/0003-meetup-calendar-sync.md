@@ -116,8 +116,9 @@ parser for each exact configured group's canonical public events page.
 
 ### Exact cross-post alias model
 
-The following Vancouver Curiosity Club URLs are explicit aliases of the
-corresponding Vancouver Literature and Film listings:
+The following exact Meetup URLs are explicit aliases of the corresponding
+specialized-group listings. Unqualified pairs map Vancouver Curiosity Club to
+Vancouver Literature and Film:
 
 - `315511475` -> `315508432`
 - `315511480` -> `315508537`
@@ -132,11 +133,21 @@ corresponding Vancouver Literature and Film listings:
 - `315777485` -> `315777434`
 - `316159366` -> `316159440`
 - `316050934` -> `316050915`
+- `316263002` -> `316334829`
+- `316263346` -> `316263362`
+- `316248155` -> `316248163`
+- `316263548` -> `316263599`
+- `316263813` -> `316263821`
+- Vancouver Curiosity Club `316263724` -> Fantasy & Sci-Fi `316263745`
 - Fantasy & Sci-Fi `315776566` -> Literature and Film `315776601`
 
 Both sides are stored in source as exact canonical HTTPS Meetup event URLs and
-must have numeric event IDs. Chains, cycles, same-group pairs, and duplicate
-alias or target URLs are rejected during module initialization.
+must have numeric event IDs. Event-URL chains, cycles, same-group pairs, and
+duplicate alias or target URLs are rejected during module initialization.
+Source groups are ordered by their transitive dependencies before refresh:
+Literature and Film, then Fantasy & Sci-Fi, then Vancouver Curiosity Club.
+This guarantees each specialized canonical target is active before an alias
+that depends on it is processed.
 
 An alias can import only when exactly one different enabled source has its
 target URL in an active, published, cursor-complete, rejection-free generation.
@@ -207,8 +218,9 @@ Meetup facts and to stop depending on a separate manual enrichment run.
   30 + 10 + 2 current listings. It included Wednesday Night Reset
   (`316010049`), the current Poetry Night title, and numeric event identities
   for four recurring listings that redirect when opened individually.
-- Eight owner-reviewed URL pairs are cross-post aliases, producing 34 canonical
-  current listings before ordinary date/status filtering.
+- At that historical cutoff, eight owner-reviewed URL pairs were cross-post
+  aliases, producing 34 canonical current listings before ordinary date/status
+  filtering.
 - Public descriptions normalize to a bounded semantic model of headings,
   paragraphs, ordered/unordered lists, emphasis, and allowlisted HTTPS links.
   Ticket links such as VIFF remain clickable. Plain text must exactly match the
@@ -216,9 +228,9 @@ Meetup facts and to stop depending on a separate manual enrichment run.
 - Public venue name/address and poster provenance live on the same immutable
   snapshot as title/schedule. A partial or failed refresh therefore cannot mix
   generations or leak new content.
-- The organizer All-program action refreshes canonical Literature and Fantasy
-  sources before the alias-dependent main group and automatically continues
-  two-row chunks with a bounded request cap.
+- At that historical cutoff, the organizer All-program action refreshed the
+  canonical Literature and Fantasy sources before the alias-dependent main
+  group and automatically continued two-row chunks with a bounded request cap.
 - The older curated manifest and local poster files remain a fallback for
   already-published snapshots. They are no longer the primary update path for
   a newly completed source generation.

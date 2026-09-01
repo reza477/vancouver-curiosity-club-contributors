@@ -103,7 +103,7 @@ const EXACT_EVENT_ALIASES = [
     aliasUrl:
       "https://www.meetup.com/vancouver-meetup-group/events/316263002/",
     canonicalUrl:
-      "https://www.meetup.com/vancouver-literature-and-film/events/316263063/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316334829/",
   },
   {
     aliasUrl:
@@ -116,6 +116,24 @@ const EXACT_EVENT_ALIASES = [
       "https://www.meetup.com/vancouver-meetup-group/events/316248155/",
     canonicalUrl:
       "https://www.meetup.com/vancouver-literature-and-film/events/316248163/",
+  },
+  {
+    aliasUrl:
+      "https://www.meetup.com/vancouver-meetup-group/events/316263548/",
+    canonicalUrl:
+      "https://www.meetup.com/vancouver-literature-and-film/events/316263599/",
+  },
+  {
+    aliasUrl:
+      "https://www.meetup.com/vancouver-meetup-group/events/316263813/",
+    canonicalUrl:
+      "https://www.meetup.com/vancouver-literature-and-film/events/316263821/",
+  },
+  {
+    aliasUrl:
+      "https://www.meetup.com/vancouver-meetup-group/events/316263724/",
+    canonicalUrl:
+      "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/316263745/",
   },
   {
     aliasUrl:

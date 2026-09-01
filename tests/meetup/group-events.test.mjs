@@ -716,6 +716,7 @@ test("fetches the canonical group page then the complete public GraphQL inventor
     afterDateTime: FUTURE_AFTER,
     urlname: GROUP_SLUG,
   });
+  assert.match(JSON.parse(observed[1].init.body).query, /first:\s*25/u);
   assert.equal(parsed.events[0].eventUrl, EVENT_URL);
   assert.equal(parsed.events[0].publicContent.capacity, 8);
   assert.equal(parsed.events[0].publicContent.availabilityState, "waitlist");
@@ -783,6 +784,58 @@ test("follows every GraphQL cursor with one fixed cutoff and stable totals", asy
     parsed.events.map((event) => event.componentIndex),
     [0, 1, 2],
   );
+});
+
+test("retrieves all 61 events across exact 25-item GraphQL boundaries", async () => {
+  const state = createApolloState();
+  setPrimaryConnectionPagination(state, {
+    endCursor: "html-cursor",
+    hasNextPage: true,
+    totalCount: 61,
+  });
+  const sourceEvents = Array.from({ length: 61 }, (_, index) =>
+    createGraphqlEventNode({ eventId: String(400_000_000 + index) }),
+  );
+  const requests = [];
+  const parsed = await fetchMeetupGroupEvents(GROUP_SLUG, {
+    fetcher: async (url, init) => {
+      if (url !== "https://api.meetup.com/gql-ext") {
+        return new Response(createHtml(state), {
+          headers: { "content-type": "text/html" },
+          status: 200,
+        });
+      }
+      const variables = JSON.parse(init.body).variables;
+      requests.push(variables);
+      if (variables.after === null) {
+        return graphqlResponse({
+          endCursor: "cursor-25",
+          events: sourceEvents.slice(0, 25),
+          hasNextPage: true,
+          totalCount: 61,
+        });
+      }
+      if (variables.after === "cursor-25") {
+        return graphqlResponse({
+          endCursor: "cursor-50",
+          events: sourceEvents.slice(25, 50),
+          hasNextPage: true,
+          totalCount: 61,
+        });
+      }
+      return graphqlResponse({
+        events: sourceEvents.slice(50),
+        totalCount: 61,
+      });
+    },
+  });
+
+  assert.deepEqual(
+    requests.map(({ after }) => after),
+    [null, "cursor-25", "cursor-50"],
+  );
+  assert.equal(parsed.events.length, 61);
+  assert.equal(new Set(parsed.events.map((event) => event.uid)).size, 61);
 });
 
 test("does not advertise waitlists before RSVP opens or after RSVP closes", async () => {
@@ -938,7 +991,7 @@ function createApolloState({
       ({ afterDateTime = FUTURE_AFTER, eventRefs: refs, statuses }) => [
         `events(${JSON.stringify({
           filter: { afterDateTime, status: statuses },
-          first: 30,
+          first: 25,
           sort: "ASC",
         })})`,
         {

@@ -21,7 +21,10 @@ export const MAX_MEETUP_GROUP_EVENTS = 100;
 
 const FETCH_TIMEOUT_MS = 12_000;
 const MEETUP_GRAPHQL_URL = "https://api.meetup.com/gql-ext";
-const MEETUP_GRAPHQL_PAGE_SIZE = 30;
+// Meetup currently drops an edge at some 30-item cursor boundaries even while
+// reporting the full totalCount. Twenty-five keeps the traversal complete for
+// those boundaries while retaining the same exact-count and cursor checks.
+const MEETUP_GRAPHQL_PAGE_SIZE = 25;
 const MAX_MEETUP_GRAPHQL_PAGES = Math.ceil(
   MAX_MEETUP_GROUP_EVENTS / MEETUP_GRAPHQL_PAGE_SIZE,
 );
@@ -68,7 +71,7 @@ query getUpcomingGroupEvents($urlname: String!, $after: String, $afterDateTime: 
     events(
       filter: {status: [ACTIVE, PAST, CANCELLED], afterDateTime: $afterDateTime}
       sort: ASC
-      first: 30
+      first: 25
       after: $after
     ) {
       __typename

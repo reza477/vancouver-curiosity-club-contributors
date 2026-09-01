@@ -690,7 +690,7 @@ async function runDueMeetupRefresh(
   );
 }
 
-test("due refresh drains the canonical group before alias-bearing groups", async (t) => {
+test("due refresh drains canonical groups before every transitive alias dependency", async (t) => {
   const database = createDatabase({
     clubs: ["club_a", "club_b", "club_c"],
   });
@@ -727,8 +727,8 @@ test("due refresh drains the canonical group before alias-bearing groups", async
 
   assert.deepEqual(
     fetchedFeeds,
-    [FEED_B, FEED_A, FEED_C],
-    "the canonical source stays ahead of both exact-alias programs",
+    [FEED_B, FEED_C, FEED_A],
+    "Literature precedes Fantasy, which precedes the umbrella source that aliases both",
   );
 });
 
@@ -1057,7 +1057,7 @@ test("exact cross-post aliases share canonical events and publish a later unique
     "https://www.meetup.com/vancouver-meetup-group/events/315511480/";
   assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlOne), canonicalUrlOne);
   assert.equal(canonicalMeetupEventUrlForAlias(aliasUrlTwo), canonicalUrlTwo);
-  assert.equal(MEETUP_EVENT_ALIASES.length, 17);
+  assert.equal(MEETUP_EVENT_ALIASES.length, 20);
   assert.deepEqual(
     [
       "315776403",
@@ -1068,6 +1068,8 @@ test("exact cross-post aliases share canonical events and publish a later unique
       "316263002",
       "316263346",
       "316248155",
+      "316263548",
+      "316263813",
     ].map((aliasId) =>
       canonicalMeetupEventUrlForAlias(
         `https://www.meetup.com/vancouver-meetup-group/events/${aliasId}/`,
@@ -1079,9 +1081,11 @@ test("exact cross-post aliases share canonical events and publish a later unique
       "https://www.meetup.com/vancouver-literature-and-film/events/315777434/",
       "https://www.meetup.com/vancouver-literature-and-film/events/316159440/",
       "https://www.meetup.com/vancouver-literature-and-film/events/316050915/",
-      "https://www.meetup.com/vancouver-literature-and-film/events/316263063/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316334829/",
       "https://www.meetup.com/vancouver-literature-and-film/events/316263362/",
       "https://www.meetup.com/vancouver-literature-and-film/events/316248163/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316263599/",
+      "https://www.meetup.com/vancouver-literature-and-film/events/316263821/",
     ],
   );
   assert.equal(
@@ -1089,6 +1093,12 @@ test("exact cross-post aliases share canonical events and publish a later unique
       "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/",
     ),
     "https://www.meetup.com/vancouver-literature-and-film/events/315776601/",
+  );
+  assert.equal(
+    canonicalMeetupEventUrlForAlias(
+      "https://www.meetup.com/vancouver-meetup-group/events/316263724/",
+    ),
+    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/316263745/",
   );
   assert.equal(
     MEETUP_EVENT_ALIASES.find((entry) => entry.aliasUrl === aliasUrlTwo)
