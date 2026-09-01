@@ -1,4 +1,4 @@
-name: Daily Meetup refresh
+name: Daily form delivery and manual Meetup refresh
 
 on:
   workflow_dispatch:
@@ -33,6 +33,7 @@ jobs:
 
   refresh:
     name: Refresh Meetup and public event snapshots
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

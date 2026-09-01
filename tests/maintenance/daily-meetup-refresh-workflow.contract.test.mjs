@@ -14,9 +14,12 @@ const ROOT = process.cwd();
 const WORKFLOW_PATH =
   ".github/workflows/daily-meetup-refresh.yml";
 
-test("daily Meetup refresh runs off-hour in Vancouver and can also be dispatched manually", () => {
+test("daily form delivery runs off-hour while Meetup refresh requires manual dispatch", () => {
   const workflow = source(WORKFLOW_PATH);
-  assert.match(workflow, /^name:\s*Daily Meetup refresh\s*$/mu);
+  assert.match(
+    workflow,
+    /^name:\s*Daily form delivery and manual Meetup refresh\s*$/mu,
+  );
   assert.match(workflow, /^on:\s*$/mu);
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/mu);
   assert.match(workflow, /^\s{2}schedule:\s*$/mu);
@@ -29,6 +32,19 @@ test("daily Meetup refresh runs off-hour in Vancouver and can also be dispatched
   assert.match(workflow, /timeout-minutes:\s*(?:[1-9]|1\d|20)\s*$/mu);
   assert.match(workflow, /^\s+group:\s*daily-meetup-refresh\s*$/mu);
   assert.match(workflow, /^\s+cancel-in-progress:\s*false\s*$/mu);
+  const emailJob = workflow.indexOf("  form-email:");
+  const meetupJob = workflow.indexOf("  refresh:");
+  assert.ok(emailJob > 0 && meetupJob > emailJob);
+  assert.doesNotMatch(
+    workflow.slice(emailJob, meetupJob),
+    /github\.event_name\s*==\s*['"]workflow_dispatch['"]/u,
+    "scheduled runs must continue delivering queued organizer form emails",
+  );
+  assert.match(
+    workflow.slice(meetupJob),
+    /^\s+if:\s*\$\{\{\s*github\.event_name\s*==\s*['"]workflow_dispatch['"]\s*\}\}\s*$/mu,
+    "Meetup synchronization must require an intentional manual dispatch",
+  );
 });
 
 test("workflow signs the timestamp, UUID, route, and exact body without exposing the secret", () => {
