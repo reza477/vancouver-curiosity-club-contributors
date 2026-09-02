@@ -29,6 +29,11 @@ remains controlling.
 
 ## Development
 
+Online contributors may use the private
+[GitHub Codespaces preview](docs/CONTRIBUTOR_PREVIEW.md). It supports editing,
+branching, and a live browser preview without production data or deployment
+access.
+
 ```powershell
 npm ci
 npm run db:apply:preview
