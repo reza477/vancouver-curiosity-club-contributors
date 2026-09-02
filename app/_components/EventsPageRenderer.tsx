@@ -61,7 +61,6 @@ export function EventsPageRenderer({
         aria-labelledby="events-page-title"
         className="events-page-masthead"
       >
-        <p className="section-kicker">Vancouver gatherings</p>
         <h1 id="events-page-title">
           {intro?.content.heading ?? pageContent?.title ?? "Events"}
         </h1>
@@ -248,6 +247,7 @@ function UpcomingEventsView({
                 key={event.slug}
                 posterSizes="(max-width: 672px) 92vw, (max-width: 832px) 30vw, (max-width: 1400px) 24vw, 352px"
                 priority={eagerPosterIndex === 0}
+                programStreamAccents
               />
             );
           })}

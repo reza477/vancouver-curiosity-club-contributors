@@ -777,6 +777,7 @@ test("the built public root is indexable and carries the production security con
     'data-home-section="at-a-glance"',
     'data-home-section="programs"',
     'data-home-section="work-in-action"',
+    'data-home-section="participant-feedback"',
     'data-home-section="why-it-matters"',
     'data-home-section="partnerships"',
     'data-home-section="communities"',
@@ -793,9 +794,10 @@ test("the built public root is indexable and carries the production security con
     ["hero", "(?:image-led-split|text-only-statement)"],
     ["at-a-glance", "compact-editorial-index"],
     ["programs", "full-width-colour"],
-    ["work-in-action", "staggered-poster-composition"],
+    ["work-in-action", "living-poster-stage"],
+    ["participant-feedback", "asymmetric-editorial-feedback"],
     ["why-it-matters", "large-statement"],
-    ["communities", "alternating-image-splits"],
+    ["communities", "interactive-triptych"],
   ]) {
     assert.match(
       html,
@@ -1706,7 +1708,7 @@ test("Events defaults to Upcoming and exposes Calendar as an explicit view", asy
     /rel="canonical" href="https:\/\/preview\.example\/events"/iu,
   );
   assert.match(html, /<title>Events · Vancouver Curiosity Club<\/title>/iu);
-  assert.match(html, /Vancouver gatherings/u);
+  assert.doesNotMatch(html, /Vancouver gatherings/u);
   assert.match(html, /aria-label="Event views"/u);
   assert.match(
     html,

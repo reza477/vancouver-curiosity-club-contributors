@@ -9,19 +9,16 @@
 }
 
 .for-organizations-page > .organizations-hero {
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: clamp(2rem, 4vw, 3.5rem);
+  grid-template-columns: minmax(0, 5fr) minmax(28rem, 7fr);
+  align-items: center;
+  gap: clamp(2.5rem, 5vw, 5rem);
 }
 
 .organizations-hero__copy {
   width: 100%;
   max-width: none;
   min-width: 0;
-  grid-template-columns: minmax(15rem, 0.74fr) minmax(0, 1.26fr);
-  align-items: end;
-  gap: clamp(2rem, 6vw, 6rem);
-  display: grid;
+  display: block;
 }
 
 .organizations-hero__heading,
@@ -30,7 +27,7 @@
 }
 
 .organizations-hero__copy .page-masthead__deck {
-  margin-top: 0;
+  margin-top: 1.5rem;
   max-width: 58ch;
 }
 
@@ -51,21 +48,16 @@
 }
 
 .organizations-hero__proof {
-  width: min(100%, 64rem);
+  width: 100%;
   min-width: 0;
-  justify-self: center;
-  padding: clamp(1rem, 2vw, 1.4rem);
-  border: 1px solid var(--ink);
-  border-top: 0.35rem solid var(--coral);
-  background: var(--paper-deep);
-  box-shadow: 0.45rem 0.45rem 0 var(--amber);
+  justify-self: stretch;
 }
 
 .organizations-hero__proof-heading {
-  grid-template-columns: minmax(0, 0.55fr) minmax(12rem, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: end;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.8rem;
   display: grid;
 }
 
@@ -123,21 +115,24 @@
 
 .organizations-hero__facts {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 1rem 0 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
+  margin: 0;
+  padding: 0 max(var(--public-gutter), env(safe-area-inset-right)) 0 max(var(--public-gutter), env(safe-area-inset-left));
+  border-bottom: 1px solid var(--paper);
+  background: var(--ink);
+  color: var(--paper);
   list-style: none;
   display: grid;
 }
 
 .organizations-hero__facts li {
   min-width: 0;
-  min-height: 4.75rem;
-  padding: 0.75rem;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  min-height: 5.25rem;
+  padding: 0.85rem clamp(0.75rem, 2vw, 1.5rem);
   align-content: center;
+}
+
+.organizations-hero__facts li:not(:last-child) {
+  border-right: 1px solid color-mix(in srgb, var(--paper) 48%, transparent);
 }
 
 .organizations-hero__facts strong,
@@ -157,6 +152,10 @@
   margin-top: 0.3rem;
   font-size: 0.82rem;
   line-height: 1.35;
+}
+
+.organizations-hero__facts a {
+  color: var(--paper);
 }
 
 .organizations-hero__facts a {
@@ -197,7 +196,7 @@
 
 .organizations-heading {
   max-width: 64rem;
-  margin-bottom: clamp(1.75rem, 3.5vw, 3rem);
+  margin-bottom: 0;
 }
 
 .organizations-heading > p:not(.section-kicker) {
@@ -223,13 +222,48 @@
   overflow: hidden;
 }
 
+.organizations-activity-card__artwork-frame {
+  position: relative;
+}
+
+.organizations-activity-card__preview {
+  background: var(--amber-surface);
+  color: var(--ink);
+  align-content: end;
+  gap: 0.35rem;
+  padding: clamp(1rem, 2.2vw, 1.6rem);
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: grid;
+}
+
+.organizations-activity-card__preview > span {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.organizations-activity-card__preview > strong {
+  max-width: 24ch;
+  font-family: var(--display);
+  font-size: clamp(1.35rem, 2.5vw, 2.4rem);
+  line-height: 1.02;
+}
+
 .organizations-activity-card__artwork picture {
   width: 100%;
   height: 100%;
+  position: relative;
+  z-index: 1;
   display: block;
 }
 
 .organizations-activity-card__artwork img {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -272,33 +306,33 @@
 
 .organizations-collaboration {
   background: var(--amber-surface);
+  grid-template-columns: minmax(15rem, 0.72fr) minmax(0, 1.28fr);
+  gap: clamp(2rem, 6vw, 6rem);
+  display: grid;
 }
 
 .organizations-collaboration__grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
   display: grid;
 }
 
 .organizations-collaboration article {
   min-width: 0;
-  min-height: 10rem;
-  padding: 1.25rem;
-  border-right: 1px solid var(--line);
+  width: 100%;
+  padding: 1.25rem 0;
   border-bottom: 1px solid var(--line);
+  grid-template-columns: minmax(11rem, 0.82fr) minmax(0, 1.18fr);
+  gap: 1rem clamp(1.25rem, 3vw, 3rem);
+  display: grid;
 }
 
-.organizations-collaboration article > span {
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
+.organizations-collaboration article:nth-child(even) {
+  width: 90%;
+  margin-left: auto;
 }
 
 .organizations-collaboration h3 {
-  margin: 1.25rem 0 0;
+  margin: 0;
   font-size: 1.05rem;
   line-height: 1.3;
 }
@@ -354,7 +388,9 @@
   border-radius: 0;
 }
 
-@media (max-width: 52rem) {
+@media (max-width: 62rem) {
+  .for-organizations-page > .organizations-hero,
+  .organizations-collaboration,
   .organizations-standards,
   .organizations-contact {
     grid-template-columns: minmax(0, 1fr);
@@ -364,9 +400,6 @@
     max-width: 44rem;
   }
 
-  .organizations-collaboration__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 42rem) {
@@ -398,6 +431,14 @@
   }
 
   .organizations-collaboration article {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
     min-height: 0;
+    margin-left: 0;
+  }
+
+  .organizations-hero__facts li:not(:last-child) {
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--paper) 48%, transparent);
   }
 }

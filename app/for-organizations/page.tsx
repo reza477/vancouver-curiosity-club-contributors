@@ -128,7 +128,6 @@ export default async function ForOrganizationsPage() {
       >
         <div className="page-masthead__copy organizations-hero__copy">
           <div className="organizations-hero__heading">
-            <p className="eyebrow">For organizations</p>
             <h1 id="organizations-title">
               Build thoughtful public programs with us
             </h1>
@@ -155,9 +154,9 @@ export default async function ForOrganizationsPage() {
         <aside
           className="organizations-hero__proof"
           aria-labelledby="organizations-proof-title"
+          data-artwork-reveal="organization-hero-artwork"
         >
           <div className="organizations-hero__proof-heading">
-            <p className="section-kicker">Current public work</p>
             <h2 id="organizations-proof-title">
               {featuredEvent
                 ? "See a current public program."
@@ -176,31 +175,31 @@ export default async function ForOrganizationsPage() {
               <Link href="/events">View the public event calendar</Link>
             </div>
           )}
-          <ul
-            className="organizations-hero__facts"
-            aria-label="Public program scope"
-          >
-            <li>
-              <strong>{lanes.length}</strong>
-              <span>Program streams</span>
-            </li>
-            <li>
-              <strong>{clubs.length}</strong>
-              <span>Public communities</span>
-            </li>
-            <li>
-              <Link href="/events">Open the current calendar</Link>
-            </li>
-          </ul>
         </aside>
       </header>
+
+      <ul
+        className="organizations-hero__facts"
+        aria-label="Public program scope"
+      >
+        <li>
+          <strong>{lanes.length}</strong>
+          <span>Program streams</span>
+        </li>
+        <li>
+          <strong>{clubs.length}</strong>
+          <span>Public communities</span>
+        </li>
+        <li>
+          <Link href="/events">Open the current calendar</Link>
+        </li>
+      </ul>
 
       <section
         className="organizations-collaboration"
         aria-labelledby="organizations-collaboration-title"
       >
         <div className="organizations-heading">
-          <p className="section-kicker">Collaboration pathways</p>
           <h2 id="organizations-collaboration-title">
             Practical ways to strengthen the work.
           </h2>
@@ -214,9 +213,8 @@ export default async function ForOrganizationsPage() {
           </p>
         </div>
         <div className="organizations-collaboration__grid">
-          {collaborationOptions.map((option, index) => (
+          {collaborationOptions.map((option) => (
             <article key={option.title}>
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
               <h3>{option.title}</h3>
               <p>{option.body}</p>
             </article>
@@ -229,7 +227,6 @@ export default async function ForOrganizationsPage() {
         aria-labelledby="organizations-standards-title"
       >
         <div>
-          <p className="section-kicker">Public operating standards</p>
           <h2 id="organizations-standards-title">
             Clear expectations are part of the program.
           </h2>
@@ -253,7 +250,6 @@ export default async function ForOrganizationsPage() {
         aria-labelledby="organizations-contact-title"
       >
         <div>
-          <p className="section-kicker">Start a conversation</p>
           <h2 id="organizations-contact-title">
             Tell us what your organization wants to make possible.
           </h2>
@@ -331,6 +327,13 @@ function OrganizationActivityCard({
       {event.artwork ? (
         <figure className="organizations-activity-card__artwork">
           <div className="organizations-activity-card__artwork-frame">
+            <span
+              className="organizations-activity-card__preview"
+              aria-hidden="true"
+            >
+              <span>{event.club.name}</span>
+              <strong>{displayTitle}</strong>
+            </span>
             <EventPosterImage
               alt={event.artwork.altText ?? ""}
               decoding="async"

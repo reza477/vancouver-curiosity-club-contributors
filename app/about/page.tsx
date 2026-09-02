@@ -8,6 +8,7 @@ import {
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
 import { PUBLIC_ABOUT_MISSION_COPY } from "@/lib/public-mission-copy";
+import { publicProgramStreamVisualForLaneSlug } from "@/lib/public-program-stream-visuals";
 import { PUBLIC_CATALOG_LANES } from "@/lib/server/public/catalog-definitions";
 
 const route = "/about";
@@ -63,22 +64,18 @@ const COMMUNITY_PROGRAMS = Object.freeze([
 
 const BOARD_DIRECTORS = Object.freeze([
   Object.freeze({
-    emoji: "🧭",
     name: "Reza Rahnama",
     role: "Founder, President and Executive Director",
   }),
   Object.freeze({
-    emoji: "🤝",
     name: "Nawar Alsaadi",
     role: "Vice-President and Treasurer; Strategy and Partnerships",
   }),
   Object.freeze({
-    emoji: "💬",
     name: "Nataliia Ivanova",
     role: "Digital Experience and Communications",
   }),
   Object.freeze({
-    emoji: "💻",
     name: "Anurag Kapale",
     role: "Director-at-Large; Technology, AI and Data",
   }),
@@ -130,17 +127,45 @@ export default async function AboutPage() {
         </div>
       </header>
 
+      <div
+        className="about-artwork-strip"
+        aria-label="Selected event posters"
+        data-artwork-reveal="about-artwork-strip"
+      >
+        {ABOUT_POSTERS.map((poster) => (
+          <figure key={poster.file}>
+            <picture>
+              <source
+                srcSet={`/event-posters/${poster.file}-480.avif 480w, /event-posters/${poster.file}-960.avif ${poster.mediumWidth}w`}
+                type="image/avif"
+              />
+              <source
+                srcSet={`/event-posters/${poster.file}-480.webp 480w, /event-posters/${poster.file}-960.webp ${poster.mediumWidth}w`}
+                type="image/webp"
+              />
+              <img
+                alt={poster.alt}
+                decoding="async"
+                height={poster.height}
+                loading="lazy"
+                sizes="(max-width: 44rem) 100vw, 36vw"
+                src={`/event-posters/${poster.file}-960.jpeg`}
+                srcSet={`/event-posters/${poster.file}-480.jpeg 480w, /event-posters/${poster.file}-960.jpeg ${poster.mediumWidth}w`}
+                width={poster.width}
+              />
+            </picture>
+            <figcaption>{poster.caption}</figcaption>
+          </figure>
+        ))}
+      </div>
+
       <section className="about-board" aria-labelledby="about-board-title">
         <div className="about-section-heading">
-          <p className="section-kicker">Leadership and governance</p>
           <h2 id="about-board-title">Board of Directors</h2>
         </div>
         <ul className="about-board__list">
           {BOARD_DIRECTORS.map((director) => (
             <li key={director.name}>
-              <span className="about-board__badge" aria-hidden="true">
-                {director.emoji}
-              </span>
               <div className="about-board__member">
                 <h3>{director.name}</h3>
                 <p>{director.role}</p>
@@ -152,12 +177,10 @@ export default async function AboutPage() {
 
       <section className="about-model" aria-labelledby="about-model-title">
         <div className="about-section-heading">
-          <p className="section-kicker">How the model works</p>
           <h2 id="about-model-title">Structure creates room for belonging.</h2>
         </div>
-        <ol className="about-model__steps">
+        <ul className="about-model__steps">
           <li>
-            <span>01</span>
             <h3>Curiosity provides a focus</h3>
             <p>
               A shared subject or activity gives people a natural reason to
@@ -165,7 +188,6 @@ export default async function AboutPage() {
             </p>
           </li>
           <li>
-            <span>02</span>
             <h3>Preparation builds trust</h3>
             <p>
               Clear event information, participation expectations, and a code
@@ -173,23 +195,30 @@ export default async function AboutPage() {
             </p>
           </li>
           <li>
-            <span>03</span>
             <h3>Recurrence supports continuity</h3>
             <p>
               Multiple programs and a dependable public calendar give people
               more than one way—and more than one moment—to take part.
             </p>
           </li>
-        </ol>
+        </ul>
         <div className="about-program-streams">
           <h3>What we organize</h3>
           <ul>
-            {PUBLIC_CATALOG_LANES.map((lane) => (
-              <li key={lane.slug}>
-                <strong>{lane.name}</strong>
-                <span>{lane.description}</span>
-              </li>
-            ))}
+            {PUBLIC_CATALOG_LANES.map((lane) => {
+              const streamVisual =
+                publicProgramStreamVisualForLaneSlug(lane.slug);
+              return (
+                <li
+                  data-program-stream={streamVisual.id}
+                  key={lane.slug}
+                  style={streamVisual.style}
+                >
+                  <strong>{lane.name}</strong>
+                  <span>{lane.description}</span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>
@@ -197,7 +226,6 @@ export default async function AboutPage() {
       <section className="about-evidence" aria-labelledby="about-evidence-title">
         <div className="about-evidence__copy">
           <div>
-            <p className="section-kicker">The work in practice</p>
             <h2 id="about-evidence-title">
               Different interests. A consistent invitation to participate.
             </h2>
@@ -210,46 +238,15 @@ export default async function AboutPage() {
             event materials.
           </p>
         </div>
-        <div className="about-evidence__gallery" aria-label="Selected event posters">
-          {ABOUT_POSTERS.map((poster) => (
-            <figure key={poster.file}>
-              <picture>
-                <source
-                  srcSet={`/event-posters/${poster.file}-480.avif 480w, /event-posters/${poster.file}-960.avif ${poster.mediumWidth}w`}
-                  type="image/avif"
-                />
-                <source
-                  srcSet={`/event-posters/${poster.file}-480.webp 480w, /event-posters/${poster.file}-960.webp ${poster.mediumWidth}w`}
-                  type="image/webp"
-                />
-                <img
-                  alt={poster.alt}
-                  decoding="async"
-                  height={poster.height}
-                  loading="lazy"
-                  sizes="(max-width: 44rem) calc(100vw - 2rem), 31vw"
-                  src={`/event-posters/${poster.file}-960.jpeg`}
-                  srcSet={`/event-posters/${poster.file}-480.jpeg 480w, /event-posters/${poster.file}-960.jpeg ${poster.mediumWidth}w`}
-                  width={poster.width}
-                />
-              </picture>
-              <figcaption>{poster.caption}</figcaption>
-            </figure>
-          ))}
-        </div>
       </section>
 
       <section className="about-communities" aria-labelledby="about-communities-title">
         <div className="about-section-heading">
-          <p className="section-kicker">Three public communities</p>
           <h2 id="about-communities-title">Several doors into the same mission.</h2>
         </div>
         <div className="about-communities__grid">
-          {COMMUNITY_PROGRAMS.map((program, index) => (
+          {COMMUNITY_PROGRAMS.map((program) => (
             <article key={program.href}>
-              <p className="about-communities__number" aria-hidden="true">
-                {String(index + 1).padStart(2, "0")}
-              </p>
               <h3>
                 <Link href={program.href}>{program.name}</Link>
               </h3>
@@ -261,7 +258,6 @@ export default async function AboutPage() {
 
       <section className="about-standards" aria-labelledby="about-standards-title">
         <div className="about-section-heading">
-          <p className="section-kicker">Public standards</p>
           <h2 id="about-standards-title">Clear expectations support good participation.</h2>
         </div>
         <div className="about-standards__body">
@@ -278,7 +274,6 @@ export default async function AboutPage() {
 
       <section className="about-closing" aria-labelledby="about-closing-title">
         <div>
-          <p className="section-kicker">For organizations</p>
           <h2 id="about-closing-title">
             Help create the conditions for connection.
           </h2>

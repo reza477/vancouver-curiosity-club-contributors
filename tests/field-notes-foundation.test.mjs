@@ -99,7 +99,6 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   assert.match(homeRenderer, /Explore our work/u);
   assert.match(homeRenderer, /View the public event calendar/u);
   assert.match(homeRenderer, /Explore upcoming events/u);
-  assert.match(homeRenderer, /Organization at a glance/u);
   assert.match(homeRenderer, /Shared curiosity makes connection easier to begin\./u);
   assert.match(
     homeRenderer,
@@ -146,12 +145,13 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     "at-a-glance",
     "programs",
     "work-in-action",
+    "participant-feedback",
     "why-it-matters",
     "partnerships",
     "communities",
     "public-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 9);
   let previousSection = -1;
   for (const sectionName of homepageSections) {
     const section = homeRenderer.indexOf(

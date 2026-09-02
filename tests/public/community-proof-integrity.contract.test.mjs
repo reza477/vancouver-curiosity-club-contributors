@@ -146,21 +146,26 @@ test("organizer imagery stays absent or passes the confirmed attribution and med
   assert.match(introduction, /\.photo\.(?:url|altText|credit)\b/u);
 });
 
-test("Home and About fail closed when no genuine attendee voices exist", async () => {
-  const [home, about, note] = await Promise.all([
+test("Home permits only the verified Meetup feedback dataset while About stays closed", async () => {
+  const [home, about, note, participantFeedback] = await Promise.all([
     source("app/_components/HomePageRenderer.tsx"),
     source("app/about/page.tsx"),
     source("app/_components/OrganizerNote.tsx"),
+    source("lib/public-home-participant-feedback.ts"),
   ]);
-  const attendeeProofSurfaces = `${home}\n${about}\n${note.replace(
+  const feedbackSection = sectionSource(home, "home-feedback");
+  const attendeeProofSurfaces = `${home.replace(feedbackSection, "")}\n${about}\n${note.replace(
     /<blockquote[^>]*>[\s\S]*?<\/blockquote>/u,
     "",
   )}`;
 
+  assert.match(feedbackSection, /PUBLIC_HOME_PARTICIPANT_FEEDBACK\.quotes\.map/u);
+  assert.match(feedbackSection, /<blockquote\b/u);
+  assert.match(participantFeedback, /verificationDate:\s*"August 30, 2026"/u);
   assert.doesNotMatch(
     attendeeProofSurfaces,
     /<blockquote\b|<q\b|data-(?:attendee-)?testimonial|data-attendee-quote/iu,
-    "the current source has no consented attendee quotation data to render",
+    "participant quotations must stay confined to the exact verified Home section",
   );
   assert.doesNotMatch(
     attendeeProofSurfaces,

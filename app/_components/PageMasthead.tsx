@@ -12,7 +12,7 @@ export function PageMasthead({
   tone,
 }: Readonly<{
   deck: string;
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   tone?: PageMastheadTone;
 }>) {
@@ -22,7 +22,7 @@ export function PageMasthead({
       data-masthead-tone={tone ?? "think"}
     >
       <div className="page-masthead__copy">
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h1>{title}</h1>
         <p className="page-masthead__deck">{deck}</p>
       </div>

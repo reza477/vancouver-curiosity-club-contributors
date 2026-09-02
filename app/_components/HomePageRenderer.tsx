@@ -18,7 +18,12 @@ import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 import { publicUrl } from "@/lib/server/public/origin";
 import { PUBLIC_HOME_MISSION_COPY } from "@/lib/public-mission-copy";
+import { PUBLIC_HOME_PARTICIPANT_FEEDBACK } from "@/lib/public-home-participant-feedback";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
+import {
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP,
+  publicProgramStreamVisualForLaneSlug,
+} from "@/lib/public-program-stream-visuals";
 
 const partnershipOpportunities = [
   "Program funding or sponsorship",
@@ -48,6 +53,13 @@ const communityModel = [
   },
 ] as const;
 
+const homeGlanceStreamVisuals = [
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP.think,
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP["reset-make"],
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP.explore,
+  PUBLIC_PROGRAM_STREAM_VISUAL_MAP["eat-play"],
+] as const;
+
 export function HomePageRenderer({
   catalog,
   events,
@@ -63,17 +75,18 @@ export function HomePageRenderer({
   privatePreview?: boolean;
 }>) {
   const { heroEvent, upcomingEvents } = selectHomeDiscoveryEvents(events);
+  const heroHeadingLines = splitHomeHeroHeading(
+    PUBLIC_HOME_MISSION_COPY.heading,
+  );
   const lanes = catalog.lanes.slice(0, 4);
   const publicClubs = selectCanonicalPublicCommunities(catalog.clubs);
-  const verifiedFacts = verifiedInstitutionalFacts(
-    catalog.site.institutionalFacts,
-  );
   const glanceFacts = [
     ...(catalog.site.locationLabel
       ? [
           {
             body: "Locally based and publicly accessible",
             heading: catalog.site.locationLabel,
+            id: "location",
           },
         ]
       : []),
@@ -82,6 +95,7 @@ export function HomePageRenderer({
           {
             body: "Learning, culture, creativity, and shared experience",
             heading: `${lanes.length} program ${lanes.length === 1 ? "stream" : "streams"}`,
+            id: "streams",
           },
         ]
       : []),
@@ -90,12 +104,14 @@ export function HomePageRenderer({
           {
             body: "Distinct interests under one organizational home",
             heading: `${publicClubs.length} public ${publicClubs.length === 1 ? "community" : "communities"}`,
+            id: "communities",
           },
         ]
       : []),
     {
       body: "Published event details, conduct, accessibility, and privacy information",
       heading: "Public calendar and standards",
+      id: "standards",
     },
   ];
 
@@ -109,7 +125,16 @@ export function HomePageRenderer({
       >
         <div className="home-hero__copy">
           <p className="eyebrow">{PUBLIC_HOME_MISSION_COPY.eyebrow}</p>
-          <h1 id="home-title">{PUBLIC_HOME_MISSION_COPY.heading}</h1>
+          <h1 aria-label={PUBLIC_HOME_MISSION_COPY.heading} id="home-title">
+            {heroHeadingLines.map((line, index) => (
+              <span className="home-hero__line" aria-hidden="true" key={line}>
+                <span>
+                  {line}
+                  {index < heroHeadingLines.length - 1 ? " " : null}
+                </span>
+              </span>
+            ))}
+          </h1>
           {PUBLIC_HOME_MISSION_COPY.paragraphs.map((paragraph) => (
             <p className="home-hero__deck" key={paragraph}>
               {paragraph}
@@ -141,33 +166,31 @@ export function HomePageRenderer({
         aria-labelledby="home-glance-title"
       >
         <div className="home-section-heading">
-          <p className="section-kicker">Organization at a glance</p>
           <h2 id="home-glance-title">Public programs with a clear community purpose.</h2>
         </div>
         <div className="home-glance__index">
-          <ol className="home-glance__facts">
-            {glanceFacts.map((fact, index) => (
-              <li key={fact.heading}>
-                <span className="home-glance__number" aria-hidden="true">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <div>
-                  <strong>{fact.heading}</strong>
-                  <span>{fact.body}</span>
-                </div>
-              </li>
+          <dl className="home-glance__facts">
+            {glanceFacts.map((fact) => (
+              <div
+                className={`home-glance__fact home-glance__fact--${fact.id}`}
+                data-home-glance-fact={fact.id}
+                key={fact.heading}
+              >
+                <dt>{fact.heading}</dt>
+                <dd>{fact.body}</dd>
+                {fact.id === "streams" ? (
+                  <span
+                    aria-hidden="true"
+                    className="home-glance__stream-rule"
+                  >
+                    {homeGlanceStreamVisuals.map((stream) => (
+                      <span key={stream.id} style={stream.style} />
+                    ))}
+                  </span>
+                ) : null}
+              </div>
             ))}
-          </ol>
-          {verifiedFacts.length > 0 ? (
-            <dl className="home-glance__verified">
-              {verifiedFacts.map((fact) => (
-                <div key={fact.label}>
-                  <dt>{fact.label}</dt>
-                  <dd>{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
+          </dl>
         </div>
       </section>
 
@@ -179,44 +202,48 @@ export function HomePageRenderer({
         aria-labelledby="home-programs-title"
       >
         <div className="home-section-heading">
-          <p className="section-kicker">What we do</p>
           <h2 id="home-programs-title">Four ways into community life.</h2>
         </div>
         <div className="home-programs__list">
-          {lanes.map((lane, index) => (
-            <article
-              className="home-program"
-              data-event-lane={lane.slug}
-              key={lane.slug}
-            >
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-              <div>
-                <h3>{lane.name}</h3>
-                {lane.description ? <p>{lane.description}</p> : null}
-              </div>
-              <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
-                View {lane.name} events
-              </Link>
-            </article>
-          ))}
+          {lanes.map((lane) => {
+            const streamVisual =
+              publicProgramStreamVisualForLaneSlug(lane.slug);
+            return (
+              <article
+                className="home-program"
+                data-artwork-reveal="program-stream"
+                data-event-lane={lane.slug}
+                data-program-stream={streamVisual.id}
+                key={lane.slug}
+                style={streamVisual.style}
+              >
+                <div>
+                  <h3>{lane.name}</h3>
+                  {lane.description ? <p>{lane.description}</p> : null}
+                </div>
+                <Link href={`/events?lane=${encodeURIComponent(lane.slug)}`}>
+                  View {lane.name} events
+                </Link>
+              </article>
+            );
+          })}
         </div>
       </section>
 
       <section
         className="home-work"
         data-home-section="work-in-action"
-        data-home-layout="staggered-poster-composition"
+        data-home-layout="living-poster-stage"
         aria-labelledby="home-work-title"
       >
         <div className="home-section-heading">
-          <p className="section-kicker">Our work in action</p>
           <h2 id="home-work-title">Upcoming public programs.</h2>
         </div>
         {upcomingEvents.length > 0 ? (
           <>
-            <div className="home-work__grid">
-              {upcomingEvents.map((event) => (
-                <HomeWorkEvent event={event} key={event.slug} />
+            <div className="home-work__grid" data-living-poster-stage>
+              {upcomingEvents.map((event, index) => (
+                <HomeWorkEvent event={event} index={index} key={event.slug} />
               ))}
             </div>
             <Link className="home-work__calendar-link" href="/events">
@@ -236,26 +263,66 @@ export function HomePageRenderer({
       </section>
 
       <section
+        className="home-feedback"
+        data-home-section="participant-feedback"
+        data-home-layout="asymmetric-editorial-feedback"
+        aria-labelledby="home-feedback-title"
+      >
+        <div className="home-feedback__summary">
+          <h2 id="home-feedback-title">What participants say.</h2>
+          <p className="home-feedback__rating">
+            {`${PUBLIC_HOME_PARTICIPANT_FEEDBACK.rating.toFixed(1)} out of ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingScale} on Meetup`}
+          </p>
+          <p className="home-feedback__counts">
+            {`${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingCount} ratings · ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.fiveStarRatingCount} five-star ratings`}
+          </p>
+          <p className="home-feedback__source">
+            {`Meetup ratings and feedback verified ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.verificationDate}.`}
+          </p>
+          <a
+            className="home-feedback__link"
+            href={PUBLIC_HOME_PARTICIPANT_FEEDBACK.meetupGroupUrl}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            See {PUBLIC_HOME_PARTICIPANT_FEEDBACK.meetupGroupName} on Meetup
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
+        </div>
+        <div className="home-feedback__quotes">
+          {PUBLIC_HOME_PARTICIPANT_FEEDBACK.quotes.map((quote, index) => (
+            <blockquote
+              className={`home-feedback__quote${index === 0 ? " home-feedback__quote--lead" : ""}`}
+              key={`${quote.displayName}-${quote.eventContext}`}
+            >
+              <p>{quote.comment}</p>
+              <footer>
+                — {quote.displayName}, <cite>{quote.eventContext}</cite>
+              </footer>
+            </blockquote>
+          ))}
+        </div>
+      </section>
+
+      <section
         className="home-impact"
         data-home-section="why-it-matters"
         data-home-layout="large-statement"
         aria-labelledby="home-impact-title"
       >
         <div className="home-impact__statement">
-          <p className="section-kicker">Why this work matters</p>
           <h2 id="home-impact-title">Shared curiosity makes connection easier to begin.</h2>
         </div>
-        <ol className="home-impact__sequence">
-          {communityModel.map((item, index) => (
+        <ul className="home-impact__sequence">
+          {communityModel.map((item) => (
             <li key={item.heading}>
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
               <div>
                 <h3>{item.heading}</h3>
                 <p>{item.body}</p>
               </div>
             </li>
           ))}
-        </ol>
+        </ul>
       </section>
 
       <section
@@ -265,7 +332,6 @@ export function HomePageRenderer({
         aria-labelledby="home-partnerships-title"
       >
         <div className="home-partnerships__intro">
-          <p className="section-kicker">Partnership opportunities</p>
           <h2 id="home-partnerships-title">Work with us</h2>
           <p>
             Vancouver Curiosity Club welcomes conversations with organizations
@@ -291,20 +357,15 @@ export function HomePageRenderer({
       <section
         className="home-communities"
         data-home-section="communities"
-        data-home-layout="alternating-image-splits"
+        data-home-layout="interactive-triptych"
         aria-labelledby="home-communities-title"
       >
         <div className="home-section-heading">
-          <p className="section-kicker">
-            {publicClubs.length === 3
-              ? "One organization, three public communities"
-              : "Public communities"}
-          </p>
           <h2 id="home-communities-title">Different interests, one public home.</h2>
         </div>
-        <div className="home-communities__list">
-          {publicClubs.map((club, index) => (
-            <HomeCommunity club={club} index={index} key={club.slug} />
+        <div className="home-communities__list" data-community-triptych>
+          {publicClubs.map((club) => (
+            <HomeCommunity club={club} key={club.slug} />
           ))}
         </div>
       </section>
@@ -316,7 +377,6 @@ export function HomePageRenderer({
         aria-labelledby="home-public-title"
       >
         <div>
-          <p className="section-kicker">Open to the public</p>
           <h2 id="home-public-title">
             Our programs are open to curious people across Vancouver.
           </h2>
@@ -357,102 +417,34 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
   const displayTitle = institutionalEventTitle(event);
 
   return (
-    <figure className="home-hero__poster" data-home-hero-event={event.slug}>
-      <Link
-        aria-label={`View event: ${displayTitle}`}
-        className="home-hero__poster-link"
-        href={`/events/${event.slug}`}
-      >
-        <span className="home-hero__poster-preview" aria-hidden="true">
-          <span>{event.club.name}</span>
-          <strong>{displayTitle}</strong>
-        </span>
-        <EventPosterImage
-          alt={event.artwork.altText ?? `${displayTitle} event poster`}
-          decoding="async"
-          fallback={
-            <div
-              aria-label={`${displayTitle} event poster unavailable`}
-              className="home-artwork-fallback"
-              role="img"
-            >
-              <span>{event.club.name}</span>
-              <strong>{displayTitle}</strong>
-            </div>
-          }
-          fetchPriority="high"
-          height={event.artwork.dimensions.large.height}
-          loading="eager"
-          sizes="(max-width: 700px) 100vw, (max-width: 1120px) 46vw, 35vw"
-          src={event.artwork.url}
-          srcSet={responsiveImageSrcSet([
-            {
-              url: event.artwork.srcSet.small,
-              width: event.artwork.dimensions.small.width,
-            },
-            {
-              url: event.artwork.srcSet.medium,
-              width: event.artwork.dimensions.medium.width,
-            },
-            {
-              url: event.artwork.srcSet.large,
-              width: event.artwork.dimensions.large.width,
-            },
-          ])}
-          style={{
-            objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-          }}
-          width={event.artwork.dimensions.large.width}
-        />
-      </Link>
-      <figcaption>
-        <span>Featured upcoming program</span>
-        <Link href={`/events/${event.slug}`}>{displayTitle}</Link>
-        {artworkCredit ? <small>Artwork: {artworkCredit}</small> : null}
-      </figcaption>
-    </figure>
-  );
-}
-
-function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
-  if (!event.artwork) return null;
-  const artworkCredit = discoveryArtworkCredit(event.artwork.credit);
-  const displayTitle = institutionalEventTitle(event);
-  const schedule = formatEventSchedule(event);
-  const venueLocation = publicEventLocationParts(event).slice(0, 2).join(" · ");
-  const location =
-    event.attendanceMode === "online"
-      ? "Online"
-      : event.attendanceMode === "hybrid"
-        ? venueLocation
-          ? `${venueLocation} · Hybrid`
-          : "Hybrid · location details not published"
-        : venueLocation ||
-          (event.attendanceMode === "in-person"
-            ? "Location details not published"
-            : "Location undecided");
-  const association = event.program?.name ?? event.lane?.name;
-
-  return (
-    <article className="home-work-card" data-home-event-slug={event.slug}>
-      <figure>
-        <div className="home-work-card__media">
+    <Link
+      aria-label={`View event: ${displayTitle}`}
+      className="home-hero__poster-link"
+      href={`/events/${event.slug}`}
+    >
+      <figure className="home-hero__poster" data-home-hero-event={event.slug}>
+        <span className="home-hero__poster-media">
+          <span className="home-hero__poster-preview" aria-hidden="true">
+            <span>{event.club.name}</span>
+            <strong>{displayTitle}</strong>
+          </span>
           <EventPosterImage
             alt={event.artwork.altText ?? `${displayTitle} event poster`}
             decoding="async"
             fallback={
-              <div
+              <span
                 aria-label={`${displayTitle} event poster unavailable`}
                 className="home-artwork-fallback"
                 role="img"
               >
                 <span>{event.club.name}</span>
                 <strong>{displayTitle}</strong>
-              </div>
+              </span>
             }
+            fetchPriority="high"
             height={event.artwork.dimensions.large.height}
-            loading="lazy"
-            sizes="(max-width: 700px) 100vw, (max-width: 1100px) 50vw, 30vw"
+            loading="eager"
+            sizes="(max-width: 700px) 100vw, (max-width: 1120px) 52vw, 56vw"
             src={event.artwork.url}
             srcSet={responsiveImageSrcSet([
               {
@@ -473,12 +465,112 @@ function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
             }}
             width={event.artwork.dimensions.large.width}
           />
-        </div>
-        {artworkCredit ? <figcaption>Artwork: {artworkCredit}</figcaption> : null}
+        </span>
+        <figcaption>
+          <span>Featured upcoming program</span>
+          <strong>{displayTitle}</strong>
+          {artworkCredit ? <small>Artwork: {artworkCredit}</small> : null}
+        </figcaption>
       </figure>
-      <div className="home-work-card__body">
+    </Link>
+  );
+}
+
+function HomeWorkEvent({
+  event,
+  index,
+}: Readonly<{ event: PublicEventCardDto; index: number }>) {
+  if (!event.artwork) return null;
+  const artworkCredit = discoveryArtworkCredit(event.artwork.credit);
+  const displayTitle = institutionalEventTitle(event);
+  const schedule = formatEventSchedule(event);
+  const venueLocation = publicEventLocationParts(event).slice(0, 2).join(" · ");
+  const location =
+    event.attendanceMode === "online"
+      ? "Online"
+      : event.attendanceMode === "hybrid"
+        ? venueLocation
+          ? `${venueLocation} · Hybrid`
+          : "Hybrid · location details not published"
+        : venueLocation ||
+          (event.attendanceMode === "in-person"
+            ? "Location details not published"
+            : "Location undecided");
+  const association = event.program?.name ?? event.lane?.name;
+  const streamVisual = publicProgramStreamVisualForLaneSlug(event.lane?.slug);
+
+  return (
+    <article
+      className="home-work-card"
+      data-home-event-slug={event.slug}
+      data-program-stream={streamVisual.id}
+      data-stage-event-index={index}
+      role="article"
+      style={streamVisual.style}
+    >
+      <Link
+        aria-label={`View event poster: ${displayTitle}`}
+        className="home-work-card__poster-link"
+        data-stage-poster
+        href={`/events/${event.slug}`}
+      >
+        <figure>
+          <div className="home-work-card__media">
+            <span className="home-work-card__preview" aria-hidden="true">
+              <span>{event.club.name}</span>
+              <strong>{displayTitle}</strong>
+            </span>
+            <EventPosterImage
+              alt={event.artwork.altText ?? `${displayTitle} event poster`}
+              decoding="async"
+              fallback={
+                <div
+                  aria-label={`${displayTitle} event poster unavailable`}
+                  className="home-artwork-fallback"
+                  role="img"
+                >
+                  <span>{event.club.name}</span>
+                  <strong>{displayTitle}</strong>
+                </div>
+              }
+              height={event.artwork.dimensions.large.height}
+              loading="lazy"
+              sizes="(max-width: 700px) 100vw, (max-width: 1023px) 50vw, 54vw"
+              src={event.artwork.url}
+              srcSet={responsiveImageSrcSet([
+                {
+                  url: event.artwork.srcSet.small,
+                  width: event.artwork.dimensions.small.width,
+                },
+                {
+                  url: event.artwork.srcSet.medium,
+                  width: event.artwork.dimensions.medium.width,
+                },
+                {
+                  url: event.artwork.srcSet.large,
+                  width: event.artwork.dimensions.large.width,
+                },
+              ])}
+              style={{
+                objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+              }}
+              width={event.artwork.dimensions.large.width}
+            />
+          </div>
+          {artworkCredit ? <figcaption>Artwork: {artworkCredit}</figcaption> : null}
+        </figure>
+      </Link>
+      <div className="home-work-card__body" data-stage-summary>
         <p className="home-work-card__association">
-          {event.club.name}{association ? ` · ${association}` : ""}
+          <span>{event.club.name}</span>
+          {association ? (
+            <>
+              <span> · </span>
+              <span className="home-work-card__stream-name">
+                {association}
+              </span>
+            </>
+          ) : null}
         </p>
         <h3>
           <Link href={`/events/${event.slug}`}>{displayTitle}</Link>
@@ -503,8 +595,7 @@ function HomeWorkEvent({ event }: Readonly<{ event: PublicEventCardDto }>) {
 
 function HomeCommunity({
   club,
-  index,
-}: Readonly<{ club: PublicClubDto; index: number }>) {
+}: Readonly<{ club: PublicClubDto }>) {
   const artwork = clubCoverArtworkForSlug(club.slug);
   const descriptions: Record<string, string> = {
     "vancouver-curiosity-club": "Broad, mixed-interest public programming",
@@ -515,6 +606,8 @@ function HomeCommunity({
   return (
     <article
       className={`home-community${artwork ? "" : " home-community--text-only"}`}
+      data-community-slug={club.slug}
+      tabIndex={0}
     >
       {artwork ? (
         <figure className="home-community__artwork">
@@ -537,20 +630,30 @@ function HomeCommunity({
         </figure>
       ) : null}
       <div className="home-community__body">
-        <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
         <h3>{club.name}</h3>
-        <p>{descriptions[club.slug] ?? club.description}</p>
-        <div className="home-community__links">
-          <Link href={`/clubs/${club.slug}`}>View community</Link>
-          {club.publicGroupUrl ? (
-            <a href={club.publicGroupUrl} rel="noreferrer noopener" target="_blank">
-              Meetup group<span className="sr-only"> (opens in a new tab)</span>
-            </a>
-          ) : null}
+        <div className="home-community__details">
+          <div>
+            <p>{descriptions[club.slug] ?? club.description}</p>
+            <div className="home-community__links">
+              <Link href={`/clubs/${club.slug}`}>View community</Link>
+              {club.publicGroupUrl ? (
+                <a href={club.publicGroupUrl} rel="noreferrer noopener" target="_blank">
+                  Meetup group<span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
     </article>
   );
+}
+
+function splitHomeHeroHeading(heading: string): readonly string[] {
+  const divider = heading.lastIndexOf(" through ");
+  return divider > 0
+    ? Object.freeze([heading.slice(0, divider), heading.slice(divider + 1)])
+    : Object.freeze([heading]);
 }
 
 export function selectHomeDiscoveryEvents(
@@ -587,44 +690,4 @@ export function selectHomeDiscoveryEvents(
     heroEvent,
     upcomingEvents: Object.freeze(upcomingEvents),
   });
-}
-
-function verifiedInstitutionalFacts(
-  facts: PublicCatalogDto["site"]["institutionalFacts"] | undefined,
-): readonly Readonly<{ label: string; value: string }>[] {
-  if (!facts) return Object.freeze([]);
-  return Object.freeze([
-    ...(facts.foundedYear !== null
-      ? [{ label: "Founded", value: String(facts.foundedYear) }]
-      : []),
-    ...(facts.attendanceTotal !== null && facts.attendanceTotalAsOf
-      ? [
-          {
-            label: `Recorded attendance through ${formatFactDate(
-              facts.attendanceTotalAsOf,
-            )}`,
-            value: new Intl.NumberFormat("en-CA").format(
-              facts.attendanceTotal,
-            ),
-          },
-        ]
-      : []),
-    ...(facts.memberTotal !== null && facts.memberTotalAsOf
-      ? [
-          {
-            label: `Members as of ${formatFactDate(facts.memberTotalAsOf)}`,
-            value: new Intl.NumberFormat("en-CA").format(facts.memberTotal),
-          },
-        ]
-      : []),
-  ]);
-}
-
-function formatFactDate(value: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T12:00:00.000Z`));
 }

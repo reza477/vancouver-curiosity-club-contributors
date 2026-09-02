@@ -46,12 +46,8 @@ import {
 
 const SOURCE_TYPE = "meetup_ics";
 const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v5";
-const ALIAS_SOURCE_GROUP_SLUGS = Object.freeze(
-  new Set(
-    MEETUP_EVENT_ALIASES.map(
-      (entry) => new URL(entry.aliasUrl).pathname.split("/")[1] ?? "",
-    ),
-  ),
+const MEETUP_SOURCE_DEPENDENCY_DEPTHS = buildMeetupSourceDependencyDepths(
+  MEETUP_EVENT_ALIASES,
 );
 /**
  * The mutable `events` row is only the stable content/relationship anchor for
@@ -602,7 +598,44 @@ async function refreshSources(
 
 function meetupSourceDependencyPriority(source: SourceRecord): number {
   const { groupSlug } = parseMeetupGroupCalendarFeedUrl(source.sourceUrl);
-  return ALIAS_SOURCE_GROUP_SLUGS.has(groupSlug) ? 1 : 0;
+  return MEETUP_SOURCE_DEPENDENCY_DEPTHS.get(groupSlug) ?? 0;
+}
+
+function buildMeetupSourceDependencyDepths(
+  aliases: readonly Readonly<{ aliasUrl: string; canonicalUrl: string }>[],
+): ReadonlyMap<string, number> {
+  const dependencies = new Map<string, Set<string>>();
+  for (const alias of aliases) {
+    const aliasGroup = new URL(alias.aliasUrl).pathname.split("/")[1] ?? "";
+    const canonicalGroup =
+      new URL(alias.canonicalUrl).pathname.split("/")[1] ?? "";
+    const groupDependencies = dependencies.get(aliasGroup) ?? new Set<string>();
+    groupDependencies.add(canonicalGroup);
+    dependencies.set(aliasGroup, groupDependencies);
+  }
+
+  const depths = new Map<string, number>();
+  const visiting = new Set<string>();
+  const depthFor = (groupSlug: string): number => {
+    const cached = depths.get(groupSlug);
+    if (cached !== undefined) return cached;
+    if (visiting.has(groupSlug)) {
+      throw new TypeError("Meetup event alias groups must not form a cycle.");
+    }
+    visiting.add(groupSlug);
+    const depth = Math.max(
+      0,
+      ...[...(dependencies.get(groupSlug) ?? [])].map(
+        (dependency) => depthFor(dependency) + 1,
+      ),
+    );
+    visiting.delete(groupSlug);
+    depths.set(groupSlug, depth);
+    return depth;
+  };
+
+  for (const groupSlug of dependencies.keys()) depthFor(groupSlug);
+  return depths;
 }
 
 async function refreshOrganizationSource(

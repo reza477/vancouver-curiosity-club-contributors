@@ -20,6 +20,7 @@ import {
   queryPublicCalendarLandingBundle,
   queryPublicEventMaterializationBundle,
   queryPublicEventsForExport,
+  revalidatePublicEventExportRecords,
   resolveEditorialPublishedEventSelectionProofs,
   resolvePublishedEventSelections,
 } from "../../lib/server/public/events.ts";
@@ -646,6 +647,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "capacity",
     "category",
     "club",
+    "clubAssociations",
     "costText",
     "isCancelled",
     "lane",
@@ -707,6 +709,7 @@ test("returns only explicit allowlisted public DTOs from migrated schema", async
     "capacity",
     "category",
     "club",
+    "clubAssociations",
     "costText",
     "description",
     "descriptionBlocks",
@@ -1195,6 +1198,9 @@ test("all exact cross-post aliases stay out of public projections while the cano
     "https://www.meetup.com/vancouver-meetup-group/events/316263002/",
     "https://www.meetup.com/vancouver-meetup-group/events/316263346/",
     "https://www.meetup.com/vancouver-meetup-group/events/316248155/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316263548/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316263813/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316263724/",
     "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/",
   ];
   assert.deepEqual(MEETUP_EVENT_ALIAS_URLS, aliasUrls);
@@ -1646,7 +1652,7 @@ test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gat
       .run();
   }
 
-  const [page, calendar, sitemap] = await Promise.all([
+  const [page, calendar, sitemap, vccPage, literaturePage] = await Promise.all([
     queryPublicEvents(database, upcomingInput()),
     queryPublicCalendarMonth(database, {
       fromDate: "2026-08-01",
@@ -1657,6 +1663,14 @@ test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gat
     }),
     listPublicEventSitemapSlugs(database, {
       organizationId: ORGANIZATION_ID,
+    }),
+    queryPublicEvents(database, {
+      ...upcomingInput(),
+      clubSlug: "vancouver-curiosity-club",
+    }),
+    queryPublicEvents(database, {
+      ...upcomingInput(),
+      clubSlug: "vancouver-literature-and-film",
     }),
   ]);
   const details = await Promise.all(
@@ -1677,10 +1691,37 @@ test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gat
   );
 
   for (const [index, event] of crossPosts.entries()) {
+    const card = page.events.find(
+      (candidate) => candidate.slug === event.slug,
+    );
+    assert.ok(card);
     assert.equal(
       page.events.filter((candidate) => candidate.slug === event.slug).length,
       1,
       `${event.title} must produce one public card`,
+    );
+    assert.deepEqual(card.clubAssociations, [
+      {
+        name: "Vancouver Literature and Film",
+        slug: "vancouver-literature-and-film",
+      },
+      {
+        name: "Vancouver Curiosity Club",
+        slug: "vancouver-curiosity-club",
+      },
+    ]);
+    assert.equal(
+      vccPage.events.filter((candidate) => candidate.slug === event.slug)
+        .length,
+      1,
+      `${event.title} must appear once under its active cross-post Club`,
+    );
+    assert.equal(
+      literaturePage.events.filter(
+        (candidate) => candidate.slug === event.slug,
+      ).length,
+      1,
+      `${event.title} must appear once under its primary Club`,
     );
     assert.equal(
       calendar.events.filter((candidate) => candidate.slug === event.slug)
@@ -1720,6 +1761,268 @@ test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gat
   for (const event of crossPosts) {
     assert.equal(serialized.includes(event.aliasUrl), false, event.aliasUrl);
   }
+
+  const crossPostExport = await queryPublicEventsForExport(database, {
+    ...upcomingInput(),
+    clubSlug: "vancouver-curiosity-club",
+    maxEvents: 500,
+  });
+  const mononokeExport = crossPostExport.find(
+    (record) => record.event.slug === crossPosts[0].slug,
+  );
+  assert.ok(mononokeExport);
+
+  database.exec(`
+    UPDATE meetup_event_snapshots
+    SET status = 'cancelled'
+    WHERE id = 'snapshot_crosspost_alias_1'
+  `);
+  const [vccAfterAliasCancellation, canonicalAfterAliasCancellation] =
+    await Promise.all([
+      queryPublicEvents(database, {
+        ...upcomingInput(),
+        clubSlug: "vancouver-curiosity-club",
+      }),
+      getPublicEventBySlug(database, {
+        organizationId: ORGANIZATION_ID,
+        slug: crossPosts[0].slug,
+      }),
+    ]);
+  assert.equal(
+    vccAfterAliasCancellation.events.some(
+      (candidate) => candidate.slug === crossPosts[0].slug,
+    ),
+    false,
+    "a cancelled alias must stop advertising the canonical event under that Club",
+  );
+  assert.deepEqual(canonicalAfterAliasCancellation?.clubAssociations, [
+    {
+      name: "Vancouver Literature and Film",
+      slug: "vancouver-literature-and-film",
+    },
+  ]);
+  assert.equal(
+    await revalidatePublicEventExportRecords(database, {
+      organizationId: ORGANIZATION_ID,
+      records: [mononokeExport],
+    }),
+    false,
+    "an export filtered by the alias Club must fail closed if that active association changes",
+  );
+});
+
+test("The Two Towers remains one canonical event while both official Clubs advertise it", async (t) => {
+  const database = await createFixture(t);
+  const aliasUrl =
+    "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/";
+  const canonicalUrl =
+    "https://www.meetup.com/vancouver-literature-and-film/events/315776601/";
+  assert.equal(canonicalMeetupEventUrlForAlias(aliasUrl), canonicalUrl);
+
+  database.exec(`
+    INSERT INTO clubs (
+      id, organization_id, name, slug, description, created_by_profile_id,
+      created_at, updated_at
+    ) VALUES (
+      'club_fantasy', '${ORGANIZATION_ID}',
+      'Vancouver Fantasy & Sci-Fi Group',
+      'vancouver-fantasy-scifi-group', 'Synthetic public club.',
+      'profile_owner', 1, 1
+    );
+    INSERT INTO club_public_profiles (
+      club_id, organization_id, primary_event_lane_id, publication_status,
+      is_featured, public_group_url, published_at, created_at, updated_at
+    ) VALUES (
+      'club_fantasy', '${ORGANIZATION_ID}', 'lane_think', 'published', 1,
+      'https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/',
+      1, 1, 1
+    );
+  `);
+  seedCurrentPublishedClubProjection(database, {
+    clubId: "club_fantasy",
+    description: "Synthetic public club.",
+    featured: true,
+    laneId: "lane_think",
+    meetupGroupUrl:
+      "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/",
+    name: "Vancouver Fantasy & Sci-Fi Group",
+    slug: "vancouver-fantasy-scifi-group",
+  });
+  await insertTimedEvent(
+    database,
+    timedEvent({
+      clubId: "club_literature",
+      endsAt: "2026-08-31T00:00:00.000Z",
+      id: "event_two_towers_crosspost",
+      slug: "the-two-towers-canonical",
+      startsAt: "2026-08-30T22:00:00.000Z",
+      title: "The Two Towers",
+    }),
+  );
+
+  database.exec(`
+    INSERT INTO sync_sources (
+      id, organization_id, club_id, source_type, source_url, enabled,
+      refresh_interval_minutes, last_attempt_at, last_success_at,
+      last_error_at, last_error_code, active_generation_id,
+      pending_generation_id, pending_snapshot_hash, pending_cursor,
+      created_by_profile_id, updated_by_profile_id, created_at, updated_at
+    ) VALUES
+      (
+        'source_two_towers_literature', '${ORGANIZATION_ID}',
+        'club_literature', 'meetup_ics',
+        'https://www.meetup.com/vancouver-literature-and-film/events/ical/',
+        1, 15, 400, 400, NULL, NULL,
+        'generation_two_towers_literature', NULL, NULL, NULL,
+        'profile_owner', 'profile_owner', 400, 400
+      ),
+      (
+        'source_two_towers_fantasy', '${ORGANIZATION_ID}', 'club_fantasy',
+        'meetup_ics',
+        'https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/ical/',
+        1, 15, 400, 400, NULL, NULL,
+        'generation_two_towers_fantasy', NULL, NULL, NULL,
+        'profile_owner', 'profile_owner', 400, 400
+      );
+    INSERT INTO meetup_sync_generations (
+      id, organization_id, sync_source_id, previous_generation_id,
+      snapshot_hash, expected_item_count, processed_item_count,
+      rejected_item_count, state, removed_count, created_at, updated_at,
+      published_at, failed_at
+    ) VALUES
+      (
+        'generation_two_towers_literature', '${ORGANIZATION_ID}',
+        'source_two_towers_literature', NULL, '${"c".repeat(64)}',
+        1, 1, 0, 'published', 0, 400, 400, 400, NULL
+      ),
+      (
+        'generation_two_towers_fantasy', '${ORGANIZATION_ID}',
+        'source_two_towers_fantasy', NULL, '${"d".repeat(64)}',
+        1, 1, 0, 'published', 0, 400, 400, 400, NULL
+      );
+  `);
+  await insertSnapshot(database, {
+    endsAt: "2026-08-31T00:00:00.000Z",
+    eventId: "event_two_towers_crosspost",
+    eventNumber: "315776601",
+    eventUrl: canonicalUrl,
+    eventSlug: "the-two-towers-canonical",
+    externalId: "two-towers-literature",
+    generationId: "generation_two_towers_literature",
+    id: "snapshot_two_towers_literature",
+    ordinal: 0,
+    sourceId: "source_two_towers_literature",
+    startsAt: "2026-08-30T22:00:00.000Z",
+    status: "confirmed",
+    title: "The Two Towers",
+    updatedAt: 400,
+  });
+  await insertSnapshot(database, {
+    endsAt: "2026-08-31T00:00:00.000Z",
+    eventId: "event_two_towers_crosspost",
+    eventNumber: "315776566",
+    eventUrl: aliasUrl,
+    eventSlug: "the-two-towers-canonical",
+    externalId: "two-towers-fantasy",
+    generationId: "generation_two_towers_fantasy",
+    id: "snapshot_two_towers_fantasy",
+    ordinal: 0,
+    sourceId: "source_two_towers_fantasy",
+    startsAt: "2026-08-30T22:00:00.000Z",
+    status: "confirmed",
+    title: "The Two Towers",
+    updatedAt: 400,
+  });
+  await database
+    .prepare(
+      `INSERT INTO external_source_links (
+         id, organization_id, entity_type, entity_id, source_type,
+         sync_source_id, external_id, external_url, source_fingerprint,
+         last_imported_at, created_at, updated_at
+       ) VALUES
+         (?, ?, 'event', ?, 'meetup_ics', ?, ?, ?, ?, 400, 400, 400),
+         (?, ?, 'event', ?, 'meetup_ics', ?, ?, ?, ?, 400, 400, 400)`,
+    )
+    .bind(
+      "link_two_towers_literature",
+      ORGANIZATION_ID,
+      "event_two_towers_crosspost",
+      "source_two_towers_literature",
+      "two-towers-literature",
+      canonicalUrl,
+      "fingerprint-snapshot_two_towers_literature",
+      "link_two_towers_fantasy",
+      ORGANIZATION_ID,
+      "event_two_towers_crosspost",
+      "source_two_towers_fantasy",
+      "two-towers-fantasy",
+      aliasUrl,
+      "fingerprint-snapshot_two_towers_fantasy",
+    )
+    .run();
+
+  const [globalPage, fantasyPage, literaturePage, directory, sitemap, exports] =
+    await Promise.all([
+      queryPublicEvents(database, upcomingInput()),
+      queryPublicEvents(database, {
+        ...upcomingInput(),
+        clubSlug: "vancouver-fantasy-scifi-group",
+      }),
+      queryPublicEvents(database, {
+        ...upcomingInput(),
+        clubSlug: "vancouver-literature-and-film",
+      }),
+      listNextPublicEventsByClub(database, {
+        clubSlugs: ["vancouver-fantasy-scifi-group"],
+        nowUtcMs: NOW_UTC_MS,
+        organizationId: ORGANIZATION_ID,
+        todayDate: TODAY_DATE,
+      }),
+      listPublicEventSitemapSlugs(database, {
+        organizationId: ORGANIZATION_ID,
+      }),
+      queryPublicEventsForExport(database, {
+        ...upcomingInput(),
+        maxEvents: 500,
+      }),
+    ]);
+  const slug = "the-two-towers-canonical";
+  const card = globalPage.events.find((event) => event.slug === slug);
+  assert.ok(card);
+  assert.equal(
+    globalPage.events.filter((event) => event.slug === slug).length,
+    1,
+  );
+  assert.deepEqual(card.club, {
+    name: "Vancouver Literature and Film",
+    slug: "vancouver-literature-and-film",
+  });
+  assert.deepEqual(card.clubAssociations, [
+    card.club,
+    {
+      name: "Vancouver Fantasy & Sci-Fi Group",
+      slug: "vancouver-fantasy-scifi-group",
+    },
+  ]);
+  assert.equal(card.rsvpUrl, canonicalUrl);
+  assert.equal(
+    fantasyPage.events.filter((event) => event.slug === slug).length,
+    1,
+  );
+  assert.equal(
+    literaturePage.events.filter((event) => event.slug === slug).length,
+    1,
+  );
+  assert.deepEqual(
+    directory.map(({ clubSlug, event }) => ({ clubSlug, slug: event.slug })),
+    [{ clubSlug: "vancouver-fantasy-scifi-group", slug }],
+  );
+  assert.equal(sitemap.filter((candidate) => candidate === slug).length, 1);
+  assert.equal(
+    exports.filter((record) => record.event.slug === slug).length,
+    1,
+  );
+  assert.equal(JSON.stringify({ card, exports }).includes(aliasUrl), false);
 });
 
 test("public export projection is bounded, exact-materialization verified, and allowlisted", async (t) => {
@@ -2392,7 +2695,7 @@ test("public event final identity checks suppress club edits racing every multi-
             organizationId: ORGANIZATION_ID,
             todayDate: TODAY_DATE,
           })
-        ).some((event) => event.slug === slug);
+        ).some(({ event }) => event.slug === slug);
       },
     },
     {
@@ -2511,7 +2814,7 @@ test("a coherent Club republish racing a multi-read surface drops only the stale
             organizationId: ORGANIZATION_ID,
             todayDate: TODAY_DATE,
           })
-        ).some((event) => event.slug === slug);
+        ).some(({ event }) => event.slug === slug);
       },
     },
     {
@@ -3222,11 +3525,11 @@ test("reads one deterministic upcoming event per requested public Club without N
     },
   );
   assert.deepEqual(
-    grouped.map((event) => event.slug),
+    grouped.map(({ event }) => event.slug),
     ["tentative-online-reading", "aardvark-tie-gathering"],
   );
   assert.deepEqual(
-    grouped.map((event) => event.club.slug),
+    grouped.map(({ clubSlug }) => clubSlug),
     ["vancouver-literature-and-film", "vancouver-curiosity-club"],
   );
   assert.equal(groupedStatements.count(), 3);
@@ -3240,7 +3543,7 @@ test("reads one deterministic upcoming event per requested public Club without N
         organizationId: ORGANIZATION_ID,
         todayDate: TODAY_DATE,
       })
-    ).map((event) => event.slug),
+    ).map(({ event }) => event.slug),
     ["aardvark-tie-gathering"],
   );
   assert.equal(

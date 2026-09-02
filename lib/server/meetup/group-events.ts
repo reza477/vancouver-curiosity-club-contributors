@@ -21,7 +21,10 @@ export const MAX_MEETUP_GROUP_EVENTS = 100;
 
 const FETCH_TIMEOUT_MS = 12_000;
 const MEETUP_GRAPHQL_URL = "https://api.meetup.com/gql-ext";
-const MEETUP_GRAPHQL_PAGE_SIZE = 30;
+// Meetup currently drops an edge at some 30-item cursor boundaries even while
+// reporting the full totalCount. Twenty-five keeps the traversal complete for
+// those boundaries while retaining the same exact-count and cursor checks.
+const MEETUP_GRAPHQL_PAGE_SIZE = 25;
 const MAX_MEETUP_GRAPHQL_PAGES = Math.ceil(
   MAX_MEETUP_GROUP_EVENTS / MEETUP_GRAPHQL_PAGE_SIZE,
 );
@@ -68,7 +71,7 @@ query getUpcomingGroupEvents($urlname: String!, $after: String, $afterDateTime: 
     events(
       filter: {status: [ACTIVE, PAST, CANCELLED], afterDateTime: $afterDateTime}
       sort: ASC
-      first: 30
+      first: 25
       after: $after
     ) {
       __typename
@@ -469,7 +472,10 @@ async function fetchCompleteMeetupGroupEvents(input: Readonly<{
     for (const event of page.events) {
       if (seenEventUrls.has(event.eventUrl)) invalidCalendar();
       const previous = events.at(-1);
-      if (previous && compareFutureEvents(previous, event) > 0) {
+      // Meetup's ASC contract is chronological by start time. Co-timed
+      // events are not ordered by their end time, so a longer event may
+      // legitimately precede a shorter one without making the page unsafe.
+      if (previous && compareFutureEventStarts(previous, event) > 0) {
         invalidCalendar();
       }
       seenEventUrls.add(event.eventUrl);
@@ -493,8 +499,15 @@ async function fetchCompleteMeetupGroupEvents(input: Readonly<{
   }
 
   if (!completed) invalidCalendar();
+  const orderedEvents = events
+    .sort(compareFutureEvents)
+    .map((event, componentIndex) =>
+      event.componentIndex === componentIndex
+        ? event
+        : Object.freeze({ ...event, componentIndex }),
+    );
   return Object.freeze({
-    events: Object.freeze(events),
+    events: Object.freeze(orderedEvents),
     method: "PUBLISH" as const,
     rejectedEvents: Object.freeze([]),
   });
@@ -1016,6 +1029,16 @@ function compareFutureEvents(
     left.schedule.endsAtUtcMs - right.schedule.endsAtUtcMs ||
     left.componentIndex - right.componentIndex
   );
+}
+
+function compareFutureEventStarts(
+  left: ParsedMeetupEvent,
+  right: ParsedMeetupEvent,
+): number {
+  if (left.schedule.kind !== "timed" || right.schedule.kind !== "timed") {
+    invalidCalendar();
+  }
+  return left.schedule.startsAtUtcMs - right.schedule.startsAtUtcMs;
 }
 
 function readEventStatus(value: unknown): ParsedMeetupEventStatus {

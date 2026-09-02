@@ -41,7 +41,7 @@
 .contribution-paths a {
   border: 1px solid var(--ink);
   background: var(--paper);
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   gap: 0.45rem;
   min-width: 0;
   min-height: 10rem;
@@ -55,14 +55,6 @@
   box-shadow: 0.35rem 0.35rem 0 var(--ink);
   text-decoration: none;
   transform: translate(-0.2rem, -0.2rem);
-}
-
-.contribution-paths span {
-  color: var(--cobalt);
-  font-family: var(--mono);
-  letter-spacing: 0.08em;
-  font-size: 0.78rem;
-  font-weight: 700;
 }
 
 .contribution-paths strong {

@@ -16,7 +16,10 @@ import {
 } from "../../time";
 import { SafeApplicationError } from "../../validation/server-observability";
 import { parseOfficialMeetupEventUrl } from "../meetup/url";
-import { MEETUP_EVENT_ALIAS_URLS } from "../meetup/event-aliases";
+import {
+  MEETUP_EVENT_ALIASES,
+  MEETUP_EVENT_ALIAS_URLS,
+} from "../meetup/event-aliases";
 import { SYNCHRONIZED_MEETUP_POSTER_VARIANTS } from "../meetup/posters";
 import type {
   D1DatabaseLike,
@@ -91,9 +94,15 @@ export type PublicEventOrganizerDto = Readonly<{
 
 const MAX_PUBLIC_ORGANIZERS = 24;
 const MAX_PUBLIC_ORGANIZER_NAME_LENGTH = 120;
+const MAX_PUBLIC_EVENT_CLUB_ASSOCIATIONS = 12;
+const MAX_PUBLIC_EVENT_CLUB_ASSOCIATIONS_JSON_BYTES = 4_096;
 const PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL = `snapshot.event_url NOT IN (${MEETUP_EVENT_ALIAS_URLS.map(
   (eventUrl) => `'${eventUrl.replaceAll("'", "''")}'`,
 ).join(", ")})`;
+const PUBLIC_MEETUP_EVENT_ALIAS_POLICY_SQL = MEETUP_EVENT_ALIASES.map(
+  ({ aliasUrl, canonicalUrl }) =>
+    `('${aliasUrl.replaceAll("'", "''")}', '${canonicalUrl.replaceAll("'", "''")}')`,
+).join(",\n");
 const MEETUP_PUBLICATION_END_UTC_MS_EXCLUSIVE = localDateTimeToUtcMs(
   `${MEETUP_PUBLICATION_END_DATE_EXCLUSIVE}T00:00`,
   DEFAULT_TIME_ZONE,
@@ -1001,6 +1010,10 @@ export type PublicEventCardDto = Readonly<{
     name: string;
     slug: string;
   }>;
+  clubAssociations: readonly Readonly<{
+    name: string;
+    slug: string;
+  }>[];
   costText: string | null;
   isCancelled: boolean;
   lane: Readonly<{
@@ -1072,6 +1085,11 @@ export type ListNextPublicEventsByClubInput = Readonly<{
   todayDate: unknown;
 }>;
 
+export type PublicNextEventByClubDto = Readonly<{
+  clubSlug: string;
+  event: PublicEventCardDto;
+}>;
+
 export type QueryPublicEventExportsInput = Omit<
   QueryPublicEventsInput,
   "page" | "pageSize"
@@ -1104,6 +1122,7 @@ export type PublicEventExportDto = Readonly<{
 }>;
 
 export type PublicEventExportRecord = Readonly<{
+  clubAssociationsProof: string;
   clubProjectionToken: string;
   event: PublicEventExportDto;
   programProjectionToken: string | null;
@@ -2869,6 +2888,88 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
         )
       )
   ),
+  meetup_event_alias_policy(alias_url, canonical_url) AS (
+    VALUES ${PUBLIC_MEETUP_EVENT_ALIAS_POLICY_SQL}
+  ),
+  meetup_public_club_association_rows AS (
+    SELECT canonical.organization_id AS organization_id,
+           canonical.event_id AS event_id,
+           primary_club.name AS club_name,
+           primary_club.slug AS club_slug,
+           0 AS association_rank
+    FROM meetup_public_candidates AS canonical
+    JOIN clubs AS primary_club
+      ON primary_club.id = canonical.public_club_id
+     AND primary_club.organization_id = canonical.organization_id
+     AND primary_club.deleted_at IS NULL
+    UNION ALL
+    SELECT canonical.organization_id AS organization_id,
+           canonical.event_id AS event_id,
+           associated_club.name AS club_name,
+           associated_club.slug AS club_slug,
+           1 AS association_rank
+    FROM meetup_public_candidates AS canonical
+    JOIN meetup_event_alias_policy AS event_alias
+      ON event_alias.canonical_url = canonical.rsvp_url
+    JOIN sync_sources AS source
+      ON source.organization_id = canonical.organization_id
+     AND source.source_type = 'meetup_ics'
+     AND source.enabled = 1
+     AND source.active_generation_id IS NOT NULL
+     AND source.deleted_at IS NULL
+    JOIN meetup_sync_generations AS generation
+      ON generation.id = source.active_generation_id
+     AND generation.organization_id = source.organization_id
+     AND generation.sync_source_id = source.id
+     AND generation.state = 'published'
+     AND generation.published_at IS NOT NULL
+     AND generation.processed_item_count = generation.expected_item_count
+    JOIN meetup_event_snapshots AS snapshot
+      ON snapshot.organization_id = source.organization_id
+     AND snapshot.sync_source_id = source.id
+     AND snapshot.generation_id = generation.id
+     AND snapshot.event_id = canonical.event_id
+     AND snapshot.event_url = event_alias.alias_url
+     AND snapshot.status IN ('confirmed', 'tentative')
+    JOIN public_clubs AS associated_public_club
+      ON associated_public_club.organization_id = source.organization_id
+     AND associated_public_club.club_id = source.club_id
+     AND associated_public_club.publication_status = 'published'
+    JOIN clubs AS associated_club
+      ON associated_club.id = source.club_id
+     AND associated_club.organization_id = source.organization_id
+     AND associated_club.deleted_at IS NULL
+    WHERE ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
+  ),
+  meetup_public_club_association_distinct AS (
+    SELECT organization_id,
+           event_id,
+           club_name,
+           club_slug,
+           min(association_rank) AS association_rank
+    FROM meetup_public_club_association_rows
+    GROUP BY organization_id, event_id, club_name, club_slug
+  ),
+  meetup_public_club_associations AS (
+    SELECT organization_id,
+           event_id,
+           json_group_array(
+             json_object('name', club_name, 'slug', club_slug)
+           ) AS club_associations_json
+    FROM (
+      SELECT organization_id,
+             event_id,
+             club_name,
+             club_slug,
+             association_rank
+      FROM meetup_public_club_association_distinct
+      ORDER BY organization_id,
+               event_id,
+               association_rank,
+               club_slug COLLATE BINARY
+    ) AS ordered_association
+    GROUP BY organization_id, event_id
+  ),
   public_candidates AS (
     SELECT * FROM manual_public_candidates
     UNION ALL
@@ -2918,6 +3019,10 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            ) AS attendance_mode,
            club.slug AS club_slug,
            club.name AS club_name,
+           COALESCE(
+             meetup_association.club_associations_json,
+             json_array(json_object('name', club.name, 'slug', club.slug))
+           ) AS club_associations_json,
            program_public.public_slug AS program_slug,
            program_public.public_display_name AS program_name,
            lane.slug AS lane_slug,
@@ -2999,6 +3104,9 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
          )}
        )
      )
+    LEFT JOIN meetup_public_club_associations AS meetup_association
+      ON meetup_association.organization_id = candidate.organization_id
+     AND meetup_association.event_id = candidate.event_id
     LEFT JOIN event_public_details AS public_detail
       ON public_detail.organization_id = candidate.organization_id
      AND public_detail.event_id = candidate.event_id
@@ -3080,6 +3188,9 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            public_detail.attendance_mode AS attendance_mode,
            club.slug AS club_slug,
            club.name AS club_name,
+           json_array(
+             json_object('name', club.name, 'slug', club.slug)
+           ) AS club_associations_json,
            program_public.public_slug AS program_slug,
            program_public.public_display_name AS program_name,
            lane.slug AS lane_slug,
@@ -3338,6 +3449,7 @@ const PUBLIC_EVENT_CARD_COLUMNS_SQL = `
   public_event.attendance_mode AS attendance_mode,
   public_event.club_slug AS club_slug,
   public_event.club_name AS club_name,
+  public_event.club_associations_json AS club_associations_json,
   public_event.program_slug AS program_slug,
   public_event.program_name AS program_name,
   public_event.lane_slug AS lane_slug,
@@ -3393,6 +3505,7 @@ const PUBLIC_EVENT_EXPORT_COLUMNS_SQL = `
   public_event.attendance_mode AS attendance_mode,
   public_event.club_slug AS club_slug,
   public_event.club_name AS club_name,
+  public_event.club_associations_json AS club_associations_json,
   public_event.program_slug AS program_slug,
   public_event.program_name AS program_name,
   public_event.lane_slug AS lane_slug,
@@ -3452,6 +3565,7 @@ async function enrichCompatibilityPublicEventRows(
     database,
     organizationId,
     rows,
+    false,
   );
   const currentProofs = new Set(
     currentRows.map((row) =>
@@ -3556,15 +3670,32 @@ const ORGANIZER_PUBLIC_EVENT_ENRICHMENT_SQL = `
     AND organizer_event.deleted_at IS NULL
 `;
 
-const PUBLIC_EVENT_ENRICHMENT_REVALIDATION_SQL = `
-  ${PUBLIC_EVENT_IDENTITY_CTE_SQL},
+function publicEventIdentityRevalidationSql(
+  projectionSql: string,
+  includeClubAssociations: boolean,
+): string {
+  const requestedAssociationColumn = includeClubAssociations
+    ? `,
+           json_extract(value, '$.clubAssociations')
+             AS club_associations_json`
+    : "";
+  const selectedAssociationColumn = includeClubAssociations
+    ? ",\n         public_event.club_associations_json"
+    : "";
+  const associationJoin = includeClubAssociations
+    ? `
+   AND public_event.club_associations_json =
+       requested.club_associations_json`
+    : "";
+  return `
+  ${projectionSql},
   requested_public_event AS (
     SELECT json_extract(value, '$.sourceIdentity') AS source_identity_key,
            json_extract(value, '$.slug') AS slug,
            CAST(json_extract(value, '$.version') AS INTEGER)
              AS public_updated_at,
            json_extract(value, '$.clubProjectionToken')
-             AS club_projection_token,
+             AS club_projection_token${requestedAssociationColumn},
            json_extract(value, '$.programProjectionToken')
              AS program_projection_token
     FROM json_each(?)
@@ -3572,7 +3703,7 @@ const PUBLIC_EVENT_ENRICHMENT_REVALIDATION_SQL = `
   SELECT public_event.source_identity_key,
          public_event.slug,
          public_event.public_updated_at,
-         public_event.club_projection_token,
+         public_event.club_projection_token${selectedAssociationColumn},
          public_event.program_projection_token
   FROM requested_public_event AS requested
   JOIN public_events AS public_event
@@ -3580,16 +3711,30 @@ const PUBLIC_EVENT_ENRICHMENT_REVALIDATION_SQL = `
    AND public_event.slug = requested.slug
    AND public_event.public_updated_at = requested.public_updated_at
    AND public_event.club_projection_token =
-       requested.club_projection_token
+       requested.club_projection_token${associationJoin}
    AND public_event.program_projection_token IS
        requested.program_projection_token
    AND public_event.public_slug_count = 1
 `;
+}
+
+const PUBLIC_EVENT_CORE_IDENTITY_REVALIDATION_SQL =
+  publicEventIdentityRevalidationSql(
+    PUBLIC_EVENT_IDENTITY_CTE_SQL,
+    false,
+  );
+
+const PUBLIC_EVENT_ENRICHMENT_REVALIDATION_SQL =
+  publicEventIdentityRevalidationSql(
+    UNIFIED_PUBLIC_EVENT_CTE_SQL,
+    true,
+  );
 
 async function revalidatePublicEventIdentityRows(
   database: Pick<D1DatabaseLike, "prepare">,
   organizationId: string,
   rows: readonly Record<string, unknown>[],
+  includeClubAssociations = true,
 ): Promise<readonly Record<string, unknown>[]> {
   if (rows.length === 0) return Object.freeze([]);
   const requestedProofs = rows.map((row) =>
@@ -3614,6 +3759,9 @@ async function revalidatePublicEventIdentityRows(
           maxLength: 1_024,
         },
       ),
+      ...(includeClubAssociations
+        ? { clubAssociations: publicEventClubAssociationsProof(row) }
+        : {}),
       programProjectionToken: parseOptionalBoundedString(
         row.public_program_projection_token,
         {
@@ -3624,7 +3772,11 @@ async function revalidatePublicEventIdentityRows(
     }),
   );
   const revalidation = await database
-    .prepare(PUBLIC_EVENT_ENRICHMENT_REVALIDATION_SQL)
+    .prepare(
+      includeClubAssociations
+        ? PUBLIC_EVENT_ENRICHMENT_REVALIDATION_SQL
+        : PUBLIC_EVENT_CORE_IDENTITY_REVALIDATION_SQL,
+    )
     .bind(
       organizationId,
       organizationId,
@@ -3650,6 +3802,9 @@ async function revalidatePublicEventIdentityRows(
           minLength: 2,
           maxLength: 1_024,
         }),
+        ...(includeClubAssociations
+          ? [publicEventClubAssociationsProof(row)]
+          : []),
         parseOptionalBoundedString(row.program_projection_token, {
           path: "publicEvent.programProjectionToken",
           maxLength: 1_024,
@@ -3675,6 +3830,9 @@ async function revalidatePublicEventIdentityRows(
             minLength: 2,
             maxLength: 1_024,
           }),
+          ...(includeClubAssociations
+            ? [publicEventClubAssociationsProof(row)]
+            : []),
           parseOptionalBoundedString(
             row.public_program_projection_token,
             {
@@ -3767,6 +3925,7 @@ async function enrichPublicEventRows(
           minLength: 2,
           maxLength: 1_024,
         }),
+        publicEventClubAssociationsProof(row),
         parseOptionalBoundedString(
           row.public_program_projection_token,
           {
@@ -3802,6 +3961,7 @@ async function enrichPublicEventRows(
           minLength: 2,
           maxLength: 1_024,
         }),
+        publicEventClubAssociationsProof(row),
         parseOptionalBoundedString(
           row.public_program_projection_token,
           {
@@ -3897,6 +4057,9 @@ export const AUTHORIZED_ORGANIZER_EVENT_PUBLIC_PREVIEW_SQL = `
            public_detail.attendance_mode AS attendance_mode,
            club.slug AS club_slug,
            club.name AS club_name,
+           json_array(
+             json_object('name', club.name, 'slug', club.slug)
+           ) AS club_associations_json,
            program_public.public_slug AS program_slug,
            program_public.public_display_name AS program_name,
            lane.slug AS lane_slug,
@@ -4416,15 +4579,17 @@ const MAX_NEXT_PUBLIC_EVENT_CLUBS = 12;
  * Reads the nearest upcoming published event for each requested public Club.
  *
  * The requested slugs are normalized and deduplicated before one unified
- * projection is ranked by Club. Selected rows still pass the same enrichment
- * and current-publication revalidation boundary as every other public card
- * surface, so this directory-oriented read cannot turn into an N+1 query or
- * expose a stale projection.
+ * projection is ranked by Club. The requested Club remains explicit beside
+ * the one canonical event so a cross-post can be shown in multiple Club
+ * directories without changing the event's primary Club or duplicating it.
+ * Selected rows still pass the same enrichment and current-publication
+ * revalidation boundary as every other public card surface, so this read
+ * cannot turn into an N+1 query or expose a stale projection.
  */
 export async function listNextPublicEventsByClub(
   database: Pick<D1DatabaseLike, "prepare">,
   input: ListNextPublicEventsByClubInput,
-): Promise<readonly PublicEventCardDto[]> {
+): Promise<readonly PublicNextEventByClubDto[]> {
   const parsed = parsePublicEventQuery({
     nowUtcMs: input.nowUtcMs,
     organizationId: input.organizationId,
@@ -4447,18 +4612,23 @@ export async function listNextPublicEventsByClub(
        ),
        ranked_club_event AS (
          SELECT public_event.*,
-                requested_club.requested_order,
-                row_number() OVER (
-                  PARTITION BY public_event.club_slug
-                  ORDER BY ${publicEventOrderExpression("upcoming")}
-                ) AS club_event_ordinal
+                 requested_club.requested_order,
+                 requested_club.club_slug AS requested_club_slug,
+                 row_number() OVER (
+                   PARTITION BY requested_club.club_slug
+                   ORDER BY ${publicEventOrderExpression("upcoming")}
+                 ) AS club_event_ordinal
          FROM public_events AS public_event
+         JOIN json_each(public_event.club_associations_json)
+           AS associated_club
          JOIN requested_club
-           ON requested_club.club_slug = public_event.club_slug
+           ON requested_club.club_slug =
+              json_extract(associated_club.value, '$.slug')
          WHERE ${filter.sql}
        )
        SELECT ${PUBLIC_EVENT_CARD_COLUMNS_SQL},
-              public_event.requested_order
+              public_event.requested_order,
+              public_event.requested_club_slug
        FROM ranked_club_event AS public_event
        WHERE public_event.club_event_ordinal = 1
        ORDER BY public_event.requested_order`,
@@ -4480,7 +4650,15 @@ export async function listNextPublicEventsByClub(
     rows,
   );
   return Object.freeze(
-    enrichedRows.map((row) => toPublicEventCardDto(row)),
+    enrichedRows.map((row) =>
+      Object.freeze({
+        clubSlug: parseIdentifier(
+          row.requested_club_slug,
+          "publicEvent.requestedClubSlug",
+        ),
+        event: toPublicEventCardDto(row),
+      }),
+    ),
   );
 }
 
@@ -4957,6 +5135,9 @@ export async function revalidatePublicEventExportRecords(
     sourceIdentities.add(sourceIdentity);
     slugs.add(slug);
     return Object.freeze({
+      club_associations_json: publicEventClubAssociationsProof({
+        club_associations_json: record.clubAssociationsProof,
+      }),
       public_club_projection_token: parseBoundedString(
         record.clubProjectionToken,
         {
@@ -5171,6 +5352,7 @@ export async function listPublishedEventSelections(
     database,
     organizationId,
     result.results ?? [],
+    false,
   );
   return Object.freeze(
     currentRows.map((row) =>
@@ -5325,6 +5507,7 @@ async function resolvePublishedEventSelectionProofsBounded(
         public_source_version: row.public_identity_version,
       }),
     ),
+    false,
   );
   const currentKeys = new Set(
     currentRows.map((row) =>
@@ -5690,6 +5873,7 @@ export async function listPublicEventSitemapEntries(
     database,
     organizationId,
     result.results ?? [],
+    false,
   );
   return Object.freeze(
     currentRows.map((row) => {
@@ -5816,6 +6000,17 @@ export function toPublicEventCardDto(
     row,
     curatedMeetupEvent,
   );
+  const club = Object.freeze({
+    slug: parseIdentifier(row.club_slug, "event.club.slug"),
+    name: parseBoundedString(row.club_name, {
+      path: "event.club.name",
+      maxLength: 160,
+    }),
+  });
+  const clubAssociations = parsePublicEventClubAssociations(
+    row.club_associations_json,
+    club,
+  );
   return Object.freeze({
     agePolicyText: publicEventAgePolicyText(row, curatedMeetupEvent),
     arrivalInstructions: publicEventArrivalInstructions(
@@ -5881,13 +6076,8 @@ export function toPublicEventCardDto(
       attendanceMode,
       resolvedVenue,
     ),
-    club: Object.freeze({
-      slug: parseIdentifier(row.club_slug, "event.club.slug"),
-      name: parseBoundedString(row.club_name, {
-        path: "event.club.name",
-        maxLength: 160,
-      }),
-    }),
+    club,
+    clubAssociations,
     program: publicProgram(row),
     lane: publicLane(row),
     category,
@@ -5897,6 +6087,76 @@ export function toPublicEventCardDto(
       curatedMeetupEvent,
     ),
   });
+}
+
+function parsePublicEventClubAssociations(
+  value: unknown,
+  primaryClub?: PublicEventCardDto["club"],
+): PublicEventCardDto["clubAssociations"] {
+  if ((value === null || value === undefined) && primaryClub) {
+    return Object.freeze([primaryClub]);
+  }
+  if (
+    typeof value !== "string" ||
+    new TextEncoder().encode(value).byteLength >
+      MAX_PUBLIC_EVENT_CLUB_ASSOCIATIONS_JSON_BYTES
+  ) {
+    return invalidProjection();
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return invalidProjection();
+  }
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length < 1 ||
+    parsed.length > MAX_PUBLIC_EVENT_CLUB_ASSOCIATIONS
+  ) {
+    return invalidProjection();
+  }
+  const seen = new Set<string>();
+  const associations = parsed.map((candidate, index) => {
+    if (
+      candidate === null ||
+      typeof candidate !== "object" ||
+      Array.isArray(candidate) ||
+      Object.keys(candidate).some((key) => key !== "name" && key !== "slug")
+    ) {
+      return invalidProjection();
+    }
+    const association = candidate as Record<string, unknown>;
+    const slug = parseIdentifier(
+      association.slug,
+      `event.clubAssociations.${index}.slug`,
+    );
+    if (seen.has(slug)) return invalidProjection();
+    seen.add(slug);
+    return Object.freeze({
+      name: parseBoundedString(association.name, {
+        path: `event.clubAssociations.${index}.name`,
+        maxLength: 160,
+      }),
+      slug,
+    });
+  });
+  if (
+    primaryClub &&
+    (associations[0]?.slug !== primaryClub.slug ||
+      associations[0]?.name !== primaryClub.name)
+  ) {
+    return invalidProjection();
+  }
+  return Object.freeze(associations);
+}
+
+function publicEventClubAssociationsProof(
+  row: Record<string, unknown>,
+): string {
+  return JSON.stringify(
+    parsePublicEventClubAssociations(row.club_associations_json),
+  );
 }
 
 function synchronizedMeetupPosterDto(
@@ -5979,6 +6239,7 @@ function publicEventExportRecord(
   row: Record<string, unknown>,
 ): PublicEventExportRecord {
   return Object.freeze({
+    clubAssociationsProof: publicEventClubAssociationsProof(row),
     clubProjectionToken: parseBoundedString(
       row.public_club_projection_token,
       {
@@ -6418,7 +6679,19 @@ function buildPublicEventFilter(
       input.keyword,
     );
   }
-  addEqualityFilter(clauses, bindings, "club_slug", input.clubSlug);
+  if (input.clubSlug !== null) {
+    clauses.push(
+      input.programSlug === null
+        ? `EXISTS (
+            SELECT 1
+            FROM json_each(public_event.club_associations_json)
+              AS associated_club
+            WHERE json_extract(associated_club.value, '$.slug') = ?
+          )`
+        : "public_event.club_slug = ?",
+    );
+    bindings.push(input.clubSlug);
+  }
   addEqualityFilter(clauses, bindings, "lane_slug", input.laneSlug);
   addEqualityFilter(
     clauses,
@@ -6579,6 +6852,7 @@ function publicEventResultIdentity(row: Record<string, unknown>): string {
       path: "publicEvent.sourceVersion",
       minimum: 0,
     }),
+    publicEventClubAssociationsProof(row),
   ].join("\u0000");
 }
 

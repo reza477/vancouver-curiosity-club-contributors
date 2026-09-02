@@ -12,6 +12,7 @@ const requiredSections = [
   "at-a-glance",
   "programs",
   "work-in-action",
+  "participant-feedback",
   "why-it-matters",
   "partnerships",
   "communities",
@@ -29,7 +30,10 @@ test("Home renders the approved institutional story in the exact section order",
   );
   assert.equal((markup.match(/<h1\b/gu) ?? []).length, 1);
   assert.match(markup, />Our mission</u);
-  assert.match(markup, />Building community through curiosity\.<\/h1>/u);
+  assert.match(
+    markup,
+    /<h1 aria-label="Building community through curiosity\." id="home-title">[\s\S]*?class="home-hero__line"[\s\S]*?>Building community\s*<\/[\s\S]*?class="home-hero__line"[\s\S]*?>through curiosity\.\s*<\/[\s\S]*?<\/h1>/u,
+  );
   const missionParagraphs = [
     "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated, in-person discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life.",
     "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
@@ -46,6 +50,26 @@ test("Home renders the approved institutional story in the exact section order",
   );
   assert.match(markup, /href="\/events"[^>]*>Explore upcoming events<\/a>/u);
   assert.doesNotMatch(markup, /home-section-heading--split/u);
+  const feedback = homeSection(markup, "participant-feedback");
+  assert.match(feedback, />What participants say\.<\/h2>/u);
+  assert.match(feedback, />4\.9 out of 5 on Meetup<\/p>/u);
+  assert.match(feedback, />471 ratings · 415 five-star ratings<\/p>/u);
+  assert.match(
+    feedback,
+    />Meetup ratings and feedback verified August 30, 2026\.<\/p>/u,
+  );
+  assert.equal((feedback.match(/<blockquote\b/gu) ?? []).length, 3);
+  for (const comment of [
+    "“Great discussion! I learnt lots on the topic. Group was excellent.”",
+    "“It was a great evening and I met good people :)”",
+    "“Lively discussion.”",
+  ]) {
+    assert.ok(feedback.includes(comment), comment);
+  }
+  assert.match(
+    feedback,
+    /href="https:\/\/www\.meetup\.com\/vancouver-meetup-group\/"/u,
+  );
   assert.deepEqual(
     [...markup.matchAll(/data-home-layout="([^"]+)"/gu)].map(
       (match) => match[1],
@@ -54,12 +78,61 @@ test("Home renders the approved institutional story in the exact section order",
       "image-led-split",
       "compact-editorial-index",
       "full-width-colour",
-      "staggered-poster-composition",
+      "living-poster-stage",
+      "asymmetric-editorial-feedback",
       "large-statement",
       "full-width-colour",
-      "alternating-image-splits",
+      "interactive-triptych",
       "compact-callout",
     ],
+  );
+});
+
+test("Home renders only the four approved identity-band facts in logical order", () => {
+  const markup = renderHome(upcomingEvents(4));
+  const glance = homeSection(markup, "at-a-glance");
+  const approvedCopy = [
+    "Public programs with a clear community purpose.",
+    "Vancouver, British Columbia",
+    "Locally based and publicly accessible",
+    "4 program streams",
+    "Learning, culture, creativity, and shared experience",
+    "3 public communities",
+    "Distinct interests under one organizational home",
+    "Public calendar and standards",
+    "Published event details, conduct, accessibility, and privacy information",
+  ];
+
+  assert.equal((glance.match(/<h2\b/gu) ?? []).length, 1);
+  assert.equal((glance.match(/<dt\b/gu) ?? []).length, 4);
+  assert.equal((glance.match(/<dd\b/gu) ?? []).length, 4);
+  assert.doesNotMatch(
+    glance,
+    /<table\b|class="[^"]*(?:eyebrow|card)[^"]*"|Founded|Recorded attendance|Members as of/iu,
+  );
+  assert.deepEqual(
+    [...glance.matchAll(/data-home-glance-fact="([^"]+)"/gu)].map(
+      (match) => match[1],
+    ),
+    ["location", "streams", "communities", "standards"],
+  );
+
+  let previousIndex = -1;
+  for (const copy of approvedCopy) {
+    const index = glance.indexOf(copy);
+    assert.ok(index > previousIndex, `${copy} must appear in logical order`);
+    previousIndex = index;
+  }
+
+  const streamRule = glance.match(
+    /<span aria-hidden="true" class="home-glance__stream-rule">([\s\S]*?)<\/span><\/div>/u,
+  )?.[1];
+  assert.ok(streamRule, "the decorative stream rule must render");
+  assert.deepEqual(
+    [...streamRule.matchAll(/--program-stream-accent:([^;"]+)/gu)].map(
+      (match) => match[1],
+    ),
+    ["var(--teal)", "var(--coral-strong)", "var(--amber-strong)", "var(--accent)"],
   );
 });
 
@@ -100,6 +173,18 @@ test("Home features one real poster and three distinct later event posters", () 
     [],
   );
   assert.equal((workSection.match(/class="home-work-card"/gu) ?? []).length, 3);
+  assert.match(workSection, /class="home-work__grid" data-living-poster-stage/u);
+  assert.deepEqual(
+    [...workSection.matchAll(/data-stage-event-index="([0-9]+)"/gu)].map(
+      (match) => Number(match[1]),
+    ),
+    [0, 1, 2],
+  );
+  assert.equal((workSection.match(/data-stage-poster="true"/gu) ?? []).length, 3);
+  assert.equal((workSection.match(/data-stage-summary="true"/gu) ?? []).length, 3);
+  const communities = homeSection(markup, "communities");
+  assert.match(communities, /data-community-triptych="true"/u);
+  assert.equal((communities.match(/tabindex="0"/gu) ?? []).length, 3);
 });
 
 test("Home fails closed without artwork instead of showing a blank or fake poster", () => {
@@ -157,7 +242,8 @@ test("Home uses a reviewed institutional title without mutating the Meetup title
     "hero",
   );
 
-  assert.match(hero, />Office Space — Movie Outing at VIFF<\/a>/u);
+  assert.match(hero, /aria-label="View event: Office Space — Movie Outing at VIFF"/u);
+  assert.match(hero, /<strong>Office Space — Movie Outing at VIFF<\/strong>/u);
   assert.doesNotMatch(hero, /printer deserved it/u);
   assert.equal(officeSpace.title, canonicalTitle);
 });
@@ -194,13 +280,17 @@ function renderHome(events) {
 }
 
 function catalogFixture() {
-  const lanes = ["Think", "Reset & Make", "Explore", "Eat & Play"].map(
-    (name) =>
-      Object.freeze({
-        description: `${name} public programs.`,
-        name,
-        slug: name.toLowerCase().replaceAll(/[^a-z]+/gu, "-").replace(/^-|-$/gu, ""),
-      }),
+  const lanes = [
+    ["Think", "think"],
+    ["Reset & Make", "reset-and-make"],
+    ["Explore", "explore"],
+    ["Eat & Play", "eat-and-play"],
+  ].map(([name, slug]) =>
+    Object.freeze({
+      description: `${name} public programs.`,
+      name,
+      slug,
+    }),
   );
   const clubs = [
     [
@@ -234,13 +324,14 @@ function catalogFixture() {
     site: Object.freeze({
       brandName: "Vancouver Curiosity Club",
       institutionalFacts: Object.freeze({
-        attendanceTotal: null,
-        attendanceTotalAsOf: null,
-        foundedYear: null,
-        memberTotal: null,
-        memberTotalAsOf: null,
+        attendanceTotal: 1234,
+        attendanceTotalAsOf: "2026-08-30",
+        foundedYear: 2020,
+        memberTotal: 567,
+        memberTotalAsOf: "2026-08-30",
       }),
       legalName: null,
+      locationLabel: "Vancouver, British Columbia",
       mission: "A thoughtful Vancouver community.",
     }),
   });

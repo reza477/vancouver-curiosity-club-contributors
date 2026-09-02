@@ -136,7 +136,7 @@ test("three published clubs render distinct responsive art and prominent CMS pro
   assert.match(promiseRule, /font-size:\s*(?:clamp\(|1\.[1-9]\d*rem)/u);
   assert.match(promiseRule, /font-weight:\s*(?:6\d\d|[7-9]\d\d)/u);
   const laneRules = [
-    cssRule(css, ".club-directory__number, .club-directory__lane"),
+    cssRule(css, ".club-directory__lane"),
     cssRule(css, ".club-directory--clubs .club-directory__lane"),
   ].join("\n");
   assert.match(laneRules, /font-size:\s*0\.75rem/u);
@@ -335,6 +335,16 @@ test("the Clubs route uses one materialized grouped read with no live, per-card,
     "bounded media and event reads must start in the same D1 wave",
   );
   assert.match(page, /nextEventsByClubSlug/u);
+  assert.match(
+    page,
+    /map\(\(\{\s*clubSlug,\s*event\s*\}\)\s*=>\s*\[clubSlug,\s*event\]\)/u,
+    "the directory must key a canonical cross-post by the requested Club context",
+  );
+  assert.doesNotMatch(
+    page,
+    /\[event\.club\.slug,\s*event\]/u,
+    "the primary Club must not erase a verified secondary Club context",
+  );
   assert.match(page, /nextEventsState/u);
   assert.match(routeBody, /nextEventsByClubSlug/u);
   assert.match(routeBody, /nextEventsState/u);
@@ -380,7 +390,7 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   );
   assert.match(
     cssRule(css, ".club-directory--clubs .club-directory__card"),
-    /grid-template-columns:\s*3rem\s+minmax\(/u,
+    /grid-template-columns:\s*minmax\(17rem,[^;]+\)\s+minmax\(24rem,/u,
     "desktop layout changes must stay scoped to the Clubs directory",
   );
   const desktopArtworkRule = cssRule(
@@ -389,7 +399,7 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   );
   assert.match(
     desktopArtworkRule,
-    /grid-area:\s*1\s*\/\s*3\s*\/\s*6/u,
+    /grid-area:\s*1\s*\/\s*2\s*\/\s*6/u,
     "desktop cards must retain the editorial side-by-side artwork treatment",
   );
   const imageRule = cssRule(css, ".club-directory__artwork img");
@@ -407,13 +417,8 @@ test("club-card layout rules are Clubs-scoped and mobile-safe", async () => {
   );
   assert.match(
     stackedArtworkRule,
-    /grid-area:\s*auto\s*\/\s*2/u,
+    /grid-area:\s*auto\s*\/\s*1/u,
     "phone-sized cards need an equally specific override so artwork cannot create an implicit third column and collapse the text",
-  );
-  assert.match(
-    stackedArtworkRule,
-    /grid-area:\s*auto\s*\/\s*2/u,
-    "stacked artwork must follow the heading instead of spanning and overlapping the card copy",
   );
   assert.match(
     stackedArtworkRule,
@@ -471,8 +476,8 @@ test("the Clubs-index internal header keeps the first card well inside the deskt
   );
   assert.match(
     clubsHeaderRule,
-    /grid-template-columns:\s*max-content\s+minmax\(0,\s*1fr\)/u,
-    "the desktop kicker and title must share one compact row",
+    /grid-template-columns:\s*minmax\(0,\s*1fr\)/u,
+    "the removed kicker must not leave an empty desktop column",
   );
   assert.match(clubsHeaderRule, /align-items:\s*baseline/u);
   assert.match(clubsHeadingRule, /max-width:\s*none/u);

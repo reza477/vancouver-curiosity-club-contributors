@@ -89,6 +89,51 @@
   display: inline-flex;
 }
 
+.about-artwork-strip {
+  border-bottom: 1px solid var(--line);
+  background: var(--ink);
+  grid-template-columns: minmax(0, 1.32fr) minmax(0, 0.86fr) minmax(0, 1fr);
+  min-width: 0;
+  display: grid;
+  overflow: hidden;
+}
+
+.about-artwork-strip figure {
+  min-width: 0;
+  margin: 0;
+  display: grid;
+}
+
+.about-artwork-strip figure:not(:last-child) {
+  border-right: 1px solid var(--paper);
+}
+
+.about-artwork-strip picture {
+  align-content: center;
+  min-height: 0;
+  background: var(--ink);
+  display: grid;
+  overflow: hidden;
+}
+
+.about-artwork-strip img {
+  object-fit: contain;
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.about-artwork-strip figcaption {
+  border-top: 1px solid var(--paper);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.65rem 0.8rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .about-board,
 .about-model,
 .about-communities,
@@ -103,57 +148,30 @@
   max-width: 64rem;
 }
 
-.about-communities__number,
-.about-model__steps > li > span {
-  margin-bottom: 0.65rem;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .about-board__list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
   padding: 0;
   border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
   list-style: none;
   display: grid;
 }
 
 .about-board__list > li {
   min-width: 0;
-  min-height: 8.5rem;
-  padding: 1.2rem;
-  border-right: 1px solid var(--line);
+  padding: clamp(1rem, 2vw, 1.5rem) 0;
   border-bottom: 1px solid var(--line);
-  grid-template-columns: 2.5rem minmax(0, 1fr);
-  align-items: start;
-  gap: 0.9rem;
-  display: grid;
-}
-
-.about-board__badge {
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 1px solid var(--accent);
-  border-radius: 50%;
-  background: var(--paper-deep);
-  place-items: center;
-  font-size: 1.1rem;
-  line-height: 1;
-  display: grid;
 }
 
 .about-board__member {
   min-width: 0;
+  grid-template-columns: minmax(10rem, 0.68fr) minmax(0, 1.32fr);
+  align-items: baseline;
+  gap: 1rem clamp(1.25rem, 3vw, 3rem);
+  display: grid;
 }
 
 .about-board__list h3 {
-  margin-bottom: 0.65rem;
+  margin-bottom: 0;
 }
 
 .about-board__list p {
@@ -168,20 +186,27 @@
 }
 
 .about-model__steps {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
   padding: 0;
   border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
   list-style: none;
   display: grid;
 }
 
 .about-model__steps > li {
   min-width: 0;
-  padding: 1.4rem clamp(1rem, 2.4vw, 2rem) 1.5rem;
-  border-right: 1px solid var(--line);
+  width: 100%;
+  padding: 1.35rem 0 1.5rem;
   border-bottom: 1px solid var(--line);
+}
+
+.about-model__steps > li:nth-child(2) {
+  width: 88%;
+  margin-left: auto;
+}
+
+.about-model__steps > li:nth-child(3) {
+  width: 94%;
 }
 
 .about-model__steps h3 {
@@ -206,21 +231,34 @@
 }
 
 .about-program-streams ul {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
   padding: 0;
   border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
   list-style: none;
   display: grid;
 }
 
 .about-program-streams li {
+  --program-stream-accent: var(--ink);
   min-width: 0;
-  min-height: 7.5rem;
-  padding: 1rem;
-  border-right: 1px solid var(--line);
+  width: 100%;
+  padding: 1rem 1rem 1rem 1.35rem;
   border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+.about-program-streams li::before {
+  content: "";
+  background: var(--program-stream-accent);
+  width: 0.3rem;
+  position: absolute;
+  inset-block: 0.8rem;
+  left: 0;
+}
+
+.about-program-streams li:nth-child(even) {
+  width: 90%;
+  margin-left: auto;
 }
 
 .about-program-streams strong,
@@ -246,7 +284,7 @@
   grid-template-columns: minmax(15rem, 0.72fr) minmax(0, 1.28fr);
   align-items: end;
   gap: clamp(2rem, 5vw, 5rem);
-  margin-bottom: clamp(2rem, 4vw, 3.5rem);
+  margin-bottom: 0;
   display: grid;
 }
 
@@ -258,41 +296,6 @@
   line-height: 1.65;
 }
 
-.about-evidence__gallery {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(0.75rem, 1.5vw, 1.25rem);
-  display: grid;
-}
-
-.about-evidence__gallery figure {
-  min-width: 0;
-  margin-bottom: 0;
-}
-
-.about-evidence__gallery picture {
-  aspect-ratio: 16 / 9;
-  border: 1px solid var(--line);
-  background: var(--paper-deep);
-  display: block;
-  overflow: hidden;
-}
-
-.about-evidence__gallery img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.about-evidence__gallery figcaption {
-  margin-top: 0.55rem;
-  color: var(--ink-soft);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
 .about-communities {
   background: var(--paper-deep);
 }
@@ -302,7 +305,7 @@
 }
 
 .about-communities__grid article {
-  grid-template-columns: 3rem minmax(12rem, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(12rem, 0.8fr) minmax(0, 1.2fr);
   gap: 1rem;
   padding: 1.25rem 0;
   border-bottom: 1px solid var(--line);
@@ -398,18 +401,40 @@
   }
 
   .about-board__list,
-  .about-evidence__gallery,
   .about-program-streams ul,
   .about-standards__body ul {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .about-artwork-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .about-artwork-strip figure:not(:last-child) {
+    border-right: 0;
+    border-bottom: 1px solid var(--paper);
+  }
+
+  .about-board__member {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+  }
+
+  .about-model__steps > li,
+  .about-model__steps > li:nth-child(2),
+  .about-model__steps > li:nth-child(3),
+  .about-program-streams li,
+  .about-program-streams li:nth-child(even) {
+    width: 100%;
+    margin-left: 0;
+  }
+
   .about-communities__grid article {
-    grid-template-columns: 2.25rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .about-communities__grid article > p:last-child {
-    grid-column: 2;
+    grid-column: 1;
   }
 
   .about-standards__body li:not(:last-child) {

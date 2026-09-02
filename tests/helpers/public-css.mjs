@@ -14,6 +14,7 @@ export const publicCssModulePaths = Object.freeze([
   "app/styles/components/forms.css",
   "app/styles/pages/home.css",
   "app/styles/pages/event-detail.css",
+  "app/styles/motion.css",
   "app/styles/components/responsive-overrides.css",
 ]);
 

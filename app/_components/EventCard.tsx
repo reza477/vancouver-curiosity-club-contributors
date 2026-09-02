@@ -8,6 +8,7 @@ import {
   publicEventCapacityLabel,
   publicEventLocationParts,
 } from "@/lib/public-event-facts";
+import { publicProgramStreamVisualForLaneSlug } from "@/lib/public-program-stream-visuals";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 
 export function EventCard({
@@ -16,16 +17,19 @@ export function EventCard({
   eager = false,
   posterSizes = "(max-width: 640px) 100vw, (max-width: 1100px) 38vw, 480px",
   priority = false,
+  programStreamAccents = false,
 }: Readonly<{
   event: PublicEventCardDto;
   compact?: boolean;
   eager?: boolean;
   posterSizes?: string;
   priority?: boolean;
+  programStreamAccents?: boolean;
 }>) {
   const schedule = formatEventSchedule(event);
   const locationParts = publicEventLocationParts(event);
   const capacity = publicEventCapacityLabel(event);
+  const streamVisual = publicProgramStreamVisualForLaneSlug(event.lane?.slug);
   const artworkCredit = event.artwork
     ? discoveryArtworkCredit(event.artwork.credit)
     : null;
@@ -54,9 +58,11 @@ export function EventCard({
 
   return (
     <article
-      className={`event-card${compact ? " event-card--compact" : ""}`}
+      className={`event-card${compact ? " event-card--compact" : ""}${programStreamAccents ? " event-card--program-stream-accent" : ""}`}
       data-event-lane={event.lane?.slug}
+      data-program-stream={programStreamAccents ? streamVisual.id : undefined}
       data-event-status={event.status}
+      style={programStreamAccents ? streamVisual.style : undefined}
     >
       {event.artwork ? (
         <figure className="event-card__artwork">
@@ -126,7 +132,17 @@ export function EventCard({
               {event.program.name}
             </Link>
           ) : null}
-          {event.lane ? <span>{event.lane.name}</span> : null}
+          {event.lane ? (
+            <span
+              className={
+                programStreamAccents
+                  ? "event-card__stream-name"
+                  : undefined
+              }
+            >
+              {event.lane.name}
+            </span>
+          ) : null}
           {event.category ? <span>{event.category.name}</span> : null}
           {event.status === "tentative" ? (
             <span className="status-chip status-chip--tentative">

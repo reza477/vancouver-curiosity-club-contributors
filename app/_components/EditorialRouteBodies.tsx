@@ -85,7 +85,7 @@ export function ClubsRouteBody({
     page: PublicPageDto;
   }>) {
   return (
-    <EditorialPage page={page} tone="think" {...preview}>
+    <EditorialPage displayEyebrow={null} page={page} tone="think" {...preview}>
       {clubs ? (
         <ClubDirectory
           clubs={clubs}
@@ -134,12 +134,10 @@ export function GetInvolvedRouteBody({
         </div>
         <div className="contribution-paths">
           <a data-contribution-path="volunteer" href="#volunteer">
-            <span aria-hidden="true">01</span>
             <strong>Volunteer</strong>
             <small>Help welcome people or support an event.</small>
           </a>
           <Link data-contribution-path="host" href="/host-an-event">
-            <span aria-hidden="true">02</span>
             <strong>Host an event</strong>
             <small>Share a topic, activity, or gathering idea.</small>
           </Link>
@@ -147,7 +145,6 @@ export function GetInvolvedRouteBody({
             data-contribution-path="partner"
             href="/contact?topic=partnerships#contact-form"
           >
-            <span aria-hidden="true">03</span>
             <strong>Offer a partnership or support</strong>
             <small>Discuss space, collaboration, funding, or sponsorship.</small>
           </Link>

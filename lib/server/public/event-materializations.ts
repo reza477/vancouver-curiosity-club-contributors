@@ -19,6 +19,10 @@ import {
   type PublicEventDetailDto,
   type PublicEventPageDto,
 } from "./events";
+import {
+  publicEventClubAssociations,
+  publicEventMatchesClubAssociation,
+} from "./event-club-associations";
 import type {
   PublicEventsClubOption,
   PublicEventsPageData,
@@ -39,12 +43,12 @@ import {
 } from "../../validation";
 import { parseCalendarDate } from "../../time";
 
-// Adding a new physical surface is backward-compatible with the existing
-// Home/Events envelopes. Keeping their version stable lets an already-warm
-// deployment continue serving those rows while the protected updater creates
-// the first detail row.
-const MATERIALIZATION_SCHEMA_VERSION = 1;
-const COMPACT_VIEW_SCHEMA_VERSION = 2;
+// Schema v2 adds verified multi-Club associations. New readers accept the
+// existing v1 envelopes during a rolling deployment, while the updater writes
+// only v2/v3 keys and deliberately leaves v1 bytes untouched for old Workers.
+const LEGACY_MATERIALIZATION_SCHEMA_VERSION = 1;
+const MATERIALIZATION_SCHEMA_VERSION = 2;
+const COMPACT_VIEW_SCHEMA_VERSION = 3;
 const MATERIALIZATION_KEY_PREFIX = "public-event-materializations";
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const MAX_MATERIALIZATION_BYTES = 1_000_000;
@@ -158,19 +162,26 @@ export type PublicClubEventMaterializedView = Readonly<{
   upcoming: PublicEventPageDto;
 }>;
 
+export type PublicNextEventByClubMaterializedView = Readonly<{
+  clubSlug: string;
+  event: PublicEventCardDto;
+}>;
+
 const READ_MATERIALIZATION_SQL = String.raw`
 SELECT snapshot_json
 FROM public_event_calendar_snapshots
-WHERE cache_key = ?
+WHERE cache_key IN (?, ?)
   AND organization_id = ?
+ORDER BY CASE cache_key WHEN ? THEN 0 ELSE 1 END
 LIMIT 1`;
 
 const READ_DETAIL_MATERIALIZATION_SQL = String.raw`
 SELECT snapshot_json, updated_at
 FROM public_event_calendar_snapshots
-WHERE cache_key = ?
+WHERE cache_key IN (?, ?)
   AND organization_id = ?
   AND expires_at > ?
+ORDER BY CASE cache_key WHEN ? THEN 0 ELSE 1 END
 LIMIT 1`;
 
 const READ_COMPACT_MATERIALIZATION_SQL = String.raw`
@@ -573,8 +584,10 @@ export async function readPublicClubEventViewMaterialization(
   }
   const matching = events.filter(
     (event) =>
-      event.club.slug === clubSlug &&
-      (programSlug === null || event.program?.slug === programSlug),
+      publicEventMatchesClubAssociation(event, clubSlug) &&
+      (programSlug === null ||
+        (event.club.slug === clubSlug &&
+          event.program?.slug === programSlug)),
   );
   const upcoming = matching
     .filter(
@@ -611,7 +624,7 @@ export async function readPublicNextEventsByClubMaterialization(
     organizationId: string;
     todayDate: string;
   }>,
-): Promise<readonly PublicEventCardDto[] | null> {
+): Promise<readonly PublicNextEventByClubMaterializedView[] | null> {
   const organizationId = parseIdentifier(
     input.organizationId,
     "eventMaterializations.organizationId",
@@ -659,7 +672,12 @@ export async function readPublicNextEventsByClubMaterialization(
       )
     ) {
       return Object.freeze(
-        requestedViews.flatMap((view) => view.upcoming.events.slice(0, 1)),
+        requestedViews.flatMap((view) => {
+          const event = view.upcoming.events[0];
+          return event
+            ? [Object.freeze({ clubSlug: view.clubSlug, event })]
+            : [];
+        }),
       );
     }
   }
@@ -672,20 +690,27 @@ export async function readPublicNextEventsByClubMaterialization(
   for (const event of [...envelope.eventDetails]
     .filter(
       (candidate) =>
-        requested.has(candidate.club.slug) &&
+        publicEventClubAssociations(candidate).some((club) =>
+          requested.has(club.slug),
+        ) &&
         (candidate.status === "confirmed" ||
           candidate.status === "tentative") &&
         isPublicCalendarEventUpcoming(candidate, nowUtcMs, todayDate),
     )
     .sort(comparePublicEventStart)) {
-    if (!firstByClub.has(event.club.slug)) {
-      firstByClub.set(event.club.slug, publicEventCardProjection(event));
+    for (const club of publicEventClubAssociations(event)) {
+      if (requested.has(club.slug) && !firstByClub.has(club.slug)) {
+        firstByClub.set(
+          club.slug,
+          publicEventCardProjection(event),
+        );
+      }
     }
   }
   return Object.freeze(
     clubSlugs.flatMap((clubSlug) => {
       const event = firstByClub.get(clubSlug);
-      return event ? [event] : [];
+      return event ? [Object.freeze({ clubSlug, event })] : [];
     }),
   );
 }
@@ -909,12 +934,14 @@ function buildCompactRailViewShards(
 ): readonly CompactRailViewShardEnvelope[] {
   const grouped = new Map<string, PublicEventDetailDto[]>();
   for (const event of details) {
-    for (const identity of [
-      railViewIdentity(event.club.slug, null),
+    for (const identity of new Set([
+      ...publicEventClubAssociations(event).map((club) =>
+        railViewIdentity(club.slug, null),
+      ),
       ...(event.program
         ? [railViewIdentity(event.club.slug, event.program.slug)]
         : []),
-    ]) {
+    ])) {
       const existing = grouped.get(identity);
       if (existing) existing.push(event);
       else grouped.set(identity, [event]);
@@ -1211,7 +1238,16 @@ async function readEnvelope(
   try {
     row = await database
       .prepare(READ_MATERIALIZATION_SQL)
-      .bind(materializationKey(organizationId, "events"), organizationId)
+      .bind(
+        materializationKey(organizationId, "events"),
+        materializationKey(
+          organizationId,
+          "events",
+          LEGACY_MATERIALIZATION_SCHEMA_VERSION,
+        ),
+        organizationId,
+        materializationKey(organizationId, "events"),
+      )
       .first<Record<string, unknown>>();
   } catch {
     return null;
@@ -1242,7 +1278,16 @@ async function readHomeEnvelope(
   try {
     row = await database
       .prepare(READ_MATERIALIZATION_SQL)
-      .bind(materializationKey(organizationId, "home"), organizationId)
+      .bind(
+        materializationKey(organizationId, "home"),
+        materializationKey(
+          organizationId,
+          "home",
+          LEGACY_MATERIALIZATION_SCHEMA_VERSION,
+        ),
+        organizationId,
+        materializationKey(organizationId, "home"),
+      )
       .first<Record<string, unknown>>();
   } catch {
     return null;
@@ -1276,8 +1321,14 @@ async function readDetailEnvelope(
       .prepare(READ_DETAIL_MATERIALIZATION_SQL)
       .bind(
         materializationKey(organizationId, "details"),
+        materializationKey(
+          organizationId,
+          "details",
+          LEGACY_MATERIALIZATION_SCHEMA_VERSION,
+        ),
         organizationId,
         nowUtcMs,
+        materializationKey(organizationId, "details"),
       )
       .first<Record<string, unknown>>();
   } catch {
@@ -1314,7 +1365,7 @@ function validatedEnvelope(value: unknown): EventMaterializationEnvelope {
   );
   const schemaVersion = parseFiniteInteger(envelope.schemaVersion, {
     path: "eventMaterialization.schemaVersion",
-    minimum: MATERIALIZATION_SCHEMA_VERSION,
+    minimum: LEGACY_MATERIALIZATION_SCHEMA_VERSION,
     maximum: MATERIALIZATION_SCHEMA_VERSION,
   });
   const generatedAtUtcMs = parseFiniteInteger(envelope.generatedAtUtcMs, {
@@ -1368,7 +1419,7 @@ function validatedHomeEnvelope(
     }),
     schemaVersion: parseFiniteInteger(envelope.schemaVersion, {
       path: "homeEventMaterialization.schemaVersion",
-      minimum: MATERIALIZATION_SCHEMA_VERSION,
+      minimum: LEGACY_MATERIALIZATION_SCHEMA_VERSION,
       maximum: MATERIALIZATION_SCHEMA_VERSION,
     }),
     upcomingEvents: parsePublicEventCardList(envelope.upcomingEvents, {
@@ -1404,7 +1455,7 @@ function validatedDetailEnvelope(
     }),
     schemaVersion: parseFiniteInteger(envelope.schemaVersion, {
       path: "eventDetailMaterialization.schemaVersion",
-      minimum: MATERIALIZATION_SCHEMA_VERSION,
+      minimum: LEGACY_MATERIALIZATION_SCHEMA_VERSION,
       maximum: MATERIALIZATION_SCHEMA_VERSION,
     }),
   });
@@ -1602,10 +1653,14 @@ function validatedCompactRailViewShard(
     );
     const past = validatedCompactRailDirection(view.past, `${path}.past`);
     for (const event of [...upcoming.events, ...past.events]) {
-      if (
-        event.club.slug !== clubSlug ||
-        (programSlug !== null && event.program?.slug !== programSlug)
-      ) {
+      const plainClubViewMatches =
+        programSlug === null &&
+        publicEventMatchesClubAssociation(event, clubSlug);
+      const programViewMatches =
+        programSlug !== null &&
+        event.club.slug === clubSlug &&
+        event.program?.slug === programSlug;
+      if (!plainClubViewMatches && !programViewMatches) {
         throw new Error("The compact public club-event view is invalid.");
       }
     }
@@ -1706,6 +1761,7 @@ function publicEventCardProjection(
     capacity: event.capacity,
     category: event.category,
     club: event.club,
+    clubAssociations: event.clubAssociations,
     costText: event.costText,
     isCancelled: event.isCancelled,
     lane: event.lane,
@@ -1775,7 +1831,9 @@ function eventMatchesClub(
   event: PublicEventCardDto,
   clubSlug: string | null,
 ): boolean {
-  return clubSlug === null || event.club.slug === clubSlug;
+  return (
+    clubSlug === null || publicEventMatchesClubAssociation(event, clubSlug)
+  );
 }
 
 function materializedClubOptions(
@@ -1783,8 +1841,10 @@ function materializedClubOptions(
 ): readonly PublicEventsClubOption[] {
   const clubs = new Map<string, string>();
   for (const event of events) {
-    if (!clubs.has(event.club.slug)) {
-      clubs.set(event.club.slug, event.club.name);
+    for (const club of publicEventClubAssociations(event)) {
+      if (!clubs.has(club.slug)) {
+        clubs.set(club.slug, club.name);
+      }
     }
   }
   return Object.freeze(
@@ -1938,10 +1998,11 @@ function materializedMonthAvailable(
 function materializationKey(
   organizationId: string,
   surface: "details" | "events" | "home",
+  schemaVersion = MATERIALIZATION_SCHEMA_VERSION,
 ): string {
   return JSON.stringify([
     MATERIALIZATION_KEY_PREFIX,
-    MATERIALIZATION_SCHEMA_VERSION,
+    schemaVersion,
     organizationId,
     surface,
   ]);

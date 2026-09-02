@@ -27,10 +27,11 @@ test("Home removes repeated introductions while preserving its institutional pat
 });
 
 test("Home uses shared spacing and compact responsive fallbacks", async () => {
-  const css = await readFile(
-    new URL("app/styles/pages/home.css", projectRoot),
-    "utf8",
-  );
+  const [homeCss, motionCss] = await Promise.all([
+    readFile(new URL("app/styles/pages/home.css", projectRoot), "utf8"),
+    readFile(new URL("app/styles/motion.css", projectRoot), "utf8"),
+  ]);
+  const css = `${homeCss}\n${motionCss}`;
 
   assert.match(
     css,
@@ -50,16 +51,41 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /\.home-hero__poster-link\s*\{[^}]*position:\s*relative;[^}]*linear-gradient/su,
+    /\.home-hero__poster-media\s*\{[^}]*position:\s*relative;[^}]*background:\s*var\(--amber-surface\);/su,
   );
   assert.match(
     css,
     /\.home-hero__poster-preview\s*\{[^}]*position:\s*absolute;/su,
   );
+  const heroPosterCss = css.slice(
+    css.indexOf(".home-hero__featured-poster"),
+    css.indexOf(".home-section-heading"),
+  );
+  assert.doesNotMatch(heroPosterCss, /(?:linear|radial)-gradient/u);
   assert.doesNotMatch(css, /\.home-section-heading--split|\.home-hero__events-link/u);
   assert.match(
     css,
-    /\.home-glance\s*\{[^}]*grid-template-columns:\s*minmax\(16rem, 0\.72fr\) minmax\(0, 1\.28fr\);/su,
+    /\.home-glance\s*\{[^}]*background:\s*var\(--ink\);[^}]*color:\s*var\(--paper\);[^}]*grid-template-columns:\s*minmax\(0, 0\.78fr\) minmax\(0, 1\.22fr\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-glance__facts\s*\{[^}]*grid-template-columns:\s*minmax\(0, 0\.82fr\) minmax\(0, 1\.18fr\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-glance__fact--location,[\s\S]*?\.home-glance__fact--standards\s*\{[^}]*grid-column:\s*1 \/ -1;/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 56rem\)[\s\S]*?\.home-glance__facts\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 42rem\)[\s\S]*?\.home-glance\s*\{[^}]*padding-block:\s*clamp\(2\.5rem, 11vw, 3rem\);/u,
+  );
+  assert.match(
+    css,
+    /@media \(forced-colors: active\)[\s\S]*?\.home-glance__stream-rule\s*\{[^}]*display:\s*none;/u,
   );
   assert.match(
     css,
@@ -67,7 +93,23 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /\.home-work__grid\s*\{[^}]*grid-template-columns:\s*repeat\(12, minmax\(0, 1fr\)\);/su,
+    /@media \(scripting: enabled\) and \(min-width: 64rem\) and \(min-height: 42rem\) and \(prefers-reduced-motion: no-preference\)[\s\S]*?\.home-work__grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.16fr\) minmax\(22rem,\s*0\.84fr\);/u,
+  );
+  assert.match(
+    css,
+    /\.home-work-card__poster-link\s*\{[^}]*position:\s*sticky;[^}]*visibility:\s*hidden;/su,
+  );
+  assert.match(
+    css,
+    /\.home-work-card\[data-stage-state="incoming"\] \.home-work-card__poster-link\s*\{[^}]*animation:[^;]*artwork-poster-reveal;/su,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 56rem\)[\s\S]*?\.home-work__grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 42rem\)[\s\S]*?\.home-work__grid\s*\{[^}]*grid-template-columns:\s*1fr;/u,
   );
   assert.match(
     css,
@@ -75,11 +117,23 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /\.home-community\s*\{[^}]*grid-template-columns:\s*minmax\(20rem, 1\.08fr\) minmax\(0, 0\.92fr\);/su,
+    /@media \(min-width: 56\.001rem\)[\s\S]*?\.home-communities__list\s*\{[^}]*height:\s*clamp\(30rem, 55svh, 35rem\);[^}]*display:\s*flex;/u,
+  );
+  assert.match(
+    css,
+    /\.home-community:is\(:hover, :focus-within\)\s*\{[^}]*flex-grow:\s*2\.35;/su,
+  );
+  assert.match(
+    css,
+    /\.home-community:first-child \.home-community__details,[\s\S]*?\.home-community:is\(:hover, :focus-within\) \.home-community__details\s*\{[^}]*grid-template-rows:\s*1fr;/u,
   );
   assert.match(
     css,
     /@media \(max-width: 56rem\)[\s\S]*?\.home-community,[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,
+  );
+  assert.match(
+    css,
+    /@media \(scripting: enabled\) and \(min-width: 64rem\)[\s\S]*?\(prefers-reduced-motion: no-preference\)[\s\S]*?\.home-work-card__poster-link/u,
   );
   assert.doesNotMatch(
     css,

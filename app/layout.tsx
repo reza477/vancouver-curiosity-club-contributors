@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import { SiteFooter } from "@/app/_components/SiteFooter";
 import { SiteHeader } from "@/app/_components/SiteHeader";
+import { PublicArtworkMotion } from "@/app/_components/PublicArtworkMotion";
 import {
   getTrustedRequestOrigin,
   getTrustedRequestPathname,
@@ -25,6 +26,7 @@ import {
   SHIPPED_BRAND_PALETTE,
 } from "@/lib/brand";
 import { isPrivateOrIdentityPath } from "@/lib/request-pathname";
+import { PUBLIC_ARTWORK_MOTION_ENABLED } from "@/lib/public-artwork-motion";
 import "./globals.css";
 
 const title = SHIPPED_BRAND_NAME;
@@ -222,6 +224,13 @@ export default async function RootLayout({
         />
       </head>
       <body
+        data-artwork-motion-config={
+          isPrivatePath
+            ? undefined
+            : PUBLIC_ARTWORK_MOTION_ENABLED
+              ? "enabled"
+              : "disabled"
+        }
         data-surface={isPrivatePath ? "organizer" : "public"}
         data-typography={isPrivatePath ? undefined : shell?.typography}
         style={isPrivatePath ? undefined : publicStyle}
@@ -242,6 +251,7 @@ export default async function RootLayout({
         <div className="site-content" id="page-content" tabIndex={-1}>
           {children}
         </div>
+        {isPrivatePath ? null : <PublicArtworkMotion />}
         {isPrivatePath ? null : (
           <SiteFooter
             brandName={shell?.brandName}

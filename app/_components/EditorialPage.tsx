@@ -314,7 +314,7 @@ export async function EditorialPage({
 }: Readonly<{
   children?: ReactNode;
   displayDeck?: string;
-  displayEyebrow?: string;
+  displayEyebrow?: string | null;
   displayParagraphs?: readonly string[];
   displayTitle?: string;
   page: PublicPageDto;
@@ -328,9 +328,14 @@ export async function EditorialPage({
     displayTitle ?? introduction?.content.heading ?? page.title;
   const introductionParagraphs =
     displayParagraphs ?? introduction?.content.paragraphs ?? [];
-  const configuredEyebrow = displayEyebrow ?? introduction?.content.eyebrow;
+  const configuredEyebrow =
+    displayEyebrow === null
+      ? null
+      : displayEyebrow ?? introduction?.content.eyebrow;
   const publicEyebrow =
-    configuredEyebrow && /^field notes?$/iu.test(configuredEyebrow.trim())
+    configuredEyebrow === null
+      ? null
+      : configuredEyebrow && /^field notes?$/iu.test(configuredEyebrow.trim())
       ? publicPageCategory(page.slug)
       : configuredEyebrow ?? publicPageCategory(page.slug);
   const sections = page.sections.filter(
@@ -358,7 +363,7 @@ export async function EditorialPage({
           introduction?.content.text ??
           "Stories and information from Vancouver Curiosity Club."
         }
-        eyebrow={publicEyebrow}
+        eyebrow={publicEyebrow ?? undefined}
         title={publicTitle}
         tone={tone}
       />

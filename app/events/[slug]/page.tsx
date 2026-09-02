@@ -100,7 +100,6 @@ export default async function EventDetailPage({
         <section className="related-events" aria-labelledby="related-title">
           <div className="section-heading">
             <div>
-              <p className="section-kicker">Keep following the thread</p>
               <h2 id="related-title">Related events</h2>
             </div>
             <Link href="/events">

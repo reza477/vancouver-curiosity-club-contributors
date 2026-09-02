@@ -516,7 +516,7 @@ function eventNumber(value) {
 function materializationKey(surface) {
   return JSON.stringify([
     "public-event-materializations",
-    1,
+    2,
     ORGANIZATION_ID,
     surface,
   ]);

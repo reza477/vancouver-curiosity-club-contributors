@@ -110,7 +110,6 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "At a time when much of social life takes place through screens",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
     "Explore our work",
-    "Organization at a glance",
     "Four ways into community life.",
     "Upcoming public programs.",
     "Shared curiosity makes connection easier to begin.",
@@ -124,12 +123,13 @@ test("Phase 2 exposes the complete public route contract", async () => {
     "at-a-glance",
     "programs",
     "work-in-action",
+    "participant-feedback",
     "why-it-matters",
     "partnerships",
     "communities",
     "public-invitation",
   ];
-  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 8);
+  assert.equal((homeRenderer.match(/<section\b/gu) ?? []).length, 9);
   let priorSectionIndex = -1;
   for (const sectionName of homepageSections) {
     const sectionIndex = homeRenderer.indexOf(

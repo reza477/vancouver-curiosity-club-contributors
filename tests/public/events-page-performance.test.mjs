@@ -48,8 +48,8 @@ test("Events delegates its calendar to one indexed materialization loader", asyn
   );
   assert.match(
     materializations,
-    /FROM public_event_calendar_snapshots[\s\S]*WHERE cache_key = \?[\s\S]*AND organization_id = \?[\s\S]*LIMIT 1/u,
-    "the visitor seam must use the cache-key primary lookup with an organization seal",
+    /FROM public_event_calendar_snapshots[\s\S]*WHERE cache_key IN \(\?, \?\)[\s\S]*AND organization_id = \?[\s\S]*ORDER BY CASE cache_key WHEN \? THEN 0 ELSE 1 END[\s\S]*LIMIT 1/u,
+    "the visitor seam must use one indexed current-or-legacy key lookup, prefer current, and retain the organization seal",
   );
 });
 

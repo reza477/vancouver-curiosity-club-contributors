@@ -158,7 +158,8 @@ test("curated Meetup descriptions render semantic headings, lists, and links", (
   );
   assert.match(markup, /rel="noreferrer noopener"/u);
   assert.match(markup, /class="event-detail__rich-description"/u);
-  assert.match(markup, />Event information<\/p>/u);
+  assert.match(markup, /<h2 id="about-title">About this event<\/h2>/u);
+  assert.doesNotMatch(markup, />Event information<\/p>/u);
   assert.doesNotMatch(markup, />Field notes?<\/p>/iu);
   assert.doesNotMatch(markup, /dangerouslySetInnerHTML/u);
 });
