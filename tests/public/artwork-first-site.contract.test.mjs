@@ -109,6 +109,46 @@ test("the poster stage decodes before activation and never hijacks scrolling", a
   assert.match(controller, /activationGeneration/u);
   assert.match(controller, /disposed \|\| operationGeneration !== activationGeneration/u);
   assert.match(controller, /queuedIndex = requestedIndex/u);
+  assert.match(controller, /const animatedStageArticles = new WeakSet<HTMLElement>\(\)/u);
+  assert.match(
+    controller,
+    /enhanceStage\(stage, animatedStageArticles\)/u,
+    "poster reveal history must survive stage media-query reconfiguration",
+  );
+  assert.match(
+    activate,
+    /if \(animatedArticles\.has\(incoming\)\)\s*\{[\s\S]*?activeIndex = requestedIndex;[\s\S]*?setStageState\(articles, activeIndex, null\);[\s\S]*?return;/u,
+    "a previously revealed poster must become active without re-entering the animated incoming state",
+  );
+  const rememberRevealIndex = activate.indexOf("animatedArticles.add(incoming)");
+  assert.ok(
+    rememberRevealIndex >= 0 && rememberRevealIndex < activationIndex,
+    "each poster must be remembered before its one incoming animation begins",
+  );
+  assert.match(
+    controller,
+    /if \(!transitioning && requestedIndex === activeIndex\) return;/u,
+    "the active summary must not enqueue itself again during small scroll updates",
+  );
+  assert.match(
+    controller,
+    /if \(queuedIndex === requestedIndex\) return;/u,
+    "duplicate observer notifications must not enqueue the same summary twice",
+  );
+  assert.match(
+    controller,
+    /const intersectingSummaries = new Map<Element, IntersectionObserverEntry>\(\)/u,
+  );
+  assert.match(
+    controller,
+    /if \(entry\.isIntersecting\)\s*\{[\s\S]*?intersectingSummaries\.set\(entry\.target, entry\);[\s\S]*?\}\s*else\s*\{[\s\S]*?intersectingSummaries\.delete\(entry\.target\);/u,
+    "scroll selection must retain every currently intersecting summary instead of considering only threshold-crossing entries",
+  );
+  assert.match(
+    controller,
+    /Array\.from\(intersectingSummaries\.values\(\)\)[\s\S]*?intersectionRatio/u,
+    "the active poster must be chosen from the complete current intersection set",
+  );
   assert.match(controller, /await decodeDescendantImages\(element\)/u);
   assert.match(controller, /poster\.dataset\.artworkImageReady = "true"/u);
 

@@ -117,6 +117,14 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
+    /\.home-impact__sequence\s*\{[^}]*border:\s*1px solid var\(--ink\);[^}]*border-inline-start:\s*0\.35rem solid var\(--coral-strong\);/su,
+  );
+  assert.match(
+    css,
+    /\.home-impact__sequence li \+ li\s*\{[^}]*border-top:\s*1px solid var\(--ink\);/su,
+  );
+  assert.match(
+    css,
     /@media \(min-width: 56\.001rem\)[\s\S]*?\.home-communities__list\s*\{[^}]*height:\s*clamp\(30rem, 55svh, 35rem\);[^}]*display:\s*flex;/u,
   );
   assert.match(

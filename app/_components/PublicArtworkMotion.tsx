@@ -95,6 +95,7 @@ function initializeArtworkMotion(): () => void {
   const stages = Array.from(
     document.querySelectorAll<HTMLElement>(STAGE_SELECTOR),
   );
+  const animatedStageArticles = new WeakSet<HTMLElement>();
   let stageCleanup = () => {};
 
   const configureStages = () => {
@@ -105,7 +106,9 @@ function initializeArtworkMotion(): () => void {
       return;
     }
 
-    const activeCleanups = stages.map((stage) => enhanceStage(stage));
+    const activeCleanups = stages.map((stage) =>
+      enhanceStage(stage, animatedStageArticles),
+    );
     stageCleanup = () => {
       for (const cleanup of activeCleanups) cleanup();
     };
@@ -146,7 +149,10 @@ async function decodeImage(image: HTMLImageElement): Promise<boolean> {
   return image.complete && image.naturalWidth > 0;
 }
 
-function enhanceStage(stage: HTMLElement): () => void {
+function enhanceStage(
+  stage: HTMLElement,
+  animatedArticles: WeakSet<HTMLElement>,
+): () => void {
   const articles = Array.from(
     stage.querySelectorAll<HTMLElement>("[data-stage-event-index]"),
   );
@@ -160,6 +166,7 @@ function enhanceStage(stage: HTMLElement): () => void {
   let transitioning = false;
 
   stage.dataset.stageEnhanced = "true";
+  animatedArticles.add(articles[activeIndex]);
   setStageState(articles, activeIndex, null);
 
   const processQueuedActivation = async () => {
@@ -199,6 +206,15 @@ function enhanceStage(stage: HTMLElement): () => void {
     }
     if (queuedIndex === requestedIndex) queuedIndex = null;
 
+    if (animatedArticles.has(incoming)) {
+      activeIndex = requestedIndex;
+      transitioning = false;
+      setStageState(articles, activeIndex, null);
+      void processQueuedActivation();
+      return;
+    }
+
+    animatedArticles.add(incoming);
     const outgoingIndex = activeIndex;
     setStageState(articles, outgoingIndex, requestedIndex);
     transitionTimer = window.setTimeout(() => {
@@ -213,6 +229,8 @@ function enhanceStage(stage: HTMLElement): () => void {
 
   const activate = (requestedIndex: number) => {
     if (disposed || !articles[requestedIndex]) return;
+    if (!transitioning && requestedIndex === activeIndex) return;
+    if (queuedIndex === requestedIndex) return;
     queuedIndex = requestedIndex;
     void processQueuedActivation();
   };
@@ -229,10 +247,18 @@ function enhanceStage(stage: HTMLElement): () => void {
     focusHandlers.push({ element: summary, handler });
   }
 
+  const intersectingSummaries = new Map<Element, IntersectionObserverEntry>();
   const stageObserver = new IntersectionObserver(
     (entries) => {
-      const strongest = entries
-        .filter((entry) => entry.isIntersecting)
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          intersectingSummaries.set(entry.target, entry);
+        } else {
+          intersectingSummaries.delete(entry.target);
+        }
+      }
+
+      const strongest = Array.from(intersectingSummaries.values())
         .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
       if (!strongest) return;
       const article = (strongest.target as HTMLElement).closest<HTMLElement>(
@@ -254,6 +280,7 @@ function enhanceStage(stage: HTMLElement): () => void {
     queuedIndex = null;
     transitioning = false;
     stageObserver.disconnect();
+    intersectingSummaries.clear();
     for (const { element, handler } of focusHandlers) {
       element.removeEventListener("focusin", handler);
       element.removeEventListener("pointerenter", handler);
