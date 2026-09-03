@@ -258,6 +258,11 @@ test("Home uses evidence-safe impact and partnership language", () => {
   assert.match(impact, /Have a reason to return/u);
   assert.match(impact, /Find more than one way in/u);
   assert.equal((partnerships.match(/<li>/gu) ?? []).length, 6);
+  const opportunities = partnerships.match(
+    /<ul[^>]*home-partnerships__opportunities[^>]*>([\s\S]*?)<\/ul>/u,
+  )?.[1];
+  assert.ok(opportunities);
+  assert.doesNotMatch(opportunities, /<a\b|role="link"|tabindex=/u);
   assert.match(
     partnerships,
     /href="\/contact\?topic=partnerships#contact-form"[^>]*>Discuss a partnership<\/a>/u,

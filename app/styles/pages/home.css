@@ -869,17 +869,24 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
   color: var(--ink);
 }
 
-.home-partnerships ul {
-  border-top: 1px solid var(--paper);
+.home-partnerships__opportunities {
+  align-content: start;
+  gap: 0.9rem;
   margin: 0;
-  padding: 0;
-  list-style: none;
+  padding-inline-start: 1.35rem;
+  list-style: disc;
+  display: grid;
 }
 
-.home-partnerships li {
-  border-bottom: 1px solid var(--paper);
-  padding: 0.8rem 0;
-  font-weight: 600;
+.home-partnerships__opportunities li {
+  padding-inline-start: 0.2rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.home-partnerships__opportunities li::marker {
+  color: var(--amber);
+  font-size: 1.15em;
 }
 
 .home-communities {

@@ -347,7 +347,10 @@ export function HomePageRenderer({
             <Link href="/for-organizations">Information for organizations</Link>
           </div>
         </div>
-        <ul>
+        <ul
+          className="home-partnerships__opportunities"
+          aria-label="Ways organizations can work with us"
+        >
           {partnershipOpportunities.map((opportunity) => (
             <li key={opportunity}>{opportunity}</li>
           ))}
