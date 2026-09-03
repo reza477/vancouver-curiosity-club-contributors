@@ -814,7 +814,8 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 }
 
 .home-impact__sequence {
-  gap: clamp(1.5rem, 2.8vw, 2.4rem);
+  border: 1px solid var(--ink);
+  border-inline-start: 0.35rem solid var(--coral-strong);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -824,7 +825,12 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 .home-impact__sequence li {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
+  padding: clamp(1rem, 1.8vw, 1.35rem);
   display: grid;
+}
+
+.home-impact__sequence li + li {
+  border-top: 1px solid var(--ink);
 }
 
 .home-impact__sequence h3 {
