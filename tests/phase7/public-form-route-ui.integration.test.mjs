@@ -245,9 +245,14 @@ test(
     ]) {
       assert.match(formSource, constraint);
     }
+    assert.doesNotMatch(
+      formSource,
+      /<fieldset[^>]*aria-required=/u,
+      "the volunteer fieldset must not use unsupported aria-required semantics",
+    );
     assert.match(
       formSource,
-      /aria-required="true"[\s\S]*required=\{values\.length === 0 && index === 0\}/u,
+      /required=\{values\.length === 0 && index === 0\}/u,
       "the volunteer group must natively require at least one choice",
     );
     assert.match(
