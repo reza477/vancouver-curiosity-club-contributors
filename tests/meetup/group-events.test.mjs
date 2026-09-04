@@ -617,6 +617,47 @@ Review the source beforehand and come ready to discuss it.`;
   }
 });
 
+test("retains the exact newly published September source links", () => {
+  for (const sourceUrl of [
+    "https://forms.gle/bBwkw4gy1BegzB49A",
+    "https://www.therecroom.com/deals",
+    "https://www.paramountpictures.com/movies/shutter-island",
+    "https://www.penguinrandomhouse.com/books/538163/stories-of-your-life-and-others-by-ted-chiang/",
+    "https://tickets.thecinematheque.ca/websales/pages/ticketsearchcriteria.aspx?evtinfo=571372~c720b4d8-2524-4617-94b4-09d7b2ffa465&",
+    "https://thecinematheque.ca/films/2026/samurai-prisoner",
+    "https://esp.mit.edu/download/1d2e51ba-1e3a-4924-b5b7-6b10fa991b51/H8732_Existentialism%20Reading%20-%20Splash.pdf",
+    "https://www.marxists.org/reference/archive/sartre/works/exist/sartre.htm",
+  ]) {
+    const state = createApolloState();
+    state[EVENT_REF].description = `Discussion material to review before the event.
+
+Official source page:
+[${sourceUrl}](${sourceUrl})
+
+Review the source beforehand and come ready to discuss it.`;
+    const publicContent = parseMeetupGroupEventsPage(
+      createHtml(state),
+      GROUP_SLUG,
+    ).events[0].publicContent;
+    const links = publicContent.descriptionBlocks
+      .flatMap((block) =>
+        "content" in block ? block.content : "items" in block ? block.items.flat() : [],
+      )
+      .filter((inline) => inline.type === "link");
+    assert.deepEqual(links, [
+      {
+        href: sourceUrl,
+        text: "Official source page",
+        type: "link",
+      },
+    ]);
+    assert.doesNotThrow(() =>
+      validateMeetupDescriptionBlocks(publicContent.descriptionBlocks),
+    );
+    assert.doesNotMatch(publicContent.description, /External resource/u);
+  }
+});
+
 test("keeps source spacing without emitting whitespace-only description inlines", () => {
   const state = createApolloState();
   state[EVENT_REF].description = `Quarry Rock sunset hike and dinner.
@@ -654,6 +695,9 @@ test("new public-description hosts remain exact and fail closed", () => {
     "https://deepcovekayak.com/lesson/intro-to-sup/?offer=private",
     "https://www.pbs.org.attacker.invalid/pov/films/mindingthegap/",
     "https://www.vogue.com/article/on-the-podcast-behind-chloe-malles-first-september-issue?private=1",
+    "https://user@forms.gle/bBwkw4gy1BegzB49A",
+    "https://www.therecroom.com.attacker.invalid/deals",
+    "https://tickets.thecinematheque.ca/websales/pages/ticketsearchcriteria.aspx?evtinfo=571372&private=1",
   ]) {
     const state = createApolloState();
     state[EVENT_REF].description =

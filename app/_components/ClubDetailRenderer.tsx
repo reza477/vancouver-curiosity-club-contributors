@@ -183,6 +183,8 @@ export function ClubDetailRenderer({
               return (
                 <article
                   className="club-directory__card"
+                  data-artwork-reveal="club-program-card"
+                  data-artwork-reveal-mode="children"
                   key={program.slug}
                   style={
                     program.themeColor

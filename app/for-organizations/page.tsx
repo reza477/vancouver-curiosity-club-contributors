@@ -181,6 +181,8 @@ export default async function ForOrganizationsPage() {
       <ul
         className="organizations-hero__facts"
         aria-label="Public program scope"
+        data-artwork-reveal="organization-facts"
+        data-artwork-reveal-mode="children"
       >
         <li>
           <strong>{lanes.length}</strong>
@@ -212,7 +214,11 @@ export default async function ForOrganizationsPage() {
             contribution you have in mind, timing, and any accessibility needs.
           </p>
         </div>
-        <div className="organizations-collaboration__grid">
+        <div
+          className="organizations-collaboration__grid"
+          data-artwork-reveal="organization-pathways"
+          data-artwork-reveal-mode="children"
+        >
           {collaborationOptions.map((option) => (
             <article key={option.title}>
               <h3>{option.title}</h3>

@@ -138,7 +138,11 @@ Vancouver Literature and Film:
 - `316248155` -> `316248163`
 - `316263548` -> `316263599`
 - `316263813` -> `316263821`
+- `316409377` -> `316408582`
 - Vancouver Curiosity Club `316263724` -> Fantasy & Sci-Fi `316263745`
+- Vancouver Curiosity Club `316409021` -> Fantasy & Sci-Fi `316408659`
+- Vancouver Curiosity Club `316263936` -> Fantasy & Sci-Fi `316263945`
+- Vancouver Curiosity Club `316264010` -> Fantasy & Sci-Fi `316264011`
 - Fantasy & Sci-Fi `315776566` -> Literature and Film `315776601`
 
 Both sides are stored in source as exact canonical HTTPS Meetup event URLs and
