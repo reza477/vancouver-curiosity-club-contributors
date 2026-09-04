@@ -150,6 +150,7 @@ test("continuous integration and dependency maintenance cover the release gates"
   assert.match(workflow, /auditReportVersion/u);
   assert.match(workflow, /400 Bad Request\|5\[0-9\]\{2\}/u);
   assert.match(workflow, /ECONNRESET/u);
+  assert.match(workflow, /network timeout/u);
 
   assert.match(dependabot, /package-ecosystem: npm/u);
   assert.match(dependabot, /package-ecosystem: github-actions/u);

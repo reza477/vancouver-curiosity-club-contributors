@@ -68,6 +68,10 @@ jobs:
             if grep -Eq '(EAI_AGAIN|ECONNABORTED|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETDOWN|ENETUNREACH|ENOTFOUND|EPIPE|ETIMEDOUT|ERR_SOCKET_TIMEOUT|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)' <<<"$audit_output"; then
               transport_error=true
             fi
+            if grep -Fq 'https://registry.npmjs.org/' <<<"$audit_output" &&
+              grep -Eiq '(network timeout|request timed out|socket hang up|fetch failed)' <<<"$audit_output"; then
+              transport_error=true
+            fi
 
             if [[ "$registry_http_error" != true && "$transport_error" != true ]]; then
               exit "$audit_status"
