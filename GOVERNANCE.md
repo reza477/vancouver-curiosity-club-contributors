@@ -8,8 +8,8 @@ are proposed, accepted, and released.
 
 ### Owner and release maintainer
 
-The repository owner, `@reza477`, controls contributor access, product scope,
-merges, production data, hosted secrets, domains, and ChatGPT Sites releases.
+The repository owner, `@reza477`, controls collaborator write access, product
+scope, merges, production data, hosted secrets, domains, and ChatGPT Sites releases.
 The owner may authorize another release maintainer explicitly in writing.
 
 ### Contributors

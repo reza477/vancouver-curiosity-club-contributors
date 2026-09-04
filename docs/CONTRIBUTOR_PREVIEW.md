@@ -68,8 +68,10 @@ submissions, hosted secrets, or attendee information into a preview.
 
 ## Owner approval boundary
 
-Contributors may edit branches, run previews, push branches, and open pull
-requests. They must not merge their own pull requests or attempt a deployment.
+Contributors may edit branches in their own forks, run previews, push those
+branches, and open pull requests. Approved collaborators may push a focused
+branch directly to this repository. Contributors must not merge their own pull
+requests or attempt a deployment.
 
 The owner may ask Codex to inspect and test a pull request without authorizing
 any change. Review is not approval. Nothing is promoted to the owner-only

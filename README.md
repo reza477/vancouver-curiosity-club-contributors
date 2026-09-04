@@ -77,9 +77,9 @@ automatically. Only the owner or an explicitly authorized release maintainer
 can publish the reviewed revision through ChatGPT Sites.
 
 Public visibility does not grant reuse or publication rights beyond the terms
-in [LICENSE](LICENSE). Do not push directly to `main`, share production credentials, or copy
-production D1/R2 data into a development environment. UI/UX contributors
-should begin with [the focused handoff guide](docs/UI_UX_HANDOFF.md), then read
+in [LICENSE](LICENSE). Do not push directly to `main`, share production
+credentials, or copy production D1/R2 data into a development environment.
+UI/UX contributors should begin with [the focused handoff guide](docs/UI_UX_HANDOFF.md), then read
 [CONTRIBUTING.md](CONTRIBUTING.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Quality checks
