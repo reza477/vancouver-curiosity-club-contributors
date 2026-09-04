@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-css-tags -- Event cards own bounded motion CSS so routes without cards do not download it. */
+
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
 import {
@@ -66,6 +68,11 @@ export function EventCard({
       data-event-status={event.status}
       style={programStreamAccents ? streamVisual.style : undefined}
     >
+      <link
+        href="/styles/event-card-motion.css"
+        precedence="event-card-motion"
+        rel="stylesheet"
+      />
       {event.artwork ? (
         <figure className="event-card__artwork">
           <div className="event-card__artwork-frame">

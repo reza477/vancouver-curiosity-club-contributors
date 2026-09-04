@@ -19,6 +19,8 @@ export const publicCssModulePaths = Object.freeze([
 
 const publicRouteCssPaths = Object.freeze({
   about: "public/styles/about.css",
+  clubs: "public/styles/clubs.css",
+  eventCard: "public/styles/event-card-motion.css",
   events: Object.freeze([
     "public/styles/calendar.css",
     "public/styles/events.css",
@@ -29,6 +31,8 @@ const publicRouteCssPaths = Object.freeze({
 
 const publicSupplementalCssPaths = Object.freeze([
   "public/styles/calendar.css",
+  "public/styles/clubs.css",
+  "public/styles/event-card-motion.css",
   "public/styles/event-detail.css",
 ]);
 

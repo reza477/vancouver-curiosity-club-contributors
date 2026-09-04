@@ -29,7 +29,9 @@ test("sitewide artwork motion reuses the shared one-shot foundation", async () =
   );
   assert.match(eventCard, /data-artwork-reveal="event-card"/u);
   assert.match(eventCard, /data-artwork-reveal-mode="children"/u);
+  assert.match(eventCard, /href="\/styles\/event-card-motion\.css"/u);
   assert.match(clubDirectory, /data-club-showcase="true"/u);
+  assert.match(clubDirectory, /href="\/styles\/clubs\.css"/u);
   assert.match(
     clubDirectory,
     /data-artwork-reveal="club-directory-card"/u,
@@ -58,6 +60,7 @@ test("sitewide artwork motion reuses the shared one-shot foundation", async () =
     /data-artwork-reveal="organization-pathways"[\s\S]*?data-artwork-reveal-mode="children"/u,
   );
   assert.match(clubDetail, /data-artwork-reveal="club-program-card"/u);
+  assert.match(clubDetail, /href="\/styles\/clubs\.css"/u);
   assert.match(
     clubDetail,
     /data-artwork-reveal="club-program-card"[\s\S]*?data-artwork-reveal-mode="children"/u,
@@ -71,24 +74,34 @@ test("sitewide artwork motion reuses the shared one-shot foundation", async () =
 });
 
 test("sitewide motion CSS keeps hover and keyboard focus in parity", async () => {
-  const [catalogCss, organizationsCss, motionCss] = await Promise.all([
+  const [
+    aboutCss,
+    catalogCss,
+    clubsCss,
+    eventCardMotionCss,
+    organizationsCss,
+    motionCss,
+  ] = await Promise.all([
+    source("public/styles/about.css"),
     source("app/styles/components/catalog.css"),
+    source("public/styles/clubs.css"),
+    source("public/styles/event-card-motion.css"),
     source("public/styles/organizations.css"),
     source("app/styles/motion.css"),
   ]);
 
   assert.match(
-    catalogCss,
+    clubsCss,
     /\.club-directory__card:is\(:hover, :focus-within\)\s*\{[^}]*background:[^}]*transform:\s*none;/u,
     "the showcase should respond without double-moving the whole card",
   );
   assert.doesNotMatch(
-    catalogCss,
+    clubsCss,
     /\[data-club-showcase="true"\][^{}]*:has\(|flex-grow:\s*1\.48|transition:[^;}]*flex-grow/u,
     "showcase interaction must not reflow the page",
   );
   assert.match(
-    catalogCss,
+    clubsCss,
     /\.club-directory__card:is\(:hover, :focus-within\)::before\s*\{[^}]*transform:\s*scaleX\(1\);/u,
   );
   assert.match(
@@ -101,7 +114,7 @@ test("sitewide motion CSS keeps hover and keyboard focus in parity", async () =>
     /\.organizations-standards nav a:is\(:hover, :focus-visible\)/u,
   );
   assert.match(
-    `${catalogCss}\n${organizationsCss}\n${motionCss}`,
+    `${aboutCss}\n${clubsCss}\n${eventCardMotionCss}\n${organizationsCss}\n${motionCss}`,
     /@media \(prefers-reduced-motion: reduce\)/u,
   );
   assert.match(
@@ -110,12 +123,12 @@ test("sitewide motion CSS keeps hover and keyboard focus in parity", async () =>
     "reduced-motion mode must fully neutralize positional and clipping reveals",
   );
   assert.doesNotMatch(
-    motionCss,
+    `${aboutCss}\n${clubsCss}\n${eventCardMotionCss}\n${organizationsCss}\n${motionCss}`,
     /\[data-artwork-(?:reveal-state|load-reveal)[^\n]*\]\s*\*/u,
     "reduced-motion resets must not erase static descendant transforms or clip focus rings",
   );
   assert.doesNotMatch(
-    motionCss,
+    `${eventCardMotionCss}\n${clubsCss}\n${motionCss}`,
     /\.event-card\[data-artwork-reveal-state\][^{]*\{[^}]*transition:\s*none/u,
     "child reveals must preserve bounded card hover and focus transitions",
   );

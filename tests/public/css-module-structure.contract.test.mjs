@@ -16,6 +16,11 @@ const organizationsCss = new URL(
   projectRoot,
 );
 const aboutCss = new URL("public/styles/about.css", projectRoot);
+const clubsCss = new URL("public/styles/clubs.css", projectRoot);
+const eventCardMotionCss = new URL(
+  "public/styles/event-card-motion.css",
+  projectRoot,
+);
 const eventsCss = new URL("public/styles/events.css", projectRoot);
 const calendarCss = new URL("public/styles/calendar.css", projectRoot);
 const eventDetailCss = new URL("public/styles/event-detail.css", projectRoot);
@@ -25,6 +30,18 @@ const eventsRenderer = new URL(
 );
 const eventDetailRenderer = new URL(
   "app/_components/PublicEventDetailRenderer.tsx",
+  projectRoot,
+);
+const clubDirectoryRenderer = new URL(
+  "app/_components/ClubDirectory.tsx",
+  projectRoot,
+);
+const clubDetailRenderer = new URL(
+  "app/_components/ClubDetailRenderer.tsx",
+  projectRoot,
+);
+const eventCardRenderer = new URL(
+  "app/_components/EventCard.tsx",
   projectRoot,
 );
 
@@ -70,6 +87,22 @@ test("route and component selectors stay in their named modules", async () => {
   const about = await readFile(aboutCss, "utf8");
   assert.ok(about.includes(".about-hero"), ".about-hero must stay in the About route module");
 
+  const [clubs, clubDirectory, clubDetail] = await Promise.all([
+    readFile(clubsCss, "utf8"),
+    readFile(clubDirectoryRenderer, "utf8"),
+    readFile(clubDetailRenderer, "utf8"),
+  ]);
+  assert.match(clubs, /\[data-club-showcase="true"\]/u);
+  assert.match(clubDirectory, /href="\/styles\/clubs\.css"/u);
+  assert.match(clubDetail, /href="\/styles\/clubs\.css"/u);
+
+  const [eventCardMotion, eventCard] = await Promise.all([
+    readFile(eventCardMotionCss, "utf8"),
+    readFile(eventCardRenderer, "utf8"),
+  ]);
+  assert.match(eventCardMotion, /\.event-card\[data-artwork-reveal-state=/u);
+  assert.match(eventCard, /href="\/styles\/event-card-motion\.css"/u);
+
   const events = await readFile(eventsCss, "utf8");
   const calendar = await readFile(calendarCss, "utf8");
   const renderer = await readFile(eventsRenderer, "utf8");
@@ -108,6 +141,14 @@ test("route and component selectors stay in their named modules", async () => {
   assert.ok(
     (await stat(aboutCss)).size < 30_000,
     "the route-scoped About stylesheet must remain bounded",
+  );
+  assert.ok(
+    (await stat(clubsCss)).size < 30_000,
+    "the route-scoped Clubs stylesheet must remain bounded",
+  );
+  assert.ok(
+    (await stat(eventCardMotionCss)).size < 30_000,
+    "the component-scoped event-card motion stylesheet must remain bounded",
   );
   assert.ok(
     (await stat(organizationsCss)).size < 30_000,

@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-css-tags -- Club routes own bounded artwork CSS so Home stays within its CSS budget. */
+
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import type { CSSProperties } from "react";
 import { Breadcrumbs } from "@/app/_components/Breadcrumbs";
@@ -48,6 +50,7 @@ export function ClubDetailRenderer({
           : undefined
       }
     >
+      <link href="/styles/clubs.css" precedence="clubs" rel="stylesheet" />
       <Breadcrumbs
         items={[
           { href: "/", label: "Home" },
