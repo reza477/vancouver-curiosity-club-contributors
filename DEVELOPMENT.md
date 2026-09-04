@@ -21,10 +21,11 @@ owner-controlled.
 
 ## First 15 minutes
 
-This is a private repository. Obtain explicit collaborator access from the
-owner and authenticate GitHub HTTPS or SSH first. Its visibility must remain
-private; `"private": true` in `package.json` prevents npm publication but does
-not control GitHub visibility.
+This is the public contributor repository. Anyone may inspect or fork it;
+direct branch access is limited to collaborators. Authenticate GitHub HTTPS or
+SSH before pushing. `"private": true` in `package.json` prevents accidental npm
+publication and does not describe GitHub visibility. Production credentials,
+data, publishing access, and release operations remain owner-controlled.
 
 Install Git, Node.js matching [.nvmrc](.nvmrc), and npm. Then:
 
@@ -34,8 +35,8 @@ release line. Earlier Node 22 versions can install and build the app but cannot
 run the complete test suite.
 
 ```bash
-git clone https://github.com/reza477/vancouver-curiosity-club.git
-cd vancouver-curiosity-club
+git clone https://github.com/reza477/vancouver-curiosity-club-contributors.git
+cd vancouver-curiosity-club-contributors
 npm ci
 npm run db:apply:preview
 npm run dev

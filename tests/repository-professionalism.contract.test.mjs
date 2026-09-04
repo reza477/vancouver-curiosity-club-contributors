@@ -10,6 +10,8 @@ test("repository publishes a concise, safe, professional project surface", () =>
   const gitignore = source(".gitignore");
   const nodeVersion = source(".nvmrc").trim();
   const development = source("DEVELOPMENT.md");
+  const contributing = source("CONTRIBUTING.md");
+  const contributorPreview = source("docs/CONTRIBUTOR_PREVIEW.md");
   const codeowners = source(".github/CODEOWNERS");
   const issueConfig = source(".github/ISSUE_TEMPLATE/config.yml");
 
@@ -37,7 +39,7 @@ test("repository publishes a concise, safe, professional project surface", () =>
   assert.match(readme, /Node\.js 22\.16 or newer/u);
   assert.equal(
     packageJson.repository.url,
-    "https://github.com/reza477/vancouver-curiosity-club.git",
+    "https://github.com/reza477/vancouver-curiosity-club-contributors.git",
   );
   assert.match(gitignore, /^\/_claude_snapshot\.tar\.gz$/mu);
 
@@ -91,17 +93,18 @@ test("repository publishes a concise, safe, professional project surface", () =>
   assert.match(development, /0008.*0022/u);
   assert.match(source("examples/README.md"), /not production/u);
   assert.doesNotMatch(development, /appg(?:dep|prj|ver)_/u);
-  assert.match(development, /private repository/u);
-  assert.match(development, /visibility must remain\s+private/u);
+  assert.match(development, /public contributor repository/u);
+  assert.match(contributing, /public repository/u);
+  assert.match(contributorPreview, /select \*\*Fork\*\*/u);
   assert.match(development, /Sites project identifier/u);
   assert.match(readme, /Sites project identifier/u);
-  assert.match(readme, /github\.com\/reza477\/vancouver-curiosity-club/u);
-  assert.match(development, /github\.com\/reza477\/vancouver-curiosity-club\.git/u);
+  assert.match(readme, /github\.com\/reza477\/vancouver-curiosity-club-contributors/u);
+  assert.match(development, /github\.com\/reza477\/vancouver-curiosity-club-contributors\.git/u);
   assert.match(codeowners, /^\* @reza477$/mu);
   assert.equal(packageJson.scripts["brand:generate"], "node scripts/generate-brand-artwork.mjs");
   assert.match(issueConfig, /https:\/\/vancouvercuriosityclub\.com\/contact/u);
   assert.doesNotMatch(issueConfig, /security\/advisories/u);
-  assert.match(packageJson.bugs.url, /github\.com\/reza477\/vancouver-curiosity-club\/issues/u);
+  assert.match(packageJson.bugs.url, /github\.com\/reza477\/vancouver-curiosity-club-contributors\/issues/u);
 
   for (const ledger of [
     "BUILD_STATUS.md",

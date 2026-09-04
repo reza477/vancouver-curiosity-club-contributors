@@ -1,19 +1,20 @@
 # Contributor preview workflow
 
-Contributors can edit an assigned branch and see the result without receiving
-production access. The recommended online workspace is a private GitHub
-Codespace. A normal local checkout remains available for developers who prefer
+Contributors can edit a focused branch and see the result without receiving
+production access. The recommended online workspace is a GitHub Codespace. A
+normal local checkout remains available for developers who prefer
 their own editor.
 
 Neither preview path can deploy the website. Preview data, media, identity, and
 email delivery are isolated from production.
 
-## Private browser preview with GitHub Codespaces
+## Browser preview with GitHub Codespaces
 
-After the owner invites your exact GitHub username to the private contributor
-repository:
+If you are not a repository collaborator, select **Fork** first so you have a
+place to push your branch. Then:
 
-1. Open the repository and select **Code**, then **Codespaces**.
+1. Open your contributor repository or fork and select **Code**, then
+   **Codespaces**.
 2. Create a codespace from the current `main` branch and wait for setup to
    finish. The setup installs the locked dependencies and prepares a disposable
    local D1 database.
@@ -32,8 +33,9 @@ repository:
 5. GitHub should open **VCC private preview** in a browser tab. If it does not,
    open the **Ports** panel and select **Open in Browser** for port `5173`.
 6. Keep the port private. Do not change it to public visibility.
-7. Commit and push only the focused branch, then open a pull request to `main`.
-   Include phone and desktop screenshots and leave the pull request unmerged.
+7. Commit and push only the focused branch, then open a pull request against
+   `reza477/vancouver-curiosity-club-contributors:main`. Include phone and
+   desktop screenshots and leave the pull request unmerged.
 
 Codespaces usage belongs to the contributor's GitHub account and uses that
 account's included allowance or billing. Stop the codespace when work pauses

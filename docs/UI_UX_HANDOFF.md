@@ -34,7 +34,7 @@ file instead of turning it into a second global stylesheet.
 
 ## Local preview
 
-For a private browser-based workspace, use the
+For a browser-based workspace, use the
 [GitHub Codespaces contributor preview](CONTRIBUTOR_PREVIEW.md). It installs
 the same locked dependencies and prepares an isolated local D1 database without
 providing production access.

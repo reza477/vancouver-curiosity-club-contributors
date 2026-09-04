@@ -41,10 +41,11 @@ privacy, and public-event facts.
 
 ## Access and ownership
 
-Repository access is limited to people currently contributing. Removing access
-ends future repository access but cannot erase copies a contributor already
-downloaded. The proprietary license remains in force; access alone does not
-transfer ownership or grant reuse rights.
+Repository source is publicly readable so prospective contributors can inspect
+it and prepare pull requests. Direct write access is limited to approved
+collaborators, and `main` remains maintainer-controlled. The proprietary
+license remains in force; public visibility, a fork, or collaborator access
+does not transfer ownership or grant reuse rights.
 
 Security concerns follow [SECURITY.md](SECURITY.md). Conduct concerns follow
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
