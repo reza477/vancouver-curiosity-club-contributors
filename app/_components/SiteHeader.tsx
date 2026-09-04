@@ -110,19 +110,37 @@ function NavigationLinks({
   const pathname = usePathname();
   return (
     <>
-      {navigation.map((item) =>
-        item.href.startsWith("/") ? (
+      {navigation.map((item) => {
+        const current = isCurrentNavigationPath(pathname, item.href)
+          ? "page"
+          : undefined;
+        const className =
+          item.href === "/for-organizations"
+            ? "primary-nav__link primary-nav__link--organizations"
+            : "primary-nav__link";
+
+        // The Contact page prepares a protected form instance on request.
+        // A native document navigation keeps that dynamic work independent of
+        // a client-side RSC transition that may be delayed or interrupted.
+        if (item.href === "/contact") {
+          return (
+            <a
+              aria-current={current}
+              className={className}
+              data-primary-destination={item.label.toLowerCase()}
+              href={item.href}
+              key={item.href}
+              onClick={onNavigate}
+            >
+              {item.label}
+            </a>
+          );
+        }
+
+        return item.href.startsWith("/") ? (
           <Link
-            aria-current={
-              isCurrentNavigationPath(pathname, item.href)
-                ? "page"
-                : undefined
-            }
-            className={
-              item.href === "/for-organizations"
-                ? "primary-nav__link primary-nav__link--organizations"
-                : "primary-nav__link"
-            }
+            aria-current={current}
+            className={className}
             data-primary-destination={item.label.toLowerCase()}
             href={item.href}
             key={item.href}
@@ -142,8 +160,8 @@ function NavigationLinks({
             {item.label}
             <span className="sr-only"> (opens in a new tab)</span>
           </a>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
