@@ -12,7 +12,7 @@ Club. Read it before the historical phase documents.
 - Data/media: Sites-managed D1 and R2 bindings named `DB` and `MEDIA`
 - Authentication: Sign in with ChatGPT plus server-side membership and roles
 - Event source: one-way Meetup synchronization, refreshed by the protected
-  daily GitHub Actions scheduler or an authorized organizer action; ordinary
+  manual GitHub Actions workflow or an authorized organizer action; ordinary
   visitor requests only read the last completed publication
 
 GitHub CI validates source, tests, and the built Worker. It does **not** deploy
@@ -210,14 +210,17 @@ binding names, but no credentials or secrets.
 For the exact release, rollback, and source-recovery process, see
 [docs/RELEASE_AND_ROLLBACK.md](docs/RELEASE_AND_ROLLBACK.md).
 
-### Scheduled Meetup maintenance
+### Production maintenance workflow
 
-`.github/workflows/daily-meetup-refresh.yml` is the production scheduler. It
-runs once daily at 00:17 America/Vancouver and can also be dispatched manually
-from GitHub Actions. Each request is timestamped, replay-protected, and signed
-with `DAILY_MEETUP_REFRESH_SECRET`, which must exist independently in the
-GitHub repository secret store and the Sites runtime secret store. Never put
-that value in source, an issue, a log, or a local environment template.
+`.github/workflows/daily-meetup-refresh.yml` schedules queued organizer-form
+email delivery once daily at 00:17 America/Vancouver. Meetup synchronization
+does not run on that schedule; it requires an intentional manual workflow
+dispatch. Both jobs are restricted to the canonical production repository, so
+copies in the contributor repository or forks remain inert. Each request is
+timestamped, replay-protected, and signed with
+`DAILY_MEETUP_REFRESH_SECRET`, which must exist independently in the GitHub
+repository secret store and the Sites runtime secret store. Never put that
+value in source, an issue, a log, or a local environment template.
 
 The endpoint advances exactly one two-event import slice per Worker request;
 the workflow repeats fresh signed requests until every source is current. The

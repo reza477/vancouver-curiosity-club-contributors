@@ -16,6 +16,7 @@ concurrency:
 jobs:
   form-email:
     name: Deliver queued organizer form emails
+    if: ${{ github.repository == 'reza477/vancouver-curiosity-club' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -33,7 +34,7 @@ jobs:
 
   refresh:
     name: Refresh Meetup and public event snapshots
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.repository == 'reza477/vancouver-curiosity-club' && github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

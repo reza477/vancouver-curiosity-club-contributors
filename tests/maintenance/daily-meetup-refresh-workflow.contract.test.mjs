@@ -35,6 +35,11 @@ test("daily form delivery runs off-hour while Meetup refresh requires manual dis
   const emailJob = workflow.indexOf("  form-email:");
   const meetupJob = workflow.indexOf("  refresh:");
   assert.ok(emailJob > 0 && meetupJob > emailJob);
+  assert.match(
+    workflow.slice(emailJob, meetupJob),
+    /^\s+if:\s*\$\{\{\s*github\.repository\s*==\s*['"]reza477\/vancouver-curiosity-club['"]\s*\}\}\s*$/mu,
+    "scheduled email delivery must run only in the canonical production repository",
+  );
   assert.doesNotMatch(
     workflow.slice(emailJob, meetupJob),
     /github\.event_name\s*==\s*['"]workflow_dispatch['"]/u,
@@ -42,8 +47,8 @@ test("daily form delivery runs off-hour while Meetup refresh requires manual dis
   );
   assert.match(
     workflow.slice(meetupJob),
-    /^\s+if:\s*\$\{\{\s*github\.event_name\s*==\s*['"]workflow_dispatch['"]\s*\}\}\s*$/mu,
-    "Meetup synchronization must require an intentional manual dispatch",
+    /^\s+if:\s*\$\{\{\s*github\.repository\s*==\s*['"]reza477\/vancouver-curiosity-club['"]\s*&&\s*github\.event_name\s*==\s*['"]workflow_dispatch['"]\s*\}\}\s*$/mu,
+    "Meetup synchronization must require the canonical repository and an intentional manual dispatch",
   );
 });
 
