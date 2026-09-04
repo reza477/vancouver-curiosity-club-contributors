@@ -24,6 +24,10 @@ test("Home removes repeated introductions while preserving its institutional pat
     /className="home-hero__poster-link"[\s\S]*?href=\{`\/events\/\$\{event\.slug\}`\}[\s\S]*?<EventPosterImage/u,
   );
   assert.match(source, /className="home-hero__poster-preview" aria-hidden="true"/u);
+  assert.match(
+    source,
+    /className="home-partnerships__opportunities"[\s\S]*?aria-label="Ways organizations can work with us"/u,
+  );
 });
 
 test("Home uses shared spacing and compact responsive fallbacks", async () => {
@@ -49,6 +53,19 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
     css,
     /@media \(max-width: 42rem\)[\s\S]*?\.home-partnerships\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/u,
   );
+  assert.match(
+    css,
+    /\.home-partnerships__opportunities\s*\{[^}]*list-style:\s*disc;[^}]*display:\s*grid;/su,
+  );
+  assert.match(
+    css,
+    /\.home-partnerships__opportunities li::marker\s*\{[^}]*color:\s*var\(--amber\);/su,
+  );
+  const partnershipItemRule = css.match(
+    /\.home-partnerships__opportunities li\s*\{([^}]*)\}/su,
+  )?.[1];
+  assert.ok(partnershipItemRule);
+  assert.doesNotMatch(partnershipItemRule, /border(?:-bottom)?:/u);
   assert.match(
     css,
     /\.home-hero__poster-media\s*\{[^}]*position:\s*relative;[^}]*background:\s*var\(--amber-surface\);/su,
