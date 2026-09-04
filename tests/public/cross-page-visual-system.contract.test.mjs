@@ -12,7 +12,7 @@ test("supporting routes consume one bounded public typography and spacing system
       source("app/styles/layout.css"),
       source("app/styles/components/editorial.css"),
       source("public/styles/events.css"),
-      source("app/styles/pages/event-detail.css"),
+      source("public/styles/event-detail.css"),
       source("public/styles/about.css"),
       source("public/styles/organizations.css"),
     ]);
@@ -69,7 +69,7 @@ test("supporting cards, controls, states, and responsive columns use the same sq
     source("app/styles/components/forms.css"),
     source("app/styles/components/catalog.css"),
     source("app/styles/components/editorial.css"),
-    source("app/styles/pages/event-detail.css"),
+    source("public/styles/event-detail.css"),
     source("app/styles/base.css"),
   ]);
 

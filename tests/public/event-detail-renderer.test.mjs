@@ -691,7 +691,7 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
 
   const [css, detailStyles] = await Promise.all([
     readPublicCss(),
-    readFile(new URL("app/styles/pages/event-detail.css", projectRoot), "utf8"),
+    readFile(new URL("public/styles/event-detail.css", projectRoot), "utf8"),
   ]);
   const mobileStart = detailStyles.lastIndexOf("@media (max-width: 38rem)");
   const mobileEnd = detailStyles.length;

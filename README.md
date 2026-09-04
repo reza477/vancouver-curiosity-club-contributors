@@ -1,6 +1,6 @@
 # Vancouver Curiosity Club
 
-[![Continuous integration](https://github.com/reza477/vancouver-curiosity-club/actions/workflows/ci.yml/badge.svg)](https://github.com/reza477/vancouver-curiosity-club/actions/workflows/ci.yml)
+[![Continuous integration](https://github.com/reza477/vancouver-curiosity-club-contributors/actions/workflows/ci.yml/badge.svg)](https://github.com/reza477/vancouver-curiosity-club-contributors/actions/workflows/ci.yml)
 [![Live site](https://img.shields.io/badge/live-vancouver--curiosity--club-5b35d5)](https://vancouvercuriosityclub.com)
 
 ![Vancouver Curiosity Club social preview](public/og.png)
@@ -10,6 +10,8 @@ public program, Vancouver Curiosity Club. It presents the organization, its
 mission, community programs, and a source-faithful calendar of public events.
 
 **Live website:** [vancouvercuriosityclub.com](https://vancouvercuriosityclub.com)
+
+**Contributor repository:** [github.com/reza477/vancouver-curiosity-club-contributors](https://github.com/reza477/vancouver-curiosity-club-contributors)
 
 **Current supported release:** Version 1.0
 
@@ -22,7 +24,7 @@ mission, community programs, and a source-faithful calendar of public events.
 ## Product highlights
 
 - Responsive public event discovery, month planning, club profiles, and event detail pages.
-- Protected daily Meetup synchronization with durable, fast Home and Events snapshots, local poster handling, and source-faithful event facts.
+- Protected Meetup synchronization with durable, fast Home and Events snapshots, local poster handling, and source-faithful event facts.
 - Google Calendar links plus standards-compliant public and private iCalendar feeds.
 - An authenticated organizer workspace for scheduling, publishing, content, media, imports, exports, and submissions.
 - D1-backed structured content with revision history, previews, publication safeguards, and audited changes.
@@ -66,15 +68,18 @@ Copy `.env.example` to an ignored local environment file only when organizer boo
 
 ## Collaboration workflow
 
-All changes begin on a focused branch and are proposed through a pull request
-to `main`. GitHub CI validates the source, tests, and built Worker; a maintainer
-then reviews the change before it is accepted. Merging source code never
-deploys production automatically. Only the owner or an explicitly authorized
-release maintainer can publish the reviewed revision through ChatGPT Sites.
+The source is publicly readable so prospective contributors can inspect it and
+create a fork. Collaborators may instead create a focused branch in this
+repository. Every change is proposed through a pull request to `main`. GitHub
+CI validates the source, tests, and built Worker; a maintainer then reviews the
+change before it is accepted. Merging source code never deploys production
+automatically. Only the owner or an explicitly authorized release maintainer
+can publish the reviewed revision through ChatGPT Sites.
 
-Do not push directly to `main`, share production credentials, or copy
-production D1/R2 data into a development environment. UI/UX contributors
-should begin with [the focused handoff guide](docs/UI_UX_HANDOFF.md), then read
+Public visibility does not grant reuse or publication rights beyond the terms
+in [LICENSE](LICENSE). Do not push directly to `main`, share production
+credentials, or copy production D1/R2 data into a development environment.
+UI/UX contributors should begin with [the focused handoff guide](docs/UI_UX_HANDOFF.md), then read
 [CONTRIBUTING.md](CONTRIBUTING.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Quality checks

@@ -21,6 +21,10 @@ test("daily maintenance runs organizer email delivery independently of Meetup", 
   const meetupJob = workflow.indexOf("  refresh:");
   assert.ok(emailJob > 0 && meetupJob > emailJob);
   assert.match(workflow, /Deliver queued organizer form emails/u);
+  assert.match(
+    workflow.slice(emailJob, meetupJob),
+    /github\.repository\s*==\s*['"]reza477\/vancouver-curiosity-club['"]/u,
+  );
   assert.match(workflow, /actions\/checkout@[0-9a-f]{40} # v6/u);
   assert.match(workflow, /persist-credentials: false/u);
   assert.match(workflow, /node scripts\/run-form-email-maintenance\.mjs/u);

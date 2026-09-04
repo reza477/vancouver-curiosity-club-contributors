@@ -21,15 +21,13 @@ UI/UX contributors should also read [docs/UI_UX_HANDOFF.md](docs/UI_UX_HANDOFF.m
 before changing shared components, typography, responsive behavior, or visual
 assets.
 
-An invitation to the private contributor workspace, together with an assigned
-change, authorizes the invited contributor to clone and modify a working copy
-solely to prepare and submit that contribution. It does not grant broader
-reuse, distribution, publication, or branding rights; [LICENSE](LICENSE)
-remains controlling.
+This public repository may be inspected, cloned, or forked to prepare a
+contribution. Public visibility does not grant broader reuse, distribution,
+publication, or branding rights; [LICENSE](LICENSE) remains controlling.
 
 ## Development
 
-Online contributors may use the private
+Online contributors may use the
 [GitHub Codespaces preview](docs/CONTRIBUTOR_PREVIEW.md). It supports editing,
 branching, and a live browser preview without production data or deployment
 access.

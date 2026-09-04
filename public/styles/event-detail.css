@@ -1,4 +1,5 @@
 /* Event detail route and related-event composition. */
+@layer components {
 .event-detail {
   gap: 0.3rem;
   display: grid;
@@ -281,4 +282,15 @@
     padding-right: max(1rem, env(safe-area-inset-right));
     padding-left: max(1rem, env(safe-area-inset-left));
   }
+
+  .event-detail h2 {
+    font-size: clamp(2.25rem, 10vw, 3rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .event-detail__artwork img {
+    transform: none !important;
+  }
+}
 }
