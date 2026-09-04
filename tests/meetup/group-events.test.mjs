@@ -42,6 +42,7 @@ test("parses only the exact future connection and preserves structured public co
   assert.equal(event.status, "confirmed");
   assert.equal(event.sequence, 1);
   assert.equal(event.lastModifiedUtcMs, null);
+  assert.equal(event.publicContent.attendanceMode, "in_person");
   assert.deepEqual(event.schedule, {
     endsAtUtcMs: Date.parse("2026-08-12T20:00:00-07:00"),
     kind: "timed",
@@ -89,6 +90,34 @@ test("parses only the exact future connection and preserves structured public co
   assert.match(event.publicContent.description, /1\. Arrive on time/u);
   assert.match(event.publicContent.summary, /Why come\?/u);
   assert.ok(Object.isFrozen(event.publicContent.descriptionBlocks));
+});
+
+test("preserves validated online attendance without publishing Meetup's synthetic venue", () => {
+  const state = createApolloState();
+  state[EVENT_REF].eventType = "ONLINE";
+  state["Venue:25956902"].address = "";
+  state["Venue:25956902"].name = "Online event";
+
+  const event = parseMeetupGroupEventsPage(
+    createHtml(state),
+    GROUP_SLUG,
+  ).events[0];
+
+  assert.equal(event.publicContent.attendanceMode, "online");
+  assert.equal(event.publicContent.venue, null);
+  assert.equal(event.location, null);
+});
+
+test("rejects a missing or unknown Meetup attendance type", () => {
+  for (const eventType of [undefined, "HYBRID"]) {
+    const state = createApolloState();
+    if (eventType === undefined) delete state[EVENT_REF].eventType;
+    else state[EVENT_REF].eventType = eventType;
+    assertSyncError(
+      () => parseMeetupGroupEventsPage(createHtml(state), GROUP_SLUG),
+      "calendar_invalid",
+    );
+  }
 });
 
 test("merges the exact ACTIVE and PAST/CANCELLED future connections in schedule order", () => {
@@ -1075,6 +1104,7 @@ function createApolloState({
       description:
         "## Why come?\n\nBring **curiosity**. [Buy your VIFF ticket here](https://viff.org/whats-on/princess-mononoke/).\n\n- Read together\n- Talk together\n\n1. Arrive on time\n2. Settle in gently",
       endTime: "2026-08-12T20:00:00-07:00",
+      eventType: "PHYSICAL",
       eventUrl: EVENT_URL,
       featuredEventPhoto: { __ref: `PhotoInfo:${POSTER_ID}` },
       group: { __ref: GROUP_REF },

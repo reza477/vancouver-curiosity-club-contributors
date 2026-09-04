@@ -1,0 +1,1 @@
+ALTER TABLE `meetup_event_snapshot_public_contents` ADD `attendance_mode` text;

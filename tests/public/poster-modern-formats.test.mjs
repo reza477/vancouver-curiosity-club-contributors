@@ -12,7 +12,7 @@ const posterDirectory = path.resolve("public/event-posters");
 test("every bundled event poster has dimension-matched AVIF and WebP variants", async () => {
   const names = (await readdir(posterDirectory)).sort();
   const jpegNames = names.filter((name) => name.endsWith(".jpeg"));
-  assert.equal(jpegNames.length, 141);
+  assert.equal(jpegNames.length, 144);
 
   let jpegBytes = 0;
   let modernBytes = 0;
