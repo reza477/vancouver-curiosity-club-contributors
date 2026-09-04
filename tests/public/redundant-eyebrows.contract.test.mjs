@@ -82,9 +82,18 @@ test("Clubs suppresses its page-level eyebrow without changing shared mastheads"
 });
 
 test("detail pages remove adjacent editorial repeats and retain functional labels", async () => {
-  const [eventDetail, eventPage, clubDirectory, clubEvents, footer, missionCopy] =
+  const [
+    eventDetail,
+    mobileRsvp,
+    eventPage,
+    clubDirectory,
+    clubEvents,
+    footer,
+    missionCopy,
+  ] =
     await Promise.all([
       source("app/_components/PublicEventDetailRenderer.tsx"),
+      source("app/_components/MobileStickyRsvpAction.tsx"),
       source("app/events/[slug]/page.tsx"),
       source("app/_components/ClubDirectory.tsx"),
       source("app/_components/ClubEventList.tsx"),
@@ -104,7 +113,8 @@ test("detail pages remove adjacent editorial repeats and retain functional label
   assert.match(eventDetail, /<dt>When<\/dt>/u);
   assert.match(eventDetail, /<dt>Location<\/dt>/u);
   assert.match(eventDetail, /<dt>Capacity<\/dt>/u);
-  assert.match(eventDetail, /RSVP on Meetup/u);
+  assert.match(eventDetail, /<MobileStickyRsvpAction/u);
+  assert.match(mobileRsvp, /RSVP on Meetup/u);
   assert.match(eventDetail, /<AddToCalendar/u);
   assert.match(eventDetail, /\{event\.club\.name\}/u);
 
