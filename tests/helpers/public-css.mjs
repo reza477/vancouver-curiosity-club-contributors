@@ -13,7 +13,6 @@ export const publicCssModulePaths = Object.freeze([
   "app/styles/components/event-card.css",
   "app/styles/components/forms.css",
   "app/styles/pages/home.css",
-  "app/styles/pages/event-detail.css",
   "app/styles/motion.css",
   "app/styles/components/responsive-overrides.css",
 ]);
@@ -24,11 +23,13 @@ const publicRouteCssPaths = Object.freeze({
     "public/styles/calendar.css",
     "public/styles/events.css",
   ]),
+  eventDetail: "public/styles/event-detail.css",
   organizations: "public/styles/organizations.css",
 });
 
 const publicSupplementalCssPaths = Object.freeze([
   "public/styles/calendar.css",
+  "public/styles/event-detail.css",
 ]);
 
 export async function readPublicCss() {
