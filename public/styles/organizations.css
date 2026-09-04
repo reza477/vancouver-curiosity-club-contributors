@@ -77,7 +77,7 @@
 }
 
 .organizations-hero__proof .organizations-activity-card__body {
-  grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+  grid-template-columns: minmax(12rem, 0.82fr) minmax(0, 1.18fr);
   align-items: end;
   gap: 0.65rem 1.25rem;
   display: grid;
