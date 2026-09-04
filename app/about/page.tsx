@@ -130,10 +130,12 @@ export default async function AboutPage() {
       <div
         className="about-artwork-strip"
         aria-label="Selected event posters"
-        data-artwork-reveal="about-artwork-strip"
       >
         {ABOUT_POSTERS.map((poster) => (
-          <figure key={poster.file}>
+          <figure
+            data-artwork-reveal="about-artwork-strip-poster"
+            key={poster.file}
+          >
             <picture>
               <source
                 srcSet={`/event-posters/${poster.file}-480.avif 480w, /event-posters/${poster.file}-960.avif ${poster.mediumWidth}w`}

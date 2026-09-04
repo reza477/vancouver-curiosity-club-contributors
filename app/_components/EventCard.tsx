@@ -59,6 +59,8 @@ export function EventCard({
   return (
     <article
       className={`event-card${compact ? " event-card--compact" : ""}${programStreamAccents ? " event-card--program-stream-accent" : ""}`}
+      data-artwork-reveal="event-card"
+      data-artwork-reveal-mode="children"
       data-event-lane={event.lane?.slug}
       data-program-stream={programStreamAccents ? streamVisual.id : undefined}
       data-event-status={event.status}
