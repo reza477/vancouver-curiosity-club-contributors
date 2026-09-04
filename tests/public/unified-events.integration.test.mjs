@@ -1200,7 +1200,11 @@ test("all exact cross-post aliases stay out of public projections while the cano
     "https://www.meetup.com/vancouver-meetup-group/events/316248155/",
     "https://www.meetup.com/vancouver-meetup-group/events/316263548/",
     "https://www.meetup.com/vancouver-meetup-group/events/316263813/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316409377/",
     "https://www.meetup.com/vancouver-meetup-group/events/316263724/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316409021/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316263936/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316264010/",
     "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/",
   ];
   assert.deepEqual(MEETUP_EVENT_ALIAS_URLS, aliasUrls);

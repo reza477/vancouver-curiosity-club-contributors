@@ -77,8 +77,29 @@ test("artwork motion uses one bounded, switchable foundation", async () => {
     2,
     "one shared reveal observer and one specialized stage observer are sufficient",
   );
-  assert.match(controller, /const revealObserver = new IntersectionObserver/u);
+  assert.match(controller, /const observer = new IntersectionObserver/u);
   assert.match(controller, /const stageObserver = new IntersectionObserver/u);
+  assert.match(controller, /const pathname = usePathname\(\)/u);
+  assert.match(
+    controller,
+    /useEffect\(\(\) => \{[\s\S]*?\}, \[pathname\]\);/u,
+    "public artwork motion must initialize again after client-side navigation",
+  );
+  assert.match(
+    controller,
+    /observer\.unobserve\(element\);\s*void revealWhenReady\(element\);/u,
+    "each generic reveal must be retired before asynchronous image decoding begins",
+  );
+  assert.match(
+    controller,
+    /const showRevealsWithoutMotion = \(\) => \{[\s\S]*?revealObserver\?\.disconnect\(\);[\s\S]*?element\.dataset\.artworkRevealState = "visible";/u,
+    "enabling reduced motion must make pending artwork immediately static and visible",
+  );
+  assert.match(
+    controller,
+    /reducedMotion\.addEventListener\("change", showRevealsWithoutMotion\)[\s\S]*?reducedMotion\.removeEventListener\("change", showRevealsWithoutMotion\)/u,
+    "the reduced-motion listener must be cleaned up",
+  );
 });
 
 test("the poster stage decodes before activation and never hijacks scrolling", async () => {
@@ -163,6 +184,11 @@ test("the poster stage decodes before activation and never hijacks scrolling", a
   );
   assert.match(controller, /await decodeDescendantImages\(element\)/u);
   assert.match(controller, /poster\.dataset\.artworkImageReady = "true"/u);
+  assert.match(
+    controller,
+    /const HERO_POSTER_SELECTOR = "\.home-hero__poster"/u,
+    "the approved homepage hero must retain its dedicated decoded-image hook",
+  );
 
   assert.match(controller, /addEventListener\("focusin", handler\)/u);
   assert.doesNotMatch(

@@ -373,6 +373,104 @@
   display: flex;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-facts"][data-artwork-reveal-state="pending"]
+    > li {
+    transform: translateY(var(--artwork-motion-distance-mobile));
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-facts"][data-artwork-reveal-state="visible"]
+    > li {
+    transform: translateY(0);
+    transition: transform var(--artwork-motion-artwork)
+      var(--artwork-motion-easing);
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-facts"][data-artwork-reveal-state="visible"]
+    > li:nth-child(2) {
+    transition-delay: var(--artwork-motion-stagger);
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-facts"][data-artwork-reveal-state="visible"]
+    > li:nth-child(3) {
+    transition-delay: calc(2 * var(--artwork-motion-stagger));
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="pending"]
+    > article {
+    transform: translateX(var(--artwork-motion-distance));
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="pending"]
+    > article:nth-child(even) {
+    transform: translateX(calc(-1 * var(--artwork-motion-distance)));
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="visible"]
+    > article {
+    transform: translateX(0);
+    transition: transform var(--artwork-motion-artwork)
+      var(--artwork-motion-easing);
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="visible"]
+    > article:nth-child(2) {
+    transition-delay: var(--artwork-motion-stagger);
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="visible"]
+    > article:nth-child(3) {
+    transition-delay: calc(2 * var(--artwork-motion-stagger));
+  }
+
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="visible"]
+    > article:nth-child(4) {
+    transition-delay: calc(3 * var(--artwork-motion-stagger));
+  }
+
+  .organizations-standards nav a {
+    transition:
+      background-color var(--artwork-motion-interaction) var(--artwork-motion-easing),
+      color var(--artwork-motion-interaction) var(--artwork-motion-easing),
+      transform var(--artwork-motion-interaction) var(--artwork-motion-easing);
+  }
+
+  .organizations-standards nav a:is(:hover, :focus-visible) {
+    background: var(--ink);
+    color: var(--paper);
+    transform: translateX(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-facts"]
+    > li,
+  html[data-artwork-motion-ready="true"]
+    [data-artwork-reveal="organization-pathways"]
+    > article {
+    animation: none !important;
+    clip-path: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .organizations-standards nav a {
+    transform: none;
+    transition: none;
+  }
+}
+
 .organizations-contact {
   background: var(--coral-surface);
   align-items: center;

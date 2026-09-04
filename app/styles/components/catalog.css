@@ -156,6 +156,7 @@
 
 .club-directory__artwork img {
   aspect-ratio: 16 / 9;
+  height: auto;
   object-fit: cover;
   width: 100%;
   display: block;
@@ -248,14 +249,6 @@
   border-radius: 0;
   display: block;
   overflow: hidden;
-}
-
-.club-directory--clubs .club-directory__artwork img {
-  transition: transform 0.24s;
-}
-
-.club-directory--clubs .club-directory__card:hover .club-directory__artwork img, .club-directory--clubs .club-directory__card:focus-within .club-directory__artwork img {
-  transform: scale(1.012);
 }
 
 .club-directory__artwork-fallback {
