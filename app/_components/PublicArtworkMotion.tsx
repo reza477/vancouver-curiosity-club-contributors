@@ -6,6 +6,11 @@ import {
   PUBLIC_ARTWORK_MOTION,
   PUBLIC_ARTWORK_MOTION_ENABLED,
 } from "@/lib/public-artwork-motion";
+import {
+  rememberStageReveal,
+  selectStableStageIndex,
+  shouldQueueStageActivation,
+} from "@/lib/public-artwork-stage";
 
 const REVEAL_SELECTOR = "[data-artwork-reveal]";
 const STAGE_SELECTOR = "[data-living-poster-stage]";
@@ -163,10 +168,11 @@ function enhanceStage(
   let disposed = false;
   let transitionTimer: number | null = null;
   let queuedIndex: number | null = null;
+  let transitionTargetIndex: number | null = null;
   let transitioning = false;
 
   stage.dataset.stageEnhanced = "true";
-  animatedArticles.add(articles[activeIndex]);
+  rememberStageReveal(animatedArticles, articles[activeIndex]);
   setStageState(articles, activeIndex, null);
 
   const processQueuedActivation = async () => {
@@ -186,6 +192,7 @@ function enhanceStage(
     }
 
     transitioning = true;
+    transitionTargetIndex = requestedIndex;
     const operationGeneration = activationGeneration;
     const image = incoming?.querySelector<HTMLImageElement>("figure img");
     if (image && (!image.complete || image.naturalWidth === 0)) {
@@ -193,6 +200,7 @@ function enhanceStage(
       if (disposed || operationGeneration !== activationGeneration) return;
       if (!ready) {
         transitioning = false;
+        transitionTargetIndex = null;
         void processQueuedActivation();
         return;
       }
@@ -201,6 +209,7 @@ function enhanceStage(
     if (disposed || operationGeneration !== activationGeneration) return;
     if (queuedIndex !== null && queuedIndex !== requestedIndex) {
       transitioning = false;
+      transitionTargetIndex = null;
       void processQueuedActivation();
       return;
     }
@@ -209,12 +218,13 @@ function enhanceStage(
     if (animatedArticles.has(incoming)) {
       activeIndex = requestedIndex;
       transitioning = false;
+      transitionTargetIndex = null;
       setStageState(articles, activeIndex, null);
       void processQueuedActivation();
       return;
     }
 
-    animatedArticles.add(incoming);
+    rememberStageReveal(animatedArticles, incoming);
     const outgoingIndex = activeIndex;
     setStageState(articles, outgoingIndex, requestedIndex);
     transitionTimer = window.setTimeout(() => {
@@ -222,6 +232,7 @@ function enhanceStage(
       if (disposed || operationGeneration !== activationGeneration) return;
       activeIndex = requestedIndex;
       transitioning = false;
+      transitionTargetIndex = null;
       setStageState(articles, activeIndex, null);
       void processQueuedActivation();
     }, PUBLIC_ARTWORK_MOTION.artworkDurationMs);
@@ -229,8 +240,15 @@ function enhanceStage(
 
   const activate = (requestedIndex: number) => {
     if (disposed || !articles[requestedIndex]) return;
-    if (!transitioning && requestedIndex === activeIndex) return;
-    if (queuedIndex === requestedIndex) return;
+    if (
+      !shouldQueueStageActivation({
+        requestedIndex,
+        activeIndex,
+        queuedIndex,
+        transitionTargetIndex,
+      })
+    )
+      return;
     queuedIndex = requestedIndex;
     void processQueuedActivation();
   };
@@ -243,29 +261,36 @@ function enhanceStage(
       void activate(index);
     };
     summary.addEventListener("focusin", handler);
-    summary.addEventListener("pointerenter", handler);
     focusHandlers.push({ element: summary, handler });
   }
 
-  const intersectingSummaries = new Map<Element, IntersectionObserverEntry>();
+  const intersectingSummaries = new Set<HTMLElement>();
   const stageObserver = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
+        const summary = entry.target as HTMLElement;
         if (entry.isIntersecting) {
-          intersectingSummaries.set(entry.target, entry);
+          intersectingSummaries.add(summary);
         } else {
-          intersectingSummaries.delete(entry.target);
+          intersectingSummaries.delete(summary);
         }
       }
 
-      const strongest = Array.from(intersectingSummaries.values())
-        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-      if (!strongest) return;
-      const article = (strongest.target as HTMLElement).closest<HTMLElement>(
-        "[data-stage-event-index]",
+      const candidates = Array.from(intersectingSummaries).flatMap((summary) => {
+        const article = summary.closest<HTMLElement>(
+          "[data-stage-event-index]",
+        );
+        const index = Number(article?.dataset.stageEventIndex);
+        if (!Number.isInteger(index)) return [];
+        const bounds = summary.getBoundingClientRect();
+        return [{ index, centerY: bounds.top + bounds.height / 2 }];
+      });
+      const nextIndex = selectStableStageIndex(
+        candidates,
+        activeIndex,
+        window.innerHeight * 0.4,
       );
-      const index = Number(article?.dataset.stageEventIndex);
-      if (Number.isInteger(index)) void activate(index);
+      if (nextIndex !== null) void activate(nextIndex);
     },
     { rootMargin: "-28% 0px -48% 0px", threshold: [0.08, 0.35, 0.7] },
   );
@@ -278,12 +303,12 @@ function enhanceStage(
     disposed = true;
     activationGeneration += 1;
     queuedIndex = null;
+    transitionTargetIndex = null;
     transitioning = false;
     stageObserver.disconnect();
     intersectingSummaries.clear();
     for (const { element, handler } of focusHandlers) {
       element.removeEventListener("focusin", handler);
-      element.removeEventListener("pointerenter", handler);
     }
     if (transitionTimer !== null) window.clearTimeout(transitionTimer);
     transitionTimer = null;

@@ -109,6 +109,11 @@ test("the poster stage decodes before activation and never hijacks scrolling", a
   assert.match(controller, /activationGeneration/u);
   assert.match(controller, /disposed \|\| operationGeneration !== activationGeneration/u);
   assert.match(controller, /queuedIndex = requestedIndex/u);
+  assert.match(
+    controller,
+    /import\s*\{[\s\S]*?rememberStageReveal,[\s\S]*?selectStableStageIndex,[\s\S]*?shouldQueueStageActivation,[\s\S]*?\}\s*from "@\/lib\/public-artwork-stage";/u,
+    "the controller must use the shared stable-stage helpers",
+  );
   assert.match(controller, /const animatedStageArticles = new WeakSet<HTMLElement>\(\)/u);
   assert.match(
     controller,
@@ -120,43 +125,54 @@ test("the poster stage decodes before activation and never hijacks scrolling", a
     /if \(animatedArticles\.has\(incoming\)\)\s*\{[\s\S]*?activeIndex = requestedIndex;[\s\S]*?setStageState\(articles, activeIndex, null\);[\s\S]*?return;/u,
     "a previously revealed poster must become active without re-entering the animated incoming state",
   );
-  const rememberRevealIndex = activate.indexOf("animatedArticles.add(incoming)");
+  const rememberRevealIndex = activate.indexOf(
+    "rememberStageReveal(animatedArticles, incoming)",
+  );
   assert.ok(
     rememberRevealIndex >= 0 && rememberRevealIndex < activationIndex,
     "each poster must be remembered before its one incoming animation begins",
   );
   assert.match(
-    controller,
-    /if \(!transitioning && requestedIndex === activeIndex\) return;/u,
-    "the active summary must not enqueue itself again during small scroll updates",
+    activate,
+    /transitionTargetIndex = requestedIndex;/u,
+    "the in-flight target must be recorded before image decoding and animation",
+  );
+  assert.match(
+    activate,
+    /shouldQueueStageActivation\(\{[\s\S]*?requestedIndex,[\s\S]*?activeIndex,[\s\S]*?queuedIndex,[\s\S]*?transitionTargetIndex,[\s\S]*?\}\)/u,
+    "active, queued, and in-flight targets must be deduplicated together",
   );
   assert.match(
     controller,
-    /if \(queuedIndex === requestedIndex\) return;/u,
-    "duplicate observer notifications must not enqueue the same summary twice",
+    /const intersectingSummaries = new Set<HTMLElement>\(\)/u,
   );
   assert.match(
     controller,
-    /const intersectingSummaries = new Map<Element, IntersectionObserverEntry>\(\)/u,
+    /if \(entry\.isIntersecting\)\s*\{[\s\S]*?intersectingSummaries\.add\(summary\);[\s\S]*?\}\s*else\s*\{[\s\S]*?intersectingSummaries\.delete\(summary\);/u,
+    "scroll selection must retain the currently intersecting summary elements",
   );
   assert.match(
     controller,
-    /if \(entry\.isIntersecting\)\s*\{[\s\S]*?intersectingSummaries\.set\(entry\.target, entry\);[\s\S]*?\}\s*else\s*\{[\s\S]*?intersectingSummaries\.delete\(entry\.target\);/u,
-    "scroll selection must retain every currently intersecting summary instead of considering only threshold-crossing entries",
+    /Array\.from\(intersectingSummaries\)\.flatMap\([\s\S]*?summary\.getBoundingClientRect\(\)[\s\S]*?centerY:[\s\S]*?selectStableStageIndex\(/u,
+    "every callback must choose from current element geometry with stable hysteresis",
   );
-  assert.match(
+  assert.doesNotMatch(
     controller,
-    /Array\.from\(intersectingSummaries\.values\(\)\)[\s\S]*?intersectionRatio/u,
-    "the active poster must be chosen from the complete current intersection set",
+    /intersectingSummaries\.values\(\)|intersectionRatio/u,
+    "stored IntersectionObserver ratios become stale and must not drive activation",
   );
   assert.match(controller, /await decodeDescendantImages\(element\)/u);
   assert.match(controller, /poster\.dataset\.artworkImageReady = "true"/u);
 
   assert.match(controller, /addEventListener\("focusin", handler\)/u);
-  assert.match(controller, /addEventListener\("pointerenter", handler\)/u);
+  assert.doesNotMatch(
+    controller,
+    /(?:add|remove)EventListener\("pointerenter", handler\)/u,
+    "scrolling content beneath a stationary pointer must not activate a poster",
+  );
   assert.match(
     controller,
-    /const stageObserver = new IntersectionObserver\([\s\S]*?void activate\(index\)/u,
+    /const stageObserver = new IntersectionObserver\([\s\S]*?selectStableStageIndex\([\s\S]*?void activate\(nextIndex\)/u,
   );
   assert.doesNotMatch(
     controller,
@@ -172,6 +188,21 @@ test("the poster stage decodes before activation and never hijacks scrolling", a
   const publicMotionSources = `${controller}\n${home}\n${homeCss}\n${motionCss}`;
   assert.doesNotMatch(publicMotionSources, /\bautoplay\b|scroll-snap|transition\s*:\s*all\b/iu);
   assert.doesNotMatch(`${homeCss}\n${baseCss}`, /home-section-enter/u);
+  assert.doesNotMatch(
+    motionCss,
+    /\.home-work-card__body\{[^}]*transition\s*:/u,
+    "the persistent active body must not animate again on every selection change",
+  );
+  assert.match(
+    motionCss,
+    /\.home-work-card\[data-stage-state="incoming"\] \.home-work-card__body\{animation:home-work-summary-activate/u,
+    "summary motion must be limited to the first-time incoming state",
+  );
+  assert.match(
+    motionCss,
+    /\.home-work-card\[data-stage-state="incoming"\] \.home-work-card__body::before\{animation:home-work-summary-rule/u,
+    "the summary accent rule must animate only with the first-time incoming state",
+  );
 });
 
 test("the stage has a static default and bounded wide-screen enhancement", async () => {

@@ -15,10 +15,14 @@ html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="visible"]{cli
 .home-work-card[data-stage-state="incoming"] .home-work-card__poster-link::after{animation:var(--artwork-motion-artwork) var(--artwork-motion-easing) both artwork-colour-mask;visibility:visible;}
 .home-work-card__poster-link figure{border:0;}
 .home-work-card:first-child .home-work-card__media{aspect-ratio:16 / 9;}
-.home-work-card__body{border-block:1px solid var(--ink);background:var(--paper);grid-column:2;align-content:center;min-height:17rem;padding:clamp(1.25rem,2.5vw,2rem);position:relative;transition:background-color var(--artwork-motion-interaction) var(--artwork-motion-easing),transform var(--artwork-motion-interaction) var(--artwork-motion-easing);}
-.home-work-card__body::before{content:"";background:var(--program-stream-accent,var(--ink));width:0.28rem;position:absolute;inset-block:1rem;left:0;transform:scaleY(0.48);transform-origin:top;transition:transform var(--artwork-motion-interaction) var(--artwork-motion-easing);}
+.home-work-card__body{border-block:1px solid var(--ink);background:var(--paper);grid-column:2;align-content:center;min-height:17rem;padding:clamp(1.25rem,2.5vw,2rem);position:relative;}
+.home-work-card__body::before{content:"";background:var(--program-stream-accent,var(--ink));width:0.28rem;position:absolute;inset-block:1rem;left:0;transform:scaleY(0.48);transform-origin:top;}
 .home-work-card__body[data-stage-active="true"]{background:var(--amber-surface);transform:translateX(-5px);}
 .home-work-card__body[data-stage-active="true"]::before,.home-work-card__body:is(:hover,:focus-within)::before{transform:scaleY(1);}
+.home-work-card[data-stage-state="incoming"] .home-work-card__body{animation:home-work-summary-activate var(--artwork-motion-interaction) var(--artwork-motion-easing) both;}
+.home-work-card[data-stage-state="incoming"] .home-work-card__body::before{animation:home-work-summary-rule var(--artwork-motion-interaction) var(--artwork-motion-easing) both;}
+@keyframes home-work-summary-activate{from{background:var(--paper);transform:translateX(0)}to{background:var(--amber-surface);transform:translateX(-5px)}}
+@keyframes home-work-summary-rule{from{transform:scaleY(0.48)}to{transform:scaleY(1)}}
 .home-work-card:nth-child(1) .home-work-card__body{grid-row:1;}
 .home-work-card:nth-child(2) .home-work-card__body{grid-row:2;}
 .home-work-card:nth-child(3) .home-work-card__body{grid-row:3;}
