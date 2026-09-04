@@ -261,7 +261,7 @@
   padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
 }
 
-.attending-note, .home-invitation, .home-community, .about-feel, .about-audience, .about-solo, .about-closing {
+.attending-note, .home-invitation, .about-feel, .about-audience, .about-solo, .about-closing {
   padding: var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-right)) var(--public-section-space) max(var(--public-gutter), env(safe-area-inset-left));
   gap: clamp(1.5rem, 5vw, 5rem);
 }

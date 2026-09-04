@@ -96,8 +96,8 @@ test("desktop event details place the primary RSVP and essentials beside the pos
   );
 });
 
-test("the near-title RSVP becomes the mobile sticky action without a duplicate", async () => {
-  const [markup, css, calendarSource] = await Promise.all([
+test("the near-title RSVP becomes sticky only after its mobile trigger leaves view", async () => {
+  const [markup, css, calendarSource, stickyActionSource] = await Promise.all([
     Promise.resolve(
       renderToStaticMarkup(
         createElement(PublicEventDetailRenderer, {
@@ -112,6 +112,10 @@ test("the near-title RSVP becomes the mobile sticky action without a duplicate",
     readFile(new URL("app/styles/pages/event-detail.css", projectRoot), "utf8"),
     readFile(
       new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
+      "utf8",
+    ),
+    readFile(
+      new URL("app/_components/MobileStickyRsvpAction.tsx", projectRoot),
       "utf8",
     ),
   ]);
@@ -136,10 +140,20 @@ test("the near-title RSVP becomes the mobile sticky action without a duplicate",
   const mobileStart = css.lastIndexOf("@media (max-width: 38rem)");
   const mobileEnd = css.length;
   const mobileStyles = css.slice(mobileStart, mobileEnd);
-  const stickyRule = mobileStyles.match(
+  const inFlowRule = mobileStyles.match(
     /\.event-detail__summary\s*>\s*\.primary-action\s*\{([^}]*)\}/su,
   )?.[1] ?? "";
+  assert.doesNotMatch(inFlowRule, /position:\s*fixed;/u);
+  const stickyRule = mobileStyles.match(
+    /\.event-detail__summary\s*>\s*\.primary-action\[data-mobile-sticky="true"\]\s*\{([^}]*)\}/su,
+  )?.[1] ?? "";
   assert.match(stickyRule, /position:\s*fixed;/u);
-  assert.match(stickyRule, /display:\s*flex;/u);
-  assert.match(stickyRule, /min-height:\s*3\.25rem;/u, "the same early-focus RSVP must become sticky and comfortably tappable");
+  assert.match(inFlowRule, /display:\s*flex;/u);
+  assert.match(inFlowRule, /min-height:\s*3\.25rem;/u, "the same early-focus RSVP must remain comfortably tappable");
+  assert.match(stickyActionSource, /new IntersectionObserver/u);
+  assert.match(
+    stickyActionSource,
+    /setSticky\(!entry\.isIntersecting && entry\.boundingClientRect\.top < 0\)/u,
+    "the action must not cover essentials before its in-flow position scrolls away",
+  );
 });

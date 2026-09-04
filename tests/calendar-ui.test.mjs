@@ -1059,7 +1059,7 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
   assert.match(css, /\.wordmark-mark\s*\{[\s\S]*url\("\/icon\.png"\)/);
   assert.match(
     css,
-    /@media \(max-width: 38rem\)[\s\S]*\.wordmark-mark\s*\{[\s\S]*display:\s*block/,
+    /@media \(max-width: 62rem\)[\s\S]*\.wordmark-mark\s*\{[\s\S]*display:\s*block/,
   );
 });
 
@@ -1131,7 +1131,8 @@ test("the exact five primary destinations stay ordered and map related routes ac
   assert.match(css, /@media \(max-width: 70rem\)/u);
   assert.match(
     css,
-    /@media \(max-width: 70rem\)[\s\S]*?\.primary-nav\s*\{[^}]*width:\s*100%;/u,
+    /@media \(max-width: 62rem\)[\s\S]*?\.site-menu-toggle\s*\{[^}]*display:\s*inline-flex;/u,
+    "tablet headers must use the same compact menu instead of a second navigation row",
   );
 });
 

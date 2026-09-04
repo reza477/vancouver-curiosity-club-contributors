@@ -104,7 +104,12 @@ export function EventsPageRenderer({
             </Link>
           </nav>
 
-          <form action="/events" className="events-filter-form" method="get">
+          <form
+            action="/events"
+            className="events-filter-form"
+            key={`${activeView}:${activeLaneSlug ?? "all"}:${activeClubSlug ?? "all"}:${calendarMonth}`}
+            method="get"
+          >
             {activeView === "calendar" ? (
               <input name="view" type="hidden" value="calendar" />
             ) : null}
