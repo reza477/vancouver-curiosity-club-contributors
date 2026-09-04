@@ -3,7 +3,10 @@ import test from "node:test";
 
 import postcss from "postcss";
 
-import { readPublicCss } from "../helpers/public-css.mjs";
+import {
+  readPublicCss,
+  readPublicRouteCss,
+} from "../helpers/public-css.mjs";
 
 test("event polish adds lane warmth and print shadows without recropping posters", async () => {
   const root = postcss.parse(await readPublicCss());
@@ -91,6 +94,31 @@ test("arrow and primary-action movement exists only for visitors who allow motio
     ),
     "the public stylesheet must retain an explicit reduced-motion boundary",
   );
+});
+
+test("public route motion never uses an unbounded transition", async () => {
+  const cssSources = await Promise.all([
+    readPublicCss(),
+    readPublicRouteCss("about"),
+    readPublicRouteCss("organizations"),
+    readPublicRouteCss("events"),
+    readPublicRouteCss("eventDetail"),
+  ]);
+
+  for (const css of cssSources) {
+    const root = postcss.parse(css);
+    root.walkDecls((declaration) => {
+      if (declaration.prop === "transition") {
+        assert.doesNotMatch(declaration.value, /(?:^|,)\s*all(?:\s|$)/u);
+      }
+      if (declaration.prop === "transition-property") {
+        const properties = declaration.value
+          .split(",")
+          .map((property) => property.trim());
+        assert.ok(!properties.includes("all"));
+      }
+    });
+  }
 });
 
 function lastDeclaration(root, selector, property) {

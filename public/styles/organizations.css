@@ -373,6 +373,28 @@
   display: flex;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .organizations-standards nav a {
+    transition:
+      background-color var(--artwork-motion-interaction) var(--artwork-motion-easing),
+      color var(--artwork-motion-interaction) var(--artwork-motion-easing),
+      transform var(--artwork-motion-interaction) var(--artwork-motion-easing);
+  }
+
+  .organizations-standards nav a:is(:hover, :focus-visible) {
+    background: var(--ink);
+    color: var(--paper);
+    transform: translateX(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .organizations-standards nav a {
+    transform: none;
+    transition: none;
+  }
+}
+
 .organizations-contact {
   background: var(--coral-surface);
   align-items: center;

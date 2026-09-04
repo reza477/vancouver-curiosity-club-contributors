@@ -292,15 +292,18 @@
   min-height: 0;
 }
 
-.event-card, .home-hero__poster, .club-directory__card, .lane-note {
-  transition: background-color 0.18s, border-color 0.18s, transform 0.18s;
-}
-
-.event-card:hover, .event-card:focus-within, .home-hero__poster:hover, .home-hero__poster:focus-within, .club-directory__card:hover, .club-directory__card:focus-within {
-  transform: translateY(-0.18rem);
-}
-
 @media (prefers-reduced-motion: no-preference) {
+  .event-card, .home-hero__poster, .club-directory__card, .lane-note {
+    transition:
+      background-color var(--artwork-motion-interaction) var(--artwork-motion-easing),
+      border-color var(--artwork-motion-interaction) var(--artwork-motion-easing),
+      transform var(--artwork-motion-interaction) var(--artwork-motion-easing);
+  }
+
+  .event-card:hover, .event-card:focus-within, .home-hero__poster:hover, .home-hero__poster:focus-within, .club-directory__card:hover, .club-directory__card:focus-within {
+    transform: translateY(-0.18rem);
+  }
+
   .primary-action:hover, .primary-action:focus-visible {
     box-shadow: 0.25rem 0.25rem 0 var(--ink);
     transform: translateY(-1px);
@@ -309,5 +312,12 @@
   .primary-action:active {
     box-shadow: none;
     transform: translateY(1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .event-card, .home-hero__poster, .club-directory__card, .lane-note {
+    transform: none;
+    transition: none;
   }
 }

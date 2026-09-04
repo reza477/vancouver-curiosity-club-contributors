@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 import {
   PUBLIC_ARTWORK_MOTION,
@@ -11,12 +12,15 @@ import {
   selectStableStageIndex,
   shouldQueueStageActivation,
 } from "@/lib/public-artwork-stage";
+import { rememberArtworkReveal } from "@/lib/public-artwork-reveal";
 
 const REVEAL_SELECTOR = "[data-artwork-reveal]";
 const STAGE_SELECTOR = "[data-living-poster-stage]";
 const HERO_POSTER_SELECTOR = ".home-hero__poster";
 
 export function PublicArtworkMotion() {
+  const pathname = usePathname();
+
   useEffect(() => {
     if (!PUBLIC_ARTWORK_MOTION_ENABLED) return undefined;
 
@@ -29,7 +33,7 @@ export function PublicArtworkMotion() {
       window.clearTimeout(startTimer);
       cleanup();
     };
-  }, []);
+  }, [pathname]);
 
   return null;
 }
@@ -47,6 +51,8 @@ function initializeArtworkMotion(): () => void {
   const revealElements = Array.from(
     document.querySelectorAll<HTMLElement>(REVEAL_SELECTOR),
   );
+  const revealedElements = new WeakSet<HTMLElement>();
+  let revealObserver: IntersectionObserver | null = null;
   if (!reducedMotion.matches && revealElements.length > 0) {
     const revealWhenReady = async (element: HTMLElement) => {
       const operationGeneration = lifecycleGeneration;
@@ -54,17 +60,19 @@ function initializeArtworkMotion(): () => void {
       if (disposed || operationGeneration !== lifecycleGeneration) return;
       element.dataset.artworkRevealState = "visible";
     };
-    const revealObserver = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
           const element = entry.target as HTMLElement;
-          revealObserver.unobserve(element);
+          if (!rememberArtworkReveal(revealedElements, element)) continue;
+          observer.unobserve(element);
           void revealWhenReady(element);
         }
       },
       { rootMargin: "0px 0px -12% 0px", threshold: 0.08 },
     );
+    revealObserver = observer;
 
     for (const element of revealElements) {
       const bounds = element.getBoundingClientRect();
@@ -74,11 +82,22 @@ function initializeArtworkMotion(): () => void {
         ? "visible"
         : "pending";
       if (element.dataset.artworkRevealState === "pending") {
-        revealObserver.observe(element);
+        observer.observe(element);
       }
     }
-    cleanups.push(() => revealObserver.disconnect());
   }
+  const showRevealsWithoutMotion = () => {
+    if (!reducedMotion.matches) return;
+    revealObserver?.disconnect();
+    for (const element of revealElements) {
+      element.dataset.artworkRevealState = "visible";
+    }
+  };
+  reducedMotion.addEventListener("change", showRevealsWithoutMotion);
+  cleanups.push(() => {
+    reducedMotion.removeEventListener("change", showRevealsWithoutMotion);
+    revealObserver?.disconnect();
+  });
 
   const heroPosters = Array.from(
     document.querySelectorAll<HTMLElement>(HERO_POSTER_SELECTOR),
@@ -94,7 +113,9 @@ function initializeArtworkMotion(): () => void {
     });
   }
   cleanups.push(() => {
-    for (const poster of heroPosters) delete poster.dataset.artworkImageReady;
+    for (const poster of heroPosters) {
+      delete poster.dataset.artworkImageReady;
+    }
   });
 
   const stages = Array.from(
