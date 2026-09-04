@@ -10,8 +10,9 @@ const masterPath = resolve(
 );
 const masterArtwork = await readFile(masterPath);
 const deepNavy = Object.freeze({ b: 51, g: 28, r: 19 });
+const white = Object.freeze({ b: 255, g: 255, r: 255 });
 const normalizedMaster = await sharp(masterArtwork, { failOn: "warning" })
-  .trim({ background: "#ffffff", threshold: 12 })
+  .flatten({ background: white })
   .png({ compressionLevel: 9, palette: false })
   .toBuffer();
 
@@ -35,7 +36,7 @@ await Promise.all(
 const maskableMark = await renderMark(400);
 await sharp({
   create: {
-    background: { ...deepNavy, alpha: 1 },
+    background: { ...white, alpha: 1 },
     channels: 4,
     height: 512,
     width: 512,
@@ -89,7 +90,11 @@ await sharp({
 async function renderMark(size) {
   const radius = Math.max(2, Math.round(size * 0.145));
   const resized = await sharp(normalizedMaster)
-    .resize(size, size, { fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .resize(size, size, {
+      background: white,
+      fit: "contain",
+      kernel: sharp.kernel.lanczos3,
+    })
     .ensureAlpha()
     .png({ compressionLevel: 9, palette: false })
     .toBuffer();

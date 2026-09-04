@@ -91,8 +91,8 @@ test("preserves the canonical raster master outside the public build surface", a
   assert.equal(bytes.readUInt32BE(20), 1_254, "master height");
   assert.equal(
     createHash("sha256").update(bytes).digest("hex"),
-    "beabc5d3ad3cbc992e6bec6e46baf842a88e9cc8d24fe5c56a3993e9015c0ac0",
-    "the canonical master must remain the approved open-circle artwork",
+    "679b1693a079258e9263cb37e8feb04896cd6779ad1b87b10d81a3c0579cea1e",
+    "the canonical master must remain the approved magnet-C artwork",
   );
   await assert.rejects(
     stat(new URL("public/brand-icon-master.png", projectRoot)),
@@ -108,19 +108,21 @@ test("the deterministic generator reads the canonical PNG master", async () => {
   );
   assert.match(generator, /brand-icon-master\.png/u);
   assert.doesNotMatch(generator, /brand-icon-master\.svg/u);
+  assert.match(generator, /\.flatten\(\{ background: white \}\)/u);
+  assert.doesNotMatch(generator, /\.trim\(/u);
 });
 
 test("every shipped brand image matches the deterministic generated artifact", async () => {
   const expectedHashes = new Map([
-    ["public/favicon-16.png", "5f43fee8cfc19bd8b5291b003a58a45590eea29fc586950621121c3efa6ae87b"],
-    ["public/favicon-32.png", "541599e06fd2941064307e9395b75cc559524b229816be3f5c566c0e3bb3f329"],
-    ["public/favicon-48.png", "5edbc16d03c50d8ee03d3699b84a0c94f487b6727b4861cc85cfd62bc0dedbe7"],
-    ["public/icon.png", "a88c302a484c5fbbe25881e6526f4cb3696c2aa91618754f3f3c9a8160d0a1a5"],
-    ["public/apple-touch-icon.png", "e204f5e9fc3ab1e89b6baf9e9c584279a34d0caba30aafbe4102c3de0247edfd"],
-    ["public/icon-192.png", "72184ad108ca0fa37b00cc562edb1d97739d080cd1a3af5667413381eb1ab5af"],
-    ["public/icon-512.png", "e0db12974ac4c0a56ab424d2546e1a76427f8f0bc4bc90295d2d16d70ac54828"],
-    ["public/icon-maskable-512.png", "9adca3d7fdfe45899fd959c4cebe97d4f8cb6541dca5086e9fe5abf9a38434fd"],
-    ["public/og.png", "07bc91fa465b8976cf9eced27fa7cd806e738fd50d27238cee3ae47ccb8de195"],
+    ["public/favicon-16.png", "bf5d2bf7ccd84040f061a0aa7c940c74d015c013722afed6d9b3305f9e09600f"],
+    ["public/favicon-32.png", "ffbf5de77b0bde66f396dfdf5e8b4c859594de6bfd6452f5419d683dc48dbe2f"],
+    ["public/favicon-48.png", "387b0f79e415877531e794883c1e50940685eebc5bf7b8dc67d14794e1031942"],
+    ["public/icon.png", "baf7df8893a1380999055c7c458cb8a19e17af12c5092f00662f61f6bf99f4dc"],
+    ["public/apple-touch-icon.png", "5e201e72beb8f834b2c846cb280cf79428cfc9f86979816ffb34bd0753cca71a"],
+    ["public/icon-192.png", "b22422d16b3238b43fe822e714c16bd5140e3c5dbef6370cfdc8b55b10694776"],
+    ["public/icon-512.png", "51fb3b5325836ed59491363d75a48b01d7099a3035bb326d3443bda257288cbf"],
+    ["public/icon-maskable-512.png", "671fe9e31b42e71e401584969d12623d146c24566ac61f99b24a69d8f53b67ee"],
+    ["public/og.png", "228cfc491f92b9fa233b8622a247884db6083484148cc35be8bb3ca868876f73"],
   ]);
   assert.equal(expectedHashes.size, pngAssets.length);
   for (const [path] of pngAssets) {
