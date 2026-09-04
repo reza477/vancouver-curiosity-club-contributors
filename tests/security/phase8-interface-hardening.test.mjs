@@ -179,29 +179,43 @@ test("public route links stay visible, prominent, and keyboard-sized at every wi
     /box-shadow:\s*inset 0 -0\.18rem 0 var\(--forest\);/u,
   ]);
 
-  const tabletStyles = atRuleBlocks(css, "@media (max-width: 70rem)")[0] ?? "";
-  assertRuleContains(tabletStyles, ".primary-nav", [/width:\s*100%;/u]);
-
-  const phoneStyles = atRuleBlocks(css, "@media (max-width: 38rem)")[0] ?? "";
-  assertRuleContains(phoneStyles, ".site-menu-toggle", [
+  const compactStyles = atRuleBlocks(css, "@media (max-width: 62rem)")[0] ?? "";
+  assertRuleContains(compactStyles, ".site-menu-toggle", [
     /display:\s*inline-flex;/u,
     /min-height:\s*2\.75rem;/u,
   ]);
-  assertRuleContains(phoneStyles, ".site-header > .primary-nav", [
+  assertRuleContains(compactStyles, ".site-header > .primary-nav", [
     /visibility:\s*hidden;/u,
     /grid-template-columns:\s*minmax\(0, 1fr\);/u,
     /position:\s*absolute;/u,
   ]);
   assertRuleContains(
-    phoneStyles,
+    compactStyles,
     '.site-header[data-mobile-menu-open="true"] > .primary-nav',
     [/visibility:\s*visible;/u, /pointer-events:\s*auto;/u],
   );
-  assertRuleContains(phoneStyles, ".site-header > .primary-nav a", [
+  assertRuleContains(compactStyles, ".site-header > .primary-nav a", [
     /min-height:\s*2\.75rem;/u,
     /justify-content:\s*flex-start;/u,
   ]);
-  assert.doesNotMatch(phoneStyles, /repeat\(3, minmax\(0, 1fr\)\)/u);
+  assert.doesNotMatch(compactStyles, /repeat\(3, minmax\(0, 1fr\)\)/u);
+
+  const phoneStyles = atRuleBlocks(css, "@media (max-width: 38rem)")[0] ?? "";
+  assertRuleContains(phoneStyles, ".site-footer__navigation", [
+    /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u,
+  ]);
+  assertRuleContains(phoneStyles, ".footer-nav-group:last-child", [
+    /grid-column:\s*1 \/ -1;/u,
+  ]);
+
+  const narrowStyles = atRuleBlocks(css, "@media (max-width: 21.25rem)")[0] ?? "";
+  assertRuleContains(narrowStyles, ".wordmark", [
+    /font-size:\s*0\.84rem;/u,
+  ]);
+  assertRuleContains(narrowStyles, ".site-menu-toggle", [
+    /min-width:\s*4\.35rem;/u,
+    /padding-inline:\s*0\.5rem;/u,
+  ]);
 });
 
 test("inner-page mastheads use compact split layouts without wasting desktop space", () => {

@@ -41,6 +41,11 @@ test("Events uses compact lane and club selects without the retired advanced for
   );
   assert.match(renderer, /className="events-filter-form"[\s\S]*name="lane"/u);
   assert.match(renderer, /className="events-filter-form"[\s\S]*name="club"/u);
+  assert.match(
+    renderer,
+    /key=\{`\$\{activeView\}:\$\{activeLaneSlug \?\? "all"\}:\$\{activeClubSlug \?\? "all"\}:\$\{calendarMonth\}`\}/u,
+    "client navigation must remount the form so Clear resets both visible selects",
+  );
   assert.doesNotMatch(renderer, /events-page__lane-filters|Filter events by activity lane/u);
 });
 

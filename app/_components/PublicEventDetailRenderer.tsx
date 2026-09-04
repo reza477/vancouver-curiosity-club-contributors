@@ -1,6 +1,7 @@
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { AddToCalendar } from "@/app/_components/AddToCalendar";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
+import { MobileStickyRsvpAction } from "@/app/_components/MobileStickyRsvpAction";
 import {
   EventArtworkFallback,
   EventTitleText,
@@ -78,15 +79,10 @@ export function PublicEventDetailRenderer({
             </header>
 
             {event.rsvpUrl && !event.isCancelled ? (
-              <a
-                aria-label={`RSVP for ${event.title} on Meetup (opens in a new tab)`}
-                className="primary-action"
+              <MobileStickyRsvpAction
+                eventTitle={event.title}
                 href={event.rsvpUrl}
-                rel="noreferrer noopener"
-                target="_blank"
-              >
-                RSVP on Meetup <span aria-hidden="true">↗</span>
-              </a>
+              />
             ) : null}
 
             <section

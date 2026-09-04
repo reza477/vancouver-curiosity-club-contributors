@@ -792,7 +792,6 @@ function CheckboxGroup({
   const errorId = `${idPrefix}-${name}-error`;
   return (
     <fieldset
-      aria-required="true"
       className="public-submission__choices"
       aria-describedby={error ? errorId : undefined}
       aria-invalid={error ? true : undefined}

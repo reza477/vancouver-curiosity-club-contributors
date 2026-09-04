@@ -730,13 +730,17 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
     /\.event-detail__header h1\s*\{[^}]*overflow-wrap:\s*normal;[^}]*word-break:\s*normal;[^}]*hyphens:\s*none;/su,
     "a 390px title must not split or hyphenate words",
   );
-  const stickyRule = mobileStyles.match(
+  const inFlowRule = mobileStyles.match(
     /\.event-detail__summary\s*>\s*\.primary-action\s*\{([^}]*)\}/su,
+  )?.[1] ?? "";
+  assert.doesNotMatch(inFlowRule, /position:\s*fixed;/u);
+  const stickyRule = mobileStyles.match(
+    /\.event-detail__summary\s*>\s*\.primary-action\[data-mobile-sticky="true"\]\s*\{([^}]*)\}/su,
   )?.[1] ?? "";
   assert.match(stickyRule, /position:\s*fixed;/u);
   assert.match(stickyRule, /bottom:\s*max\(0\.75rem,\s*env\(safe-area-inset-bottom\)\);/u);
-  assert.match(stickyRule, /display:\s*flex;/u);
-  assert.match(stickyRule, /min-height:\s*3\.25rem;/u, "the 390px RSVP action must be sticky and at least 44px tall");
+  assert.match(inFlowRule, /display:\s*flex;/u);
+  assert.match(inFlowRule, /min-height:\s*3\.25rem;/u, "the 390px RSVP action must be at least 44px tall before and after it sticks");
   assert.match(
     css,
     /\.event-detail__summary\s*>\s*\.primary-action\s*\{[^}]*min-height:\s*2\.75rem;/su,

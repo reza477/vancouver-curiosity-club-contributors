@@ -14,7 +14,7 @@
     padding: 2rem 1.25rem;
   }
 
-  .home-hero, .home-events, .lane-index, .related-events, .attending-note, .home-invitation, .home-community, .about-hero, .about-feel, .about-audience, .about-solo, .about-closing, .events-page-masthead {
+  .home-hero, .home-events, .lane-index, .related-events, .attending-note, .home-invitation, .about-hero, .about-feel, .about-audience, .about-solo, .about-closing, .events-page-masthead {
     padding-right: max(1rem, env(safe-area-inset-right));
     padding-left: max(1rem, env(safe-area-inset-left));
   }

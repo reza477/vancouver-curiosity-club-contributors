@@ -265,17 +265,6 @@ main, .site-footer {
 }
 
 @media (max-width: 70rem) {
-  .site-header {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: center;
-    gap: 0.85rem;
-    display: grid;
-  }
-
-  .primary-nav {
-    width: 100%;
-  }
-
   .site-footer {
     grid-template-columns: 1fr;
   }
@@ -285,7 +274,7 @@ main, .site-footer {
   }
 }
 
-@media (max-width: 38rem) {
+@media (max-width: 62rem) {
   .site-header {
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 0;
@@ -391,14 +380,20 @@ main, .site-footer {
     padding: 0.6rem 0.75rem;
     text-align: left;
   }
+}
 
+@media (max-width: 38rem) {
   .site-footer {
     align-items: flex-start;
   }
 
   .site-footer__navigation {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
+  }
+
+  .footer-nav-group:last-child {
+    grid-column: 1 / -1;
   }
 }
 
@@ -409,6 +404,24 @@ main, .site-footer {
 @media (max-width: 30rem) {
   .site-header {
     padding-inline: max(0.75rem, env(safe-area-inset-left)) max(0.75rem, env(safe-area-inset-right));
+  }
+}
+
+@media (max-width: 21.25rem) {
+  .wordmark {
+    gap: 0.4rem;
+    font-size: 0.84rem;
+  }
+
+  .wordmark-mark,
+  .wordmark-logo {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .site-menu-toggle {
+    min-width: 4.35rem;
+    padding-inline: 0.5rem;
   }
 }
 

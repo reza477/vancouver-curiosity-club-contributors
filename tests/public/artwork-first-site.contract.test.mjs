@@ -266,9 +266,11 @@ test("the stage has a static default and bounded wide-screen enhancement", async
 });
 
 test("the community artwork triptych has pointer and keyboard parity", async () => {
-  const [home, homeCss] = await Promise.all([
+  const [home, homeCss, editorialCss, responsiveCss] = await Promise.all([
     source("app/_components/HomePageRenderer.tsx"),
     source("app/styles/pages/home.css"),
+    source("app/styles/components/editorial.css"),
+    source("app/styles/components/responsive-overrides.css"),
   ]);
 
   assert.match(home, /className="home-communities__list" data-community-triptych/u);
@@ -299,6 +301,26 @@ test("the community artwork triptych has pointer and keyboard parity", async () 
     homeCss,
     /@media \(max-width: 56rem\)[\s\S]*?\.home-community,[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,
     "mobile and tablet layouts must return to normal vertical artwork panels",
+  );
+  assert.doesNotMatch(
+    editorialCss,
+    /\.home-community[^{}]*\{[^}]*padding:\s*var\(--public-section-space\)/su,
+    "an individual triptych panel must not inherit full-section padding",
+  );
+  assert.doesNotMatch(
+    responsiveCss,
+    /\.home-community[^{}]*\{[^}]*padding-(?:right|left):/su,
+    "phone gutter overrides belong to the triptych section, not each panel",
+  );
+});
+
+test("QA layout corrections keep uneven club columns independent", async () => {
+  const catalogCss = await source("app/styles/components/catalog.css");
+
+  assert.match(
+    catalogCss,
+    /\.club-detail__events\s*\{[^}]*align-items:\s*flex-start;/su,
+    "a short Past column must not stretch to the height of Upcoming",
   );
 });
 
@@ -340,6 +362,11 @@ test("About moves real artwork forward and uses editorial rosters and rows", asy
   assert.match(
     aboutCss,
     /@media \(max-width: 44rem\)[\s\S]*?\.about-artwork-strip\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u,
+  );
+  assert.match(
+    aboutCss,
+    /\.about-artwork-strip figcaption\s*\{[^}]*font-size:\s*0\.75rem;/su,
+    "poster credits must remain readable on phones",
   );
 });
 

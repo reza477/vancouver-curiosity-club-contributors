@@ -192,6 +192,23 @@ test("all fields are editable immediately while only secure submission prepares"
   }
 });
 
+test("checkbox groups use valid fieldset semantics", () => {
+  const markup = renderToStaticMarkup(
+    createElement(PublicSubmissionForm, { formKey: "volunteer" }),
+  );
+  const choices = /<fieldset(?=[^>]*\bclass="public-submission__choices")[^>]*>/u.exec(
+    markup,
+  )?.[0];
+
+  assert.ok(choices, "the volunteer interest choices must remain a fieldset");
+  assert.doesNotMatch(
+    choices,
+    /\baria-required=/u,
+    "aria-required is not valid on a fieldset",
+  );
+  assert.match(markup, /<legend>Interest areas \*<\/legend>/u);
+});
+
 test("Contact can render a protected no-JavaScript partnership inquiry", () => {
   const markup = renderToStaticMarkup(
     createElement(PublicSubmissionForm, {
