@@ -386,6 +386,11 @@ test("For Organizations leads with artwork, a facts band, and asymmetric pathway
   );
   assert.match(
     organizationsCss,
+    /\.organizations-hero__proof \.organizations-activity-card__body\s*\{[^}]*grid-template-columns:\s*minmax\(12rem, 0\.82fr\) minmax\(0, 1\.18fr\);/su,
+    "the featured event title must retain useful width beside its schedule",
+  );
+  assert.match(
+    organizationsCss,
     /\.organizations-hero__facts\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);[^}]*background:\s*var\(--ink\);[^}]*color:\s*var\(--paper\);/su,
   );
   assert.match(
