@@ -253,6 +253,16 @@ test("the stage has a static default and bounded wide-screen enhancement", async
     motionCss,
     /@media \(prefers-reduced-motion: no-preference\)[\s\S]*?home-hero-line-reveal/u,
   );
+  assert.match(
+    motionCss,
+    /\.home-hero__line\{[^}]*overflow:hidden;[^}]*padding-block-end:\.12em;[^}]*margin-block-end:-\.12em;/u,
+    "the hero reveal mask must reserve descender room without changing line spacing",
+  );
+  assert.match(
+    motionCss,
+    /@keyframes home-hero-line-reveal\{from\{transform:translateY\(calc\(105% \+ \.12em\)\);\}/u,
+    "the hidden start position must account for the descender reserve",
+  );
 });
 
 test("the community artwork triptych has pointer and keyboard parity", async () => {
