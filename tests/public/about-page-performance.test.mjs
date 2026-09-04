@@ -214,13 +214,18 @@ test("primary navigation applies selective public prefetching", async () => {
   assert.match(navigationLinks, /href=\{item\.href\}/u);
   assert.match(
     navigationLinks,
-    /aria-current=\{[\s\S]*?isCurrentNavigationPath\(pathname, item\.href\)[\s\S]*?"page"/u,
+    /const current = isCurrentNavigationPath\(pathname, item\.href\)[\s\S]*?\? "page"[\s\S]*?aria-current=\{current\}/u,
     "the current-page treatment must remain wired to the destination",
   );
   assert.match(
     navigationLinks,
+    /item\.href === "\/contact"[\s\S]*?<a[\s\S]*?href=\{item\.href\}/u,
+    "Contact must use a resilient full-document navigation",
+  );
+  assert.match(
+    navigationLinks,
     /prefetch=\{prefetchInternalLinks\}/u,
-    "every public primary destination must preserve the preview opt-out switch",
+    "framework-routed primary destinations must preserve the preview opt-out switch",
   );
   assert.match(
     header,
