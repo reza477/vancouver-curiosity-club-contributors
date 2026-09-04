@@ -17,7 +17,7 @@ const pngAssets = [
   ["public/og.png", 1200, 630],
 ];
 
-test("the supplied community mark ships at every declared icon size", async () => {
+test("the canonical community mark ships at every declared icon size", async () => {
   for (const [path, expectedWidth, expectedHeight] of pngAssets) {
     const url = new URL(path, projectRoot);
     const [bytes, details] = await Promise.all([readFile(url), stat(url)]);
@@ -71,7 +71,7 @@ test("metadata and the web manifest declare only real local brand assets", async
   assert.doesNotMatch(`${manifestSource}\n${brandSource}`, /screenshots|shortcuts/u);
 });
 
-test("preserves the supplied raster master outside the public build surface", async () => {
+test("preserves the canonical raster master outside the public build surface", async () => {
   const rasterMasterUrl = new URL(
     "design-assets/brand-icon-master.png",
     projectRoot,
@@ -91,8 +91,8 @@ test("preserves the supplied raster master outside the public build surface", as
   assert.equal(bytes.readUInt32BE(20), 1_254, "master height");
   assert.equal(
     createHash("sha256").update(bytes).digest("hex"),
-    "9d662fb4829fe263ee5195308d600515f2581d4c014d93a0f8aaca623243ead5",
-    "the canonical master must remain the exact owner-supplied artwork",
+    "beabc5d3ad3cbc992e6bec6e46baf842a88e9cc8d24fe5c56a3993e9015c0ac0",
+    "the canonical master must remain the approved open-circle artwork",
   );
   await assert.rejects(
     stat(new URL("public/brand-icon-master.png", projectRoot)),
@@ -101,7 +101,7 @@ test("preserves the supplied raster master outside the public build surface", as
   );
 });
 
-test("the deterministic generator reads the supplied PNG master", async () => {
+test("the deterministic generator reads the canonical PNG master", async () => {
   const generator = await readFile(
     new URL("scripts/generate-brand-artwork.mjs", projectRoot),
     "utf8",
@@ -112,15 +112,15 @@ test("the deterministic generator reads the supplied PNG master", async () => {
 
 test("every shipped brand image matches the deterministic generated artifact", async () => {
   const expectedHashes = new Map([
-    ["public/favicon-16.png", "567a34a33b6648aa30693ec5bd7c1edc09c847357dcaaef7d33f2a9aa548f300"],
-    ["public/favicon-32.png", "655b4c13d82da9bf0a8f1e3cf0f80ae9bc14932ed69a052629b807e6b5ad980f"],
-    ["public/favicon-48.png", "fa52759de42ca0b45979bf18c777c975588e0bf397010506532e32cefe7c9871"],
-    ["public/icon.png", "acefd798589c03475feae4794e3b8fc67a0ebfe9c64530562bd12029475e1928"],
-    ["public/apple-touch-icon.png", "d9151bd9b3bfb0d01b6828421d0e84738875c4d0282ca245e22f78ef52d64284"],
-    ["public/icon-192.png", "4126e23edcfa91461280e2142d7517db7fbbe0b50833b96b97cfc5124407f6c1"],
-    ["public/icon-512.png", "1e300a057cbd03db343a85f099a606f71432eb67266ff3829da87c8137bd1b77"],
-    ["public/icon-maskable-512.png", "a5823c055de663a9ad11c230000fc177df07667752893cee690446d55e476168"],
-    ["public/og.png", "ae2b0a99e89f15c4a479d96292bf168b245a8e85bd94a2366ba0fbaddf3810cd"],
+    ["public/favicon-16.png", "5f43fee8cfc19bd8b5291b003a58a45590eea29fc586950621121c3efa6ae87b"],
+    ["public/favicon-32.png", "541599e06fd2941064307e9395b75cc559524b229816be3f5c566c0e3bb3f329"],
+    ["public/favicon-48.png", "5edbc16d03c50d8ee03d3699b84a0c94f487b6727b4861cc85cfd62bc0dedbe7"],
+    ["public/icon.png", "a88c302a484c5fbbe25881e6526f4cb3696c2aa91618754f3f3c9a8160d0a1a5"],
+    ["public/apple-touch-icon.png", "e204f5e9fc3ab1e89b6baf9e9c584279a34d0caba30aafbe4102c3de0247edfd"],
+    ["public/icon-192.png", "72184ad108ca0fa37b00cc562edb1d97739d080cd1a3af5667413381eb1ab5af"],
+    ["public/icon-512.png", "e0db12974ac4c0a56ab424d2546e1a76427f8f0bc4bc90295d2d16d70ac54828"],
+    ["public/icon-maskable-512.png", "9adca3d7fdfe45899fd959c4cebe97d4f8cb6541dca5086e9fe5abf9a38434fd"],
+    ["public/og.png", "07bc91fa465b8976cf9eced27fa7cd806e738fd50d27238cee3ae47ccb8de195"],
   ]);
   assert.equal(expectedHashes.size, pngAssets.length);
   for (const [path] of pngAssets) {
