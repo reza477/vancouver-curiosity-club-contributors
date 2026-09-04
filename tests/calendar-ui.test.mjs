@@ -1056,7 +1056,10 @@ test("wordmark uses the local brand icon and remains visible on narrow screens",
     header,
     /<span className="wordmark-mark" aria-hidden="true" \/>/,
   );
-  assert.match(css, /\.wordmark-mark\s*\{[\s\S]*url\("\/icon\.png"\)/);
+  assert.match(
+    css,
+    /\.wordmark-mark\s*\{[\s\S]*url\("\/icon\.png\?v=baf7df88"\)/,
+  );
   assert.match(
     css,
     /@media \(max-width: 62rem\)[\s\S]*\.wordmark-mark\s*\{[\s\S]*display:\s*block/,
