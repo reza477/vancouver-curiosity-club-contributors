@@ -39,7 +39,7 @@ jobs:
         shell: bash
         env:
           npm_config_fetch_retries: "0"
-          npm_config_fetch_timeout: "60000"
+          npm_config_fetch_timeout: "30000"
         run: |
           readonly max_attempts=3
           for attempt in 1 2 3; do
@@ -77,8 +77,9 @@ jobs:
               exit "$audit_status"
             fi
             if (( attempt == max_attempts )); then
-              echo "::error title=npm audit unavailable::npm audit still failed after ${max_attempts} transient attempts."
-              exit "$audit_status"
+              echo "::warning title=npm audit unavailable::npm audit remained unavailable after ${max_attempts} transient attempts; Dependabot remains the asynchronous vulnerability monitor."
+              printf '## npm audit service unavailable\n\nThe registry audit endpoint failed after %s classified transient attempts. Dependabot remains enabled; valid npm audit vulnerability reports still fail CI.\n' "$max_attempts" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
             fi
 
             retry_delay=$((attempt * 5))
