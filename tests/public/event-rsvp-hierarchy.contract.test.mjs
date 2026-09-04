@@ -109,7 +109,7 @@ test("the near-title RSVP becomes sticky only after its mobile trigger leaves vi
         }),
       ),
     ),
-    readFile(new URL("app/styles/pages/event-detail.css", projectRoot), "utf8"),
+    readFile(new URL("public/styles/event-detail.css", projectRoot), "utf8"),
     readFile(
       new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
       "utf8",

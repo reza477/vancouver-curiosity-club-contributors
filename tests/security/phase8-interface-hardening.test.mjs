@@ -248,7 +248,7 @@ test("inner-page mastheads use compact split layouts without wasting desktop spa
 });
 
 test("public event detail restores readable ink after the legacy card rule", () => {
-  const css = source("app", "styles", "pages", "event-detail.css");
+  const css = source("public", "styles", "event-detail.css");
   assertRuleContains(css, ".event-detail", [
     /color:\s*var\(--ink\);/u,
     /font-size:\s*1rem;/u,

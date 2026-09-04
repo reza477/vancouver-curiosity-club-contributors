@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-css-tags -- This shared renderer owns bounded route CSS that must not inflate Home. */
+
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { AddToCalendar } from "@/app/_components/AddToCalendar";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
@@ -38,6 +40,11 @@ export function PublicEventDetailRenderer({
 
   return (
     <>
+      <link
+        href="/styles/event-detail.css"
+        precedence="event-detail"
+        rel="stylesheet"
+      />
       {event.isCancelled ? (
         <aside className="cancellation-banner" role="status">
           <strong>Cancelled</strong>

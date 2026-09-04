@@ -33,10 +33,54 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit
 
       - name: Audit production dependencies
-        run: npm audit --omit=dev
+        shell: bash
+        env:
+          npm_config_fetch_retries: "0"
+          npm_config_fetch_timeout: "60000"
+        run: |
+          readonly max_attempts=3
+          for attempt in 1 2 3; do
+            set +e
+            audit_output="$(npm audit --omit=dev --json 2>&1)"
+            audit_status=$?
+            set -e
+            printf '%s\n' "$audit_output"
+
+            if (( audit_status == 0 )); then
+              exit 0
+            fi
+
+            # A valid non-zero report is a real vulnerability finding.
+            # Fail immediately rather than hiding it behind service retries.
+            if grep -Fq '"auditReportVersion"' <<<"$audit_output"; then
+              exit "$audit_status"
+            fi
+
+            registry_http_error=false
+            transport_error=false
+            if grep -Fq 'https://registry.npmjs.org/' <<<"$audit_output" &&
+              grep -Eq '(400 Bad Request|5[0-9]{2} [A-Za-z]|"statusCode"[[:space:]]*:[[:space:]]*(400|5[0-9]{2}))' <<<"$audit_output"; then
+              registry_http_error=true
+            fi
+            if grep -Eq '(EAI_AGAIN|ECONNABORTED|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETDOWN|ENETUNREACH|ENOTFOUND|EPIPE|ETIMEDOUT|ERR_SOCKET_TIMEOUT|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)' <<<"$audit_output"; then
+              transport_error=true
+            fi
+
+            if [[ "$registry_http_error" != true && "$transport_error" != true ]]; then
+              exit "$audit_status"
+            fi
+            if (( attempt == max_attempts )); then
+              echo "::error title=npm audit unavailable::npm audit still failed after ${max_attempts} transient attempts."
+              exit "$audit_status"
+            fi
+
+            retry_delay=$((attempt * 5))
+            echo "::warning title=npm audit retry::Transient npm audit service failure; retrying in ${retry_delay}s."
+            sleep "$retry_delay"
+          done
 
       - name: Type-check
         run: npm run typecheck

@@ -24,13 +24,13 @@
     line-height: 0.95;
   }
 
-  .section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .about-page h2, .event-detail h2, .related-events h2 {
+  .section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .about-page h2, .related-events h2 {
     font-size: clamp(2.25rem, 10vw, 3rem);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .event-card, .home-hero__poster, .club-directory__card, .club-directory__artwork img, .event-card__artwork img, .event-detail__artwork img, .home-hero__poster img {
+  .event-card, .home-hero__poster, .club-directory__card, .club-directory__artwork img, .event-card__artwork img, .home-hero__poster img {
     transform: none !important;
   }
 }

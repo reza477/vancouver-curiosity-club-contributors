@@ -18,8 +18,13 @@ const organizationsCss = new URL(
 const aboutCss = new URL("public/styles/about.css", projectRoot);
 const eventsCss = new URL("public/styles/events.css", projectRoot);
 const calendarCss = new URL("public/styles/calendar.css", projectRoot);
+const eventDetailCss = new URL("public/styles/event-detail.css", projectRoot);
 const eventsRenderer = new URL(
   "app/_components/EventsPageRenderer.tsx",
+  projectRoot,
+);
+const eventDetailRenderer = new URL(
+  "app/_components/PublicEventDetailRenderer.tsx",
   projectRoot,
 );
 
@@ -58,7 +63,6 @@ test("route and component selectors stay in their named modules", async () => {
     ["app/styles/components/event-card.css", ".event-card"],
     ["app/styles/components/forms.css", ".public-submission"],
     ["app/styles/pages/home.css", ".home-hero"],
-    ["app/styles/pages/event-detail.css", ".event-detail"],
   ]) {
     assert.ok(styles.get(modulePath).includes(selector), `${selector} must stay in ${modulePath}`);
   }
@@ -76,6 +80,16 @@ test("route and component selectors stay in their named modules", async () => {
   assert.match(
     renderer,
     /href="\/styles\/calendar\.css"[^>]*precedence="calendar"/u,
+  );
+  const eventDetail = await readFile(eventDetailCss, "utf8");
+  const detailRenderer = await readFile(eventDetailRenderer, "utf8");
+  assert.ok(
+    eventDetail.includes(".event-detail"),
+    ".event-detail must stay in the event-detail route module",
+  );
+  assert.match(
+    detailRenderer,
+    /href="\/styles\/event-detail\.css"[^>]*precedence="event-detail"/u,
   );
   for (const selector of [
     ".events-page__discovery",
@@ -106,6 +120,10 @@ test("route and component selectors stay in their named modules", async () => {
   assert.ok(
     (await stat(eventsCss)).size < 30_000,
     "the route-scoped Events stylesheet must remain bounded",
+  );
+  assert.ok(
+    (await stat(eventDetailCss)).size < 30_000,
+    "the route-scoped event-detail stylesheet must remain bounded",
   );
 });
 

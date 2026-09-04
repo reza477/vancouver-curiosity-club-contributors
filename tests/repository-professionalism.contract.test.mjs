@@ -130,7 +130,7 @@ test("continuous integration and dependency maintenance cover the release gates"
   assert.match(maintenanceWorkflow, /persist-credentials: false/u);
   assert.match(workflow, /node-version-file: \.nvmrc/u);
   for (const command of [
-    "npm ci",
+    "npm ci --no-audit",
     "npm audit --omit=dev",
     "npm run typecheck",
     "npm run lint",
@@ -141,6 +141,12 @@ test("continuous integration and dependency maintenance cover the release gates"
   ]) {
     assert.match(workflow, new RegExp(escapeRegex(command), "u"), command);
   }
+  assert.doesNotMatch(workflow, /^\s*run:\s*npm ci\s*$/mu);
+  assert.match(workflow, /npm_config_fetch_retries: "0"/u);
+  assert.match(workflow, /npm_config_fetch_timeout: "60000"/u);
+  assert.match(workflow, /auditReportVersion/u);
+  assert.match(workflow, /400 Bad Request\|5\[0-9\]\{2\}/u);
+  assert.match(workflow, /ECONNRESET/u);
 
   assert.match(dependabot, /package-ecosystem: npm/u);
   assert.match(dependabot, /package-ecosystem: github-actions/u);
