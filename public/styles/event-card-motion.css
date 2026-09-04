@@ -1,0 +1,43 @@
+@media (prefers-reduced-motion: no-preference) {
+  html[data-artwork-motion-ready="true"]
+    .event-card[data-artwork-reveal-state="pending"]
+    :is(.event-card__artwork-frame, .event-card__artwork--fallback) {
+    clip-path: inset(0 0 16% 0);
+    transform: translateY(8px);
+  }
+
+  html[data-artwork-motion-ready="true"]
+    .event-card[data-artwork-reveal-state="visible"]
+    :is(.event-card__artwork-frame, .event-card__artwork--fallback) {
+    clip-path: inset(0);
+    transform: translateY(0);
+    transition:
+      clip-path var(--artwork-motion-artwork) var(--artwork-motion-easing),
+      transform var(--artwork-motion-artwork) var(--artwork-motion-easing);
+  }
+
+  html[data-artwork-motion-ready="true"]
+    .event-card[data-artwork-reveal-state="pending"]
+    .event-card__body {
+    transform: translateY(var(--artwork-motion-distance-mobile));
+  }
+
+  html[data-artwork-motion-ready="true"]
+    .event-card[data-artwork-reveal-state="visible"]
+    .event-card__body {
+    transform: translateY(0);
+    transition: transform var(--artwork-motion-artwork)
+      var(--artwork-motion-easing) var(--artwork-motion-stagger);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-artwork-motion-ready="true"]
+    .event-card
+    :is(.event-card__artwork-frame, .event-card__artwork--fallback, .event-card__body) {
+    animation: none !important;
+    clip-path: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

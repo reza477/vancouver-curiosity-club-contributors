@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-css-tags -- Club routes own bounded artwork CSS so Home stays within its CSS budget. */
+
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import type { CSSProperties } from "react";
 import { formatEventSchedule } from "@/app/_components/EventCard";
@@ -45,6 +47,7 @@ export function ClubDirectory({
       className="club-directory club-directory--clubs"
       aria-labelledby="clubs-heading"
     >
+      <link href="/styles/clubs.css" precedence="clubs" rel="stylesheet" />
       <header>
         <h2 id="clubs-heading">Find the room that fits your curiosity.</h2>
       </header>

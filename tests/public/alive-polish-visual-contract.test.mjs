@@ -100,6 +100,8 @@ test("public route motion never uses an unbounded transition", async () => {
   const cssSources = await Promise.all([
     readPublicCss(),
     readPublicRouteCss("about"),
+    readPublicRouteCss("clubs"),
+    readPublicRouteCss("eventCard"),
     readPublicRouteCss("organizations"),
     readPublicRouteCss("events"),
     readPublicRouteCss("eventDetail"),

@@ -27,101 +27,6 @@ html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="visible"]:not
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  html[data-artwork-motion-ready="true"] .about-artwork-strip figure[data-artwork-reveal="about-artwork-strip-poster"][data-artwork-reveal-state="pending"] {
-    clip-path: inset(0 18% 0 0);
-    transform: translateX(calc(-1 * var(--artwork-motion-distance-mobile)));
-  }
-
-  html[data-artwork-motion-ready="true"] .about-artwork-strip figure:nth-child(2)[data-artwork-reveal-state="pending"] {
-    clip-path: inset(0 0 0 18%);
-    transform: translateX(var(--artwork-motion-distance-mobile));
-  }
-
-  html[data-artwork-motion-ready="true"] .about-artwork-strip figure[data-artwork-reveal="about-artwork-strip-poster"][data-artwork-reveal-state="visible"] {
-    clip-path: inset(0);
-    transform: translateX(0);
-    transition:
-      clip-path var(--artwork-motion-artwork) var(--artwork-motion-easing),
-      transform var(--artwork-motion-artwork) var(--artwork-motion-easing);
-  }
-
-  html[data-artwork-motion-ready="true"] .about-artwork-strip figure:nth-child(2)[data-artwork-reveal-state="visible"] {
-    transition-delay: var(--artwork-motion-stagger);
-  }
-
-  html[data-artwork-motion-ready="true"] .about-artwork-strip figure:nth-child(3)[data-artwork-reveal-state="visible"] {
-    transition-delay: calc(2 * var(--artwork-motion-stagger));
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-facts"][data-artwork-reveal-state="pending"] > li {
-    transform: translateY(var(--artwork-motion-distance-mobile));
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-facts"][data-artwork-reveal-state="visible"] > li {
-    transform: translateY(0);
-    transition: transform var(--artwork-motion-artwork) var(--artwork-motion-easing);
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-facts"][data-artwork-reveal-state="visible"] > li:nth-child(2) {
-    transition-delay: var(--artwork-motion-stagger);
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-facts"][data-artwork-reveal-state="visible"] > li:nth-child(3) {
-    transition-delay: calc(2 * var(--artwork-motion-stagger));
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="pending"] > article {
-    transform: translateX(var(--artwork-motion-distance));
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="pending"] > article:nth-child(even) {
-    transform: translateX(calc(-1 * var(--artwork-motion-distance)));
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="visible"] > article {
-    transform: translateX(0);
-    transition: transform var(--artwork-motion-artwork) var(--artwork-motion-easing);
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="visible"] > article:nth-child(2) {
-    transition-delay: var(--artwork-motion-stagger);
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="visible"] > article:nth-child(3) {
-    transition-delay: calc(2 * var(--artwork-motion-stagger));
-  }
-
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-pathways"][data-artwork-reveal-state="visible"] > article:nth-child(4) {
-    transition-delay: calc(3 * var(--artwork-motion-stagger));
-  }
-
-  html[data-artwork-motion-ready="true"] .event-card[data-artwork-reveal-state="pending"] :is(.event-card__artwork-frame, .event-card__artwork--fallback),
-  html[data-artwork-motion-ready="true"] .club-directory__card[data-artwork-reveal-state="pending"] .club-directory__artwork :is(picture, .club-directory__artwork-fallback) {
-    clip-path: inset(0 0 16% 0);
-    transform: translateY(8px);
-  }
-
-  html[data-artwork-motion-ready="true"] .event-card[data-artwork-reveal-state="visible"] :is(.event-card__artwork-frame, .event-card__artwork--fallback),
-  html[data-artwork-motion-ready="true"] .club-directory__card[data-artwork-reveal-state="visible"] .club-directory__artwork :is(picture, .club-directory__artwork-fallback) {
-    clip-path: inset(0);
-    transform: translateY(0);
-    transition:
-      clip-path var(--artwork-motion-artwork) var(--artwork-motion-easing),
-      transform var(--artwork-motion-artwork) var(--artwork-motion-easing);
-  }
-
-  html[data-artwork-motion-ready="true"] .event-card[data-artwork-reveal-state="pending"] .event-card__body,
-  html[data-artwork-motion-ready="true"] .club-directory__card[data-artwork-reveal-state="pending"] :is(h3, .club-directory__promise, .club-directory__next, .club-directory__actions) {
-    transform: translateY(var(--artwork-motion-distance-mobile));
-  }
-
-  html[data-artwork-motion-ready="true"] .event-card[data-artwork-reveal-state="visible"] .event-card__body,
-  html[data-artwork-motion-ready="true"] .club-directory__card[data-artwork-reveal-state="visible"] :is(h3, .club-directory__promise, .club-directory__next, .club-directory__actions) {
-    transform: translateY(0);
-    transition: transform var(--artwork-motion-artwork) var(--artwork-motion-easing) var(--artwork-motion-stagger);
-  }
-}
 @media (scripting: enabled) and (min-width: 64rem) and (min-height: 42rem) and (prefers-reduced-motion: no-preference){@scope (html[data-artwork-motion-ready="true"]){.home-work__grid{grid-template-columns:minmax(0,1.16fr) minmax(22rem,0.84fr);grid-template-rows:repeat(3,minmax(17rem,auto));gap:0 clamp(2.25rem,5vw,5rem);position:relative;}
 .home-work-card{display:contents;}
 .home-work-card__poster-link{--poster-entry-clip:inset(0 100% 0 0);--poster-mask-exit:inset(0 0 0 100%);border:1px solid var(--ink);background:var(--paper-deep);grid-column:1;grid-row:1 / 4;align-self:start;position:sticky;top:clamp(5.5rem,10vh,7.5rem);visibility:hidden;overflow:hidden;}
@@ -174,11 +79,7 @@ to{transform:translateY(0);}
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal-state]:not([data-artwork-reveal-mode="children"]),
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-facts"] > li,
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal="organization-pathways"] > article,
-  html[data-artwork-motion-ready="true"] .event-card :is(.event-card__artwork-frame, .event-card__artwork--fallback, .event-card__body),
-  html[data-artwork-motion-ready="true"] .club-directory__card :is(picture, .club-directory__artwork-fallback, h3, .club-directory__promise, .club-directory__next, .club-directory__actions) {
+  html[data-artwork-motion-ready="true"] [data-artwork-reveal-state]:not([data-artwork-reveal-mode="children"]) {
     animation: none !important;
     clip-path: none !important;
     transform: none !important;
