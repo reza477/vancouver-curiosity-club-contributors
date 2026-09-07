@@ -681,8 +681,11 @@ async function waitForMinimumFormCompletion(
 ): Promise<void> {
   const remaining = Math.max(
     0,
-    PUBLIC_FORM_MINIMUM_COMPLETION_MS -
-      (Date.now() - instanceReceivedAtUtcMs),
+    Math.min(
+      PUBLIC_FORM_MINIMUM_COMPLETION_MS,
+      PUBLIC_FORM_MINIMUM_COMPLETION_MS -
+        (Date.now() - instanceReceivedAtUtcMs),
+    ),
   );
   if (remaining === 0) return;
   await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));

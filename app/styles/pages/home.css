@@ -1166,6 +1166,10 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
     row-gap: 1.75rem;
   }
 
+  .home-hero--text-only {
+    grid-template-areas: "heading" "copy";
+  }
+
   .home-hero__featured-poster {
     width: min(100%, 42rem);
     margin-inline-end: 0;

@@ -287,6 +287,8 @@ test("secure-send preparation reports slowness within one second without weakeni
     "the client send gate must use the shared anti-abuse interval",
   );
   assert.match(formSource, /await waitForMinimumFormCompletion/u);
+  assert.match(formSource, /Math\.min\(\s*PUBLIC_FORM_MINIMUM_COMPLETION_MS,/u,
+    "a backward device-clock change cannot stall the pre-submit dwell");
   assert.match(
     formSource,
     /PUBLIC_FORM_MINIMUM_COMPLETION_MS\s*-\s*\(Date\.now\(\)\s*-\s*instanceReceivedAtUtcMs\)/u,
