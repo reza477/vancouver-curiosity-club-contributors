@@ -10,11 +10,13 @@ const tick = async () => { for(let i=0;i<12;i++) await Promise.resolve(); };
 test('late and failed artwork remains fail-open, and navigation listeners clean up without cancelling a destination remount',async()=>{
   const motion=await readFile(new URL('../../app/_components/PublicArtworkMotion.tsx',import.meta.url),'utf8');
   const navigation=await readFile(new URL('../../app/_components/PublicPosterNavigation.tsx',import.meta.url),'utf8');
-  const css=await readFile(new URL('../../public/styles/connected-navigation.css',import.meta.url),'utf8');
+  const css=await readFile(new URL('../../app/styles/connected-navigation.css',import.meta.url),'utf8');
   assert.match(motion,/if \(!ready\) \{ element.dataset.artworkRevealState = "static"; return; \}/u);
   assert.match(motion,/stage.addEventListener\("load", retryLoadedPoster, true\)/u);
   assert.match(motion,/stage.removeEventListener\("load", retryLoadedPoster, true\)/u);
   assert.match(motion,/if \(index === latestRequestedIndex\) activate\(index\)/u);
+  assert.match(motion,/if \(!image && incoming.querySelector\("\.home-artwork-fallback"\)\) \{[\s\S]*?setStageState\(articles, activeIndex, null\)/u);
+  assert.match(motion,/fallbackObserver\.disconnect\(\)/u);
   for(const event of ['popstate','pagehide']){
     assert.ok(navigation.includes(`addEventListener("${event}", cancelPosterNavigationMotion)`));
     assert.ok(navigation.includes(`removeEventListener("${event}", cancelPosterNavigationMotion)`));

@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-css-tags -- Public navigation owns a small independent progressive-enhancement stylesheet. */
 import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import { SiteFooter } from "@/app/_components/SiteFooter";
@@ -210,7 +209,6 @@ export default async function RootLayout({
   return (
     <html lang="en-CA">
       <head>
-        {!isPrivatePath ? <link rel="stylesheet" href="/styles/connected-navigation.css" precedence="connected-navigation" /> : null}
         <link
           rel="preload"
           href="/fonts/fraunces-72pt-latin-400-600.woff2"

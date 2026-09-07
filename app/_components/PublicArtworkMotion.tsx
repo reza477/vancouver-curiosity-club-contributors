@@ -271,6 +271,14 @@ function enhanceStage(
     transitionTargetIndex = requestedIndex;
     const operationGeneration = activationGeneration;
     const image = incoming?.querySelector<HTMLImageElement>("figure img");
+    if (!image && incoming.querySelector(".home-artwork-fallback")) {
+      activeIndex = requestedIndex;
+      transitioning = false;
+      transitionTargetIndex = null;
+      setStageState(articles, activeIndex, null);
+      void processQueuedActivation();
+      return;
+    }
     if (image) {
       decoding = true;
       const ready = await decodeImage(image);
@@ -279,6 +287,12 @@ function enhanceStage(
       if (!ready) {
         transitioning = false;
         transitionTargetIndex = null;
+        // React can replace a failed image before its pending decode rejects.
+        // That mutation need not fire again, so resolve the same latest intent here.
+        if (incoming.querySelector(".home-artwork-fallback")) {
+          activeIndex = requestedIndex;
+          setStageState(articles, activeIndex, null);
+        }
         void processQueuedActivation();
         return;
       }
@@ -347,6 +361,10 @@ function enhanceStage(
     if (index === latestRequestedIndex) activate(index);
   };
   stage.addEventListener("load", retryLoadedPoster, true);
+  const fallbackObserver = new MutationObserver(() => {
+    if (articles[latestRequestedIndex]?.querySelector(".home-artwork-fallback")) activate(latestRequestedIndex);
+  });
+  fallbackObserver.observe(stage, { childList: true, subtree: true });
 
   const focusHandlers: Array<Readonly<{ element: HTMLElement; handler: () => void }>> = [];
   for (const [index, article] of articles.entries()) {
@@ -406,6 +424,7 @@ function enhanceStage(
     transitioning = false;
     stageObserver.disconnect();
     stage.removeEventListener("load", retryLoadedPoster, true);
+    fallbackObserver.disconnect();
     intersectingSummaries.clear();
     for (const { element, handler } of focusHandlers) {
       element.removeEventListener("focusin", handler);
