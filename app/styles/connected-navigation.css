@@ -1,0 +1,42 @@
+/* Scoped progressive enhancement; anchors, labels and destination content stay usable. */
+@media (min-width: 62.001rem) {
+  .primary-nav[data-indicator-ready="true"] { position: relative; }
+  .primary-nav[data-indicator-ready="true"]::after {
+    content: ""; position: absolute; left: 0; bottom: 0.15rem;
+    width: var(--nav-indicator-width, 0px); height: 2px; background: var(--ink);
+    transform: translateX(var(--nav-indicator-x, 0px)); pointer-events: none;
+    visibility: hidden;
+    transition: transform var(--artwork-motion-interaction) var(--artwork-motion-easing), width var(--artwork-motion-interaction) var(--artwork-motion-easing);
+  }
+  .primary-nav[data-indicator-visible="true"]::after { visibility: visible; }
+  .primary-nav[data-indicator-ready="true"] a[aria-current="page"] { box-shadow: none; }
+  .primary-nav[data-indicator-ready="true"] a.primary-nav__link--organizations { text-decoration: none; }
+}
+@media (max-width: 62rem) {
+  @media (prefers-reduced-motion: no-preference) {
+    body[data-artwork-motion-config="enabled"] .site-menu-toggle__icon::before,
+    body[data-artwork-motion-config="enabled"] .site-menu-toggle__icon::after { transition: transform var(--artwork-motion-interaction) var(--artwork-motion-easing); }
+    body[data-artwork-motion-config="enabled"] .site-header[data-menu-ready="true"][data-mobile-menu-open="true"] > .primary-nav {
+      animation: menu-unfold 220ms var(--artwork-motion-easing) both;
+      transform-origin: top right;
+    }
+  }
+}
+@keyframes menu-unfold { from { transform: translateY(-6px); } to { transform: none; } }
+html[data-poster-navigation="active"]::view-transition { pointer-events: none; }
+html[data-poster-navigation="active"]::view-transition-group(event-poster) {
+  animation-duration: var(--artwork-motion-artwork);
+  animation-timing-function: var(--artwork-motion-easing);
+}
+html[data-poster-navigation="active"]::view-transition-old(root) { display: none; }
+html[data-poster-navigation="active"]::view-transition-new(root),
+html[data-poster-navigation="active"]::view-transition-old(event-poster),
+html[data-poster-navigation="active"]::view-transition-new(event-poster) { animation: none; mix-blend-mode: normal; }
+html[data-poster-navigation="active"]::view-transition-old(event-poster),
+html[data-poster-navigation="active"]::view-transition-new(event-poster) { height: 100%; width: 100%; object-fit: contain; }
+html[data-poster-navigation="active"]::view-transition-new(event-information) { animation: event-information-settle 420ms var(--artwork-motion-easing) both; }
+@keyframes event-information-settle { from { transform: translateY(8px); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .primary-nav[data-indicator-ready="true"]::after { transition: none; }
+}
+@media (forced-colors: active) { .primary-nav[data-indicator-ready="true"]::after { background: CanvasText; } }

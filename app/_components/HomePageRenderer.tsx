@@ -1,5 +1,6 @@
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
+import { EventPosterLink } from "@/app/_components/EventPosterLink";
 import { formatEventSchedule } from "@/app/_components/EventCard";
 import { StructuredData } from "@/app/_components/StructuredData";
 import {
@@ -319,7 +320,7 @@ export function HomePageRenderer({
         </div>
         <ul className="home-impact__sequence">
           {communityModel.map((item) => (
-            <li key={item.heading}>
+            <li key={item.heading} data-artwork-reveal="principle" data-artwork-reveal-mode="rule">
               <div>
                 <h3>{item.heading}</h3>
                 <p>{item.body}</p>
@@ -424,7 +425,7 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
   const displayTitle = institutionalEventTitle(event);
 
   return (
-    <Link
+    <EventPosterLink
       aria-label={`View event: ${displayTitle}`}
       className="home-hero__poster-link"
       href={`/events/${event.slug}`}
@@ -479,7 +480,7 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
           {artworkCredit ? <small>Artwork: {artworkCredit}</small> : null}
         </figcaption>
       </figure>
-    </Link>
+    </EventPosterLink>
   );
 }
 
@@ -515,7 +516,7 @@ function HomeWorkEvent({
       role="article"
       style={streamVisual.style}
     >
-      <Link
+      <EventPosterLink
         aria-label={`View event poster: ${displayTitle}`}
         className="home-work-card__poster-link"
         data-stage-poster
@@ -564,9 +565,12 @@ function HomeWorkEvent({
               width={event.artwork.dimensions.large.width}
             />
           </div>
-          {artworkCredit ? <figcaption>Artwork: {artworkCredit}</figcaption> : null}
+          <figcaption className="home-work-card__caption">
+            <strong>{displayTitle}</strong>
+            {artworkCredit ? <span>Artwork: {artworkCredit}</span> : null}
+          </figcaption>
         </figure>
-      </Link>
+      </EventPosterLink>
       <div className="home-work-card__body" data-stage-summary>
         <p className="home-work-card__association">
           <span>{event.club.name}</span>
