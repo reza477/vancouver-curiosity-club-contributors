@@ -18,7 +18,7 @@ test("a stage item is revealed only once across 0 to 1 to 0 to 1 activation", ()
   assert.equal(rememberStageReveal(history, items[1]), false);
 });
 
-test("stage activation ignores the active, queued, and in-flight targets", () => {
+test("stage activation honors the newest intent, including reversals during decode", () => {
   const baseState = {
     activeIndex: 0,
     queuedIndex: 1,
@@ -27,7 +27,7 @@ test("stage activation ignores the active, queued, and in-flight targets", () =>
 
   assert.equal(
     shouldQueueStageActivation({ ...baseState, requestedIndex: 0 }),
-    false,
+    true,
   );
   assert.equal(
     shouldQueueStageActivation({ ...baseState, requestedIndex: 1 }),
@@ -35,12 +35,18 @@ test("stage activation ignores the active, queued, and in-flight targets", () =>
   );
   assert.equal(
     shouldQueueStageActivation({ ...baseState, requestedIndex: 2 }),
-    false,
+    true,
   );
   assert.equal(
     shouldQueueStageActivation({ ...baseState, requestedIndex: 3 }),
     true,
   );
+});
+
+test("idle selection deduplicates, but a pending decode can be superseded", () => {
+  assert.equal(shouldQueueStageActivation({activeIndex:0, queuedIndex:null, transitionTargetIndex:null, requestedIndex:0}), false);
+  assert.equal(shouldQueueStageActivation({activeIndex:0, queuedIndex:null, transitionTargetIndex:1, requestedIndex:0}), true);
+  assert.equal(shouldQueueStageActivation({activeIndex:0, queuedIndex:2, transitionTargetIndex:1, requestedIndex:1}), true);
 });
 
 test("stage selection resists small scroll jitter until a challenger clears the hysteresis", () => {

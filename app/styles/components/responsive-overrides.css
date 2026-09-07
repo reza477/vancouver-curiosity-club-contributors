@@ -1,4 +1,10 @@
 /* Cross-route responsive and reduced-motion overrides load after owned modules. */
+@media (max-width: 62rem) {
+  .site-header:not([data-menu-ready="true"]) > .primary-nav { grid-column: 1 / -1; }
+  .site-header[data-mobile-menu-open="true"] .site-menu-toggle__icon { background: transparent; }
+  .site-header[data-mobile-menu-open="true"] .site-menu-toggle__icon::before { transform: translateY(0.3rem) rotate(45deg); }
+  .site-header[data-mobile-menu-open="true"] .site-menu-toggle__icon::after { transform: translateY(-0.3rem) rotate(-45deg); }
+}
 @media (max-width: 52rem) {
   .editorial-sections, .club-detail__events, .community-destinations, .club-detail__destination, .club-directory > header {
     grid-template-columns: 1fr;

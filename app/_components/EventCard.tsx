@@ -2,6 +2,7 @@
 
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
+import { EventPosterLink } from "@/app/_components/EventPosterLink";
 import {
   discoveryArtworkCredit,
   responsiveImageSrcSet,
@@ -75,7 +76,7 @@ export function EventCard({
       />
       {event.artwork ? (
         <figure className="event-card__artwork">
-          <div className="event-card__artwork-frame">
+          <EventPosterLink className="event-card__artwork-frame" href={`/events/${event.slug}`} aria-label={`View event poster: ${event.title}`}>
             {/* The gated media route revalidates rights and published usage on every
                 request. Next/Image's optimizer cache would bypass that revocation
                 boundary, so this responsive image must load the controlled URLs
@@ -113,7 +114,7 @@ export function EventCard({
               }}
               width={artworkDimensions!.width}
             />
-          </div>
+          </EventPosterLink>
           {artworkCredit ? (
             <figcaption>Artwork: {artworkCredit}</figcaption>
           ) : null}

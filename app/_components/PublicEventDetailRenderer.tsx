@@ -55,7 +55,7 @@ export function PublicEventDetailRenderer({
         </aside>
       ) : null}
 
-      <article className="event-detail">
+      <article className="event-detail" data-event-detail-slug={event.slug}>
         <div className="event-detail__lead">
           <div className="event-detail__summary">
             <header className="event-detail__header">

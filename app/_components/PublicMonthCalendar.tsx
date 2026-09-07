@@ -8,6 +8,7 @@ import {
 } from "react";
 import { AddToCalendar } from "./AddToCalendar";
 import { EventPosterImage } from "./EventPosterImage";
+import { EventPosterLink } from "./EventPosterLink";
 import {
   discoveryArtworkCredit,
   responsiveImageSrcSet,
@@ -522,6 +523,7 @@ function CalendarEventPreview({
     >
       {event.artwork ? (
         <figure className="public-calendar-event__artwork">
+          <EventPosterLink href={`/events/${event.slug}`} prefetch={prefetchInternalLinks} aria-label={`View event poster: ${event.title}`}>
           {/* The controlled media route revalidates current public usage. */}
           <EventPosterImage
             alt={event.artwork.altText ?? ""}
@@ -554,6 +556,7 @@ function CalendarEventPreview({
             }}
             width={event.artwork.dimensions.medium.width}
           />
+          </EventPosterLink>
           {artworkCredit ? (
             <figcaption>Artwork: {artworkCredit}</figcaption>
           ) : null}
