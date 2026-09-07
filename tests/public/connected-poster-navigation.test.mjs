@@ -81,6 +81,7 @@ test('slow routes release the snapshot without a second history push',async()=>{
   for(const timer of h.timers.values())if(timer.ms===1200)timer.fn();
   assert.equal(h.transitions[0].skipped,true);assert.deepEqual(h.document.documentElement.dataset,{});
   navigation.resolve();await tick();assert.equal(h.calls.length,1);assert.equal(h.destination.style.viewTransitionName,undefined);h.transitions[0].finish();
+  assert.equal(h.calls[0][2],true,'the router must restore destination scroll even when the visual deadline expires');
 });
 test('Back/new navigation cancellation and an old completion cannot clear a newer transition',async()=>{
   const h=setup();h.api.openConnectedPoster(h.link);await tick();h.api.cancelPosterNavigationMotion();assert.equal(h.transitions[0].skipped,true);

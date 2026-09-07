@@ -56,7 +56,7 @@ export function openConnectedPoster(link: HTMLAnchorElement): boolean {
       }
       releaseCommit = () => finish(null);
       observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-event-detail-slug"] });
-      void navigateClientSide(link.href, "push", false).then(check, () => releaseCommit?.());
+      void navigateClientSide(link.href, "push", true).then(check, () => releaseCommit?.());
     });
     if (cancelled || !detail) { transition.skipTransition(); return; }
     // Match an ordinary new-page navigation before the new snapshot is taken.
