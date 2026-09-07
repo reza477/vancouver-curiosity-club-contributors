@@ -40,6 +40,7 @@ test("Home renders the approved institutional story in the exact section order",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
   ];
   assert.equal((markup.match(/class="home-hero__deck"/gu) ?? []).length, 3);
+  assert.ok(markup.indexOf('class="home-hero__featured-poster"') < markup.indexOf('class="home-hero__deck"'), "mobile reading order brings the real poster before the full mission paragraphs");
   for (const paragraph of missionParagraphs) assert.ok(markup.includes(paragraph));
   assert.match(markup, /href="#our-work"[^>]*>Explore our work<\/a>/u);
   assert.match(markup, /href="\/for-organizations"[^>]*>Partner with us<\/a>/u);

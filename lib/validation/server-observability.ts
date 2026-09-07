@@ -4,6 +4,7 @@ export type SafeErrorCode =
   | "authentication_required"
   | "authorization_denied"
   | "conflict"
+  | "form_instance_expired"
   | "internal_error"
   | "not_found"
   | "rate_limited"

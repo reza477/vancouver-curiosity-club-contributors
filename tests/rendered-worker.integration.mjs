@@ -489,6 +489,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0020_meetup_public_event_facts.sql",
     "0021_daily_meetup_maintenance.sql",
     "0022_messy_vertigo.sql",
+    "0023_meetup_online_attendance.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -528,7 +529,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
       `SELECT name
        FROM pragma_table_info('meetup_event_snapshot_public_contents')
        WHERE name IN (
-         'public_floor', 'public_room', 'capacity', 'cost_text',
+         'attendance_mode', 'public_floor', 'public_room', 'capacity', 'cost_text',
          'age_policy_text', 'waitlist_available', 'availability_state',
          'arrival_instructions'
        )
@@ -540,6 +541,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     [
       "age_policy_text",
       "arrival_instructions",
+      "attendance_mode",
       "availability_state",
       "capacity",
       "cost_text",
@@ -547,7 +549,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
       "public_room",
       "waitlist_available",
     ],
-    "the packaged 0020 migration must install every Meetup public-fact column",
+    "the packaged migrations must install every Meetup public-content column",
   );
   const marker = await database
     .prepare(

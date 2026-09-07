@@ -44,7 +44,7 @@ jobs:
           readonly max_attempts=3
           for attempt in 1 2 3; do
             set +e
-            audit_output="$(npm audit --omit=dev --json 2>&1)"
+            audit_output="$(npm audit --include=dev --json 2>&1)"
             audit_status=$?
             set -e
             printf '%s\n' "$audit_output"

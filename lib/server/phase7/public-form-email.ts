@@ -122,8 +122,9 @@ export async function deliverPublicFormEmail(
 
   const startedAt = Date.now();
   let response: Response;
+  let providerMessageId: string | null;
   try {
-    response = await fetchWithTimeout(fetcher, configuration, claimed);
+    ({ response, providerMessageId } = await fetchWithTimeout(fetcher, configuration, claimed));
   } catch (error) {
     const code: DeliveryErrorCode =
       error instanceof DOMException && error.name === "AbortError"
@@ -164,7 +165,6 @@ export async function deliverPublicFormEmail(
     return "provider_retry";
   }
 
-  const providerMessageId = await readProviderMessageId(response);
   if (!providerMessageId) {
     await releaseForRetry(
       database,
@@ -518,11 +518,20 @@ async function fetchWithTimeout(
   fetcher: Fetcher,
   configuration: PublicFormEmailConfiguration,
   submission: ClaimedSubmission,
-): Promise<Response> {
+): Promise<{ response: Response; providerMessageId: string | null }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
+  let responseBody: ReadableStream<Uint8Array> | null = null;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      if (responseBody && !responseBody.locked) void responseBody.cancel().catch(() => {});
+      reject(new DOMException("Email provider timed out", "AbortError"));
+    }, DELIVERY_TIMEOUT_MS);
+  });
   try {
-    return await fetcher(PROVIDER_URL, {
+    const operation = async () => {
+      const response = await fetcher(PROVIDER_URL, {
       body: JSON.stringify({
         from: `Vancouver Curiosity Club Website <${configuration.fromEmail}>`,
         reply_to: readReplyEmail(submission.payload),
@@ -539,7 +548,18 @@ async function fetchWithTimeout(
       method: "POST",
       redirect: "manual",
       signal: controller.signal,
-    });
+      });
+      responseBody = response.body;
+      if (controller.signal.aborted) {
+        if (response.body) void response.body.cancel().catch(() => {});
+        throw new DOMException("Email provider timed out", "AbortError");
+      }
+      const providerMessageId = response.ok ? await readProviderMessageId(response, controller.signal) : null;
+      if (!response.ok && response.body) void response.body.cancel().catch(() => {});
+      return { response, providerMessageId };
+    };
+    // Include the body in the deadline. Headers alone do not prove delivery.
+    return await Promise.race([operation(), deadline]);
   } finally {
     clearTimeout(timeout);
   }
@@ -620,16 +640,36 @@ function formPayloadLines(
   ];
 }
 
-async function readProviderMessageId(response: Response): Promise<string | null> {
+async function readProviderMessageId(response: Response, signal: AbortSignal): Promise<string | null> {
   const contentLength = response.headers.get("content-length");
-  if (contentLength && Number(contentLength) > 4_096) return null;
+  if (contentLength && Number(contentLength) > 4_096) {
+    if (response.body) void response.body.cancel().catch(() => {});
+    return null;
+  }
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const cancel = () => { void reader.cancel().catch(() => {}); };
+  signal.addEventListener("abort", cancel, { once: true });
   let body: unknown;
   try {
-    const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > 4_096) return null;
+    let total = 0;
+    let text = "";
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > 4_096) return null;
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
     body = JSON.parse(text);
   } catch {
     return null;
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return null;

@@ -2769,6 +2769,7 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            NULL AS source_public_summary,
            NULL AS source_public_description,
            NULL AS source_public_description_blocks_json,
+           NULL AS source_attendance_mode,
            NULL AS source_public_venue_name,
            NULL AS source_public_venue_address,
            NULL AS source_public_floor,
@@ -2824,6 +2825,7 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            snapshot_content.public_description AS source_public_description,
            snapshot_content.public_description_blocks_json
              AS source_public_description_blocks_json,
+           snapshot_content.attendance_mode AS source_attendance_mode,
            snapshot_content.public_venue_name AS source_public_venue_name,
            snapshot_content.public_venue_address AS source_public_venue_address,
            snapshot_content.public_floor AS source_public_floor,
@@ -3013,10 +3015,21 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            candidate.source_poster_credit AS meetup_poster_credit,
            NULL AS seo_title,
            NULL AS meta_description,
-           COALESCE(
-             public_detail.attendance_mode,
-             'location_undecided'
-           ) AS attendance_mode,
+           CASE
+             WHEN public_detail.attendance_mode IN (
+               'in_person', 'online', 'hybrid'
+             )
+             THEN public_detail.attendance_mode
+             WHEN event.venue_id IS NULL
+                  AND candidate.source_attendance_mode IN (
+                    'in_person', 'online'
+                  )
+             THEN candidate.source_attendance_mode
+             ELSE COALESCE(
+               public_detail.attendance_mode,
+               'location_undecided'
+             )
+           END AS attendance_mode,
            club.slug AS club_slug,
            club.name AS club_name,
            COALESCE(
@@ -3032,12 +3045,18 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            category.color_token AS category_color_token,
            CASE
              WHEN event.venue_id IS NULL
+                  AND candidate.source_attendance_mode = 'online'
+             THEN NULL
+             WHEN event.venue_id IS NULL
              THEN candidate.source_public_venue_name
              WHEN venue.is_public = 1
              THEN venue.public_location_name
              ELSE NULL
            END AS venue_public_name,
            CASE
+             WHEN event.venue_id IS NULL
+                  AND candidate.source_attendance_mode = 'online'
+             THEN NULL
              WHEN event.venue_id IS NULL
              THEN candidate.source_public_venue_address
              WHEN venue.is_public = 1
@@ -3046,10 +3065,16 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
            END AS venue_public_address,
            CASE
              WHEN event.venue_id IS NULL
+                  AND candidate.source_attendance_mode = 'online'
+             THEN NULL
+             WHEN event.venue_id IS NULL
              THEN candidate.source_public_floor
              ELSE NULL
            END AS venue_public_floor,
            CASE
+             WHEN event.venue_id IS NULL
+                  AND candidate.source_attendance_mode = 'online'
+             THEN NULL
              WHEN event.venue_id IS NULL
              THEN candidate.source_public_room
              ELSE NULL
@@ -5992,14 +6017,17 @@ export function toPublicEventCardDto(
     approvedArtwork === null && curatedMeetupPoster === null
       ? synchronizedMeetupPosterDto(row, rsvpUrl)
       : null;
-  const resolvedVenue = withPublicEventVenueFacts(
-    mergePublicEventVenue(
-      venue,
-      curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
-    ),
-    row,
-    curatedMeetupEvent,
-  );
+  const resolvedVenue =
+    attendanceMode === "online"
+      ? null
+      : withPublicEventVenueFacts(
+          mergePublicEventVenue(
+            venue,
+            curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
+          ),
+          row,
+          curatedMeetupEvent,
+        );
   const club = Object.freeze({
     slug: parseIdentifier(row.club_slug, "event.club.slug"),
     name: parseBoundedString(row.club_name, {
@@ -6274,6 +6302,7 @@ function toPublicEventExportDto(
     ["confirmed", "tentative", "cancelled", "completed"] as const,
     "event.status",
   );
+  const attendanceMode = publicAttendanceMode(row.attendance_mode);
   const rsvpMode =
     row.rsvp_mode === null || row.rsvp_mode === undefined
       ? null
@@ -6293,14 +6322,17 @@ function toPublicEventExportDto(
     return invalidProjection();
   }
   const curatedMeetupEvent = curatedMeetupEventForEventUrl(rsvpUrl);
-  const venue = withPublicEventVenueFacts(
-    mergePublicEventVenue(
-      publicVenue(row),
-      curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
-    ),
-    row,
-    curatedMeetupEvent,
-  );
+  const venue =
+    attendanceMode === "online"
+      ? null
+      : withPublicEventVenueFacts(
+          mergePublicEventVenue(
+            publicVenue(row),
+            curatedMeetupVenueDto(curatedMeetupEvent?.venue ?? null),
+          ),
+          row,
+          curatedMeetupEvent,
+        );
   return Object.freeze({
     agePolicyText: publicEventAgePolicyText(row, curatedMeetupEvent),
     arrivalInstructions: publicEventArrivalInstructions(
@@ -6308,7 +6340,7 @@ function toPublicEventExportDto(
       curatedMeetupEvent,
     ),
     attendanceMode: publicAttendanceModeWithVenue(
-      publicAttendanceMode(row.attendance_mode),
+      attendanceMode,
       venue,
     ),
     availabilityState: publicEventAvailabilityState(

@@ -15,9 +15,11 @@ import {
 } from "@/lib/server/phase7/public-form-contract";
 import {
   PUBLIC_FORM_CLIENT_COOKIE,
+  PUBLIC_FORM_MINIMUM_COMPLETION_MS,
   ensurePublicFormProtectionKey,
   isAnonymousFormClientId,
   readCookie,
+  renewPublicFormInstanceToken,
   verifyPublicFormInstanceToken,
 } from "@/lib/server/phase7/public-form-protection";
 import { submitPublicForm } from "@/lib/server/phase7/public-forms";
@@ -83,12 +85,30 @@ export async function POST(
     const anonymousClientId = isAnonymousFormClientId(anonymousClientCookie)
       ? anonymousClientCookie
       : "contact-no-cookie-v1";
-    const formInstance = await verifyPublicFormInstanceToken(
-      keyHex,
-      instanceToken,
-      formKey,
-      nowUtcMs,
-    );
+    let formInstance;
+    try {
+      formInstance = await verifyPublicFormInstanceToken(keyHex, instanceToken, formKey, nowUtcMs);
+    } catch (error) {
+      if (
+        nativeSubmission &&
+        (formKey === "contact" || formKey === "partnership") &&
+        error instanceof SafeApplicationError &&
+        error.code === "form_instance_expired"
+      ) {
+        // The expired signed instance has already satisfied the dwell time.
+        // Keep its nonce so an uncertain prior submission stays idempotent.
+        const renewed = await renewPublicFormInstanceToken(
+          keyHex, instanceToken, formKey,
+          nowUtcMs - PUBLIC_FORM_MINIMUM_COMPLETION_MS,
+        );
+        return publicFormValidationHtml({
+          errors: {}, formKey, instanceToken: renewed.token,
+          values: body.payload as PublicFormPayload,
+          renewal: true, companyFax: nativeValue(body.companyFax),
+        });
+      }
+      throw error;
+    }
     const result = await submitPublicForm(database, {
       anonymousClientId,
       formInstance,
@@ -373,8 +393,11 @@ function publicFormValidationHtml(input: Readonly<{
   formKey: "contact" | "partnership";
   instanceToken: string;
   values: PublicFormPayload;
+  renewal?: boolean;
+  companyFax?: string;
 }>): Response {
   const label = publicFormLabel(input.formKey);
+  const title = input.renewal ? "Your form is ready again" : "Please check the form";
   const errorItems = Object.entries(input.errors)
     .map(
       ([field, message]) =>
@@ -386,10 +409,13 @@ function publicFormValidationHtml(input: Readonly<{
     input.values,
     input.errors,
   );
+  const summary = input.renewal
+    ? '<div class="error-summary" role="status" tabindex="-1" autofocus><p>Your form session expired and has been renewed. Your answers are preserved below. Review them and send again when you are ready; this attempt has not sent anything.</p></div>'
+    : `<div class="error-summary" role="alert" tabindex="-1" autofocus><h2>Check the following fields</h2><ul>${errorItems}</ul></div>`;
   return new Response(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Please check the form | Vancouver Curiosity Club</title><link rel="stylesheet" href="/styles/native-form.css"></head><body><a class="skip-link" href="#main-content">Skip to main content</a><header><a href="/">Vancouver Curiosity Club</a></header><main id="main-content"><p class="eyebrow">${escapeHtml(label)}</p><h1>Please check the form</h1><div class="error-summary" role="alert" tabindex="-1" autofocus><h2>Check the following fields</h2><ul>${errorItems}</ul></div><form accept-charset="UTF-8" action="/api/forms/${input.formKey}" method="post"><input name="instanceToken" type="hidden" value="${escapeHtml(input.instanceToken)}"><div class="honeypot" aria-hidden="true"><label for="companyFax">Leave this field blank</label><input autocomplete="off" id="companyFax" name="companyFax" tabindex="-1" type="text"></div>${fields}<button type="submit">${escapeHtml(submitLabel(input.formKey, nativeValue(input.values.topic) === "Partnerships"))}</button></form><p><a href="${publicFormBackPath(input.formKey)}">Return without resubmitting</a></p></main></body></html>`,
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} | Vancouver Curiosity Club</title><link rel="stylesheet" href="/styles/native-form.css"></head><body><a class="skip-link" href="#main-content">Skip to main content</a><header><a href="/">Vancouver Curiosity Club</a></header><main id="main-content"><p class="eyebrow">${escapeHtml(label)}</p><h1>${title}</h1>${summary}<form accept-charset="UTF-8" action="/api/forms/${input.formKey}" method="post"><input name="instanceToken" type="hidden" value="${escapeHtml(input.instanceToken)}"><div class="honeypot" aria-hidden="true"><label for="companyFax">Leave this field blank</label><input autocomplete="off" id="companyFax" name="companyFax" tabindex="-1" type="text" value="${escapeHtml(input.companyFax ?? "")}"></div>${fields}<button type="submit">${escapeHtml(submitLabel(input.formKey, nativeValue(input.values.topic) === "Partnerships"))}</button></form><p><a href="${publicFormBackPath(input.formKey)}">Return without resubmitting</a></p></main></body></html>`,
     {
-      status: 422,
+      status: input.renewal ? 200 : 422,
       headers: privateNativeHtmlHeaders(),
     },
   );

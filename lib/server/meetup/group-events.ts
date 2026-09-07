@@ -793,6 +793,12 @@ function parseApolloEvent(input: Readonly<{
   const event = readEntity(input.apolloState, input.eventRef, "Event");
   const eventId = readEntityId(event, input.eventRef, "Event");
   if (!EVENT_ID_PATTERN.test(eventId)) invalidCalendar();
+  const attendanceMode =
+    event.eventType === "ONLINE"
+      ? "online"
+      : event.eventType === "PHYSICAL"
+        ? "in_person"
+        : invalidCalendar();
   if (readReference(event.group, "Group") !== input.groupRef) {
     invalidCalendar();
   }
@@ -856,6 +862,7 @@ function parseApolloEvent(input: Readonly<{
   });
   const publicContent: ParsedMeetupPublicContent = Object.freeze({
     ...publicEventFacts,
+    attendanceMode,
     description: publicDescription.plainText,
     descriptionBlocks: publicDescription.blocks,
     poster,
@@ -865,7 +872,7 @@ function parseApolloEvent(input: Readonly<{
       10,
     ),
     venue:
-      venue === null
+      attendanceMode === "online" || venue === null
         ? null
         : Object.freeze({ address: venue.address, name: venue.name }),
   });
@@ -876,7 +883,7 @@ function parseApolloEvent(input: Readonly<{
     description: publicContent.description,
     eventUrl,
     lastModifiedUtcMs: null,
-    location: venueToLocation(venue),
+    location: attendanceMode === "online" ? null : venueToLocation(venue),
     publicContent,
     recurrenceId: null,
     schedule: Object.freeze({

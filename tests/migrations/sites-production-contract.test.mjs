@@ -29,6 +29,7 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "0020_meetup_public_event_facts.sql",
   "0021_daily_meetup_maintenance.sql",
   "0022_messy_vertigo.sql",
+  "0023_meetup_online_attendance.sql",
 ]);
 const EXPECTED_SIGNATURE = Object.freeze({
   checks: 257,
@@ -61,6 +62,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0020_snapshot.json",
       "0021_snapshot.json",
       "0022_snapshot.json",
+      "0023_snapshot.json",
       "_journal.json",
     ],
     "the normalized chain must include every public-content and Events snapshot migration",
@@ -87,6 +89,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       { idx: 20, tag: "0020_meetup_public_event_facts" },
       { idx: 21, tag: "0021_daily_meetup_maintenance" },
       { idx: 22, tag: "0022_messy_vertigo" },
+      { idx: 23, tag: "0023_meetup_online_attendance" },
     ],
   );
   assert.deepEqual(
@@ -106,6 +109,7 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
       "0020",
       "0021",
       "0022",
+      "0023",
     ].map((prefix) => {
       const snapshot = JSON.parse(
         readFileSync(
@@ -119,7 +123,10 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
         0,
       );
     }),
-    [0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200, 200, 201, 202],
+    [
+      0, 0, 38, 75, 90, 117, 131, 184, 199, 199, 200, 200, 200, 201,
+      202, 202,
+    ],
     "migration snapshots must match the cumulative packaged index state",
   );
 
@@ -136,6 +143,14 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
           ),
         ),
         "0020 may only add the eight bounded Meetup public-fact columns",
+      );
+    } else if (file === "0023_meetup_online_attendance.sql") {
+      const attendanceFragments = productionFragments(sql);
+      assert.equal(attendanceFragments.length, 1);
+      assert.match(
+        attendanceFragments[0],
+        /\bALTER\s+TABLE\s+`meetup_event_snapshot_public_contents`\s+ADD\s+`attendance_mode`\s+text\b/iu,
+        "0023 may only add the nullable Meetup attendance-mode column",
       );
     } else {
       assert.doesNotMatch(sql, /\bALTER\s+TABLE\b/iu, file);
@@ -227,6 +242,15 @@ test("the normalized migration chain is safe for the Sites production tokenizer"
   assert.match(
     maintenanceFragments[1],
     /CREATE INDEX IF NOT EXISTS `maintenance_request_receipts_expiry_idx`/u,
+  );
+
+  const onlineAttendanceFragments = productionFragments(
+    migrationSql("0023_meetup_online_attendance.sql"),
+  );
+  assert.equal(onlineAttendanceFragments.length, 1);
+  assert.match(
+    onlineAttendanceFragments[0],
+    /ALTER TABLE `meetup_event_snapshot_public_contents` ADD `attendance_mode` text/u,
   );
 
   const database = new DatabaseSync(":memory:");

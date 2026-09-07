@@ -301,6 +301,7 @@ export function buildEditorialMetadataFromResolved({
 }
 
 export async function EditorialPage({
+  className,
   children,
   displayDeck,
   displayEyebrow,
@@ -312,6 +313,7 @@ export async function EditorialPage({
   previewMediaAssets,
   tone = "think",
 }: Readonly<{
+  className?: string;
   children?: ReactNode;
   displayDeck?: string;
   displayEyebrow?: string | null;
@@ -350,7 +352,7 @@ export async function EditorialPage({
   const origin = privatePreview ? null : await getTrustedRequestOrigin();
 
   return (
-    <main className="editorial-page">
+    <main className={`editorial-page${className ? ` ${className}` : ""}`}>
       <Breadcrumbs
         items={[
           { href: "/", label: "Home" },

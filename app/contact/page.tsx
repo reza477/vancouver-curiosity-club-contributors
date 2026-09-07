@@ -56,6 +56,7 @@ export default async function ContactPage({
   return (
     <ContactRouteBody page={loaded.page} partnershipMode={partnershipMode}>
       <PublicSubmissionForm
+        compactHeading
         formKey="contact"
         id="contact-form"
         initialContactTopic={partnershipMode ? "Partnerships" : undefined}

@@ -2,7 +2,7 @@
 
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { usePathname } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 const requiredNavigation = [
@@ -28,12 +28,20 @@ export function SiteHeader({
 }>) {
   const primaryNavigation = normalizedPrimaryNavigation(navigation);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    header.dataset.menuReady = "true";
+    return () => { delete header.dataset.menuReady; };
+  }, []);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
     <header
       className="site-header"
+      ref={headerRef}
       data-mobile-menu-open={mobileMenuOpen ? "true" : "false"}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || !mobileMenuOpen) return;

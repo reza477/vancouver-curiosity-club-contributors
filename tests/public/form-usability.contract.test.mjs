@@ -310,7 +310,7 @@ test("secure-send preparation reports slowness within one second without weakeni
   assert.match(postRoute, /readBoundedNativeForm\(request, formKey, 16_384\)/u);
   assert.match(
     formSource,
-    /if \(busy \|\| instanceState === "error"\) return;/u,
+    /if \(submittingRef\.current \|\| busy \|\| instanceState === "error"\) return;/u,
   );
   assert.match(formSource, /await instanceGateRef\.current\?\.promise/u);
   assert.match(

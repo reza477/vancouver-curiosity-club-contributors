@@ -1578,7 +1578,7 @@ test(
       );
       assert.match(
         html,
-        /<main\b[^>]*class="editorial-page"/u,
+        /<main\b[^>]*class="editorial-page(?: contact-page)?"/u,
         `${label} must use the canonical editorial main`,
       );
       if (label !== "Privacy") {
@@ -1688,7 +1688,8 @@ test(
     assert.match(formSource, /FORM_INSTANCE_SLOW_MS = 750/u);
     assert.match(formSource, /FORM_INSTANCE_TIMEOUT_MS = 10_000/u);
     assert.match(formSource, /await waitForMinimumFormCompletion/u);
-    assert.match(formSource, /if \(busy \|\| instanceState === "error"\) return;/u);
+    assert.match(formSource, /if \(submittingRef\.current \|\| busy \|\| instanceState === "error"\) return;/u);
+    assert.match(formSource, /Date\.now\(\) - instanceReceivedAtRef\.current >= PUBLIC_FORM_INSTANCE_MAX_AGE_MS - 60_000/u);
     assert.equal(
       countMatches(sharedFormsHtml, /<form\b/gu),
       2,
@@ -1806,7 +1807,68 @@ async function fixture() {
   return { database, now };
 }
 
-async function pastInstanceToken(database, formKey) {
+test("instance renewal preserves Contact's cookie-less principal and rejects cross-origin or cookie-less non-Contact requests", routeTestOptions, async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const token = await pastInstanceToken(data.database, "contact");
+  const [{ POST }] = routeModules;
+  const request = (formKey, origin = TEST_ORIGIN) => new Request(`${TEST_ORIGIN}/api/forms/instance`, {
+    method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ formKey, instanceToken: token }),
+  });
+  const response = await POST(request("contact"));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("set-cookie"), null);
+  assert.match(response.headers.get("cache-control"), /private, no-store/u);
+  const body = await response.json();
+  const decode = (value) => JSON.parse(Buffer.from(value.split(".")[0], "base64url").toString());
+  assert.equal(decode(body.instanceToken).n, decode(token).n);
+  assert.ok(decode(body.instanceToken).i >= decode(token).i);
+  assert.equal((await POST(request("volunteer"))).status, 403);
+  assert.ok((await POST(request("contact", "https://attacker.invalid"))).status >= 400);
+});
+
+test("expired native inquiries preserve escaped answers and the nonce for explicit immediate retry", routeTestOptions, async (t) => {
+  for (const formKey of ["contact", "partnership"]) {
+    const data = await fixture();
+    t.after(() => data.database.close());
+    const [, { POST }] = routeModules;
+    const credentials = formKey === "partnership" ? await pastNativeFormCredentials(data.database, formKey) : { cookie: null };
+    const token = await pastInstanceToken(data.database, formKey, 3 * 60 * 60 * 1000);
+    const fields = new URLSearchParams({
+      instanceToken: token, companyFax: "", name: "Native Recovery",
+      replyEmail: "native-recovery@visitor.invalid", topic: "General",
+      organizationOrVenueName: "Community organization", partnershipType: "Venue / space",
+      message: 'Preserve </textarea><script>alert("unsafe")</script> as text.',
+    });
+    const send = () => POST(nativeFormRequest(`/api/forms/${formKey}`, {cookie: credentials.cookie, fields}), routeContext(formKey));
+    const response = await send();
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("set-cookie"), null);
+    const html = await response.text();
+    assert.match(html, /Your form is ready again/u);
+    assert.match(html, /&lt;\/textarea&gt;&lt;script&gt;alert\(&quot;unsafe&quot;\)/u);
+    assert.doesNotMatch(html, /<script>/u);
+    assert.equal(await tableCount(data.database, "form_submissions"), 0);
+    const renewed = /name="instanceToken" type="hidden" value="([^"]+)"/u.exec(html)[1];
+    const decode = (value) => JSON.parse(Buffer.from(value.split(".")[0], "base64url").toString());
+    assert.equal(decode(renewed).n, decode(token).n);
+    fields.set("instanceToken", renewed);
+    // Use a supported selection on resubmission; the recovery itself preserves
+    // bounded text without claiming it has passed form validation.
+    if (formKey === "partnership") fields.set("partnershipType", routeModules[6].PARTNERSHIP_TYPES[0]);
+    assert.equal((await send()).status, 201);
+    assert.equal((await send()).status, 201);
+    assert.equal(await tableCount(data.database, "form_submissions"), 1);
+    fields.set("instanceToken", token);
+    fields.set("companyFax", 'keep"bait');
+    const honeypotRecovery = await send();
+    assert.match(await honeypotRecovery.text(), /value="keep&quot;bait"/u);
+    fields.set("instanceToken", `${token.slice(0, -2)}xx`);
+    assert.equal((await send()).status, 403);
+  }
+});
+
+async function pastInstanceToken(database, formKey, age = 4_000) {
   RUNTIME_ENVIRONMENT.DB = database;
   const [{ GET }] = routeModules;
   const response = await GET(
@@ -1836,7 +1898,7 @@ async function pastInstanceToken(database, formKey) {
   const created = await createPublicFormInstanceToken(
     keyHex,
     formKey,
-    Date.now() - 4_000,
+    Date.now() - age,
   );
   return created.token;
 }

@@ -1177,6 +1177,71 @@ test("owner venue selection atomically overrides or suppresses synchronized Meet
     },
     name: "Meetup Source Venue",
   });
+
+  database.exec(`
+    UPDATE meetup_event_snapshot_public_contents
+    SET attendance_mode = 'online',
+        public_venue_name = NULL,
+        public_venue_address = NULL
+    WHERE snapshot_id = 'snapshot_active';
+  `);
+  event = (await queryPublicEvents(database, upcomingInput())).events.find(
+    ({ slug }) => slug === "meetup-active-event",
+  );
+  assert.equal(event?.attendanceMode, "online");
+  assert.equal(event?.venue, null);
+
+  const online = await queryPublicEvents(database, {
+    ...upcomingInput(),
+    attendanceMode: "online",
+  });
+  assert.equal(
+    online.events.some(({ slug }) => slug === "meetup-active-event"),
+    true,
+  );
+  const noLongerInPerson = await queryPublicEvents(database, {
+    ...upcomingInput(),
+    attendanceMode: "in-person",
+  });
+  assert.equal(
+    noLongerInPerson.events.some(({ slug }) => slug === "meetup-active-event"),
+    false,
+  );
+
+  const onlineDetail = await getPublicEventBySlug(database, {
+    organizationId: ORGANIZATION_ID,
+    slug: "meetup-active-event",
+  });
+  assert.ok(onlineDetail);
+  const onlineJsonLd = buildPublicEventJsonLd(
+    onlineDetail,
+    "https://site.synthetic.invalid/events/meetup-active-event",
+    "Synthetic Site",
+  );
+  assert.equal(
+    onlineJsonLd.eventAttendanceMode,
+    "https://schema.org/OnlineEventAttendanceMode",
+  );
+  assert.equal(onlineJsonLd.location, undefined);
+
+  const exportRecord = (
+    await queryPublicEventsForExport(database, {
+      ...upcomingInput(),
+      maxEvents: 500,
+    })
+  ).find(({ event: exportedEvent }) => exportedEvent.slug === "meetup-active-event");
+  assert.equal(exportRecord?.event.attendanceMode, "online");
+  assert.equal(exportRecord?.event.venue, null);
+
+  database.exec(`
+    UPDATE meetup_event_snapshot_public_contents
+    SET attendance_mode = 'corrupt-source-mode'
+    WHERE snapshot_id = 'snapshot_active';
+  `);
+  event = (await queryPublicEvents(database, upcomingInput())).events.find(
+    ({ slug }) => slug === "meetup-active-event",
+  );
+  assert.equal(event?.attendanceMode, "location-undecided");
 });
 
 test("all exact cross-post aliases stay out of public projections while the canonical event and Reset remain visible", async (t) => {

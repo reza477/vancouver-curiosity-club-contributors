@@ -123,7 +123,7 @@ export function HomePageRenderer({
         data-home-layout={heroEvent ? "image-led-split" : "text-only-statement"}
         aria-labelledby="home-title"
       >
-        <div className="home-hero__copy">
+        <div className="home-hero__heading">
           <p className="eyebrow">{PUBLIC_HOME_MISSION_COPY.eyebrow}</p>
           <h1 aria-label={PUBLIC_HOME_MISSION_COPY.heading} id="home-title">
             {heroHeadingLines.map((line, index) => (
@@ -135,6 +135,19 @@ export function HomePageRenderer({
               </span>
             ))}
           </h1>
+        </div>
+
+        {heroEvent ? (
+          <div
+            className="home-hero__featured-poster"
+            aria-label="Featured upcoming gathering"
+            role="group"
+          >
+            <HomeHeroPoster event={heroEvent} />
+          </div>
+        ) : null}
+
+        <div className="home-hero__copy">
           {PUBLIC_HOME_MISSION_COPY.paragraphs.map((paragraph) => (
             <p className="home-hero__deck" key={paragraph}>
               {paragraph}
@@ -148,15 +161,6 @@ export function HomePageRenderer({
           </div>
         </div>
 
-        {heroEvent ? (
-          <div
-            className="home-hero__featured-poster"
-            aria-label="Featured upcoming gathering"
-            role="group"
-          >
-            <HomeHeroPoster event={heroEvent} />
-          </div>
-        ) : null}
       </section>
 
       <section
