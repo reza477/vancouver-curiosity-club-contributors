@@ -10,7 +10,7 @@ const tick = async () => { for(let i=0;i<12;i++) await Promise.resolve(); };
 test('late and failed artwork remains fail-open, and navigation listeners clean up without cancelling a destination remount',async()=>{
   const motion=await readFile(new URL('../../app/_components/PublicArtworkMotion.tsx',import.meta.url),'utf8');
   const navigation=await readFile(new URL('../../app/_components/PublicPosterNavigation.tsx',import.meta.url),'utf8');
-  const css=await readFile(new URL('../../app/styles/connected-navigation.css',import.meta.url),'utf8');
+  const css=await readFile(new URL('../../app/styles/components/responsive-overrides.css',import.meta.url),'utf8');
   assert.match(motion,/if \(!ready\) \{ element.dataset.artworkRevealState = "static"; return; \}/u);
   assert.match(motion,/stage.addEventListener\("load", retryLoadedPoster, true\)/u);
   assert.match(motion,/stage.removeEventListener\("load", retryLoadedPoster, true\)/u);
@@ -34,7 +34,7 @@ function setup(options={}) {
   const timers=new Map(); let nextTimer=0;
   const window={__VINEXT_RSC_NAVIGATE__:()=>{},scrollTo:()=>{},setTimeout:(fn,ms)=>{timers.set(++nextTimer,{fn,ms});return nextTimer;},clearTimeout:id=>timers.delete(id)};
   const transitions=[];const calls=[];
-  const document={documentElement:{dataset:{}},querySelector:()=>detail,startViewTransition:update=>{
+  const document={documentElement:{dataset:{navigationMotionReady:'true'}},querySelector:()=>detail,startViewTransition:update=>{
     if(options.throwStart)throw Error('Unavailable');
     const ready=deferred(),finished=deferred();
     const transition={ready:ready.promise,finished:finished.promise,skipTransition(){this.skipped=true;ready.reject(Error('skipped'));},finish(){finished.resolve();}};
@@ -44,7 +44,7 @@ function setup(options={}) {
   const link={href:'https://example.com/events/example',target:'',hasAttribute:name=>name==='download'&&!!options.download,querySelector:()=>source};
   const exports={};
   let observer;
-  class MutationObserver { constructor(callback){observer={callback,disconnected:false};} observe(){} disconnect(){observer.disconnected=true;} }
+  class MutationObserver { constructor(callback){this.state={callback,disconnected:false};observer=this.state;} observe(){} disconnect(){this.state.disconnected=true;} }
   vm.runInNewContext(code,{exports,URL,document,location,window,MutationObserver,matchMedia:()=>({matches:!!options.reduce}),require:name=>name.includes('vinext')?{navigateClientSide:async(...args)=>{calls.push(args);await options.navigation?.();location.pathname='/events/example';if(!observer.disconnected)observer.callback();if(options.paintPending)await options.paintPending;}}:{PUBLIC_ARTWORK_MOTION_ENABLED:true}});
   return {api:exports,link,document,window,source,destination,information,timers,transitions,calls,location};
 }
@@ -54,11 +54,11 @@ test('only internal event-detail URLs qualify',()=>{
   for(const path of ['/events','/events/','/calendar','/contact','/events/example#rsvp','https://meetup.com/events/123','/events/a/nested','javascript:alert(1)']) assert.equal(api.eventPosterPath(path,'https://example.com'),null,path);
 });
 test('unsupported, reduced, download, new-tab, unloaded and absent-router cases preserve ordinary links',()=>{
-  for(const change of [h=>delete h.document.startViewTransition,h=>delete h.window.__VINEXT_RSC_NAVIGATE__,h=>h.link.target='_blank',h=>h.source.complete=false,h=>h.source.naturalWidth=0]){
+  for(const change of [h=>delete h.document.startViewTransition,h=>delete h.document.documentElement.dataset.navigationMotionReady,h=>delete h.window.__VINEXT_RSC_NAVIGATE__,h=>h.link.target='_blank',h=>h.source.complete=false,h=>h.source.naturalWidth=0]){
     const h=setup();change(h);assert.equal(h.api.openConnectedPoster(h.link),false);assert.equal(h.calls.length,0);
   }
   for(const options of [{reduce:true},{download:true},{throwStart:true}]){
-    const h=setup(options);assert.equal(h.api.openConnectedPoster(h.link),false);assert.deepEqual(h.document.documentElement.dataset,{});
+    const h=setup(options);assert.equal(h.api.openConnectedPoster(h.link),false);assert.equal(h.document.documentElement.dataset.posterNavigation,undefined);
   }
 });
 test('one navigation commits and decodes before connecting destination; completion cleans up',async()=>{

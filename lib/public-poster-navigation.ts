@@ -19,7 +19,8 @@ export function openConnectedPoster(link: HTMLAnchorElement): boolean {
   const path = eventPosterPath(link.href, location.origin);
   const source = link.querySelector<HTMLImageElement>("img");
   const hasClientRouter = typeof (window as Window & { __VINEXT_RSC_NAVIGATE__?: unknown }).__VINEXT_RSC_NAVIGATE__ === "function";
-  if (!PUBLIC_ARTWORK_MOTION_ENABLED || !hasClientRouter || !path || link.target || link.hasAttribute("download") ||
+  if (!PUBLIC_ARTWORK_MOTION_ENABLED || document.documentElement.dataset.navigationMotionReady !== "true" ||
+      !hasClientRouter || !path || link.target || link.hasAttribute("download") ||
       !document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches ||
       !source?.complete || !source.naturalWidth) return false;
   cancelCurrent?.();

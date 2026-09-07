@@ -13,10 +13,6 @@
   .primary-nav[data-indicator-ready="true"] a.primary-nav__link--organizations { text-decoration: none; }
 }
 @media (max-width: 62rem) {
-  .site-header:not([data-menu-ready="true"]) > .primary-nav { grid-column: 1 / -1; }
-  .site-header[data-mobile-menu-open="true"] .site-menu-toggle__icon { background: transparent; }
-  .site-header[data-mobile-menu-open="true"] .site-menu-toggle__icon::before { transform: translateY(0.3rem) rotate(45deg); }
-  .site-header[data-mobile-menu-open="true"] .site-menu-toggle__icon::after { transform: translateY(-0.3rem) rotate(-45deg); }
   @media (prefers-reduced-motion: no-preference) {
     body[data-artwork-motion-config="enabled"] .site-menu-toggle__icon::before,
     body[data-artwork-motion-config="enabled"] .site-menu-toggle__icon::after { transition: transform var(--artwork-motion-interaction) var(--artwork-motion-easing); }
