@@ -1,6 +1,7 @@
 /* Route-scoped institutional About presentation. */
 .about-page {
   width: 100%;
+  --public-section-space: clamp(2rem, 3.8vw, 3.5rem);
 }
 
 .about-page :is(h2, h3, p, ol, ul, figure) {
@@ -37,8 +38,8 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   justify-items: center;
-  padding-top: clamp(2.5rem, 4.5vw, 4rem);
-  padding-bottom: clamp(2.25rem, 4vw, 3.5rem);
+  padding-top: clamp(1.5rem, 2.5vw, 2.25rem);
+  padding-bottom: clamp(2rem, 3vw, 2.75rem);
   display: grid;
 }
 
@@ -49,7 +50,7 @@
 
 .about-hero h1 {
   max-width: none;
-  margin: 0 0 clamp(1.5rem, 3vw, 2.25rem);
+  margin: 0 0 clamp(1.25rem, 2vw, 1.75rem);
   font-family: var(--display);
   font-size: var(--public-page-title);
   font-weight: 400;
@@ -222,8 +223,8 @@
 }
 
 .about-program-streams {
-  grid-column: 2;
-  margin-top: 1.75rem;
+  grid-column: 1 / -1;
+  margin-top: 0;
 }
 
 .about-program-streams h3 {
@@ -236,6 +237,8 @@
   border-top: 1px solid var(--line);
   list-style: none;
   display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  column-gap: clamp(1.5rem, 4vw, 4rem);
 }
 
 .about-program-streams li {
@@ -277,7 +280,7 @@
 }
 
 .about-evidence {
-  padding-block: clamp(2.75rem, 5vw, 5rem);
+  padding-block: var(--public-section-space);
 }
 
 .about-evidence__copy {

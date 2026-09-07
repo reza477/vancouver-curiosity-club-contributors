@@ -1629,7 +1629,8 @@ test("Contact is consistent while partnership and Host routes remain canonical",
     "private, no-store, max-age=0",
   );
   const partnershipHtml = await partnershipResponse.text();
-  assert.match(partnershipHtml, /<p class="eyebrow">Partnership inquiry<\/p>/u);
+  assert.doesNotMatch(partnershipHtml, /<p class="eyebrow">Partnership inquiry<\/p>/u);
+  assert.match(partnershipHtml, /<div class="sr-only">[\s\S]*?<h2[^>]*>Partnership inquiry<\/h2>/u);
   assert.match(
     partnershipHtml,
     /<h1>Start a conversation with our team\.<\/h1>/u,

@@ -131,7 +131,7 @@ test("continuous integration and dependency maintenance cover the release gates"
   assert.match(workflow, /node-version-file: \.nvmrc/u);
   for (const command of [
     "npm ci --no-audit",
-    "npm audit --omit=dev",
+    "npm audit --include=dev",
     "npm run typecheck",
     "npm run lint",
     "npm run build",

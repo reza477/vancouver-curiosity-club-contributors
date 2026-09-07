@@ -374,6 +374,26 @@ main, .site-footer {
     pointer-events: auto;
   }
 
+  /* Navigation is available before hydration, including when JS fails. Only
+     an operational menu button may collapse it. */
+  .site-header:not([data-menu-ready="true"]) {
+    flex-wrap: wrap;
+  }
+
+  .site-header:not([data-menu-ready="true"]) .site-menu-toggle {
+    display: none;
+  }
+
+  .site-header:not([data-menu-ready="true"]) > .primary-nav {
+    position: static;
+    visibility: visible;
+    pointer-events: auto;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    box-shadow: none;
+    margin-top: 0.75rem;
+  }
+
   .site-header > .primary-nav a {
     justify-content: flex-start;
     min-height: 2.75rem;

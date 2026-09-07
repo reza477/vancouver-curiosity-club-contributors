@@ -10,7 +10,7 @@ import {
   type ContactTopic,
   type PublicFormKey,
 } from "@/lib/server/phase7/public-form-contract";
-import { PUBLIC_FORM_MINIMUM_COMPLETION_MS } from "@/lib/server/phase7/public-form-protection";
+import { PUBLIC_FORM_INSTANCE_MAX_AGE_MS, PUBLIC_FORM_MINIMUM_COMPLETION_MS } from "@/lib/server/phase7/public-form-protection";
 import { useEffect, useId, useRef, useState } from "react";
 
 export type PublicFormChoice = Readonly<{
@@ -27,6 +27,7 @@ type FormInstanceGate = Readonly<{
 
 const FORM_INSTANCE_SLOW_MS = 750;
 const FORM_INSTANCE_TIMEOUT_MS = 10_000;
+const FORM_SUBMISSION_TIMEOUT_MS = 25_000;
 
 export function PublicSubmissionForm({
   choices = [],
@@ -34,12 +35,14 @@ export function PublicSubmissionForm({
   id,
   initialContactTopic,
   initialInstanceToken = null,
+  compactHeading = false,
 }: Readonly<{
   choices?: readonly PublicFormChoice[];
   formKey: PublicFormKey;
   id?: string;
   initialContactTopic?: ContactTopic;
   initialInstanceToken?: string | null;
+  compactHeading?: boolean;
 }>) {
   const initialInstanceReady = Boolean(initialInstanceToken);
   const [instanceToken, setInstanceToken] = useState(
@@ -64,6 +67,8 @@ export function PublicSubmissionForm({
   const instanceErrorRef = useRef<HTMLDivElement>(null);
   const instanceGateRef = useRef<FormInstanceGate | null>(null);
   const instanceReceivedAtRef = useRef(0);
+  const lastInstanceTokenRef = useRef(initialInstanceToken);
+  const submittingRef = useRef(false);
   const submissionErrorRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   if (instanceGateRef.current === null) {
@@ -76,7 +81,8 @@ export function PublicSubmissionForm({
     if (
       initialInstanceReady &&
       initialInstanceToken &&
-      instanceRequest === 0
+      instanceRequest === 0 &&
+      !formInstanceNeedsRenewal(initialInstanceToken)
     ) {
       instanceReceivedAtRef.current = Date.now();
       instanceGateRef.current?.resolve(initialInstanceToken);
@@ -99,12 +105,18 @@ export function PublicSubmissionForm({
     );
     async function loadInstance() {
       try {
+        const previousToken = lastInstanceTokenRef.current;
         const response = await fetch(
-          `/api/forms/instance?form=${encodeURIComponent(formKey)}`,
+          previousToken ? "/api/forms/instance" : `/api/forms/instance?form=${encodeURIComponent(formKey)}`,
           {
             cache: "no-store",
             credentials: "same-origin",
             signal: controller.signal,
+            ...(previousToken ? {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ formKey, instanceToken: previousToken }),
+            } : {}),
           },
         );
         const body = (await response.json()) as unknown;
@@ -118,6 +130,7 @@ export function PublicSubmissionForm({
         if (!active) return;
         window.clearTimeout(slowTimer);
         instanceReceivedAtRef.current = Date.now();
+        lastInstanceTokenRef.current = body.instanceToken;
         setInstanceToken(body.instanceToken);
         setInstanceState("ready");
         setInstanceNotice("");
@@ -167,18 +180,30 @@ export function PublicSubmissionForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || instanceState === "error") return;
+    if (submittingRef.current || busy || instanceState === "error") return;
+    // Use elapsed local time after receipt, not the server timestamp: a visitor's
+    // clock may be hours ahead. The server remains authoritative about expiry.
+    if (instanceReceivedAtRef.current > 0 &&
+        Date.now() - instanceReceivedAtRef.current >= PUBLIC_FORM_INSTANCE_MAX_AGE_MS - 60_000) {
+      retryInstance();
+      setNotice("We’re renewing your form session. Your answers are still here. Please send again when it’s ready.");
+      return;
+    }
+    submittingRef.current = true;
     setBusy(true);
     setNotice("");
     setNoticeIsError(false);
     setErrors({});
     const formData = new FormData(event.currentTarget);
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       const token = (await instanceGateRef.current?.promise) || null;
       if (!token) {
         throw new Error("The form is temporarily unavailable. Try again.");
       }
       await waitForMinimumFormCompletion(instanceReceivedAtRef.current);
+      timeout = setTimeout(() => controller.abort(), FORM_SUBMISSION_TIMEOUT_MS);
       const response = await fetch(
         `/api/forms/${encodeURIComponent(formKey)}`,
         {
@@ -190,9 +215,15 @@ export function PublicSubmissionForm({
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           method: "POST",
+          signal: controller.signal,
         },
       );
       const body = (await response.json()) as unknown;
+      if (isRecord(body) && isRecord(body.error) && body.error.code === "form_instance_expired") {
+        retryInstance();
+        setNotice("Your form session expired. Your answers are still here. Please send again when the form is ready.");
+        return;
+      }
       if (
         response.status === 422 &&
         isRecord(body) &&
@@ -231,11 +262,17 @@ export function PublicSubmissionForm({
     } catch (error) {
       setNoticeIsError(true);
       setNotice(
-        error instanceof Error
+        controller.signal.aborted
+          ? "We couldn’t confirm whether your inquiry was received. Your answers are still here. Try again; we’ll check the same submission."
+          : error instanceof TypeError
+            ? "The connection was interrupted. Your answers are still here. Try again; we’ll check the same submission."
+          : error instanceof Error
           ? error.message
           : "We couldn’t send your inquiry. Please try again.",
       );
     } finally {
+      clearTimeout(timeout);
+      submittingRef.current = false;
       setBusy(false);
     }
   }
@@ -267,7 +304,7 @@ export function PublicSubmissionForm({
       id={id}
       aria-labelledby={`${idPrefix}-title`}
     >
-      <div className="public-submission__heading">
+      <div className={compactHeading ? "sr-only" : "public-submission__heading"}>
         <p className="section-kicker">Send an inquiry</p>
         <h2 id={`${idPrefix}-title`}>{title}</h2>
       </div>
@@ -644,8 +681,11 @@ async function waitForMinimumFormCompletion(
 ): Promise<void> {
   const remaining = Math.max(
     0,
-    PUBLIC_FORM_MINIMUM_COMPLETION_MS -
-      (Date.now() - instanceReceivedAtUtcMs),
+    Math.min(
+      PUBLIC_FORM_MINIMUM_COMPLETION_MS,
+      PUBLIC_FORM_MINIMUM_COMPLETION_MS -
+        (Date.now() - instanceReceivedAtUtcMs),
+    ),
   );
   if (remaining === 0) return;
   await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
@@ -953,4 +993,16 @@ function isStringRecord(value: unknown): value is Record<string, string> {
     isRecord(value) &&
     Object.values(value).every((item) => typeof item === "string")
   );
+}
+
+/** A freshness hint only: the server always verifies the signed challenge. */
+export function formInstanceNeedsRenewal(token: string, nowUtcMs = Date.now()): boolean {
+  try {
+    const payload = token.split(".")[0].replaceAll("-", "+").replaceAll("_", "/");
+    const decoded: unknown = JSON.parse(atob(payload));
+    return !isRecord(decoded) || typeof decoded.i !== "number" ||
+      nowUtcMs - decoded.i >= PUBLIC_FORM_INSTANCE_MAX_AGE_MS - 60_000;
+  } catch {
+    return true;
+  }
 }

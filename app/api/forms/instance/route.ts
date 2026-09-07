@@ -12,10 +12,44 @@ import {
   ensurePublicFormProtectionKey,
   isAnonymousFormClientId,
   readCookie,
+  renewPublicFormInstanceToken,
 } from "@/lib/server/phase7/public-form-protection";
-import { safeErrorResponse } from "@/lib/validation/server-observability";
+import { SafeApplicationError, safeErrorResponse } from "@/lib/validation/server-observability";
+import { readBoundedUtf8Body, requireSameOriginMutation } from "@/app/api/organizer/meetup/_mutation";
 
 export const dynamic = "force-dynamic";
+
+/** Renewal preserves both the signed nonce and the existing cookie identity.
+ * It must never fall back to issuing a fresh anonymous client cookie. */
+export async function POST(request: Request): Promise<Response> {
+  try {
+    requireSameOriginMutation(request);
+    let body: unknown;
+    try {
+      body = JSON.parse(await readBoundedUtf8Body(request, 2_048));
+    } catch {
+      throw new SafeApplicationError("validation_failed", 400, "The form could not be renewed. Try again.");
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new SafeApplicationError("validation_failed", 400, "The form could not be renewed. Try again.");
+    }
+    const formKey = parsePublicFormKey(Reflect.get(body, "formKey"));
+    if (formKey !== "contact" && !isAnonymousFormClientId(readCookie(request.headers.get("cookie"), PUBLIC_FORM_CLIENT_COOKIE))) {
+      throw new SafeApplicationError("authorization_denied", 403, "Refresh the form and try again.");
+    }
+    const { database } = getRuntimeAuthConfiguration();
+    const organization = await resolvePublicOrganization(database);
+    if (!organization) return unavailable();
+    const nowUtcMs = readServerUtcMs();
+    const keyHex = await ensurePublicFormProtectionKey(database, organization.id, nowUtcMs);
+    const { token } = await renewPublicFormInstanceToken(keyHex, Reflect.get(body, "instanceToken"), formKey, nowUtcMs);
+    return new Response(JSON.stringify({ formKey, instanceToken: token, expiresInSeconds: 2 * 60 * 60 }), { headers: publicFormJsonHeaders() });
+  } catch (error) {
+    const response = safeErrorResponse(error, { operation: "renew_public_form_instance", route: "/api/forms/instance" });
+    applyPublicFormHeaders(response.headers);
+    return response;
+  }
+}
 
 export async function GET(request: Request): Promise<Response> {
   try {

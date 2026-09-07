@@ -89,6 +89,21 @@ export async function createPublicFormInstanceToken(
     issuedAt: nowUtcMs,
     nonce: randomBase64Url(24),
   });
+  return signPublicFormInstance(keyHex, instance);
+}
+
+/** Renew only a previously signed challenge, preserving its idempotency nonce. */
+export async function renewPublicFormInstanceToken(
+  keyHex: string,
+  tokenValue: unknown,
+  formKey: PublicFormKey,
+  nowUtcMs: number,
+): Promise<Readonly<{ instance: PublicFormInstance; token: string }>> {
+  const previous = await readSignedPublicFormInstance(keyHex, tokenValue, formKey, nowUtcMs);
+  return signPublicFormInstance(keyHex, Object.freeze({ ...previous, issuedAt: nowUtcMs }));
+}
+
+async function signPublicFormInstance(keyHex: string, instance: PublicFormInstance) {
   const payload = base64UrlEncode(
     new TextEncoder().encode(
       JSON.stringify({
@@ -103,6 +118,19 @@ export async function createPublicFormInstanceToken(
 }
 
 export async function verifyPublicFormInstanceToken(
+  keyHex: string,
+  tokenValue: unknown,
+  expectedFormKey: PublicFormKey,
+  nowUtcMs: number,
+): Promise<PublicFormInstance> {
+  const instance = await readSignedPublicFormInstance(keyHex, tokenValue, expectedFormKey, nowUtcMs);
+  if (nowUtcMs - instance.issuedAt > PUBLIC_FORM_INSTANCE_MAX_AGE_MS) {
+    throw new SafeApplicationError("form_instance_expired", 403, "Your form session expired. Your answers are still here. Try again.");
+  }
+  return instance;
+}
+
+async function readSignedPublicFormInstance(
   keyHex: string,
   tokenValue: unknown,
   expectedFormKey: PublicFormKey,
@@ -148,8 +176,7 @@ export async function verifyPublicFormInstanceToken(
     !/^[A-Za-z0-9_-]{32}$/u.test(record.n) ||
     typeof record.i !== "number" ||
     !Number.isSafeInteger(record.i) ||
-    record.i > nowUtcMs + 30_000 ||
-    nowUtcMs - record.i > PUBLIC_FORM_INSTANCE_MAX_AGE_MS
+    record.i > nowUtcMs + 30_000
   ) {
     throw invalidInstance();
   }
