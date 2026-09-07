@@ -108,7 +108,7 @@ function horizontalRatio(value) {
   return Number(match[1]) / Number(match[2]);
 }
 
-test("the month calendar uses substantial brand accents without losing non-colour state cues", async () => {
+test("the calendar uses cream and navy with functional stream accents and non-colour state cues", async () => {
   const [calendar, styles] = await Promise.all([
     readFile(
       new URL("app/_components/PublicMonthCalendar.tsx", projectRoot),
@@ -126,28 +126,28 @@ test("the month calendar uses substantial brand accents without losing non-colou
     );
     assert.match(
       toolbarBackground ?? "",
-      /--cal-paper-deep/u,
-      `${viewportWidth}px calendar toolbar should use a visible brand accent, not a flat paper surface`,
+      /--cal-paper/u,
+      `${viewportWidth}px calendar toolbar should use the shared cream surface`,
     );
-    assert.match(
+    assert.equal(
       lastDeclarationAtViewport(
         styles,
         ".public-calendar__toolbar",
-        "border-left",
+        "border-bottom",
         viewportWidth,
       ) ?? "",
-      /--lane-think/u,
-      `${viewportWidth}px month heading needs a substantial brand-colour edge`,
+      "1px solid var(--cal-navy)",
+      `${viewportWidth}px month heading keeps an editorial dividing rule`,
     );
-    assert.match(
+    assert.equal(
       lastDeclarationAtViewport(
         styles,
         ".public-calendar__toolbar",
         "box-shadow",
         viewportWidth,
       ) ?? "",
-      /--lane-play/u,
-      `${viewportWidth}px month heading needs a second non-neutral colour cue`,
+      "none",
+      `${viewportWidth}px calendar toolbar must not retain the coloured offset shadow`,
     );
   }
 
@@ -159,7 +159,7 @@ test("the month calendar uses substantial brand accents without losing non-colou
       /background(?:-color)?\s*:\s*([^;]+)/u,
     )?.[1];
     const accent = background?.match(
-      /--(cal-navy-mid|cal-header-blue|cal-header-teal|cal-header-ochre|cal-header-brick)/u,
+      /--(cal-navy)/u,
     )?.[1];
     if (accent) weekdayAccents.add(accent);
     assert.match(
@@ -168,9 +168,9 @@ test("the month calendar uses substantial brand accents without losing non-colou
       "each coloured weekday surface needs an explicit high-contrast text token",
     );
   }
-  assert.ok(
-    weekdayAccents.size >= 3,
-    "the month grid should use at least three substantial weekday accents rather than one repeated neutral header",
+  assert.equal(
+    weekdayAccents.size, 1,
+    "weekday headings use a consistent navy, not an arbitrary rainbow",
   );
 
   assert.match(calendar, /aria-pressed=\{selected\}/u);
@@ -201,7 +201,7 @@ test("the month calendar uses substantial brand accents without losing non-colou
   );
   assert.match(
     styles,
-    /--cal-line:\s*#7d7595;/u,
+    /--cal-line:\s*color-mix\(in srgb, var\(--ink\) 55%, var\(--paper\)\);/u,
     "calendar cell boundaries need at least 3:1 contrast against adjacent cells",
   );
   assert.match(
@@ -295,6 +295,11 @@ test("event posters stay uncropped while established discovery frames remain hor
         `${selector} must stay uncropped at ${viewportWidth}px`,
       );
     }
+    assert.equal(
+      lastDeclarationAtViewport(styles, ".public-calendar-event__artwork img", "height", viewportWidth),
+      "auto",
+      `calendar posters must not retain the HTML 540px height at ${viewportWidth}px`,
+    );
     assert.equal(
       lastDeclarationAtViewport(
         styles,

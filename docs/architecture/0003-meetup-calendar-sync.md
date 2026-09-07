@@ -79,9 +79,11 @@ parser for each exact configured group's canonical public events page.
   beginning. Require stable group identity, timezone, total count, unique event
   IDs and cursors, monotonic ordering, and `count === totalCount` at the terminal
   page. Any partial, drifting, malformed, redirected, oversized, or GraphQL-error
-  response fails the whole source refresh. Validate event, venue, image,
-  capacity, RSVP, and waitlist fields; reject raw HTML, email addresses, meeting
-  credentials, and unsafe external destinations.
+  response fails the whole source refresh. Validate event type, venue, image,
+  capacity, RSVP, and waitlist fields; preserve physical versus online
+  attendance explicitly, and suppress Meetup's synthetic `Online event` venue.
+  Reject raw HTML, email addresses, meeting credentials, and unsafe external
+  destinations.
 - Process one source and at most two calendar rows per request. Persist a
   snapshot hash, pending generation ID, and cursor for resumable partial
   imports. Stage public-safe facts in an isolated pending generation; its rows
@@ -208,7 +210,10 @@ many-links-to-one-event schema and therefore requires no D1 migration.
   revalidates the exact active published snapshot, fetches only the allowlisted
   secure Meetup image host, validates bytes/dimensions/aspect ratio, transforms
   exact 16:9 responsive representations whose bytes match the public width and
-  height contract, and caches those WebP variants in R2.
+  height contract, and caches those WebP variants in R2. A source image that
+  fails those automatic checks may publish only through an exact-source,
+  visually reviewed, first-party crop; it must never be replaced with invented
+  artwork.
 - No Meetup OAuth/API credential, Meetup Pro plan, password, authenticated
   browser session, external queue, alternate database, or alternate host is
   introduced.

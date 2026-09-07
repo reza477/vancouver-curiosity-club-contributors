@@ -5897,6 +5897,9 @@ export const meetupEventSnapshotPublicContents = sqliteTable(
     publicDescriptionBlocksJson: text(
       "public_description_blocks_json",
     ).notNull(),
+    attendanceMode: text("attendance_mode", {
+      enum: ["in_person", "online"],
+    }),
     publicVenueName: text("public_venue_name"),
     publicVenueAddress: text("public_venue_address"),
     publicFloor: text("public_floor"),

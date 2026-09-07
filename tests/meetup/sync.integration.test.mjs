@@ -361,12 +361,14 @@ function meetupGroupPageHtml(groupSlug, events) {
   for (const [index, event] of events.entries()) {
     const venueId = String(25_956_900 + index);
     const photoId = String(535_545_400 + index);
+    const isOnline = event.eventType === "ONLINE";
     state[`Event:${event.id}`] = {
       __typename: "Event",
       dateTime: event.startsAt,
       description:
         "## Why come?\n\nBring **curiosity**. [Buy your VIFF ticket here](https://viff.org/whats-on/princess-mononoke/).\n\n- Meet thoughtful people\n- Leave with a new question",
       endTime: event.endsAt,
+      eventType: event.eventType ?? "PHYSICAL",
       eventUrl: `https://www.meetup.com/${groupSlug}/events/${event.id}/`,
       featuredEventPhoto: { __ref: `PhotoInfo:${photoId}` },
       group: { __ref: groupRef },
@@ -377,11 +379,11 @@ function meetupGroupPageHtml(groupSlug, events) {
     };
     state[`Venue:${venueId}`] = {
       __typename: "Venue",
-      address: "350 West Georgia Street",
-      city: "Vancouver",
+      address: isOnline ? "" : "350 West Georgia Street",
+      city: isOnline ? "" : "Vancouver",
       id: venueId,
-      name: "Vancouver Central Library",
-      state: "BC",
+      name: isOnline ? "Online event" : "Vancouver Central Library",
+      state: isOnline ? "" : "BC",
     };
     state[`PhotoInfo:${photoId}`] = {
       __typename: "PhotoInfo",
@@ -417,6 +419,7 @@ function meetupGroupGraphqlResponse(groupSlug, events) {
             edges: events.map((event, index) => {
               const venueId = String(25_956_900 + index);
               const photoId = String(535_545_400 + index);
+              const isOnline = event.eventType === "ONLINE";
               const photo = {
                 __typename: "PhotoInfo",
                 highResUrl:
@@ -432,7 +435,7 @@ function meetupGroupGraphqlResponse(groupSlug, events) {
                     "## Why come?\n\nBring **curiosity**. [Buy your VIFF ticket here](https://viff.org/whats-on/princess-mononoke/).\n\n- Meet thoughtful people\n- Leave with a new question",
                   displayPhoto: photo,
                   endTime: event.endsAt,
-                  eventType: "PHYSICAL",
+                  eventType: event.eventType ?? "PHYSICAL",
                   eventUrl:
                     `https://www.meetup.com/${groupSlug}/events/${event.id}/`,
                   featuredEventPhoto: photo,
@@ -445,11 +448,11 @@ function meetupGroupGraphqlResponse(groupSlug, events) {
                   title: event.title,
                   venue: {
                     __typename: "Venue",
-                    address: "350 West Georgia Street",
-                    city: "Vancouver",
+                    address: isOnline ? "" : "350 West Georgia Street",
+                    city: isOnline ? "" : "Vancouver",
                     id: venueId,
-                    name: "Vancouver Central Library",
-                    state: "BC",
+                    name: isOnline ? "Online event" : "Vancouver Central Library",
+                    state: isOnline ? "" : "BC",
                   },
                   waitlistMode: "AUTO",
                   waitlistRsvps: { totalCount: 0 },
@@ -776,6 +779,7 @@ test("complete group pages automatically publish missing events, rich content, a
         },
         {
           endsAt: "2026-08-12T20:00:00-07:00",
+          eventType: "ONLINE",
           id: "316010049",
           startsAt: "2026-08-12T18:00:00-07:00",
           title: "Wednesday Night Reset",
@@ -839,7 +843,8 @@ test("complete group pages automatically publish missing events, rich content, a
 
   const snapshots = await database
     .prepare(
-      `SELECT snapshot.event_url, snapshot.title, content.public_description,
+      `SELECT snapshot.event_url, snapshot.title, content.attendance_mode,
+              content.public_description,
               content.public_description_blocks_json,
               content.public_venue_name, content.public_venue_address,
               content.poster_source_url
@@ -872,8 +877,6 @@ test("complete group pages automatically publish missing events, rich content, a
   assert.equal(poetry.title, poetryTitle);
   assert.equal(reset.title, "Wednesday Night Reset");
   for (const row of [poetry, reset]) {
-    assert.equal(row.public_venue_name, "Vancouver Central Library");
-    assert.equal(row.public_venue_address, "350 West Georgia Street");
     assert.match(row.poster_source_url, /^https:\/\/secure\.meetupstatic\.com\//u);
     assert.match(row.public_description, /Buy your VIFF ticket here/u);
     const blocks = JSON.parse(row.public_description_blocks_json);
@@ -888,6 +891,26 @@ test("complete group pages automatically publish missing events, rich content, a
       },
     );
   }
+  assert.equal(poetry.attendance_mode, "in_person");
+  assert.equal(poetry.public_venue_name, "Vancouver Central Library");
+  assert.equal(poetry.public_venue_address, "350 West Georgia Street");
+  assert.equal(reset.attendance_mode, "online");
+  assert.equal(reset.public_venue_name, null);
+  assert.equal(reset.public_venue_address, null);
+
+  const publicPage = await queryPublicEvents(database, {
+    nowUtcMs: Date.parse("2026-08-01T12:00:00.000Z"),
+    organizationId: ORGANIZATION_ID,
+    page: 1,
+    pageSize: 12,
+    todayDate: "2026-08-01",
+    view: "upcoming",
+  });
+  const publicReset = publicPage.events.find(
+    (event) => event.title === "Wednesday Night Reset",
+  );
+  assert.equal(publicReset?.attendanceMode, "online");
+  assert.equal(publicReset?.venue, null);
 });
 
 test("isolates the same external UID across two official club feeds", async (t) => {

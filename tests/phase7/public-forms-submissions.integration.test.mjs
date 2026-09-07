@@ -43,6 +43,80 @@ const ORGANIZER_EMAIL =
   "phase7-inbox-organizer@vcc-tests.invalid";
 const KEY_HEX = "b".repeat(64);
 
+test("renewed signed instances preserve idempotency for ordinary and cookie-less Contact retries", async (t) => {
+  const { createPublicFormInstanceToken, renewPublicFormInstanceToken, verifyPublicFormInstanceToken } = await import("../../lib/server/phase7/public-form-protection.ts");
+  const data = await fixture();
+  t.after(() => data.database.close());
+  for (const anonymousClientId of ["a".repeat(43), "contact-no-cookie-v1"]) {
+    const created = await createPublicFormInstanceToken(KEY_HEX, "contact", data.now - 4_000);
+    const input = formInput("contact", created.instance.nonce, data.now, PAYLOADS.contact, { anonymousClientId, organizationId: data.organizationId });
+    const original = await submitPublicForm(data.database, input);
+    const later = data.now + 3 * 60 * 60 * 1_000;
+    await assert.rejects(verifyPublicFormInstanceToken(KEY_HEX, created.token, "contact", later), { code: "form_instance_expired" });
+    const renewed = await renewPublicFormInstanceToken(KEY_HEX, created.token, "contact", later);
+    assert.equal(renewed.instance.nonce, created.instance.nonce);
+    const formInstance = await verifyPublicFormInstanceToken(KEY_HEX, renewed.token, "contact", later);
+    const retried = await submitPublicForm(data.database, { ...input, formInstance, nowUtcMs: later + 4_000 });
+    assert.equal(retried.publicReference, original.publicReference);
+    assert.equal(retried.submissionId, original.submissionId);
+  }
+  assert.equal(await data.database.prepare("SELECT count(*) AS count FROM form_submission_workflows").first("count"), 2);
+  assert.equal(await data.database.prepare("SELECT count(*) AS count FROM form_submission_email_outbox").first("count"), 2);
+});
+
+test("renewal accepts genuine expired challenges but rejects forged, wrong-form and future tokens", async () => {
+  const { createPublicFormInstanceToken, renewPublicFormInstanceToken } = await import("../../lib/server/phase7/public-form-protection.ts");
+  const now = Date.now();
+  const old = await createPublicFormInstanceToken(KEY_HEX, "contact", now - 3 * 60 * 60 * 1_000);
+  const future = await createPublicFormInstanceToken(KEY_HEX, "contact", now + 60_000);
+  for (const [token, form] of [[`${old.token}x`, "contact"], [old.token, "volunteer"], [future.token, "contact"]]) {
+    await assert.rejects(renewPublicFormInstanceToken(KEY_HEX, token, form, now), { code: "authorization_denied" });
+  }
+});
+
+test("email deadlines include stalled headers and bodies, and retries retain provider idempotency", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const configuration = { apiKey: "synthetic", fromEmail: "sender@example.invalid", toEmail: "inbox@example.invalid" };
+  for (const stall of ["headers", "body"]) {
+    const stored = await submitPublicForm(data.database, formInput("contact", `stalled-${stall}`.padEnd(32, "x"), data.now, PAYLOADS.contact, { organizationId: data.organizationId }));
+    const keys = [];
+    let cancelled = false;
+    const start = Date.now();
+    assert.equal(await deliverPublicFormEmail(data.database, stored.submissionId, {
+      configuration, nowUtcMs: data.now + 1_000,
+      fetcher: async (_url, init) => {
+        keys.push(init.headers["Idempotency-Key"]);
+        if (stall === "headers") return new Promise(() => {});
+        return new Response(new ReadableStream({ cancel() { cancelled = true; } }));
+      },
+    }), "provider_retry");
+    assert.ok(Date.now() - start < 8_000, "provider deadline must cover the entire operation");
+    if (stall === "body") assert.equal(cancelled, true);
+    const outbox = await data.database.prepare("SELECT state, last_error_code FROM form_submission_email_outbox WHERE submission_id = ?").bind(stored.submissionId).first();
+    assert.deepEqual({ ...outbox }, { state: "pending", last_error_code: "provider_timeout" });
+    assert.equal(await deliverPublicFormEmail(data.database, stored.submissionId, {
+      configuration, nowUtcMs: data.now + 60 * 60 * 1_000,
+      fetcher: async (_url, init) => { keys.push(init.headers["Idempotency-Key"]); return Response.json({ id: `recovered_${stall}` }); },
+    }), "sent");
+    assert.deepEqual(keys, [`vcc-form/${stored.submissionId}`, `vcc-form/${stored.submissionId}`]);
+  }
+});
+
+test("oversized streamed email receipts are bounded and left retryable", async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  const stored = await submitPublicForm(data.database, formInput("contact", "oversized-receipt".padEnd(32, "x"), data.now, PAYLOADS.contact, { organizationId: data.organizationId }));
+  let pulls = 0;
+  let cancelled = false;
+  assert.equal(await deliverPublicFormEmail(data.database, stored.submissionId, {
+    configuration: { apiKey: "synthetic", fromEmail: "sender@example.invalid", toEmail: "inbox@example.invalid" }, nowUtcMs: data.now + 1_000,
+    fetcher: async () => new Response(new ReadableStream({ pull(controller) { pulls++; controller.enqueue(new Uint8Array(2_048)); }, cancel() { cancelled = true; } })),
+  }), "provider_retry");
+  assert.ok(pulls <= 4);
+  assert.equal(cancelled, true);
+});
+
 function migrations() {
   const directory = join(process.cwd(), "drizzle");
   return readdirSync(directory)

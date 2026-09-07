@@ -1,4 +1,70 @@
 /* Public contribution and submission form components. */
+.contact-page {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-rows: auto min-content 1fr;
+  column-gap: clamp(2rem, 6vw, 6rem);
+  padding-inline: max(var(--public-gutter), env(safe-area-inset-left)) max(var(--public-gutter), env(safe-area-inset-right));
+  padding-bottom: clamp(2rem, 4vw, 4rem);
+  align-items: start;
+}
+
+.contact-page > .breadcrumbs,
+.contact-page > .editorial-sections {
+  grid-column: 1 / -1;
+}
+
+.contact-page > .breadcrumbs {
+  padding-inline: 0;
+}
+
+.contact-page .page-masthead__copy {
+  display: block;
+}
+
+.contact-page .page-masthead__deck {
+  margin-top: 1.5rem;
+}
+
+.contact-page > .page-masthead {
+  grid-column: 1;
+  padding: clamp(1.5rem, 3vw, 2.5rem) 0 1.5rem;
+  min-height: 0;
+}
+
+.contact-page .page-masthead h1 {
+  font-size: clamp(2.8rem, 4.5vw, 4.5rem);
+}
+
+.contact-page > .public-form-guidance {
+  grid-column: 1;
+  width: 100%;
+  margin: 0;
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--line);
+  border-left: 0;
+  background: transparent;
+}
+
+.contact-page > .public-submission {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  width: 100%;
+  margin: clamp(1.5rem, 3vw, 2.5rem) 0 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+@media (max-width: 56rem) {
+  .contact-page {
+    display: block;
+  }
+
+  .contact-page > .public-submission {
+    margin-top: 1.25rem;
+  }
+}
+
 .contribution-hub {
   border: 1px solid var(--ink);
   width: min(100% - 2rem, 82rem);

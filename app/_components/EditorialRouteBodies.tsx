@@ -173,7 +173,8 @@ export function ContactRouteBody({
           ? "Tell us about your organization, what you are working on, and the kind of collaboration you have in mind."
           : "Send a private message to our team about events, accessibility, media, privacy, or another question."
       }
-      displayEyebrow={partnershipMode ? "Partnership inquiry" : "Contact"}
+      className="contact-page"
+      displayEyebrow={null}
       displayParagraphs={[]}
       displayTitle={
         partnershipMode ? "Start a conversation with our team." : "Contact"

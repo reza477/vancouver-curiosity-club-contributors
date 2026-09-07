@@ -303,7 +303,7 @@ test("the community artwork triptych has pointer and keyboard parity", async () 
   assert.match(home, /data-community-slug=\{club\.slug\}[\s\S]*?tabIndex=\{0\}/u);
   assert.match(
     homeCss,
-    /@media \(min-width: 56\.001rem\)[\s\S]*?\.home-communities__list\s*\{[^}]*height:\s*clamp\([^}]*display:\s*flex;/u,
+    /@media \(min-width: 56\.001rem\)[\s\S]*?\.home-communities__list\s*\{[^}]*align-items:\s*stretch;[^}]*display:\s*flex;/u,
   );
   assert.match(homeCss, /\.home-community:first-child\s*\{[^}]*flex-grow:\s*1\.9;/su);
   assert.match(homeCss, /\.home-community:focus-visible\s*\{[^}]*outline:/su);

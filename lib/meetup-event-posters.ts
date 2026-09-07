@@ -113,6 +113,24 @@ export const CURATED_MEETUP_POSTER_SOURCE_OVERRIDES = Object.freeze({
         "https://secure.meetupstatic.com/photos/event/5/f/8/0/highres_535044448.jpeg",
       width: 1_196,
     }),
+  "https://secure.meetupstatic.com/photos/event/5/7/0/f/highres_535942287.jpeg":
+    Object.freeze({
+      altText:
+        "Illustration of five people gathered around a glowing miniature universe for Inside Other People's Universes.",
+      credit: "Vancouver Curiosity Club event poster via Meetup",
+      eventId: "316366486",
+      height: 603,
+      localPath: "/event-posters/meetup-photo-535942287.jpeg",
+      mediumHeight: 540,
+      mediumPath: "/event-posters/meetup-photo-535942287-960.jpeg",
+      mediumWidth: 960,
+      smallHeight: 270,
+      smallPath: "/event-posters/meetup-photo-535942287-480.jpeg",
+      smallWidth: 480,
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/5/7/0/f/highres_535942287.jpeg",
+      width: 1_072,
+    }),
 }) satisfies Readonly<Record<string, CuratedMeetupEventPoster>>;
 
 /**

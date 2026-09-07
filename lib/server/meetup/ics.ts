@@ -58,6 +58,7 @@ export type ParsedMeetupDescriptionBlock =
     }>;
 
 export type ParsedMeetupPublicContent = Readonly<{
+  attendanceMode: "in_person" | "online";
   description: string;
   descriptionBlocks: readonly ParsedMeetupDescriptionBlock[];
   poster: Readonly<{

@@ -144,7 +144,7 @@ test("Contact safely switches between general and partnership inquiry contracts"
   );
   assert.match(
     contactBody,
-    /displayEyebrow=\{partnershipMode \? "Partnership inquiry" : "Contact"\}/u,
+    /displayEyebrow=\{null\}/u,
   );
   assert.match(
     contactBody,

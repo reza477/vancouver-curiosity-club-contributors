@@ -45,7 +45,7 @@ import {
 } from "../organizer/conflict-domain";
 
 const SOURCE_TYPE = "meetup_ics";
-const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v5";
+const MEETUP_IMPORT_POLICY_VERSION = "meetup_group_page_import_v6";
 const MEETUP_SOURCE_DEPENDENCY_DEPTHS = buildMeetupSourceDependencyDepths(
   MEETUP_EVENT_ALIASES,
 );
@@ -2879,13 +2879,13 @@ function stageEventPublicContentStatements(
       .prepare(
          `INSERT INTO meetup_event_snapshot_public_contents (
            snapshot_id, public_summary, public_description,
-           public_description_blocks_json, public_venue_name,
+           public_description_blocks_json, attendance_mode, public_venue_name,
            public_venue_address, public_floor, public_room, capacity,
            cost_text, age_policy_text, waitlist_available,
            availability_state, arrival_instructions, poster_source_url,
            poster_alt_text, poster_credit, created_at, updated_at
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          FROM sync_sources AS source
          JOIN meetup_sync_generations AS generation
            ON generation.id = source.pending_generation_id
@@ -2908,6 +2908,7 @@ function stageEventPublicContentStatements(
            public_description = excluded.public_description,
            public_description_blocks_json =
              excluded.public_description_blocks_json,
+           attendance_mode = excluded.attendance_mode,
            public_venue_name = excluded.public_venue_name,
            public_venue_address = excluded.public_venue_address,
            public_floor = excluded.public_floor,
@@ -2928,6 +2929,7 @@ function stageEventPublicContentStatements(
         content.summary,
         content.description,
         JSON.stringify(content.descriptionBlocks),
+        content.attendanceMode,
         content.venue?.name ?? null,
         content.venue?.address ?? null,
         content.publicFloor,
@@ -2971,7 +2973,7 @@ function stageExistingSnapshotPublicContentStatement(
     .prepare(
       `INSERT INTO meetup_event_snapshot_public_contents (
          snapshot_id, public_summary, public_description,
-         public_description_blocks_json, public_venue_name,
+         public_description_blocks_json, attendance_mode, public_venue_name,
          public_venue_address, public_floor, public_room, capacity,
          cost_text, age_policy_text, waitlist_available,
          availability_state, arrival_instructions, poster_source_url,
@@ -2979,6 +2981,7 @@ function stageExistingSnapshotPublicContentStatement(
        )
        SELECT ?, content.public_summary, content.public_description,
               content.public_description_blocks_json,
+              content.attendance_mode,
               content.public_venue_name, content.public_venue_address,
               content.public_floor, content.public_room, content.capacity,
               content.cost_text, content.age_policy_text,
@@ -3005,6 +3008,7 @@ function stageExistingSnapshotPublicContentStatement(
          public_description = excluded.public_description,
          public_description_blocks_json =
            excluded.public_description_blocks_json,
+         attendance_mode = excluded.attendance_mode,
          public_venue_name = excluded.public_venue_name,
          public_venue_address = excluded.public_venue_address,
          public_floor = excluded.public_floor,

@@ -138,6 +138,7 @@ function loadGeneratedMigrations() {
       "0020_meetup_public_event_facts.sql",
       "0021_daily_meetup_maintenance.sql",
       "0022_messy_vertigo.sql",
+      "0023_meetup_online_attendance.sql",
     ],
     "the normalized Sites-compatible migration chain must be authoritative",
   );

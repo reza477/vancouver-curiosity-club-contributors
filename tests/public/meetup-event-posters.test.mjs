@@ -309,7 +309,7 @@ test("a curated Meetup event prefers its bundled poster over a synchronized post
   );
 });
 
-test("reported recurring mobile cards reuse verified first-party poster copies", async () => {
+test("reported Meetup cards use verified first-party poster copies", async () => {
   const reportedEvents = [
     {
       eventId: "315081514",
@@ -346,11 +346,18 @@ test("reported recurring mobile cards reuse verified first-party poster copies",
         "https://secure.meetupstatic.com/photos/event/d/0/8/8/highres_535553384.jpeg",
       title: "Mangos Latin Dance Night",
     },
+    {
+      eventId: "316366486",
+      photoId: "535942287",
+      sourceUrl:
+        "https://secure.meetupstatic.com/photos/event/5/7/0/f/highres_535942287.jpeg",
+      title: "Inside Other People's Universes",
+    },
   ];
 
   assert.equal(
     Object.keys(CURATED_MEETUP_POSTER_SOURCE_OVERRIDES).length,
-    5,
+    6,
   );
   for (const event of reportedEvents) {
     const card = toPublicEventCardDto({
