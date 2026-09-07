@@ -8,12 +8,12 @@
   --artwork-motion-easing: cubic-bezier(.22, 1, .36, 1);
 }
 
-html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="pending"]:not([data-artwork-reveal-mode="children"]) {
+html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="pending"]:not([data-artwork-reveal-mode="children"], [data-artwork-reveal-mode="rule"]) {
   clip-path: inset(0 0 14% 0);
   transform: translateY(var(--artwork-motion-distance));
 }
 
-html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="visible"]:not([data-artwork-reveal-mode="children"]) {
+html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="visible"]:not([data-artwork-reveal-mode="children"], [data-artwork-reveal-mode="rule"]) {
   clip-path: inset(0);
   transform: translateY(0);
   transition:
@@ -22,12 +22,12 @@ html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="visible"]:not
 }
 
 @media (max-width: 42rem) {
-  html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="pending"]:not([data-artwork-reveal-mode="children"]) {
+  html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="pending"]:not([data-artwork-reveal-mode="children"], [data-artwork-reveal-mode="rule"]) {
     transform: translateY(var(--artwork-motion-distance-mobile));
   }
 }
 
-@media (scripting: enabled) and (min-width: 64rem) and (min-height: 42rem) and (prefers-reduced-motion: no-preference){@scope (html[data-artwork-motion-ready="true"]){.home-work__grid{grid-template-columns:minmax(0,1.16fr) minmax(22rem,0.84fr);grid-template-rows:repeat(3,minmax(17rem,auto));gap:0 clamp(2.25rem,5vw,5rem);position:relative;}
+@media (scripting: enabled) and (min-width: 64rem) and (min-height: 42rem) and (prefers-reduced-motion: no-preference){@scope (html[data-artwork-motion-ready="true"] [data-stage-enhanced="true"]){:scope.home-work__grid{grid-template-columns:minmax(0,1.16fr) minmax(22rem,0.84fr);grid-template-rows:repeat(3,minmax(17rem,auto));gap:0 clamp(2.25rem,5vw,5rem);position:relative;}
 .home-work-card{display:contents;}
 .home-work-card__poster-link{--poster-entry-clip:inset(0 100% 0 0);--poster-mask-exit:inset(0 0 0 100%);border:1px solid var(--ink);background:var(--paper-deep);grid-column:1;grid-row:1 / 4;align-self:start;position:sticky;top:clamp(5.5rem,10vh,7.5rem);visibility:hidden;overflow:hidden;}
 .home-work-card__poster-link::after{content:"";pointer-events:none;background:var(--program-stream-accent,var(--ink));clip-path:inset(0);position:absolute;z-index:5;inset:0;visibility:hidden;}

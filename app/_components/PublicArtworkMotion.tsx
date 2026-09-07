@@ -53,11 +53,13 @@ function initializeArtworkMotion(): () => void {
   );
   const revealedElements = new WeakSet<HTMLElement>();
   let revealObserver: IntersectionObserver | null = null;
-  if (!reducedMotion.matches && revealElements.length > 0) {
+  let registerReveal: (element: HTMLElement) => void = () => {};
+  if (!reducedMotion.matches) {
     const revealWhenReady = async (element: HTMLElement) => {
       const operationGeneration = lifecycleGeneration;
-      await decodeDescendantImages(element);
+      const ready = await decodeDescendantImages(element);
       if (disposed || operationGeneration !== lifecycleGeneration) return;
+      if (!ready) { element.dataset.artworkRevealState = "static"; return; }
       element.dataset.artworkRevealState = "visible";
     };
     const observer = new IntersectionObserver(
@@ -74,17 +76,34 @@ function initializeArtworkMotion(): () => void {
     );
     revealObserver = observer;
 
-    for (const element of revealElements) {
+    registerReveal = (element) => {
       const bounds = element.getBoundingClientRect();
       const initiallyVisible =
         bounds.top < window.innerHeight && bounds.bottom > 0;
-      element.dataset.artworkRevealState = initiallyVisible
+      const waitingForImage = [...element.querySelectorAll<HTMLImageElement>("img")].some((image) => !image.complete);
+      element.dataset.artworkRevealState = initiallyVisible && !waitingForImage
         ? "visible"
         : "pending";
       if (element.dataset.artworkRevealState === "pending") {
         observer.observe(element);
+      } else if (element.querySelector("img")) {
+        // Streamed artwork can enter after the initial React commit. Do not
+        // animate its empty frame; use the same one-shot decoded-image hook.
+        void revealWhenReady(element);
       }
-    }
+    };
+    for (const element of revealElements) registerReveal(element);
+    const lateImage = (event: Event) => {
+      if (!(event.target instanceof HTMLImageElement)) return;
+      const element = event.target.closest<HTMLElement>(REVEAL_SELECTOR);
+      if (element && (revealedElements.has(element) || element.getBoundingClientRect().top < window.innerHeight)) void revealWhenReady(element);
+      const hero = event.target.closest<HTMLElement>(HERO_POSTER_SELECTOR);
+      if (hero) void decodeImage(event.target).then((ready) => {
+        if (ready && !disposed) hero.dataset.artworkImageReady = "true";
+      });
+    };
+    document.addEventListener("load", lateImage, true);
+    cleanups.push(() => document.removeEventListener("load", lateImage, true));
   }
   const showRevealsWithoutMotion = () => {
     if (!reducedMotion.matches) return;
@@ -141,13 +160,42 @@ function initializeArtworkMotion(): () => void {
   };
 
   configureStages();
+  let resizeTimer: number | undefined;
+  const resizeStages = () => {
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(configureStages, 150);
+  };
+  window.addEventListener("resize", resizeStages);
   stageMedia.addEventListener("change", configureStages);
   reducedMotion.addEventListener("change", configureStages);
   cleanups.push(() => {
     stageMedia.removeEventListener("change", configureStages);
     reducedMotion.removeEventListener("change", configureStages);
     stageCleanup();
+    window.removeEventListener("resize", resizeStages);
+    window.clearTimeout(resizeTimer);
   });
+
+  const additions = new MutationObserver((records) => {
+    let newStage = false;
+    for (const record of records) for (const node of record.addedNodes) {
+      if (!(node instanceof HTMLElement)) continue;
+      if (node.matches("[data-stage-event-index]") || node.querySelector("[data-stage-event-index]")) newStage = true;
+      const candidates = [node, ...node.querySelectorAll<HTMLElement>(REVEAL_SELECTOR)];
+      for (const element of candidates) {
+        if (!element.matches(REVEAL_SELECTOR) || revealElements.includes(element)) continue;
+        revealElements.push(element);
+        if (reducedMotion.matches) element.dataset.artworkRevealState = "visible";
+        else registerReveal(element);
+      }
+      for (const stage of [node, ...node.querySelectorAll<HTMLElement>(STAGE_SELECTOR)]) {
+        if (stage.matches(STAGE_SELECTOR) && !stages.includes(stage)) { stages.push(stage); newStage = true; }
+      }
+    }
+    if (newStage) configureStages();
+  });
+  additions.observe(document.body, { childList: true, subtree: true });
+  cleanups.push(() => additions.disconnect());
 
   return () => {
     disposed = true;
@@ -160,19 +208,24 @@ function initializeArtworkMotion(): () => void {
   };
 }
 
-async function decodeDescendantImages(element: HTMLElement): Promise<void> {
+async function decodeDescendantImages(element: HTMLElement): Promise<boolean> {
   const images = Array.from(element.querySelectorAll<HTMLImageElement>("img"));
-  await Promise.all(images.map((image) => decodeImage(image)));
+  return (await Promise.all(images.map((image) => decodeImage(image)))).every(Boolean);
 }
 
 async function decodeImage(image: HTMLImageElement): Promise<boolean> {
-  if (image.complete && image.naturalWidth > 0) return true;
+  let timeout: number | undefined;
   try {
-    await image.decode();
+    const ready = await Promise.race([
+      image.decode().then(() => true),
+      new Promise<false>((resolve) => { timeout = window.setTimeout(() => resolve(false), 5000); }),
+    ]);
+    return ready && image.complete && image.naturalWidth > 0;
   } catch {
     return false;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return image.complete && image.naturalWidth > 0;
 }
 
 function enhanceStage(
@@ -185,12 +238,14 @@ function enhanceStage(
   if (articles.length === 0) return () => {};
 
   let activeIndex = 0;
+  let latestRequestedIndex = 0;
   let activationGeneration = 0;
   let disposed = false;
   let transitionTimer: number | null = null;
   let queuedIndex: number | null = null;
   let transitionTargetIndex: number | null = null;
   let transitioning = false;
+  let decoding = false;
 
   stage.dataset.stageEnhanced = "true";
   rememberStageReveal(animatedArticles, articles[activeIndex]);
@@ -216,9 +271,11 @@ function enhanceStage(
     transitionTargetIndex = requestedIndex;
     const operationGeneration = activationGeneration;
     const image = incoming?.querySelector<HTMLImageElement>("figure img");
-    if (image && (!image.complete || image.naturalWidth === 0)) {
+    if (image) {
+      decoding = true;
       const ready = await decodeImage(image);
       if (disposed || operationGeneration !== activationGeneration) return;
+      decoding = false;
       if (!ready) {
         transitioning = false;
         transitionTargetIndex = null;
@@ -261,6 +318,7 @@ function enhanceStage(
 
   const activate = (requestedIndex: number) => {
     if (disposed || !articles[requestedIndex]) return;
+    latestRequestedIndex = requestedIndex;
     if (
       !shouldQueueStageActivation({
         requestedIndex,
@@ -271,13 +329,28 @@ function enhanceStage(
     )
       return;
     queuedIndex = requestedIndex;
+    if (decoding) {
+      activationGeneration += 1;
+      decoding = false;
+      transitioning = false;
+      transitionTargetIndex = null;
+    }
     void processQueuedActivation();
   };
 
+  const retryLoadedPoster = (event: Event) => {
+    if (!(event.target instanceof HTMLImageElement)) return;
+    const article = event.target.closest<HTMLElement>("[data-stage-event-index]");
+    const index = Number(article?.dataset.stageEventIndex);
+    // A stalled decode times out safely. If that requested poster arrives
+    // later, honor the latest intent without waiting for another scroll/focus.
+    if (index === latestRequestedIndex) activate(index);
+  };
+  stage.addEventListener("load", retryLoadedPoster, true);
+
   const focusHandlers: Array<Readonly<{ element: HTMLElement; handler: () => void }>> = [];
   for (const [index, article] of articles.entries()) {
-    const summary = article.querySelector<HTMLElement>("[data-stage-summary]");
-    if (!summary) continue;
+    const summary = article;
     const handler = () => {
       void activate(index);
     };
@@ -306,14 +379,19 @@ function enhanceStage(
         const bounds = summary.getBoundingClientRect();
         return [{ index, centerY: bounds.top + bounds.height / 2 }];
       });
+      const focusedArticle = document.activeElement?.closest<HTMLElement>("[data-stage-event-index]");
+      if (focusedArticle && stage.contains(focusedArticle)) {
+        activate(Number(focusedArticle.dataset.stageEventIndex));
+        return;
+      }
       const nextIndex = selectStableStageIndex(
         candidates,
-        activeIndex,
+        queuedIndex ?? transitionTargetIndex ?? activeIndex,
         window.innerHeight * 0.4,
       );
       if (nextIndex !== null) void activate(nextIndex);
     },
-    { rootMargin: "-28% 0px -48% 0px", threshold: [0.08, 0.35, 0.7] },
+    { rootMargin: `${-window.innerHeight * 0.28}px 0px ${-window.innerHeight * 0.48}px 0px`, threshold: [0.08, 0.35, 0.7] },
   );
   for (const article of articles) {
     const summary = article.querySelector<HTMLElement>("[data-stage-summary]");
@@ -327,6 +405,7 @@ function enhanceStage(
     transitionTargetIndex = null;
     transitioning = false;
     stageObserver.disconnect();
+    stage.removeEventListener("load", retryLoadedPoster, true);
     intersectingSummaries.clear();
     for (const { element, handler } of focusHandlers) {
       element.removeEventListener("focusin", handler);
@@ -357,7 +436,11 @@ function setStageState(
     const poster = article.querySelector<HTMLAnchorElement>(
       "[data-stage-poster]",
     );
-    if (summary) summary.dataset.stageActive = String(active);
+    if (summary) {
+      summary.dataset.stageActive = String(active);
+      if (active) summary.setAttribute("aria-current", "true");
+      else summary.removeAttribute("aria-current");
+    }
     if (poster) {
       poster.setAttribute("aria-hidden", String(!active));
       poster.tabIndex = active ? 0 : -1;
@@ -375,7 +458,7 @@ function resetStage(stage: HTMLElement) {
     const poster = article.querySelector<HTMLAnchorElement>(
       "[data-stage-poster]",
     );
-    if (summary) delete summary.dataset.stageActive;
+    if (summary) { delete summary.dataset.stageActive; summary.removeAttribute("aria-current"); }
     if (poster) {
       poster.removeAttribute("aria-hidden");
       poster.removeAttribute("tabindex");

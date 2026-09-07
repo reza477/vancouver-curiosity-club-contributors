@@ -249,7 +249,7 @@ test("the stage has a static default and bounded wide-screen enhancement", async
   );
   assert.match(
     motionCss,
-    /@media \(scripting: enabled\)[\s\S]*?@scope \(html\[data-artwork-motion-ready="true"\]\)[\s\S]*?\.home-work__grid/u,
+    /@media \(scripting: enabled\)[\s\S]*?@scope \(html\[data-artwork-motion-ready="true"\] \[data-stage-enhanced="true"\]\)[\s\S]*?\.home-work__grid/u,
     "the sticky enhancement must not hide event artwork when JavaScript is unavailable",
   );
   assert.match(
