@@ -68,7 +68,7 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   assert.doesNotMatch(partnershipItemRule, /border(?:-bottom)?:/u);
   assert.match(
     css,
-    /\.home-hero__poster-media\s*\{[^}]*position:\s*relative;[^}]*background:\s*var\(--amber-surface\);/su,
+    /\.home-hero__poster-media\s*\{[^}]*position:\s*relative;[^}]*min-height:\s*0;[^}]*background:\s*var\(--amber-surface\);/su,
   );
   assert.match(
     css,

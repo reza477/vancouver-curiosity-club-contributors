@@ -161,7 +161,7 @@
 
 .home-hero__poster-media {
   position: relative;
-  min-height: 14rem;
+  min-height: 0;
   background: var(--amber-surface);
   color: var(--ink);
   display: block;
