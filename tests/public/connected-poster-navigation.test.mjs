@@ -17,6 +17,8 @@ test('late and failed artwork remains fail-open, and navigation listeners clean 
   assert.match(motion,/if \(index === latestRequestedIndex\) activate\(index\)/u);
   assert.match(motion,/if \(!image && incoming.querySelector\("\.home-artwork-fallback"\)\) \{[\s\S]*?setStageState\(articles, activeIndex, null\)/u);
   assert.match(motion,/fallbackObserver\.disconnect\(\)/u);
+  assert.match(navigation,/let navigationStyles: Promise<unknown> \| undefined/u);
+  assert.match(navigation,/navigationStyles \?\?= import\("\.\.\/styles\/connected-navigation\.css"\)/u);
   for(const event of ['popstate','pagehide']){
     assert.ok(navigation.includes(`addEventListener("${event}", cancelPosterNavigationMotion)`));
     assert.ok(navigation.includes(`removeEventListener("${event}", cancelPosterNavigationMotion)`));

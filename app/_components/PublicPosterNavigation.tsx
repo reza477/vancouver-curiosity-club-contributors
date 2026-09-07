@@ -3,11 +3,16 @@
 import { useEffect } from "react";
 import { cancelPosterNavigationMotion } from "@/lib/public-poster-navigation";
 
+// Share the in-flight result across Vinext boundary remounts. A second CSS
+// import must not report readiness before the first network load has finished.
+let navigationStyles: Promise<unknown> | undefined;
+
 export function PublicPosterNavigation() {
   useEffect(() => {
     // Noncritical animation CSS loads after hydration, outside the initial
     // public stylesheet budget. Baseline links/menu states need no extra asset.
-    void import("../styles/connected-navigation.css").then(() => {
+    navigationStyles ??= import("../styles/connected-navigation.css");
+    void navigationStyles.then(() => {
       document.documentElement.dataset.navigationMotionReady = "true";
     }).catch(() => { /* Ordinary navigation remains available if CSS fails. */ });
     const preference = matchMedia("(prefers-reduced-motion: reduce)");
