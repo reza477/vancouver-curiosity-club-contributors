@@ -68,20 +68,20 @@ test('one navigation commits and decodes before connecting destination; completi
   navigation.resolve();await tick();assert.equal(h.destination.style.viewTransitionName,undefined);
   decode.resolve();await tick();assert.equal(h.destination.style.viewTransitionName,'event-poster');assert.equal(h.information.style.viewTransitionName,'event-information');
   assert.equal([...h.timers.values()].some(t=>t.ms===1200),false,'navigation deadline is cleared once snapshots are ready');
-  h.transitions[0].finish();await tick();assert.equal(h.destination.style.viewTransitionName,undefined);assert.deepEqual(h.document.documentElement.dataset,{});
+  h.transitions[0].finish();await tick();assert.equal(h.destination.style.viewTransitionName,undefined);assert.deepEqual(h.document.documentElement.dataset,{navigationMotionReady:'true'});
 });
 test('slow or failed artwork skips motion but keeps the single destination navigation',async()=>{
   for(const decode of [()=>Promise.reject(Error('broken image')),()=>new Promise(()=>{})]){
     const h=setup({decode});h.api.openConnectedPoster(h.link);await tick();
     for(const timer of h.timers.values())if(timer.ms===180)timer.fn();await tick();
     assert.equal(h.transitions[0].skipped,true);assert.equal(h.calls.length,1);assert.equal(h.location.pathname,'/events/example');
-    h.transitions[0].finish();await tick();assert.deepEqual(h.document.documentElement.dataset,{});
+    h.transitions[0].finish();await tick();assert.deepEqual(h.document.documentElement.dataset,{navigationMotionReady:'true'});
   }
 });
 test('slow routes release the snapshot without a second history push',async()=>{
   const navigation=deferred();const h=setup({navigation:()=>navigation.promise});h.api.openConnectedPoster(h.link);await tick();
   for(const timer of h.timers.values())if(timer.ms===1200)timer.fn();
-  assert.equal(h.transitions[0].skipped,true);assert.deepEqual(h.document.documentElement.dataset,{});
+  assert.equal(h.transitions[0].skipped,true);assert.deepEqual(h.document.documentElement.dataset,{navigationMotionReady:'true'});
   navigation.resolve();await tick();assert.equal(h.calls.length,1);assert.equal(h.destination.style.viewTransitionName,undefined);h.transitions[0].finish();
   assert.equal(h.calls[0][2],true,'the router must restore destination scroll even when the visual deadline expires');
 });
@@ -89,5 +89,5 @@ test('Back/new navigation cancellation and an old completion cannot clear a newe
   const h=setup();h.api.openConnectedPoster(h.link);await tick();h.api.cancelPosterNavigationMotion();assert.equal(h.transitions[0].skipped,true);
   h.api.openConnectedPoster(h.link);await tick();h.transitions[0].finish();await tick();
   assert.equal(h.document.documentElement.dataset.posterNavigation,'active');assert.equal(h.destination.style.viewTransitionName,'event-poster');
-  h.api.cancelPosterNavigationMotion();h.transitions[1].finish();await tick();assert.deepEqual(h.document.documentElement.dataset,{});
+  h.api.cancelPosterNavigationMotion();h.transitions[1].finish();await tick();assert.deepEqual(h.document.documentElement.dataset,{navigationMotionReady:'true'});
 });
