@@ -39,7 +39,7 @@ test("Home renders the approved institutional story in the exact section order",
     "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
   ];
-  assert.equal((markup.match(/class="home-hero__deck"/gu) ?? []).length, 3);
+  assert.equal((markup.match(/class="home-hero__deck"/gu) ?? []).length, 4);
   assert.ok(markup.indexOf('class="home-hero__featured-poster"') < markup.indexOf('class="home-hero__deck"'), "mobile reading order brings the real poster before the full mission paragraphs");
   for (const paragraph of missionParagraphs) assert.ok(markup.includes(paragraph));
   assert.match(markup, /href="#our-work"[^>]*>Explore our work<\/a>/u);

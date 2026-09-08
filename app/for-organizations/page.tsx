@@ -13,6 +13,7 @@ import {
 } from "@/lib/media/presentation";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
 import { institutionalEventTitle } from "@/lib/public-event-display-title";
+import { PUBLIC_NONPROFIT_IDENTITY } from "@/lib/public-mission-copy";
 import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
 import { readServerUtcMs } from "@/lib/server/clock";
 import type { PublicCatalogDto } from "@/lib/server/public/catalog";
@@ -29,7 +30,7 @@ import { writeSafeLog } from "@/lib/validation/server-observability";
 export const dynamic = "force-dynamic";
 
 const metadataDescription =
-  "Partnership, funding, venue, and collaboration information for organizations interested in Vancouver Curiosity Club's public programs.";
+  "Partner with Vancouver Curiosity and Education Society, the nonprofit behind Vancouver Curiosity Club, through funding, venues, and public-program collaboration.";
 
 const collaborationOptions = Object.freeze([
   Object.freeze({
@@ -134,6 +135,7 @@ export default async function ForOrganizationsPage() {
           </div>
           <div className="organizations-hero__introduction">
             <p className="page-masthead__deck">
+              {PUBLIC_NONPROFIT_IDENTITY}{" "}
               Vancouver Curiosity Club creates recurring gatherings across
               learning, culture, creativity, and shared experience. We welcome
               organizations that can strengthen access, space, expertise,

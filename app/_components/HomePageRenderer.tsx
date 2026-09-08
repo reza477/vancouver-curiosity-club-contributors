@@ -18,7 +18,10 @@ import type {
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 import { publicUrl } from "@/lib/server/public/origin";
-import { PUBLIC_HOME_MISSION_COPY } from "@/lib/public-mission-copy";
+import {
+  PUBLIC_HOME_MISSION_COPY,
+  PUBLIC_NONPROFIT_IDENTITY,
+} from "@/lib/public-mission-copy";
 import { PUBLIC_HOME_PARTICIPANT_FEEDBACK } from "@/lib/public-home-participant-feedback";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
 import {
@@ -149,6 +152,7 @@ export function HomePageRenderer({
         ) : null}
 
         <div className="home-hero__copy">
+          <p className="home-hero__deck">{PUBLIC_NONPROFIT_IDENTITY}</p>
           {PUBLIC_HOME_MISSION_COPY.paragraphs.map((paragraph) => (
             <p className="home-hero__deck" key={paragraph}>
               {paragraph}
@@ -340,7 +344,7 @@ export function HomePageRenderer({
           <h2 id="home-partnerships-title">Work with us</h2>
           <p>
             Vancouver Curiosity Club welcomes conversations with organizations
-            interested in helping thoughtful public programs grow.
+            interested in helping our nonprofit’s thoughtful public programs grow.
           </p>
           <div className="home-partnerships__actions">
             <Link

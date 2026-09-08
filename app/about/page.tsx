@@ -7,7 +7,10 @@ import {
   EditorialUnavailable,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
-import { PUBLIC_ABOUT_MISSION_COPY } from "@/lib/public-mission-copy";
+import {
+  PUBLIC_ABOUT_MISSION_COPY,
+  PUBLIC_NONPROFIT_IDENTITY,
+} from "@/lib/public-mission-copy";
 import { publicProgramStreamVisualForLaneSlug } from "@/lib/public-program-stream-visuals";
 import { PUBLIC_CATALOG_LANES } from "@/lib/server/public/catalog-definitions";
 
@@ -114,6 +117,7 @@ export default async function AboutPage() {
         <div className="about-hero__content">
           <h1 id="about-title">{PUBLIC_ABOUT_MISSION_COPY.heading}</h1>
           <div className="about-hero__introduction">
+            <p>{PUBLIC_NONPROFIT_IDENTITY}</p>
             {PUBLIC_ABOUT_MISSION_COPY.paragraphs.map((paragraph) => (
               <p key={paragraph}>{paragraph}</p>
             ))}

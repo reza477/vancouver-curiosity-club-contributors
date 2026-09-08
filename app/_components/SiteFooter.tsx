@@ -1,4 +1,5 @@
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
+import { PUBLIC_NONPROFIT_IDENTITY } from "@/lib/public-mission-copy";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 type ExternalLink = Readonly<{
@@ -31,6 +32,7 @@ export function SiteFooter({
       <div className="site-footer__brand">
         <p className="footer-wordmark">{brandName}</p>
         <p className="footer-location">{location}</p>
+        <p className="footer-legal-name">{PUBLIC_NONPROFIT_IDENTITY}</p>
         {mission ? <p className="footer-mission">{mission}</p> : null}
         {legalName && legalName !== brandName ? (
           <p className="footer-legal-name">Legal name: {legalName}</p>

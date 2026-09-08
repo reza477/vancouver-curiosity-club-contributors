@@ -1,3 +1,9 @@
+// Owner-approved institutional wording (September 7, 2026). This confirms only
+// nonprofit identity, not charity status or tax benefits. It does not relax the
+// separate legal-claim safeguards for organizer-authored CMS and event content.
+export const PUBLIC_NONPROFIT_IDENTITY =
+  "Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization.";
+
 export const PUBLIC_MISSION_PARAGRAPHS = Object.freeze([
   "Vancouver Curiosity and Education Society makes meaningful lifelong learning accessible after people leave school or university. Through Vancouver Curiosity Club, we organize free, facilitated, in-person discussions and learning events involving literature, film, philosophy, ethics, psychology, history, culture and contemporary life.",
   "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",

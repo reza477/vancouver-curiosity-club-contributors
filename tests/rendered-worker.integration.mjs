@@ -765,7 +765,8 @@ test("the built public root is indexable and carries the production security con
     "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
   ];
-  assert.equal((html.match(/class="home-hero__deck"/gu) ?? []).length, 3);
+  assert.equal((html.match(/class="home-hero__deck"/gu) ?? []).length, 4);
+  assert.match(html, /<p class="home-hero__deck">Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization\.<\/p>/u);
   for (const paragraph of missionParagraphs)
     assert.ok(html.includes(paragraph));
   assert.match(html, />Explore our work<\/a>/u);
@@ -1307,7 +1308,8 @@ test("the built About page renders the exact shared mission and metadata", async
       html,
     )?.[1];
   assert.ok(introduction, "About must render its mission introduction");
-  assert.equal((introduction.match(/<p>/gu) ?? []).length, 3);
+  assert.equal((introduction.match(/<p>/gu) ?? []).length, 4);
+  assert.match(introduction, /<p>Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization\.<\/p>/u);
   let lastParagraphPosition = -1;
   for (const paragraph of missionParagraphs) {
     const position = introduction.indexOf(paragraph);
@@ -1337,6 +1339,7 @@ test("the built For Organizations hero shows public proof and an immediate partn
     )?.[0];
 
   assert.ok(hero, "For Organizations must render its partnership hero");
+  assert.match(hero, /Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization\./u);
   assert.match(
     hero,
     /<h1 id="organizations-title">Build thoughtful public programs with us<\/h1>/u,
@@ -3502,6 +3505,7 @@ function assertSharedChrome(html) {
   assert.match(html, />Get Involved<\/a>/u);
   assert.match(html, /Organizer Login/u);
   assert.match(html, /aria-label="Footer navigation"/u);
+  assert.match(html, /<p class="footer-legal-name">Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization\.<\/p>/u);
   assert.match(html, /Code of Conduct/u);
   assert.match(html, /Privacy/u);
 }
