@@ -16,12 +16,12 @@ const slug = "about";
 
 const ABOUT_POSTERS = Object.freeze([
   Object.freeze({
-    alt: "Finding Your People — Beach Sunset and Walk event poster.",
-    caption: "Outdoor connection",
-    file: "meetup-315723559",
-    height: 470,
-    mediumWidth: 836,
-    width: 836,
+    alt: "Real self or mask? — Debate Night event poster.",
+    caption: "Debate and public identity",
+    file: "meetup-315294577",
+    height: 540,
+    mediumWidth: 960,
+    width: 960,
   }),
   Object.freeze({
     alt: "The Bet — Can reading actually transform a person? event poster.",
@@ -32,9 +32,9 @@ const ABOUT_POSTERS = Object.freeze([
     width: 960,
   }),
   Object.freeze({
-    alt: "Settlers of Catan board game night event poster.",
-    caption: "Play and shared experience",
-    file: "meetup-315560589",
+    alt: "Cicero on Friendship — What do we owe a friend? event poster.",
+    caption: "Philosophy and friendship",
+    file: "meetup-315772533",
     height: 540,
     mediumWidth: 960,
     width: 960,

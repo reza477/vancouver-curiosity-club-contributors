@@ -545,9 +545,9 @@ test("About presents a professional mission, impact, continuity, and partnership
     /\b(?:members?|attendees?)\s+(?:say|said|report(?:ed)?|tell|told)\b|\btestimonial(?:s)?\b|<blockquote\b/iu,
   );
   for (const poster of [
-    "meetup-315723559",
+    "meetup-315294577",
     "meetup-315823022",
-    "meetup-315560589",
+    "meetup-315772533",
   ]) {
     assert.match(about, new RegExp(`file: "${poster}"`, "u"));
     await readFile(

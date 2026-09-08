@@ -1,8 +1,45 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import sharp from "sharp";
 
 const projectRoot = new URL("../../", import.meta.url);
+
+test("About features genuine discussion posters with complete responsive assets and correct dimensions", async () => {
+  const about = await readFile(new URL("app/about/page.tsx", projectRoot), "utf8");
+  const catalog = JSON.parse(await readFile(
+    new URL("lib/meetup-event-enrichment.generated.json", projectRoot), "utf8",
+  ));
+  const posters = [...about.matchAll(
+    /alt: "([^"]+)",\s*caption: "([^"]+)",\s*file: "(meetup-[0-9]+)",\s*height: ([0-9]+),\s*mediumWidth: ([0-9]+),\s*width: ([0-9]+),/gu,
+  )];
+  assert.deepEqual(posters.map((poster) => poster[3]), [
+    "meetup-315294577", // Debate Night: public identity.
+    "meetup-315823022", // The Bet: literature discussion, retained.
+    "meetup-315772533", // Cicero: philosophy and friendship.
+  ]);
+  assert.deepEqual(posters.map((poster) => poster[2]), [
+    "Debate and public identity",
+    "Literature and discussion",
+    "Philosophy and friendship",
+  ]);
+  for (const [, alt, , file, height, mediumWidth, width] of posters) {
+    const source = catalog.events.find((event) => `meetup-${event.eventId}` === file);
+    assert.ok(source?.poster, `${file} must have genuine event provenance`);
+    assert.match(alt, /event poster\.$/u);
+    assert.equal(Number(width), source.poster.variants.medium.width);
+    assert.equal(Number(height), source.poster.variants.medium.height);
+    assert.equal(Number(mediumWidth), Number(width));
+    for (const format of ["avif", "webp", "jpeg"]) {
+      for (const size of [480, 960]) {
+        const bytes = await readFile(new URL(`public/event-posters/${file}-${size}.${format}`, projectRoot));
+        const metadata = await sharp(bytes).metadata();
+        assert.equal(metadata.width, size);
+        assert.equal(metadata.height, size * Number(height) / Number(width));
+      }
+    }
+  }
+});
 
 test("About keeps its CMS gate and a truthful institutional narrative without loading projections", async () => {
   const [about, editorial, missionCopy, catalogDefinitions, styles] = await Promise.all([
