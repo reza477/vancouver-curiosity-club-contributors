@@ -40,7 +40,7 @@ test("Events delegates its calendar to one indexed materialization loader", asyn
     /\bqueryPublicEventSlice\b|\bloadPublicMonthCalendar\b/u,
     "/events must not fan out through independent expensive loaders",
   );
-  assert.match(loader, /readPublicEventsPageMaterialization/u);
+  assert.match(loader, /getRequestPublicEventsPageMaterialization/u);
   assert.doesNotMatch(
     loader,
     /queryPublicEventMaterializationBundle|queryPublicCalendarLandingBundle|queryPublicCalendarMonth|queryPublicEventSlice|writePublicEventsSnapshot|refreshPublicEventMaterializations|database\.batch/u,
@@ -82,7 +82,7 @@ test("public event discovery disables speculative work and shows a pending state
     assert.ok(eventLinks.length > 0, `${path} must expose an Events link`);
   }
 
-  const [header, footer, calendar, breadcrumbs, loading] =
+  const [header, footer, calendar, breadcrumbs] =
     await Promise.all([
       readFile(
         new URL("app/_components/SiteHeader.tsx", projectRoot),
@@ -100,7 +100,6 @@ test("public event discovery disables speculative work and shows a pending state
         new URL("app/_components/Breadcrumbs.tsx", projectRoot),
         "utf8",
       ),
-      readFile(new URL("app/events/loading.tsx", projectRoot), "utf8"),
     ]);
   assert.match(
     header,
@@ -120,9 +119,6 @@ test("public event discovery disables speculative work and shows a pending state
     /PublicRouteLink as Link/u,
     "event breadcrumbs must use the expensive-route policy",
   );
-  assert.match(loading, /aria-busy="true"/u);
-  assert.match(loading, /role="status"/u);
-  assert.match(loading, /Loading events/u);
 });
 
 test("a missing Events materialization returns one bounded unavailable calendar read", async (t) => {

@@ -82,14 +82,25 @@ test("Home bounds peak D1 read concurrency at the catalog fan-out of five", asyn
     },
   };
 
-  const result = await loadPublicHomeData(database, {
-    nowUtcMs: NOW_UTC_MS,
-    organizationId: "org-public",
+  const { createRequestContext, runWithRequestContext } = await import(
+    "../../node_modules/vinext/dist/shims/unified-request-context.js"
+  );
+  const result = await runWithRequestContext(createRequestContext(), async () => {
+    const first = await loadPublicHomeData(database, {
+      nowUtcMs: NOW_UTC_MS,
+      organizationId: "org-public",
+    });
+    const rendered = await loadPublicHomeData(database, {
+      nowUtcMs: NOW_UTC_MS + 1,
+      organizationId: "org-public",
+    });
+    assert.deepEqual(rendered, first);
+    return rendered;
   });
 
   assert.equal(result?.page.slug, "home");
   assert.deepEqual(result?.events, []);
-  assert.match(homeSource, /readPublicHomeEventMaterialization/u);
+  assert.match(homeSource, /getRequestPublicHomeEventMaterialization/u);
   assert.match(homeSource, /const HOME_EVENT_SELECTION_RESERVE = 48/u);
   assert.match(homeSource, /maximum: HOME_EVENT_SELECTION_RESERVE/u);
   assert.doesNotMatch(

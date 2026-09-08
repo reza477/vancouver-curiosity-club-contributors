@@ -6,6 +6,7 @@ import {
 } from "@/app/_components/EditorialPage";
 import { GetInvolvedRouteBody } from "@/app/_components/EditorialRouteBodies";
 import { PublicSubmissionForm } from "@/app/_components/PublicSubmissionForm";
+import { preparePublicFormInstance } from "@/lib/server/phase7/public-form-instance";
 
 const route = "/get-involved";
 const slug = "get-involved";
@@ -24,7 +25,10 @@ export function generateMetadata() {
 }
 
 export default async function GetInvolvedPage() {
-  const loaded = await loadEditorialPage(slug, route);
+  const [loaded, initialInstanceToken] = await Promise.all([
+    loadEditorialPage(slug, route),
+    preparePublicFormInstance("volunteer"),
+  ]);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "unavailable") {
     return <EditorialUnavailable title="Get Involved" />;
@@ -32,7 +36,7 @@ export default async function GetInvolvedPage() {
 
   return (
     <GetInvolvedRouteBody page={loaded.page}>
-      <PublicSubmissionForm formKey="volunteer" id="volunteer" />
+      <PublicSubmissionForm formKey="volunteer" id="volunteer" initialInstanceToken={initialInstanceToken} />
     </GetInvolvedRouteBody>
   );
 }

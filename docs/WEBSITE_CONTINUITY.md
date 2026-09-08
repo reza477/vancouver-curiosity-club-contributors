@@ -59,49 +59,38 @@ The canonical website is https://vancouvercuriosityclub.com/.
 
 ## Current continuation and priorities
 
-The first repair is implemented in production source `cc65de3` (PR #32).
-The linked frame now has one block box matching its image at 390, 1024 and
-1440 pixels. Local checks cover reduced motion, normal poster navigation and
-Back; all eight focused poster checks and 38 built-Worker checks pass, as does
-the complete PR CI run. The connected browser could not capture screenshots,
-so actual screenshot-based visual review remains outstanding. The public
-calendar read contained 33 events, all starting by September 30 in Vancouver
-time. Treat these as dated verification results.
+The first poster repair was published as Sites version 160 from production
+source `e472774` on September 8, 2026. The owner then requested a broad repair
+pass and public deployment. That pass addresses:
+
+- Home and Events serving usable HTML without page-wide loading boundaries,
+  with snapshot reads deduplicated across the framework's probe and render.
+- Poster keyboard focus preserving sticky positioning, responsive AVIF/WebP
+  source sizing, and the mobile menu closing when its home logo is activated.
+- Contact, Host and Volunteer preparing signed form instances on the server.
+  Native validation and expiry retain answers and the idempotency nonce.
+- Same-origin native retries, bounded multilingual request bodies, independent
+  volunteer interest selection, and recovery from unavailable Host choices.
+
+Preserve the approved artwork and wording while correcting these functional
+issues. The read-only audit covered all 46 sitemap/public pages and 48 image
+URLs with no broken responses. These are dated counts, not a future guarantee.
+The connected in-app browser now supports screenshots; use the existing tab
+for responsive and interaction checks. Preview content is synthetic and must
+never be promoted to hosted data. Submission tests run locally without an
+email provider; do not send test inquiries to the live organizer inbox.
 
 Release packaging must preserve exactly one copy of the validated migration
 tree. Windows directory copying into an existing directory can accidentally
-nest a second `drizzle` folder; compare the staged file list and hashes before
-saving a version. A saved version with a failed archive verification must not
-be deployed. Sites version saving is idempotent by source commit, so prepare
-and verify a new source version instead of assuming another upload replaces
-an existing archive.
+nest a second `drizzle` folder; compare staged file lists and hashes before
+saving a version. Never deploy a saved version that failed archive validation.
+Version saving is idempotent by source commit, so a corrected immutable
+release needs a new validated source revision.
 
-1. **Repair disappearing Events-list posters.** The last old-task exchange
-   diagnosed but did not fix this. `EventCard` changed its artwork frame from
-   a block div to an anchor, while the shared CSS omitted `display: block`.
-   Reveal clipping then used an inline box around block picture content.
-   Restore block layout in the shared frame rule; retain artwork, motion and
-   click destinations. Verify real card geometry, reveal states, mobile,
-   reduced motion, event navigation and Back. Do not substitute a Meetup
-   refresh for this presentation repair.
-2. **Finish visual review of the latest editorial design.** The old task
-   published it after automated checks while explicitly reporting browser
-   visual QA as pending. Assess actual desktop/mobile pages against the
-   owner's existing direction before proposing further aesthetic changes.
-3. **Investigate the known JavaScript-dependent Home/Events loading shell.**
-   The earlier motion handover records this limitation. Reproduce against
-   current source and distinguish framework streaming from application data
-   before proposing a repair. Do not claim it resolved by poster CSS.
-4. **Make representative local visual checks repeatable.** Fresh local D1 has
-   schema without production content. Existing synthetic fixture scripts can
-   support local-only checks; never copy production D1, private submissions or
-   secrets to populate a preview.
-
-The current architecture review found documentation drift in maintenance
-scheduling, public HTML caching and dependency-audit commands. Align those
-guides with the existing code. No high-confidence privacy defect was found in
-this source pass; multi-identity production auth and backup restoration were
-not exercised.
+Contributor PR #11 is awaiting GitHub's independent review requirement. An
+ordinary website deployment request does not authorize an owner override of
+that protection. Keep its source current while leaving that approval gate
+intact unless the owner explicitly resolves it.
 
 ## Evidence and authoritative guides
 

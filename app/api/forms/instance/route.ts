@@ -34,9 +34,6 @@ export async function POST(request: Request): Promise<Response> {
       throw new SafeApplicationError("validation_failed", 400, "The form could not be renewed. Try again.");
     }
     const formKey = parsePublicFormKey(Reflect.get(body, "formKey"));
-    if (formKey !== "contact" && !isAnonymousFormClientId(readCookie(request.headers.get("cookie"), PUBLIC_FORM_CLIENT_COOKIE))) {
-      throw new SafeApplicationError("authorization_denied", 403, "Refresh the form and try again.");
-    }
     const { database } = getRuntimeAuthConfiguration();
     const organization = await resolvePublicOrganization(database);
     if (!organization) return unavailable();

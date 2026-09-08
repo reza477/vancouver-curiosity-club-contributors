@@ -2,8 +2,8 @@ import { resolvePublicCalendarMonth } from "@/lib/public-calendar";
 import type { D1DatabaseLike } from "@/lib/server/auth";
 import {
   PUBLIC_EVENTS_PAGE_SIZE,
-  readPublicEventsPageMaterialization,
 } from "@/lib/server/public/event-materializations";
+import { getRequestPublicEventsPageMaterialization } from "./request-cache";
 import type { PublicMonthCalendarData } from "@/lib/server/public/month-calendar";
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 
@@ -49,7 +49,7 @@ export async function loadPublicEventsPageData(
   database: Pick<D1DatabaseLike, "prepare">,
   input: LoadPublicEventsPageDataInput,
 ): Promise<PublicEventsPageData> {
-  const materialized = await readPublicEventsPageMaterialization(
+  const materialized = await getRequestPublicEventsPageMaterialization(
     database,
     input,
   );

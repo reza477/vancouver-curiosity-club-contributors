@@ -602,7 +602,6 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 }
 
 .home-work-card__poster-link:focus-visible {
-  position: relative;
   z-index: 6;
 }
 

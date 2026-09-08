@@ -1253,9 +1253,9 @@ test("field-invalid public-form attempts consume the same durable atomic limits"
           networkFacts: "invalid-host-network",
         }),
         (error) =>
-          error?.code === "validation_failed" &&
+          error instanceof PublicFormValidationError &&
           /no longer available/iu.test(
-            error?.safeMessage ?? error?.message,
+            error.fieldErrors.preferredClubOrProgram,
           ),
       );
       assert.equal(
@@ -1736,3 +1736,4 @@ async function assertPhase7Clean(database) {
     Array(PHASE7_INVARIANT_COUNT_SQL.length).fill(0),
   );
 }
+import { PublicFormValidationError } from "../../lib/server/phase7/public-form-contract.ts";

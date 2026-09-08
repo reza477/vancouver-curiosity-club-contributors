@@ -98,4 +98,10 @@ test("dynamic Meetup posters omit untruthful widths while bundled posters retain
   assert.match(staticMarkup, /type="image\/webp"/u);
   assert.match(staticMarkup, /\bsrcSet=|\bsrcset=/u);
   assert.match(staticMarkup, /\bsizes=/u);
+  const modernSources = [...staticMarkup.matchAll(/<source\b[^>]*>/gu)];
+  assert.equal(modernSources.length, 2);
+  for (const [source] of modernSources) {
+    assert.match(source, /sizes="\(max-width: 40rem\) 480px, 1600px"/u,
+      "the selected picture source must use the intended slot width rather than defaulting to 100vw");
+  }
 });

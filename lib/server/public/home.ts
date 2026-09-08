@@ -4,9 +4,9 @@ import {
   type PublicPageDto,
 } from "./catalog";
 import type { PublicEventCardDto } from "./events";
-import { readPublicHomeEventMaterialization } from "./event-materializations";
 import {
   getRequestPublicCatalog,
+  getRequestPublicHomeEventMaterialization,
   getRequestPublicPageContent,
 } from "./request-cache";
 
@@ -35,7 +35,7 @@ export async function loadPublicHomeData(
 
   const [page, events] = await Promise.all([
     getRequestPublicPageContent(database, "home"),
-    readPublicHomeEventMaterialization(database, {
+    getRequestPublicHomeEventMaterialization(database, {
       maximum: HOME_EVENT_SELECTION_RESERVE,
       nowUtcMs: input.nowUtcMs,
       organizationId: input.organizationId,
