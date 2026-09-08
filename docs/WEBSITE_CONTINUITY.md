@@ -59,6 +59,23 @@ The canonical website is https://vancouvercuriosityclub.com/.
 
 ## Current continuation and priorities
 
+The first repair is implemented in production source `cc65de3` (PR #32).
+The linked frame now has one block box matching its image at 390, 1024 and
+1440 pixels. Local checks cover reduced motion, normal poster navigation and
+Back; all eight focused poster checks and 38 built-Worker checks pass, as does
+the complete PR CI run. The connected browser could not capture screenshots,
+so actual screenshot-based visual review remains outstanding. The public
+calendar read contained 33 events, all starting by September 30 in Vancouver
+time. Treat these as dated verification results.
+
+Release packaging must preserve exactly one copy of the validated migration
+tree. Windows directory copying into an existing directory can accidentally
+nest a second `drizzle` folder; compare the staged file list and hashes before
+saving a version. A saved version with a failed archive verification must not
+be deployed. Sites version saving is idempotent by source commit, so prepare
+and verify a new source version instead of assuming another upload replaces
+an existing archive.
+
 1. **Repair disappearing Events-list posters.** The last old-task exchange
    diagnosed but did not fix this. `EventCard` changed its artwork frame from
    a block div to an anchor, while the shared CSS omitted `display: block`.
