@@ -8,6 +8,7 @@ are historical evidence unless a current guide links to them directly.
 - [Repository overview](../README.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Developer handoff](../DEVELOPMENT.md)
+- [Website continuity and current priorities](WEBSITE_CONTINUITY.md)
 - [UI/UX handoff](UI_UX_HANDOFF.md)
 - [Release and recovery](RELEASE_AND_ROLLBACK.md)
 - [Governance](../GOVERNANCE.md)

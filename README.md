@@ -82,7 +82,7 @@ should begin with [the focused handoff guide](docs/UI_UX_HANDOFF.md), then read
 ```powershell
 npm run typecheck
 npm run lint
-npm audit --omit=dev
+npm audit --include=dev
 npm test
 git diff --check
 ```
