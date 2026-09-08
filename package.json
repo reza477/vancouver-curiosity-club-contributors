@@ -7,10 +7,10 @@
   "homepage": "https://vancouvercuriosityclub.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/reza477/vancouver-curiosity-club.git"
+    "url": "https://github.com/reza477/vancouver-curiosity-club-contributors.git"
   },
   "bugs": {
-    "url": "https://github.com/reza477/vancouver-curiosity-club/issues"
+    "url": "https://github.com/reza477/vancouver-curiosity-club-contributors/issues"
   },
   "engines": {
     "node": ">=22.16.0"
