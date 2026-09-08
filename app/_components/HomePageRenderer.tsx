@@ -523,7 +523,10 @@ function HomeWorkEvent({
         href={`/events/${event.slug}`}
       >
         <figure>
-          <div className="home-work-card__media">
+          <div
+            className="home-work-card__media"
+            style={{ aspectRatio: `${event.artwork.dimensions.large.width} / ${event.artwork.dimensions.large.height}` }}
+          >
             <span className="home-work-card__preview" aria-hidden="true">
               <span>{event.club.name}</span>
               <strong>{displayTitle}</strong>
@@ -543,7 +546,7 @@ function HomeWorkEvent({
               }
               height={event.artwork.dimensions.large.height}
               loading="lazy"
-              sizes="(max-width: 700px) 100vw, (max-width: 1023px) 50vw, 54vw"
+              sizes="(max-width: 700px) 100vw, (max-width: 1023px) 50vw, 62vw"
               src={event.artwork.url}
               srcSet={responsiveImageSrcSet([
                 {

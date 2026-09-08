@@ -1,7 +1,7 @@
 import { navigateClientSide } from "vinext/shims/navigation";
 import { PUBLIC_ARTWORK_MOTION_ENABLED } from "./public-artwork-motion";
 
-let cancelCurrent: (() => void) | null = null;
+let cancelCurrent: ((supersede: boolean) => void) | null = null;
 let currentOwner: object | null = null;
 
 export function eventPosterPath(href: string, origin: string): string | null {
@@ -12,7 +12,8 @@ export function eventPosterPath(href: string, origin: string): string | null {
   } catch { return null; }
 }
 
-export function cancelPosterNavigationMotion() { cancelCurrent?.(); }
+export function cancelPosterNavigationMotion() { cancelCurrent?.(true); }
+export function skipPosterNavigationMotion() { cancelCurrent?.(false); }
 
 /** Navigation owns history; the optional snapshot never owns navigation. */
 export function openConnectedPoster(link: HTMLAnchorElement): boolean {
@@ -23,10 +24,11 @@ export function openConnectedPoster(link: HTMLAnchorElement): boolean {
       !hasClientRouter || !path || link.target || link.hasAttribute("download") ||
       !document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches ||
       !source?.complete || !source.naturalWidth) return false;
-  cancelCurrent?.();
+  cancelCurrent?.(true);
   const owner = {};
   currentOwner = owner;
   let cancelled = false;
+  let superseded = false;
   let destination: HTMLImageElement | null = null;
   let information: HTMLElement | null = null;
   let timer: number | undefined;
@@ -44,6 +46,13 @@ export function openConnectedPoster(link: HTMLAnchorElement): boolean {
   document.documentElement.dataset.posterNavigation = "active";
   let transition: ViewTransition;
   try { transition = document.startViewTransition(async () => {
+    // skipTransition still calls this deferred update. A newer click or Back
+    // must win even when it arrives before this callback starts.
+    if (superseded) return;
+    if (cancelled) {
+      void navigateClientSide(link.href, "push", true).catch(() => {});
+      return;
+    }
     // Vinext 0.0.50 resolves navigation on a paint frame. View Transitions
     // suspend those frames while updating, so awaiting that promise deadlocks.
     // Observe the committed destination DOM instead; the router still owns
@@ -72,6 +81,8 @@ export function openConnectedPoster(link: HTMLAnchorElement): boolean {
     ]);
     window.clearTimeout(timer);
     if (cancelled || !ready || !destination.isConnected) { transition.skipTransition(); return; }
+    const bounds = destination.getBoundingClientRect();
+    if (bounds.bottom <= 0 || bounds.top >= window.innerHeight) { transition.skipTransition(); return; }
     destination.style.viewTransitionName = "event-poster";
     information = detail.querySelector<HTMLElement>(".event-detail__summary");
     if (information) information.style.viewTransitionName = "event-information";
@@ -79,10 +90,10 @@ export function openConnectedPoster(link: HTMLAnchorElement): boolean {
     clearNames();
     return false;
   }
-  const cancel = () => { cancelled = true; releaseCommit?.(); transition.skipTransition(); clearNames(); };
+  const cancel = (supersede: boolean) => { superseded ||= supersede; cancelled = true; releaseCommit?.(); transition.skipTransition(); clearNames(); };
   cancelCurrent = cancel;
   // Slow navigation continues normally, without a frozen snapshot or second push.
-  const deadline = window.setTimeout(cancel, 1200);
+  const deadline = window.setTimeout(() => cancel(false), 1200);
   void transition.ready.then(() => window.clearTimeout(deadline), () => {});
   void transition.finished.catch(() => {}).finally(() => {
     window.clearTimeout(deadline);

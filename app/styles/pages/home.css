@@ -487,7 +487,7 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 }
 
 .home-work {
-  background: var(--paper-deep);
+  background: var(--paper);
   padding-block: clamp(3rem, 5.5vw, 6rem);
 }
 
@@ -516,8 +516,8 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 }
 
 .home-work-card {
-  border: 1px solid var(--ink);
-  background: var(--paper);
+  border: 0;
+  background: transparent;
   min-width: 0;
   display: grid;
 }
@@ -530,8 +530,7 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 }
 
 .home-work-card figure {
-  border-top: 0.4rem solid var(--program-stream-accent, var(--ink));
-  border-bottom: 1px solid var(--ink);
+  border: 0;
   background: var(--paper-deep);
   margin: 0;
   overflow: hidden;
@@ -543,10 +542,6 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
   min-height: 0;
   position: relative;
   overflow: hidden;
-}
-
-.home-work-card:first-child .home-work-card__media {
-  aspect-ratio: 16 / 10;
 }
 
 .home-work-card__media img {
@@ -593,7 +588,7 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 
 .home-work-card figure figcaption {
   border-top: 1px solid var(--line);
-  padding: 0.45rem 0.65rem;
+  padding: 0.8rem 0;
   font-size: 0.825rem;
   line-height: 1.35;
 }
@@ -610,7 +605,7 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 
 .home-work-card__body {
   align-content: start;
-  padding: 1.1rem;
+  padding: 1.35rem 0;
   display: grid;
 }
 
@@ -634,7 +629,7 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 
 .home-work-card h3 {
   font-family: var(--display);
-  font-size: clamp(1.25rem, 1.8vw, 1.65rem);
+  font-size: clamp(1.5rem, 2.1vw, 1.9rem);
   font-weight: 600;
   letter-spacing: -0.035em;
   line-height: 1.08;
@@ -808,7 +803,7 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 
 .home-impact {
   background: var(--amber-surface);
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
   align-items: start;
   gap: clamp(2rem, 5vw, 5rem);
   padding-block: clamp(3rem, 5vw, 5rem);
@@ -816,18 +811,28 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
 }
 
 .home-work-card__caption {
-  border-block-start: 2px solid var(--program-stream-accent, var(--ink));
+  border-block-start: 1px solid var(--line);
+  position: relative;
   display: grid;
   gap: 0.3rem;
-  padding: 0.8rem 1rem;
+  padding: 0.8rem 0;
   color: var(--ink);
+  background: var(--paper);
 }
 .home-work-card__caption strong { font: 600 1rem/1.3 var(--sans); }
+.home-work-card__caption::before {
+  content: "";
+  position: absolute;
+  inset: -2px auto auto 0;
+  width: 3rem;
+  height: 3px;
+  background: var(--program-stream-accent, var(--amber));
+}
 
 .home-impact__statement h2 {
   max-width: 14ch;
   margin: 0;
-  font-size: clamp(2.5rem, 4.2vw, 4rem);
+  font-size: clamp(2.15rem, 3.5vw, 3.3rem);
   line-height: 1.03;
 }
 
@@ -857,6 +862,16 @@ html[data-artwork-motion-ready="true"] .home-program[data-artwork-reveal-state="
   height: 1px;
   background: currentColor;
   transform-origin: left;
+}
+
+.home-impact__sequence li::after {
+  content: "";
+  position: absolute;
+  inset: -3px 0 auto auto;
+  width: 7px;
+  height: 7px;
+  border: 1px solid currentColor;
+  background: var(--amber);
 }
 
 @media (prefers-reduced-motion: no-preference) {

@@ -38,5 +38,8 @@ html[data-poster-navigation="active"]::view-transition-new(event-information) { 
 @keyframes event-information-settle { from { transform: translateY(8px); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .primary-nav[data-indicator-ready="true"]::after { transition: none; }
+  html[data-poster-navigation="active"]::view-transition-group(*),
+  html[data-poster-navigation="active"]::view-transition-old(*),
+  html[data-poster-navigation="active"]::view-transition-new(*) { animation: none !important; }
 }
 @media (forced-colors: active) { .primary-nav[data-indicator-ready="true"]::after { background: CanvasText; } }

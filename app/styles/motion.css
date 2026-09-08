@@ -27,9 +27,9 @@ html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="visible"]:not
   }
 }
 
-@media (scripting: enabled) and (min-width: 64rem) and (min-height: 42rem) and (prefers-reduced-motion: no-preference){@scope (html[data-artwork-motion-ready="true"] [data-stage-enhanced="true"]){:scope.home-work__grid{grid-template-columns:minmax(0,1.16fr) minmax(22rem,0.84fr);grid-template-rows:repeat(3,minmax(17rem,auto));gap:0 clamp(2.25rem,5vw,5rem);position:relative;}
+@media (scripting: enabled) and (min-width: 64rem) and (min-height: 42rem) and (prefers-reduced-motion: no-preference){@scope (html[data-artwork-motion-ready="true"] [data-stage-enhanced="true"]){:scope.home-work__grid{grid-template-columns:minmax(0,1.3fr) minmax(20rem,0.7fr);grid-template-rows:repeat(3,minmax(17rem,auto));gap:0 clamp(2rem,3.5vw,3.5rem);position:relative;}
 .home-work-card{display:contents;}
-.home-work-card__poster-link{--poster-entry-clip:inset(0 100% 0 0);--poster-mask-exit:inset(0 0 0 100%);border:1px solid var(--ink);background:var(--paper-deep);grid-column:1;grid-row:1 / 4;align-self:start;position:sticky;top:clamp(5.5rem,10vh,7.5rem);visibility:hidden;overflow:hidden;}
+.home-work-card__poster-link{--poster-entry-clip:inset(0 100% 0 0);--poster-mask-exit:inset(0 0 0 100%);grid-column:1;grid-row:1 / 4;align-self:start;position:sticky;top:clamp(5.5rem,10vh,7.5rem);visibility:hidden;}
 .home-work-card__poster-link::after{content:"";pointer-events:none;background:var(--program-stream-accent,var(--ink));clip-path:inset(0);position:absolute;z-index:5;inset:0;visibility:hidden;}
 .home-work-card[data-program-stream="reset-make"] .home-work-card__poster-link{--poster-entry-clip:inset(100% 0 0 0);--poster-mask-exit:inset(0 0 100% 0);}
 .home-work-card[data-program-stream="explore"] .home-work-card__poster-link{--poster-entry-clip:inset(0 0 0 100%);--poster-mask-exit:inset(0 100% 0 0);}
@@ -38,15 +38,15 @@ html[data-artwork-motion-ready="true"] [data-artwork-reveal-state="visible"]:not
 .home-work-card[data-stage-state="incoming"] .home-work-card__poster-link{animation:var(--artwork-motion-artwork) var(--artwork-motion-easing) both artwork-poster-reveal;z-index:3;}
 .home-work-card[data-stage-state="incoming"] .home-work-card__poster-link::after{animation:var(--artwork-motion-artwork) var(--artwork-motion-easing) both artwork-colour-mask;visibility:visible;}
 .home-work-card__poster-link figure{border:0;}
-.home-work-card:first-child .home-work-card__media{aspect-ratio:16 / 9;}
-.home-work-card__body{border-block:1px solid var(--ink);background:var(--paper);grid-column:2;align-content:center;min-height:17rem;padding:clamp(1.25rem,2.5vw,2rem);position:relative;}
-.home-work-card__body::before{content:"";background:var(--program-stream-accent,var(--ink));width:0.28rem;position:absolute;inset-block:1rem;left:0;transform:scaleY(0.48);transform-origin:top;}
-.home-work-card__body[data-stage-active="true"]{background:var(--amber-surface);transform:translateX(-5px);}
-.home-work-card__body[data-stage-active="true"]::before,.home-work-card__body:is(:hover,:focus-within)::before{transform:scaleY(1);}
+.home-work-card__body{border-block-start:1px solid var(--line);grid-column:2;align-content:center;min-height:17rem;padding:1.5rem 0 1.5rem 1.5rem;position:relative;}
+.home-work-card__body::before{content:"";background:var(--program-stream-accent,var(--ink));height:3px;width:3rem;position:absolute;top:-2px;left:0;transform:scaleX(0.4);transform-origin:left;}
+.home-work-card__body[data-stage-active="true"]{transform:translateX(-5px);}
+.home-work-card__body[data-stage-active="true"]::before,.home-work-card__body:is(:hover,:focus-within)::before{transform:scaleX(1);}
+.home-work-card__body[data-stage-active="true"]::after{content:"";position:absolute;left:0;top:3.5rem;width:7px;height:7px;border:1px solid var(--ink);background:var(--amber);}
 .home-work-card[data-stage-state="incoming"] .home-work-card__body{animation:home-work-summary-activate var(--artwork-motion-interaction) var(--artwork-motion-easing) both;}
 .home-work-card[data-stage-state="incoming"] .home-work-card__body::before{animation:home-work-summary-rule var(--artwork-motion-interaction) var(--artwork-motion-easing) both;}
-@keyframes home-work-summary-activate{from{background:var(--paper);transform:translateX(0)}to{background:var(--amber-surface);transform:translateX(-5px)}}
-@keyframes home-work-summary-rule{from{transform:scaleY(0.48)}to{transform:scaleY(1)}}
+@keyframes home-work-summary-activate{from{transform:translateX(0)}to{transform:translateX(-5px)}}
+@keyframes home-work-summary-rule{from{transform:scaleX(0.4)}to{transform:scaleX(1)}}
 .home-work-card:nth-child(1) .home-work-card__body{grid-row:1;}
 .home-work-card:nth-child(2) .home-work-card__body{grid-row:2;}
 .home-work-card:nth-child(3) .home-work-card__body{grid-row:3;}

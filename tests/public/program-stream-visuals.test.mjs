@@ -199,7 +199,7 @@ test("Prompt 4 remains limited to Four Ways, Home event cards, and Events listin
   );
   assert.match(
     homeCss,
-    /\.home-work-card figure\s*\{[^}]*border-top:\s*0\.4rem solid var\(--program-stream-accent, var\(--ink\)\);/su,
+    /\.home-work-card__caption::before\s*\{[^}]*background:\s*var\(--program-stream-accent, var\(--amber\)\);/su,
   );
   assert.match(
     homeCss,

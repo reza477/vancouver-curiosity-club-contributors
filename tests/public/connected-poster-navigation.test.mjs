@@ -19,6 +19,9 @@ test('late and failed artwork remains fail-open, and navigation listeners clean 
   assert.match(motion,/fallbackObserver\.disconnect\(\)/u);
   assert.match(navigation,/let navigationStyles: Promise<unknown> \| undefined/u);
   assert.match(navigation,/navigationStyles \?\?= import\("\.\.\/styles\/connected-navigation\.css"\)/u);
+  assert.match(navigation,/event\.button !== 0 \|\| event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey \|\| event\.altKey/u);
+  assert.match(navigation,/link\.hasAttribute\("download"\)\) \{\s*skipPosterNavigationMotion\(\);/u);
+  assert.match(navigation,/preference\.addEventListener\("change", skipPosterNavigationMotion\)/u);
   for(const event of ['popstate','pagehide']){
     assert.ok(navigation.includes(`addEventListener("${event}", cancelPosterNavigationMotion)`));
     assert.ok(navigation.includes(`removeEventListener("${event}", cancelPosterNavigationMotion)`));
@@ -29,12 +32,12 @@ test('late and failed artwork remains fail-open, and navigation listeners clean 
 function setup(options={}) {
   const style=()=>({removeProperty(){delete this.viewTransitionName;}});
   const source={style:style(),complete:true,naturalWidth:960};
-  const destination={style:style(),complete:true,naturalWidth:960,isConnected:true,decode:options.decode ?? (()=>Promise.resolve())};
+  const destination={style:style(),complete:true,naturalWidth:960,isConnected:true,getBoundingClientRect:()=>options.bounds ?? ({top:120,bottom:480}),decode:options.decode ?? (()=>Promise.resolve())};
   const information={style:style()};
   const detail={dataset:{eventDetailSlug:'example'},querySelector:s=>s.includes('img')?destination:information};
   const location={origin:'https://example.com',pathname:'/'};
   const timers=new Map(); let nextTimer=0;
-  const window={__VINEXT_RSC_NAVIGATE__:()=>{},scrollTo:()=>{},setTimeout:(fn,ms)=>{timers.set(++nextTimer,{fn,ms});return nextTimer;},clearTimeout:id=>timers.delete(id)};
+  const window={innerHeight:900,__VINEXT_RSC_NAVIGATE__:()=>{},scrollTo:()=>{},setTimeout:(fn,ms)=>{timers.set(++nextTimer,{fn,ms});return nextTimer;},clearTimeout:id=>timers.delete(id)};
   const transitions=[];const calls=[];
   const document={documentElement:{dataset:{navigationMotionReady:'true'}},querySelector:()=>detail,startViewTransition:update=>{
     if(options.throwStart)throw Error('Unavailable');
@@ -47,7 +50,7 @@ function setup(options={}) {
   const exports={};
   let observer;
   class MutationObserver { constructor(callback){this.state={callback,disconnected:false};observer=this.state;} observe(){} disconnect(){this.state.disconnected=true;} }
-  vm.runInNewContext(code,{exports,URL,document,location,window,MutationObserver,matchMedia:()=>({matches:!!options.reduce}),require:name=>name.includes('vinext')?{navigateClientSide:async(...args)=>{calls.push(args);await options.navigation?.();location.pathname='/events/example';if(!observer.disconnected)observer.callback();if(options.paintPending)await options.paintPending;}}:{PUBLIC_ARTWORK_MOTION_ENABLED:true}});
+  vm.runInNewContext(code,{exports,URL,document,location,window,MutationObserver,matchMedia:()=>({matches:!!options.reduce}),require:name=>name.includes('vinext')?{navigateClientSide:async(...args)=>{calls.push(args);await options.navigation?.();location.pathname='/events/example';if(observer&&!observer.disconnected)observer.callback();if(options.paintPending)await options.paintPending;}}:{PUBLIC_ARTWORK_MOTION_ENABLED:true}});
   return {api:exports,link,document,window,source,destination,information,timers,transitions,calls,location};
 }
 test('only internal event-detail URLs qualify',()=>{
@@ -92,4 +95,38 @@ test('Back/new navigation cancellation and an old completion cannot clear a newe
   h.api.openConnectedPoster(h.link);await tick();h.transitions[0].finish();await tick();
   assert.equal(h.document.documentElement.dataset.posterNavigation,'active');assert.equal(h.destination.style.viewTransitionName,'event-poster');
   h.api.cancelPosterNavigationMotion();h.transitions[1].finish();await tick();assert.deepEqual(h.document.documentElement.dataset,{navigationMotionReady:'true'});
+});
+
+test('Back or a second link before the deferred snapshot update prevents stale navigation',async()=>{
+  const h=setup();h.api.openConnectedPoster(h.link);h.api.cancelPosterNavigationMotion();await tick();
+  assert.equal(h.calls.length,0);assert.equal(h.location.pathname,'/');
+  h.transitions[0].finish();await tick();
+});
+
+test('a preference-only skip before the snapshot update still opens the intended event once',async()=>{
+  const h=setup();h.api.openConnectedPoster(h.link);h.api.skipPosterNavigationMotion();await tick();
+  assert.equal(h.calls.length,1);assert.equal(h.location.pathname,'/events/example');assert.equal(h.transitions[0].skipped,true);
+  assert.equal(h.destination.style.viewTransitionName,undefined);
+  h.transitions[0].finish();await tick();
+});
+
+test('offscreen artwork does not pull a shared poster out of the viewport',async()=>{
+  for(const bounds of [{top:950,bottom:1200},{top:-500,bottom:-10}]){
+    const h=setup({bounds});h.api.openConnectedPoster(h.link);await tick();
+    assert.equal(h.calls.length,1);assert.equal(h.transitions[0].skipped,true);
+    assert.equal(h.destination.style.viewTransitionName,undefined);h.transitions[0].finish();await tick();
+  }
+});
+
+test('reference refinement keeps intrinsic artwork ratios and a static mobile arrival',async()=>{
+  const home=await readFile(new URL('../../app/_components/HomePageRenderer.tsx',import.meta.url),'utf8');
+  const detail=await readFile(new URL('../../app/_components/PublicEventDetailRenderer.tsx',import.meta.url),'utf8');
+  const detailCss=await readFile(new URL('../../public/styles/event-detail.css',import.meta.url),'utf8');
+  const css=await readFile(new URL('../../app/styles/connected-navigation.css',import.meta.url),'utf8');
+  for(const component of [home,detail])assert.ok(component.includes('aspectRatio: `${event.artwork.dimensions.large.width} / ${event.artwork.dimensions.large.height}`'));
+  assert.match(detailCss,/@media \(max-width: 64rem\)[\s\S]*?grid-template-areas:\s*"visual"\s*"summary"/u);
+  assert.ok(detail.indexOf('className="event-detail__visual"') < detail.indexOf('className="event-detail__summary"'));
+  assert.ok(detail.indexOf('className="event-detail__summary"') < detail.indexOf('className="event-detail__calendar"'));
+  assert.match(detailCss,/"visual"\s*"summary"\s*"calendar"/u);
+  assert.match(css,/@media \(prefers-reduced-motion: reduce\)[\s\S]*?::view-transition-group\(\*\)[\s\S]*?animation: none !important/u);
 });

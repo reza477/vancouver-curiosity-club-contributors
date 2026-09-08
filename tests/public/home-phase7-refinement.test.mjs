@@ -110,7 +110,7 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /@media \(scripting: enabled\) and \(min-width: 64rem\) and \(min-height: 42rem\) and \(prefers-reduced-motion: no-preference\)[\s\S]*?\.home-work__grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.16fr\) minmax\(22rem,\s*0\.84fr\);/u,
+    /@media \(scripting: enabled\) and \(min-width: 64rem\) and \(min-height: 42rem\) and \(prefers-reduced-motion: no-preference\)[\s\S]*?\.home-work__grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.3fr\) minmax\(20rem,\s*0\.7fr\);/u,
   );
   assert.match(
     css,
@@ -130,7 +130,7 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /\.home-impact__statement h2\s*\{[^}]*font-size:\s*clamp\(2\.5rem, 4\.2vw, 4rem\);/su,
+    /\.home-impact__statement h2\s*\{[^}]*font-size:\s*clamp\(2\.15rem, 3\.5vw, 3\.3rem\);/su,
   );
   assert.match(
     css,
