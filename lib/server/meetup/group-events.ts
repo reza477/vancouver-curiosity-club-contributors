@@ -113,6 +113,7 @@ const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
     "drive.google.com",
     "esp.mit.edu",
     "forms.gle",
+    "gkids.com",
     "m.youtube.com",
     "maps.app.goo.gl",
     "reifelsanctuary.calendarspots.com",

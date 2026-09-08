@@ -649,6 +649,7 @@ Review the source beforehand and come ready to discuss it.`;
 test("retains the exact newly published September source links", () => {
   for (const sourceUrl of [
     "https://forms.gle/bBwkw4gy1BegzB49A",
+    "https://gkids.com/films/perfect-blue/",
     "https://www.therecroom.com/deals",
     "https://www.paramountpictures.com/movies/shutter-island",
     "https://www.penguinrandomhouse.com/books/538163/stories-of-your-life-and-others-by-ted-chiang/",
