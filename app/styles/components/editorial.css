@@ -208,6 +208,7 @@
 }
 
 .event-card__artwork-frame, .event-detail__artwork-frame {
+  display: block;
   aspect-ratio: 16 / 9;
   background-color: var(--paper-deep);
   background-image: linear-gradient(135deg, color-mix(in srgb, var(--event-accent, var(--cobalt)) 28%, var(--paper-deep)) 0 34%, color-mix(in srgb, var(--coral) 20%, var(--paper-deep)) 34% 67%, color-mix(in srgb, var(--forest) 24%, var(--paper-deep)) 67% 100%);
