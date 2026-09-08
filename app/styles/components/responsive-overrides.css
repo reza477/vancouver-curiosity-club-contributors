@@ -26,12 +26,12 @@
   }
 
   .home-hero h1, .about-hero h1, .events-page-masthead h1, .page-masthead__copy h1 {
-    font-size: clamp(3rem, 13vw, 3.5rem);
-    line-height: 0.95;
+    font-size: clamp(2.5rem, 11vw, 3.25rem);
+    line-height: 1.06;
   }
 
   .section-heading h2, .attending-note h2, .home-invitation h2, .home-community h2, .about-page h2, .related-events h2 {
-    font-size: clamp(2.25rem, 10vw, 3rem);
+    font-size: clamp(2rem, 8.5vw, 2.5rem);
   }
 }
 

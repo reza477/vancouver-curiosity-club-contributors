@@ -34,13 +34,18 @@ test("supporting routes consume one bounded public typography and spacing system
   for (const [name, css] of [
     ["shared masthead", layout],
     ["Events masthead", events],
-    ["About", about],
-    ["For Organizations", organizations],
   ]) {
     assert.match(
       css,
       /font-size:\s*var\(--public-page-title\)/u,
       `${name} must use the shared page-title scale`,
+    );
+  }
+  for (const [name, css] of [["About", about], ["For Organizations", organizations]]) {
+    assert.match(
+      css,
+      /font-size:\s*clamp\(2\.75rem, 4vw, 3\.75rem\)/u,
+      `${name} keeps the quieter editorial profile scale`,
     );
   }
   assert.match(

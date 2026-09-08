@@ -305,7 +305,7 @@ test("the community artwork triptych has pointer and keyboard parity", async () 
     homeCss,
     /@media \(min-width: 56\.001rem\)[\s\S]*?\.home-communities__list\s*\{[^}]*align-items:\s*stretch;[^}]*display:\s*flex;/u,
   );
-  assert.match(homeCss, /\.home-community:first-child\s*\{[^}]*flex-grow:\s*1\.9;/su);
+  assert.match(homeCss, /\.home-community:first-child\s*\{[^}]*flex-grow:\s*1\.45;/su);
   assert.match(homeCss, /\.home-community:focus-visible\s*\{[^}]*outline:/su);
   assert.match(
     homeCss,
@@ -313,11 +313,11 @@ test("the community artwork triptych has pointer and keyboard parity", async () 
   );
   assert.match(
     homeCss,
-    /\.home-community:is\(:hover, :focus-within\)\s*\{[^}]*flex-grow:\s*2\.35;/su,
+    /\.home-community:is\(:hover, :focus-within\)\s*\{[^}]*flex-grow:\s*1\.8;/su,
   );
   assert.match(
     homeCss,
-    /\.home-community:is\(:hover, :focus-within\) \.home-community__details\s*\{[^}]*grid-template-rows:\s*1fr;/su,
+    /\.home-community__details\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\);/su,
   );
   assert.match(
     homeCss,
@@ -365,7 +365,7 @@ test("About moves real artwork forward and uses editorial rosters and rows", asy
   assert.doesNotMatch(about, /about-board__badge|director\.emoji|emoji:/u);
   assert.match(
     aboutCss,
-    /\.about-artwork-strip\s*\{[^}]*background:\s*var\(--ink\);[^}]*grid-template-columns:\s*minmax\(0, 1\.32fr\) minmax\(0, 0\.86fr\) minmax\(0, 1fr\);/su,
+    /\.about-artwork-strip\s*\{[^}]*background:\s*var\(--paper\);[^}]*grid-template-columns:\s*minmax\(0, 1\.32fr\) minmax\(0, 0\.86fr\) minmax\(0, 1fr\);/su,
   );
   assert.match(
     aboutCss,
@@ -429,7 +429,7 @@ test("For Organizations leads with artwork, a facts band, and asymmetric pathway
   );
   assert.match(
     organizationsCss,
-    /\.organizations-collaboration article:nth-child\(even\)\s*\{[^}]*width:\s*90%;[^}]*margin-left:\s*auto;/su,
+    /\.organizations-collaboration article:nth-child\(even\)\s*\{[^}]*width:\s*100%;/su,
   );
   assert.match(
     organizationsCss,

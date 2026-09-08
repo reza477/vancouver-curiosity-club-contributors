@@ -78,7 +78,7 @@ test("Home renders the approved institutional story in the exact section order",
     [
       "image-led-split",
       "compact-editorial-index",
-      "full-width-colour",
+      "editorial-program-index",
       "living-poster-stage",
       "asymmetric-editorial-feedback",
       "large-statement",

@@ -167,7 +167,7 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     styles,
-    /\.about-hero h1\s*\{[^}]*font-size:\s*var\(--public-page-title\);[^}]*text-align:\s*center;/su,
+    /\.about-hero h1\s*\{[^}]*font-size:\s*clamp\(2\.75rem, 4vw, 3\.75rem\);[^}]*text-align:\s*center;/su,
     "Our mission must be the large centered page heading",
   );
   assert.doesNotMatch(

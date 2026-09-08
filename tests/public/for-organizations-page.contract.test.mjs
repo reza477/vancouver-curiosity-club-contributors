@@ -141,7 +141,7 @@ test("For Organizations route styles remain bounded and stack its remaining sect
   );
   assert.match(
     css,
-    /\.organizations-collaboration article:nth-child\(even\)\s*\{[^}]*width:\s*90%;[^}]*margin-left:\s*auto;/su,
+    /\.organizations-collaboration article:nth-child\(even\)\s*\{[^}]*width:\s*100%;/su,
     "the index must preserve its restrained staggered widths",
   );
   assert.doesNotMatch(

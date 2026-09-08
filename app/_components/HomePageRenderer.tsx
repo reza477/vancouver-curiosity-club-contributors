@@ -203,7 +203,7 @@ export function HomePageRenderer({
         className="home-programs"
         id="our-work"
         data-home-section="programs"
-        data-home-layout="full-width-colour"
+        data-home-layout="editorial-program-index"
         aria-labelledby="home-programs-title"
       >
         <div className="home-section-heading">

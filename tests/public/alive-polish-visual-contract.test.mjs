@@ -20,7 +20,7 @@ test("event polish adds lane warmth and print shadows without recropping posters
       ".event-card__artwork",
       "0.35rem 0.35rem 0 var(--event-accent)",
     ],
-    [".home-hero__poster", "0.35rem 0.35rem 0 var(--amber)"],
+    [".home-hero__poster", "none"],
     [
       ".event-detail__visual > .event-detail__artwork",
       "0.35rem 0.35rem 0 var(--amber)",

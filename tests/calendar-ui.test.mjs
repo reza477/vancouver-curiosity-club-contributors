@@ -573,7 +573,7 @@ test("About presents a professional mission, impact, continuity, and partnership
   );
   assert.match(
     styles,
-    /\.about-page h2\s*\{[^}]*font-size:\s*clamp\(2\.15rem, 3\.4vw, 3\.45rem\);[^}]*line-height:\s*1\.02;/u,
+    /\.about-page h2\s*\{[^}]*font-size:\s*clamp\(2rem, 2\.8vw, 2\.75rem\);[^}]*line-height:\s*1\.12;/u,
     "About section headings must stay balanced against their supporting copy",
   );
   assert.match(

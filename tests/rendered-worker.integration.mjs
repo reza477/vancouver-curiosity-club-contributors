@@ -795,7 +795,7 @@ test("the built public root is indexable and carries the production security con
   for (const [section, layout] of [
     ["hero", "(?:image-led-split|text-only-statement)"],
     ["at-a-glance", "compact-editorial-index"],
-    ["programs", "full-width-colour"],
+    ["programs", "editorial-program-index"],
     ["work-in-action", "living-poster-stage"],
     ["participant-feedback", "asymmetric-editorial-feedback"],
     ["why-it-matters", "large-statement"],
