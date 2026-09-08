@@ -22,7 +22,7 @@ test("Events keeps one calendar behind one durable materialization read", async 
     source,
     /\bqueryPublicEventSlice\b|\bloadPublicMonthCalendar\b/u,
   );
-  assert.match(loader, /readPublicEventsPageMaterialization/u);
+  assert.match(loader, /getRequestPublicEventsPageMaterialization/u);
   assert.doesNotMatch(loader, /eventListAvailable|eventPage|emptyEventPage/u);
   assert.doesNotMatch(
     loader,

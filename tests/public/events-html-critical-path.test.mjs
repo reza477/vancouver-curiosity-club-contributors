@@ -22,6 +22,8 @@ test("public reads use vinext request scope across metadata, probes, and renderi
     "clubNextEvents",
     "eventDetails",
     "eventMaterializedViews",
+    "eventsPageViews",
+    "homeEventViews",
     "siteContext",
     "navigation",
     "organization",
@@ -37,6 +39,55 @@ test("public reads use vinext request scope across metadata, probes, and renderi
     /from "react"/u,
     "React cache is not guaranteed to span vinext's pre-render probe",
   );
+});
+
+test("Home and Events probes share snapshots without leaking selections, bindings, or requests", async () => {
+  const [{ createRequestContext, runWithRequestContext }, requestCache] = await Promise.all([
+    import("../../node_modules/vinext/dist/shims/unified-request-context.js"),
+    import("../../lib/server/public/request-cache.ts"),
+  ]);
+  let reads = 0;
+  const binding = () => ({
+    prepare(sql) {
+      assert.match(sql, /FROM public_event_calendar_snapshots/u);
+      reads += 1;
+      return { bind() { return this; }, async first() { return null; } };
+    },
+  });
+  const database = binding();
+  const nowUtcMs = Date.parse("2026-09-08T18:00:00.000Z");
+  const input = { organizationId: "organization-1", nowUtcMs, todayDate: "2026-09-08", rawMonth: undefined };
+  await runWithRequestContext(createRequestContext(), async () => {
+    const firstHome = requestCache.getRequestPublicHomeEventMaterialization(database, input);
+    const secondHome = requestCache.getRequestPublicHomeEventMaterialization(database, { ...input, nowUtcMs: nowUtcMs + 1 });
+    assert.equal(firstHome, secondHome);
+    await Promise.all([firstHome, secondHome]);
+    assert.equal(reads, 1);
+    const firstEvents = requestCache.getRequestPublicEventsPageMaterialization(database, input);
+    const secondEvents = requestCache.getRequestPublicEventsPageMaterialization(database, { ...input, nowUtcMs: nowUtcMs + 1 });
+    assert.equal(firstEvents, secondEvents);
+    await Promise.all([firstEvents, secondEvents]);
+    assert.equal(reads, 2);
+    for (const selection of [
+      { rawMonth: null }, { rawMonth: "2026-10" }, { rawPage: "2" },
+      { clubSlug: "club-two" }, { laneSlug: "think" }, { todayDate: "2026-09-09" },
+      { organizationId: "organization-2" },
+    ]) {
+      const selected = requestCache.getRequestPublicEventsPageMaterialization(database, { ...input, ...selection });
+      assert.notEqual(selected, firstEvents);
+      await selected;
+    }
+    assert.equal(reads, 9, "every distinct selection must have its own result");
+    await requestCache.getRequestPublicHomeEventMaterialization(database, { ...input, maximum: 1 });
+    await requestCache.getRequestPublicHomeEventMaterialization(binding(), input);
+    await requestCache.getRequestPublicEventsPageMaterialization(binding(), input);
+    assert.equal(reads, 12, "a different bound database must never reuse another binding's result");
+  });
+  await runWithRequestContext(createRequestContext(), async () => {
+    await requestCache.getRequestPublicHomeEventMaterialization(database, input);
+    await requestCache.getRequestPublicEventsPageMaterialization(database, input);
+  });
+  assert.equal(reads, 14, "a new request must see freshly published state");
 });
 
 test("root metadata and layout share one published-logo media read per request", async () => {

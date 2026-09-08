@@ -54,6 +54,7 @@ export function SiteHeader({
         className="wordmark"
         href="/"
         aria-label={`${brandName} home`}
+        onClick={closeMobileMenu}
         prefetch={prefetchInternalLinks}
       >
         {logoAssetId ? (

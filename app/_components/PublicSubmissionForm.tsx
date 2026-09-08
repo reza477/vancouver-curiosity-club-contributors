@@ -850,7 +850,6 @@ function CheckboxGroup({
                   : values.filter((value) => value !== option),
               )
             }
-            required={values.length === 0 && index === 0}
             type="checkbox"
             value={option}
           />

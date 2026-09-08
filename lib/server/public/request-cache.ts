@@ -18,9 +18,12 @@ import {
   type PublicCatalogDto,
 } from "./catalog";
 import { getPublicEventBySlug } from "./events";
+import { vancouverCalendarDate } from "./date";
 import {
   readPublicClubEventViewMaterialization,
   readPublicEventDetailViewMaterialization,
+  readPublicEventsPageMaterialization,
+  readPublicHomeEventMaterialization,
   readPublicNextEventsByClubMaterialization,
 } from "./event-materializations";
 
@@ -51,6 +54,8 @@ type PublicRequestCache = Readonly<{
     string,
     ReturnType<typeof readPublicEventDetailViewMaterialization>
   >;
+  eventsPageViews: Map<string, ReturnType<typeof readPublicEventsPageMaterialization>>;
+  homeEventViews: Map<string, ReturnType<typeof readPublicHomeEventMaterialization>>;
   slugRedirects: Map<string, ReturnType<typeof getPublicSlugRedirect>>;
 }>;
 
@@ -99,6 +104,8 @@ function requestDatabaseCache(database: PublicDatabase): PublicRequestCache {
       string,
       ReturnType<typeof readPublicEventDetailViewMaterialization>
     >(),
+    eventsPageViews: new Map<string, ReturnType<typeof readPublicEventsPageMaterialization>>(),
+    homeEventViews: new Map<string, ReturnType<typeof readPublicHomeEventMaterialization>>(),
     slugRedirects: new Map<string, ReturnType<typeof getPublicSlugRedirect>>(),
   });
   caches.set(database, created);
@@ -241,6 +248,42 @@ export function getRequestPublicEventBySlug(
   const key = JSON.stringify([input.organizationId, input.slug]);
   return remember(requestDatabaseCache(database).eventDetails, key, () =>
     getPublicEventBySlug(database, input),
+  );
+}
+
+// The async page probe and final render share one visitor snapshot and clock
+// decision. Keep this cache request-local so later requests see new content.
+export function getRequestPublicHomeEventMaterialization(
+  database: PublicDatabase,
+  input: Parameters<typeof readPublicHomeEventMaterialization>[1],
+) {
+  const todayDate = input.todayDate ?? vancouverCalendarDate(input.nowUtcMs ?? Date.now());
+  const key = JSON.stringify({
+    organizationId: input.organizationId,
+    maximum: input.maximum,
+    todayDate,
+  });
+  return remember(requestDatabaseCache(database).homeEventViews, key, () =>
+    readPublicHomeEventMaterialization(database, { ...input, todayDate }),
+  );
+}
+
+export function getRequestPublicEventsPageMaterialization(
+  database: PublicDatabase,
+  input: Parameters<typeof readPublicEventsPageMaterialization>[1],
+) {
+  // Object keys preserve the distinction between an omitted month (automatic
+  // upcoming-month selection) and an explicitly invalid null month.
+  const key = JSON.stringify({
+    organizationId: input.organizationId,
+    todayDate: input.todayDate,
+    clubSlug: input.clubSlug,
+    laneSlug: input.laneSlug,
+    rawMonth: input.rawMonth,
+    rawPage: input.rawPage,
+  });
+  return remember(requestDatabaseCache(database).eventsPageViews, key, () =>
+    readPublicEventsPageMaterialization(database, input),
   );
 }
 

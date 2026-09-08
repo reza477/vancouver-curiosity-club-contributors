@@ -1591,12 +1591,12 @@ test("ordinary Home and Events loaders contain no projection or write escape hat
       "utf8",
     ),
   ]);
-  assert.match(home, /readPublicHomeEventMaterialization/u);
+  assert.match(home, /getRequestPublicHomeEventMaterialization/u);
   assert.doesNotMatch(
     home,
     /queryPublicEventSlice|refreshMeetup|fetchMeetup/iu,
   );
-  assert.match(eventsPage, /readPublicEventsPageMaterialization/u);
+  assert.match(eventsPage, /getRequestPublicEventsPageMaterialization/u);
   assert.doesNotMatch(
     eventsPage,
     /queryPublicCalendar|queryPublicEventSlice|writePublicEventsSnapshot|refreshMeetup|fetchMeetup/iu,

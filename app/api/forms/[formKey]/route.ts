@@ -4,8 +4,10 @@ import { resolvePublicOrganization } from "@/lib/server/public/catalog";
 import {
   COLLABORATION_INTERESTS,
   CONTACT_TOPICS,
+  HOST_FORMATS,
   PARTNERSHIP_TYPES,
   PUBLIC_FORM_SUCCESS_COPY,
+  VOLUNTEER_INTERESTS,
   PublicFormValidationError,
   parsePublicFormKey,
   publicFormLabel,
@@ -22,7 +24,7 @@ import {
   renewPublicFormInstanceToken,
   verifyPublicFormInstanceToken,
 } from "@/lib/server/phase7/public-form-protection";
-import { submitPublicForm } from "@/lib/server/phase7/public-forms";
+import { listPublicFormClubProgramChoices, submitPublicForm } from "@/lib/server/phase7/public-forms";
 import { deliverPublicFormEmail } from "@/lib/server/phase7/public-form-email";
 import { readPublicFormEmailConfiguration } from "@/lib/server/phase7/public-form-email-runtime";
 import { readBoundedUtf8Body } from "@/app/api/organizer/meetup/_mutation";
@@ -35,6 +37,11 @@ import {
 export const dynamic = "force-dynamic";
 
 type RouteParams = Promise<{ formKey: string }>;
+
+// URL encoding expands a UTF-8 byte to three ASCII bytes; escaped JSON also
+// needs room beyond the validated character counts. Field limits still apply.
+const PUBLIC_FORM_NATIVE_MAX_BYTES = 96 * 1024;
+const PUBLIC_FORM_JSON_MAX_BYTES = 64 * 1024;
 
 export async function POST(
   request: Request,
@@ -49,23 +56,13 @@ export async function POST(
     const { formKey: rawFormKey } = await context.params;
     formKey = parsePublicFormKey(rawFormKey);
     const body = nativeSubmission
-      ? await readBoundedNativeForm(request, formKey, 16_384)
-      : await readBoundedJson(request, 16_384);
+      ? await readBoundedNativeForm(request, formKey, PUBLIC_FORM_NATIVE_MAX_BYTES)
+      : await readBoundedJson(request, PUBLIC_FORM_JSON_MAX_BYTES);
     instanceToken = body.instanceToken;
     const anonymousClientCookie = readCookie(
       request.headers.get("cookie"),
       PUBLIC_FORM_CLIENT_COOKIE,
     );
-    if (
-      !isAnonymousFormClientId(anonymousClientCookie) &&
-      formKey !== "contact"
-    ) {
-      throw new SafeApplicationError(
-        "authorization_denied",
-        403,
-        "Refresh the form and try again.",
-      );
-    }
     const { database } = getRuntimeAuthConfiguration();
     const organization = await resolvePublicOrganization(database);
     if (!organization) {
@@ -84,14 +81,13 @@ export async function POST(
     const networkFacts = boundedNetworkFacts(request);
     const anonymousClientId = isAnonymousFormClientId(anonymousClientCookie)
       ? anonymousClientCookie
-      : "contact-no-cookie-v1";
+      : `${formKey}-no-cookie-v1`;
     let formInstance;
     try {
       formInstance = await verifyPublicFormInstanceToken(keyHex, instanceToken, formKey, nowUtcMs);
     } catch (error) {
       if (
         nativeSubmission &&
-        (formKey === "contact" || formKey === "partnership") &&
         error instanceof SafeApplicationError &&
         error.code === "form_instance_expired"
       ) {
@@ -154,7 +150,6 @@ export async function POST(
     if (error instanceof PublicFormValidationError) {
       return nativeSubmission
         ? formKey &&
-          (formKey === "contact" || formKey === "partnership") &&
           typeof instanceToken === "string"
           ? publicFormValidationHtml({
               errors: error.fieldErrors,
@@ -380,7 +375,7 @@ function publicFormHtml(input: Readonly<{
       headers: {
         "Cache-Control": "private, no-store",
         "Content-Type": "text/html; charset=utf-8",
-        "Referrer-Policy": "no-referrer",
+        "Referrer-Policy": "same-origin",
         "X-Content-Type-Options": "nosniff",
         "X-Robots-Tag": "noindex, nofollow, noarchive",
       },
@@ -388,14 +383,14 @@ function publicFormHtml(input: Readonly<{
   );
 }
 
-function publicFormValidationHtml(input: Readonly<{
+async function publicFormValidationHtml(input: Readonly<{
   errors: PublicFormFieldErrors;
-  formKey: "contact" | "partnership";
+  formKey: PublicFormKey;
   instanceToken: string;
   values: PublicFormPayload;
   renewal?: boolean;
   companyFax?: string;
-}>): Response {
+}>): Promise<Response> {
   const label = publicFormLabel(input.formKey);
   const title = input.renewal ? "Your form is ready again" : "Please check the form";
   const errorItems = Object.entries(input.errors)
@@ -404,10 +399,21 @@ function publicFormValidationHtml(input: Readonly<{
         `<li><a href="#field-${escapeHtml(field)}">${escapeHtml(message)}</a></li>`,
     )
     .join("");
+  let choices: Awaited<ReturnType<typeof listPublicFormClubProgramChoices>> = [];
+  if (input.formKey === "host_event") {
+    try {
+      choices = await listPublicFormClubProgramChoices(getRuntimeAuthConfiguration().database);
+    } catch {
+      // The association is optional. Offer only currently verified choices;
+      // never turn an untrusted submitted value into an approved option.
+      choices = [];
+    }
+  }
   const fields = nativeValidationFields(
     input.formKey,
     input.values,
     input.errors,
+    choices,
   );
   const summary = input.renewal
     ? '<div class="error-summary" role="status" tabindex="-1" autofocus><p>Your form session expired and has been renewed. Your answers are preserved below. Review them and send again when you are ready; this attempt has not sent anything.</p></div>'
@@ -422,9 +428,10 @@ function publicFormValidationHtml(input: Readonly<{
 }
 
 function nativeValidationFields(
-  formKey: "contact" | "partnership",
+  formKey: PublicFormKey,
   values: PublicFormPayload,
   errors: PublicFormFieldErrors,
+  choices: Awaited<ReturnType<typeof listPublicFormClubProgramChoices>>,
 ): string {
   const common = [
     nativeTextField({
@@ -505,6 +512,36 @@ function nativeValidationFields(
       }),
     ].join("");
   }
+  if (formKey === "host_event") {
+    return [
+      ...common,
+      nativeTextField({ errors, label: "Proposed title", maxLength: 160, minLength: 3,
+        name: "proposedTitle", required: true, value: nativeValue(values.proposedTitle) }),
+      nativeTextField({ errors, label: "Event idea", maxLength: 4_000, minLength: 10,
+        multiline: true, name: "eventIdea", required: true, value: nativeValue(values.eventIdea) }),
+      nativeSelectField({ errors, label: "Preferred club or program (optional)",
+        name: "preferredClubOrProgram", options: choices, value: nativeValue(values.preferredClubOrProgram) }),
+      nativeSelectField({ errors, label: "Format", name: "format", options: HOST_FORMATS,
+        required: true, value: nativeValue(values.format) }),
+      nativeTextField({ errors, label: "Preferred timing (optional)", maxLength: 1_000,
+        multiline: true, name: "preferredTiming", value: nativeValue(values.preferredTiming) }),
+    ].join("");
+  }
+  if (formKey === "volunteer") {
+    const selected = Array.isArray(values.interestAreas) ? values.interestAreas : [];
+    const error = errors.interestAreas;
+    const checks = VOLUNTEER_INTERESTS.map((interest, index) =>
+      `<label for="interest-${index}"><input id="interest-${index}" name="interestAreas" type="checkbox" value="${escapeHtml(interest)}"${selected.includes(interest) ? " checked" : ""}>${escapeHtml(interest)}</label>`,
+    ).join("");
+    return [
+      ...common,
+      `<fieldset id="field-interestAreas"${error ? ' aria-describedby="field-interestAreas-error"' : ""}><legend>Interest areas *</legend>${checks}${error ? `<small id="field-interestAreas-error">${escapeHtml(error)}</small>` : ""}</fieldset>`,
+      nativeTextField({ errors, label: "How would you like to help?", maxLength: 4_000,
+        minLength: 10, multiline: true, name: "howToHelp", required: true, value: nativeValue(values.howToHelp) }),
+      nativeTextField({ errors, label: "Availability (optional)", maxLength: 1_000,
+        multiline: true, name: "availabilityContext", value: nativeValue(values.availabilityContext) }),
+    ].join("");
+  }
   return [
     ...common,
     nativeTextField({
@@ -573,7 +610,7 @@ function nativeSelectField(input: Readonly<{
   errors: PublicFormFieldErrors;
   label: string;
   name: string;
-  options: readonly string[];
+  options: readonly (string | Readonly<{ label: string; value: string }>)[];
   required?: boolean;
   value: string;
 }>): string {
@@ -582,8 +619,9 @@ function nativeSelectField(input: Readonly<{
   const errorId = `${id}-error`;
   const options = ["", ...input.options]
     .map((option) => {
-      const label = option || "Choose an option";
-      return `<option value="${escapeHtml(option)}"${option === input.value ? " selected" : ""}>${escapeHtml(label)}</option>`;
+      const value = typeof option === "string" ? option : option.value;
+      const label = (typeof option === "string" ? option : option.label) || "Choose an option";
+      return `<option value="${escapeHtml(value)}"${value === input.value ? " selected" : ""}>${escapeHtml(label)}</option>`;
     })
     .join("");
   return `<label for="${id}"><span>${escapeHtml(input.label)}${input.required ? " *" : ""}</span><select id="${id}" name="${input.name}"${input.required ? " required" : ""}${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}>${options}</select>${error ? `<small id="${errorId}">${escapeHtml(error)}</small>` : ""}</label>`;
@@ -594,9 +632,11 @@ function nativeValue(value: unknown): string {
 }
 
 function submitLabel(
-  formKey: "contact" | "partnership",
+  formKey: PublicFormKey,
   partnershipContact = false,
 ): string {
+  if (formKey === "host_event") return "Send event idea";
+  if (formKey === "volunteer") return "Send volunteer interest";
   return formKey === "partnership"
     ? "Send partnership or support inquiry"
     : partnershipContact
@@ -610,7 +650,7 @@ function privateNativeHtmlHeaders(): Headers {
     "Content-Security-Policy":
       "default-src 'self'; style-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
     "Content-Type": "text/html; charset=utf-8",
-    "Referrer-Policy": "no-referrer",
+    "Referrer-Policy": "same-origin",
     "X-Content-Type-Options": "nosniff",
     "X-Robots-Tag": "noindex, nofollow, noarchive",
   });

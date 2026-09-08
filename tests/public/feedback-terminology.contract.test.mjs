@@ -115,9 +115,10 @@ test("Contact safely switches between general and partnership inquiry contracts"
     /formKey="contact"/u,
   );
   assert.match(contactSource, /preparePublicFormInstance\("contact"\)/u);
-  assert.match(contactSource, /readPublicFormProtectionKey/u);
+  const instanceSource = await readFile(new URL("../../lib/server/phase7/public-form-instance.ts", import.meta.url), "utf8");
+  assert.match(instanceSource, /readPublicFormProtectionKey/u);
   assert.match(
-    contactSource,
+    instanceSource,
     /readPublicFormProtectionKey[\s\S]*?ensureDatabaseInvariants[\s\S]*?invariantStatus !== "ready"[\s\S]*?ensurePublicFormProtectionKey/u,
   );
   assert.match(

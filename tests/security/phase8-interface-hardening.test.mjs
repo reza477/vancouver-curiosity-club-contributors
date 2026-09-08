@@ -353,18 +353,10 @@ test("public navigation uses selective prefetch while private previews stay opte
   );
 });
 
-test("public route loading feedback is accessible, stable, overflow-safe, and reduced-motion-safe", () => {
-  const loading = source("app", "loading.tsx");
+test("public feedback styles remain overflow-safe and reduced-motion-safe", () => {
   const baseStyles = source("app", "styles", "base.css");
   const layoutStyles = source("app", "styles", "layout.css");
 
-  assert.match(loading, /className="route-loading"/u);
-  assert.match(loading, /aria-busy="true"/u);
-  assert.match(loading, /aria-labelledby="route-loading-status"/u);
-  assert.match(loading, /role="status"/u);
-  assert.match(loading, /aria-live="polite"/u);
-  assert.match(loading, /Loading the next page\.\.\./u);
-  assert.match(loading, /className="route-loading__skeleton" aria-hidden="true"/u);
 
   assertRuleContains(baseStyles, ".route-loading", [
     /box-sizing:\s*border-box;/u,

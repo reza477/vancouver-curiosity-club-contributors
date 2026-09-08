@@ -336,7 +336,7 @@ test("homepage leads with the institutional mission and nine focused sections", 
     priorSectionIndex = sectionIndex;
   }
   assert.doesNotMatch(homeRenderer, /className="home-(?:clubs|proof)/u);
-  assert.match(homeData, /readPublicHomeEventMaterialization/u);
+  assert.match(homeData, /getRequestPublicHomeEventMaterialization/u);
   assert.match(homeData, /maximum: HOME_EVENT_SELECTION_RESERVE/u);
   assert.doesNotMatch(
     homeData,

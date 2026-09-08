@@ -305,27 +305,26 @@ async function assertCurrentPublicClubProgramChoice(
 ): Promise<void> {
   const selected = payload.preferredClubOrProgram;
   if (selected === null || selected === "") return;
-  if (typeof selected !== "string") throw invalidChoice();
+  if (typeof selected !== "string") throw invalidChoice(payload);
   const match = /^(club|program):([a-z0-9-]+)(?:\/([a-z0-9-]+))?$/u.exec(
     selected,
   );
-  if (!match) throw invalidChoice();
+  if (!match) throw invalidChoice(payload);
   const [, kind, clubSlug, programSlug] = match;
   const clubs = await listPublicClubs(database);
-  if (!clubs.some((club) => club.slug === clubSlug)) throw invalidChoice();
+  if (!clubs.some((club) => club.slug === clubSlug)) throw invalidChoice(payload);
   if (kind === "club" && programSlug === undefined) return;
-  if (kind !== "program" || !programSlug) throw invalidChoice();
+  if (kind !== "program" || !programSlug) throw invalidChoice(payload);
   const programs = await listPublicProgramsForClubs(database, [clubSlug]);
   if (!programs.some((program) => program.slug === programSlug)) {
-    throw invalidChoice();
+    throw invalidChoice(payload);
   }
 }
 
-function invalidChoice(): SafeApplicationError {
-  return new SafeApplicationError(
-    "validation_failed",
-    422,
-    "The preferred club or program is no longer available.",
+function invalidChoice(payload: PublicFormPayload): PublicFormValidationError {
+  return new PublicFormValidationError(
+    { preferredClubOrProgram: "The preferred club or program is no longer available." },
+    payload,
   );
 }
 

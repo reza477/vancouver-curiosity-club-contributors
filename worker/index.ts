@@ -256,6 +256,12 @@ function secureResponse(
     requestPathname === null || isPrivateOrIdentityPath(requestPathname);
   const containsPublicFormInstance =
     isPublicFormDocumentPathname(requestPathname);
+  // A browser posting a retry form from a no-referrer document sends an
+  // opaque Origin. Preserve same-origin retries without relaxing CSRF checks
+  // or exposing private API/organizer URLs to external destinations.
+  const isNativePublicFormResult = request.method === "POST" &&
+    /^\/api\/forms\/(?:contact|host_event|volunteer|partnership)$/u.test(requestPathname ?? "") &&
+    (headers.get("Content-Type") ?? "").startsWith("text/html");
 
   headers.set("Content-Security-Policy", contentSecurityPolicyValue);
   headers.delete("Content-Security-Policy-Report-Only");
@@ -267,7 +273,8 @@ function secureResponse(
   );
   headers.set(
     "Referrer-Policy",
-    isPrivateRequest ? "no-referrer" : "strict-origin-when-cross-origin",
+    isNativePublicFormResult ? "same-origin" :
+      isPrivateRequest ? "no-referrer" : "strict-origin-when-cross-origin",
   );
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("X-Frame-Options", "DENY");

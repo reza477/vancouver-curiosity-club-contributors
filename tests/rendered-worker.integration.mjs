@@ -18,7 +18,7 @@ import {
   createCsvImportPreview,
   inspectCsvImportUpload,
 } from "../lib/server/phase7/imports.ts";
-import { ensurePublicFormProtectionKey } from "../lib/server/phase7/public-form-protection.ts";
+import { createPublicFormInstanceToken, ensurePublicFormProtectionKey } from "../lib/server/phase7/public-form-protection.ts";
 import { submitPublicForm } from "../lib/server/phase7/public-forms.ts";
 import { appendFormSubmissionNote } from "../lib/server/phase7/submissions.ts";
 import { ensurePublicCatalog } from "../lib/server/public/catalog.ts";
@@ -92,6 +92,7 @@ const PRIVATE_SENTINELS = [
   "PHASE7_PRIVATE_R2_OBJECT_KEY_SENTINEL",
 ];
 const phase7DynamicPrivateSentinels = [];
+const phase7PrivateRateWindowIds = [];
 const phase7PrivateIds = Object.seal({
   importBatchId: null,
   mediaAssetId: "phase7-private-media",
@@ -164,6 +165,46 @@ async function fetchPath(path, init) {
     headers,
   });
 }
+
+test("Home and both Events views expose completed core content without JavaScript", async () => {
+  for (const [path, content] of [
+    ["/", /Building community through curiosity/u],
+    ["/events", /Find a gathering/u],
+    ["/events?view=calendar&month=2026-07", /Find a gathering/u],
+  ]) {
+    const response = await fetchPath(path);
+    assert.equal(response.status, 200, path);
+    const html = await response.text();
+    assert.match(html, content, path);
+    assert.doesNotMatch(html, /<div\b[^>]*\bhidden(?:="")?[^>]*\bid="S:/u,
+      `${path}: completed content must not need React's JavaScript to leave a hidden streaming segment`);
+    assert.doesNotMatch(html, /<template\b[^>]*\bid="B:|Loading (?:events|the next page)/u,
+      `${path}: the response must contain the usable page rather than a pending route shell`);
+  }
+});
+
+test("built native form recovery preserves same-origin retries and strict private headers", async () => {
+  const database = await runtime.getD1Database("DB");
+  const keyHex = await ensurePublicFormProtectionKey(database, ORGANIZATION_ID, Date.now());
+  const { token } = await createPublicFormInstanceToken(keyHex, "volunteer", Date.now() - 4_000);
+  const fields = new URLSearchParams({ instanceToken:token, companyFax:"", name:"Local worker fixture",
+    replyEmail:"worker-native@example.invalid", howToHelp:"Synthetic validation fixture only." });
+  const response = await fetchPath("/api/forms/volunteer", {
+    method:"POST", headers:{origin:"https://preview.example","content-type":"application/x-www-form-urlencoded"},body:fields.toString(),
+  });
+  assert.equal(response.status,422);
+  assert.equal(response.headers.get("referrer-policy"),"same-origin");
+  assert.equal(response.headers.get("cache-control"),"private, no-store, max-age=0");
+  assert.equal(response.headers.get("x-robots-tag"),"noindex, nofollow, noarchive");
+  assert.match(response.headers.get("content-security-policy"),/form-action 'self'/u);
+  const html=await response.text();
+  assert.match(html,/<form[^>]*action="\/api\/forms\/volunteer"/u);
+  assert.match(html,/Synthetic validation fixture only\./u);
+  const opaqueOrigin = await fetchPath("/api/forms/volunteer", {
+    method:"POST",headers:{origin:"null","sec-fetch-site":"same-origin","content-type":"application/x-www-form-urlencoded"},body:fields.toString(),
+  });
+  assert.equal(opaqueOrigin.status,403,"opaque origins remain rejected even with a claimed same-origin fetch site");
+});
 
 test("production redirects preserve the raw path and run before database work", async () => {
   const edgeOnlyRuntime = createBuiltRuntime(new CapturingLog(LogLevel.WARN), {
@@ -1494,19 +1535,12 @@ test("public form routes render editable fields immediately while secure send pr
         new RegExp(`\\bdata-form-key="${escapeRegex(formKey)}"`, "u"),
         `${path} form key`,
       );
-      if (path === "/contact") {
-        assert.doesNotMatch(
-          formSection,
-          /<noscript>|without JavaScript/iu,
-          `${path} protected no-script form must not expose transport details`,
-        );
-      } else {
-        assert.match(
-          formSection,
-          /<noscript>[\s\S]*form is unavailable in this browser[\s\S]*Your information has not been sent\.[\s\S]*Please try again later\.[\s\S]*<\/noscript>/u,
-          `${path} no-script safety notice`,
-        );
-      }
+      assert.match(formSection, /data-native-ready="true"/u);
+      assert.doesNotMatch(
+        formSection,
+        /<noscript>|without JavaScript/iu,
+        `${path} protected no-script form must be ready in the initial response`,
+      );
       assert.match(
         formSection,
         new RegExp(
@@ -1517,9 +1551,7 @@ test("public form routes render editable fields immediately while secure send pr
       );
       assert.match(
         formSection,
-        path === "/contact"
-          ? /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="[^"]+")[^>]*>/u
-          : /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="")[^>]*>/u,
+        /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="[^"]+")[^>]*>/u,
         `${path} protected instance token state`,
       );
       for (const fieldName of expectedFields) {
@@ -2032,7 +2064,8 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
             AND organization_id = ?) AS note_count,
          (SELECT count(*)
           FROM public_form_rate_windows
-          WHERE organization_id = ?) AS rate_window_count,
+          WHERE organization_id = ?
+            AND id IN (?, ?, ?)) AS rate_window_count,
          (SELECT count(*)
           FROM import_batch_details AS detail
           JOIN import_rows AS row
@@ -2081,6 +2114,7 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
       phase7PrivateIds.submissionId,
       ORGANIZATION_ID,
       ORGANIZATION_ID,
+      ...phase7PrivateRateWindowIds,
       phase7PrivateIds.importBatchId,
       ORGANIZATION_ID,
       ORGANIZATION_ID,
@@ -4209,14 +4243,16 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
   });
   const rateScopeRows = await database
     .prepare(
-      `SELECT scope_key
+      `SELECT id, scope_key
        FROM public_form_rate_windows
        WHERE organization_id = ?
        ORDER BY action`,
     )
     .bind(ORGANIZATION_ID)
     .all();
+  assert.equal(rateScopeRows.results?.length, 3);
   for (const row of rateScopeRows.results ?? []) {
+    phase7PrivateRateWindowIds.push(row.id);
     if (typeof row.scope_key === "string") {
       phase7DynamicPrivateSentinels.push(row.scope_key);
     }

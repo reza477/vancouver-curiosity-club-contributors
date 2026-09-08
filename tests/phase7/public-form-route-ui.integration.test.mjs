@@ -119,7 +119,7 @@ test("public Contact reads first and fully verifies before missing-key provision
   assert.match(statements[0], /^SELECT key_hex/u);
   assert.doesNotMatch(statements[0], /INSERT|UPDATE|DELETE/iu);
 
-  const contactPage = source("app/contact/page.tsx");
+  const contactPage = source("lib/server/phase7/public-form-instance.ts");
   assert.match(contactPage, /readPublicFormProtectionKey/u);
   const initialRead = contactPage.indexOf(
     "await readPublicFormProtectionKey(",
@@ -250,10 +250,10 @@ test(
       /<fieldset[^>]*aria-required=/u,
       "the volunteer fieldset must not use unsupported aria-required semantics",
     );
-    assert.match(
+    assert.doesNotMatch(
       formSource,
       /required=\{values\.length === 0 && index === 0\}/u,
-      "the volunteer group must natively require at least one choice",
+      "a native visitor may choose any interest without being forced to select the first checkbox",
     );
     assert.match(
       formSource,
@@ -713,7 +713,7 @@ test(
 );
 
 test(
-  "native POST over 16 KiB fails as private HTML without storing or echoing PII",
+  "native POST over 96 KiB fails as private HTML without storing or echoing PII",
   routeTestOptions,
   async (t) => {
     const data = await fixture();
@@ -727,12 +727,12 @@ test(
     const fields = new URLSearchParams({
       companyFax: "",
       instanceToken: credentials.instanceToken,
-      message: `${privateSentinel}${"x".repeat(17_000)}`,
+      message: `${privateSentinel}${"x".repeat(100_000)}`,
       name: "Oversized Native Person 7348",
       replyEmail: "oversized-native-7348@visitor.invalid",
       topic: "Privacy",
     });
-    assert.ok(new TextEncoder().encode(fields.toString()).byteLength > 16_384);
+    assert.ok(new TextEncoder().encode(fields.toString()).byteLength > 98_304);
 
     const response = await POST(
       nativeFormRequest("/api/forms/contact", {
@@ -1176,7 +1176,7 @@ test(
         instanceToken: token,
         payload: {},
       },
-      16_384,
+      65_536,
     );
     const boundaryResponse = await POST(
       streamedJsonRequest(
@@ -1807,7 +1807,7 @@ async function fixture() {
   return { database, now };
 }
 
-test("instance renewal preserves Contact's cookie-less principal and rejects cross-origin or cookie-less non-Contact requests", routeTestOptions, async (t) => {
+test("instance renewal preserves the cookie-less principal and rejects cross-origin or mismatched-form requests", routeTestOptions, async (t) => {
   const data = await fixture();
   t.after(() => data.database.close());
   const token = await pastInstanceToken(data.database, "contact");
@@ -1828,7 +1828,7 @@ test("instance renewal preserves Contact's cookie-less principal and rejects cro
 });
 
 test("expired native inquiries preserve escaped answers and the nonce for explicit immediate retry", routeTestOptions, async (t) => {
-  for (const formKey of ["contact", "partnership"]) {
+  for (const formKey of ["contact", "partnership", "host_event", "volunteer"]) {
     const data = await fixture();
     t.after(() => data.database.close());
     const [, { POST }] = routeModules;
@@ -1839,6 +1839,12 @@ test("expired native inquiries preserve escaped answers and the nonce for explic
       replyEmail: "native-recovery@visitor.invalid", topic: "General",
       organizationOrVenueName: "Community organization", partnershipType: "Venue / space",
       message: 'Preserve </textarea><script>alert("unsafe")</script> as text.',
+      proposedTitle: "A community discussion", format: "In person",
+      eventIdea: 'Preserve </textarea><script>alert("unsafe")</script> as text.',
+      preferredClubOrProgram: "", preferredTiming: "Weekend afternoons",
+      interestAreas: "Photography and media",
+      howToHelp: 'Preserve </textarea><script>alert("unsafe")</script> as text.',
+      availabilityContext: "Weekend afternoons",
     });
     const send = () => POST(nativeFormRequest(`/api/forms/${formKey}`, {cookie: credentials.cookie, fields}), routeContext(formKey));
     const response = await send();
@@ -1865,6 +1871,78 @@ test("expired native inquiries preserve escaped answers and the nonce for explic
     assert.match(await honeypotRecovery.text(), /value="keep&quot;bait"/u);
     fields.set("instanceToken", `${token.slice(0, -2)}xx`);
     assert.equal((await send()).status, 403);
+  }
+});
+
+test("valid multilingual and escaped JSON inquiries fit the bounded transport", routeTestOptions, async (t) => {
+  const [, { POST }] = routeModules;
+  for (const native of [true, false]) {
+    const data = await fixture();
+    t.after(() => data.database.close());
+    const instanceToken = await pastInstanceToken(data.database, "host_event");
+    const payload = {
+      name: "好".repeat(100), replyEmail: "multilingual@visitor.invalid",
+      proposedTitle: "好".repeat(160), eventIdea: "好".repeat(4_000),
+      preferredClubOrProgram: "", format: "In person", preferredTiming: "好".repeat(1_000),
+    };
+    const fields = new URLSearchParams({ ...payload, instanceToken, companyFax: "" });
+    const body = native ? fields.toString() : JSON.stringify({payload, instanceToken, companyFax:""}).replaceAll("好", "\\u597d");
+    assert.ok(Buffer.byteLength(body) > 16_384);
+    const response = await POST(new Request(`${TEST_ORIGIN}/api/forms/host_event`, {
+      method:"POST", headers:{ origin:TEST_ORIGIN, "content-type":native ? "application/x-www-form-urlencoded" : "application/json" }, body,
+    }), routeContext("host_event"));
+    assert.equal(response.status, 201, await response.text());
+    assert.equal(await tableCount(data.database, "form_submissions"), 1);
+  }
+});
+
+test("native body limits count actual streamed bytes with absent or dishonest Content-Length", routeTestOptions, async () => {
+  const [, { POST }] = routeModules;
+  for (const contentLength of [undefined, "1"]) {
+    const overLimit = streamedJsonRequest("/api/forms/contact", ["x=" + "x".repeat(96 * 1024 - 1)], {
+      origin: TEST_ORIGIN, "content-type":"application/x-www-form-urlencoded",
+      ...(contentLength ? {"content-length":contentLength} : {}),
+    });
+    const response = await POST(overLimit.request, routeContext("contact"));
+    assert.equal(response.status, 422);
+    assert.match(await response.text(), /The request could not be validated/u);
+  }
+});
+
+test("native Host and Volunteer validation preserves answers and accepts an independent choice", routeTestOptions, async (t) => {
+  const [, { POST }] = routeModules;
+  for (const formKey of ["host_event", "volunteer"]) {
+    const data = await fixture();
+    t.after(() => data.database.close());
+    const fields = new URLSearchParams({
+      instanceToken:await pastInstanceToken(data.database, formKey),companyFax:"",
+      name:"Native visitor", replyEmail:"recovery@visitor.invalid",
+      proposedTitle:"Local discussion",eventIdea:"A complete event idea to preserve.",format:"In person",
+      preferredClubOrProgram:"club:removed-club",preferredTiming:"Weekend afternoons",
+      howToHelp:'Help with photography and preserve <script> as text.',availabilityContext:"Weekend afternoons",
+    });
+    const send = () => POST(nativeFormRequest(`/api/forms/${formKey}`, { fields }),routeContext(formKey));
+    const rejected = await send();
+    assert.equal(rejected.status,422);
+    assert.equal(rejected.headers.get("referrer-policy"),"same-origin");
+    const html = await rejected.text();
+    assert.match(html,/value="Native visitor"/u);
+    assert.match(html,/Weekend afternoons/u);
+    assert.doesNotMatch(html,/<script>/u);
+    assert.equal(await tableCount(data.database,"form_submissions"),0);
+    if(formKey === "host_event") {
+      assert.match(html,/preferred club or program is no longer available/u);
+      assert.doesNotMatch(html,/<option value="club:removed-club"/u);
+      fields.set("preferredClubOrProgram","");
+    } else {
+      assert.match(html,/&lt;script&gt;/u);
+      fields.append("interestAreas","Photography and media");
+    }
+    assert.equal((await send()).status,201);
+    assert.equal((await send()).status,201);
+    assert.equal(await tableCount(data.database,"form_submissions"),1);
+    const wrongOrigin = await POST(nativeFormRequest(`/api/forms/${formKey}`, {fields,headers:{origin:"null","sec-fetch-site":"same-origin"}}),routeContext(formKey));
+    assert.equal(wrongOrigin.status,403);
   }
 });
 
@@ -2149,7 +2227,7 @@ async function assertPrivateNativeHtml(response, { title }) {
     /^text\/html(?:;|$)/iu,
   );
   assert.equal(response.headers.get("cache-control"), "private, no-store");
-  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(response.headers.get("referrer-policy"), "same-origin");
   assert.equal(response.headers.get("location"), null);
   const html = await response.text();
   assert.match(html, /^<!doctype html>/iu);
