@@ -141,6 +141,9 @@ Vancouver Literature and Film:
 - `316263548` -> `316263599`
 - `316263813` -> `316263821`
 - `316409377` -> `316408582`
+- `316562605` -> `316562597`
+- `316545541` -> `316545454`
+- `316263910` -> `316263915`
 - Vancouver Curiosity Club `316263724` -> Fantasy & Sci-Fi `316263745`
 - Vancouver Curiosity Club `316409021` -> Fantasy & Sci-Fi `316408659`
 - Vancouver Curiosity Club `316263936` -> Fantasy & Sci-Fi `316263945`
