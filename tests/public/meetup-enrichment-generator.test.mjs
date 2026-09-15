@@ -430,6 +430,36 @@ Already know how to paddleboard? Rent a board and join us on the water.`);
   assert.doesNotMatch(result.plainText, /External resource/u);
 });
 
+test("the generator retains only reviewed Instagram permalinks", () => {
+  const result = normalizePublicDescription(`Official Mount Pleasant Block Party post:
+[Instagram post](https://www.instagram.com/p/DdH3DW3GzxP/?stkn=MWNoaDAzZXkxdmN4ZQ==)
+
+Music Fashion Tech profile:
+[IG: @musicfashiontechyvr](https://www.instagram.com/musicfashiontechyvr/)
+
+Unreviewed profile:
+[Do not publish](https://www.instagram.com/not-reviewed/)`);
+  const links = result.blocks
+    .flatMap((block) =>
+      "content" in block ? block.content : "items" in block ? block.items.flat() : [],
+    )
+    .filter((inline) => inline.type === "link");
+
+  assert.deepEqual(links, [
+    {
+      href: "https://www.instagram.com/p/DdH3DW3GzxP/",
+      text: "Instagram post",
+      type: "link",
+    },
+    {
+      href: "https://www.instagram.com/musicfashiontechyvr/",
+      text: "IG: @musicfashiontechyvr",
+      type: "link",
+    },
+  ]);
+  assert.doesNotMatch(result.plainText, /stkn|not-reviewed/u);
+});
+
 test("a validation failure discards staged files and leaves published files untouched", async () => {
   await withTemporaryWorkspace(async (workspaceRoot) => {
     const posterDirectory = path.join(

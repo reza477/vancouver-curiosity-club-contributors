@@ -139,6 +139,12 @@ const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
     "youtu.be",
   ]),
 );
+const EXACT_ALLOWED_PUBLIC_DESCRIPTION_LINK_HREFS = Object.freeze(
+  new Set([
+    "https://www.instagram.com/musicfashiontechyvr/",
+    "https://www.instagram.com/p/DdH3DW3GzxP/",
+  ]),
+);
 const PUBLIC_DESCRIPTION_LINK_QUERY_KEYS: Readonly<
   Record<string, ReadonlySet<string>>
 > = Object.freeze({
@@ -1528,8 +1534,7 @@ function normalizePublicDescriptionLink(input: string): string | null {
     parsed.protocol !== "https:" ||
     parsed.username !== "" ||
     parsed.password !== "" ||
-    parsed.port !== "" ||
-    !ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS.has(host)
+    parsed.port !== ""
   ) {
     return null;
   }
@@ -1540,11 +1545,20 @@ function normalizePublicDescriptionLink(input: string): string | null {
       parsed.searchParams.delete(key);
     }
   }
+  if (host === "www.instagram.com") {
+    parsed.searchParams.delete("stkn");
+  }
   const allowedQueryKeys = PUBLIC_DESCRIPTION_LINK_QUERY_KEYS[host];
   for (const key of parsed.searchParams.keys()) {
     if (!allowedQueryKeys?.has(key)) return null;
   }
   const normalized = parsed.toString();
+  if (
+    !ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS.has(host) &&
+    !EXACT_ALLOWED_PUBLIC_DESCRIPTION_LINK_HREFS.has(normalized)
+  ) {
+    return null;
+  }
   return normalized.length <= MAX_DESCRIPTION_LINK_LENGTH ? normalized : null;
 }
 

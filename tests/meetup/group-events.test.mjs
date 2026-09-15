@@ -688,6 +688,42 @@ Review the source beforehand and come ready to discuss it.`;
   }
 });
 
+test("retains only the two reviewed Instagram links and removes the share token", () => {
+  const state = createApolloState();
+  state[EVENT_REF].description = `Official Mount Pleasant Block Party post:
+[Instagram post](https://www.instagram.com/p/DdH3DW3GzxP/?stkn=MWNoaDAzZXkxdmN4ZQ==)
+
+Music Fashion Tech profile:
+[IG: @musicfashiontechyvr](https://www.instagram.com/musicfashiontechyvr/)
+
+Unreviewed profile:
+[Do not publish](https://www.instagram.com/not-reviewed/)`;
+
+  const publicContent = parseMeetupGroupEventsPage(
+    createHtml(state),
+    GROUP_SLUG,
+  ).events[0].publicContent;
+  const links = publicContent.descriptionBlocks
+    .flatMap((block) =>
+      "content" in block ? block.content : "items" in block ? block.items.flat() : [],
+    )
+    .filter((inline) => inline.type === "link");
+
+  assert.deepEqual(links, [
+    {
+      href: "https://www.instagram.com/p/DdH3DW3GzxP/",
+      text: "Instagram post",
+      type: "link",
+    },
+    {
+      href: "https://www.instagram.com/musicfashiontechyvr/",
+      text: "IG: @musicfashiontechyvr",
+      type: "link",
+    },
+  ]);
+  assert.doesNotMatch(publicContent.description, /stkn|not-reviewed/u);
+});
+
 test("keeps source spacing without emitting whitespace-only description inlines", () => {
   const state = createApolloState();
   state[EVENT_REF].description = `Quarry Rock sunset hike and dinner.

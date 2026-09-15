@@ -58,6 +58,12 @@ const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
     "youtu.be",
   ]),
 );
+const EXACT_ALLOWED_PUBLIC_DESCRIPTION_LINK_HREFS = Object.freeze(
+  new Set([
+    "https://www.instagram.com/musicfashiontechyvr/",
+    "https://www.instagram.com/p/DdH3DW3GzxP/",
+  ]),
+);
 const PUBLIC_DESCRIPTION_LINK_QUERY_KEYS: Readonly<
   Record<string, ReadonlySet<string>>
 > = Object.freeze({
@@ -782,8 +788,7 @@ function normalizePublicDescriptionLink(candidate: unknown): string {
     parsed.protocol !== "https:" ||
     parsed.username !== "" ||
     parsed.password !== "" ||
-    parsed.port !== "" ||
-    !ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS.has(host)
+    parsed.port !== ""
   ) {
     throw new Error("Invalid curated Meetup event description link.");
   }
@@ -805,6 +810,12 @@ function normalizePublicDescriptionLink(candidate: unknown): string {
     }
   }
   const normalized = parsed.toString();
+  if (
+    !ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS.has(host) &&
+    !EXACT_ALLOWED_PUBLIC_DESCRIPTION_LINK_HREFS.has(normalized)
+  ) {
+    throw new Error("Invalid curated Meetup event description link.");
+  }
   if (normalized !== candidate || normalized.length > MAX_DESCRIPTION_LINK_LENGTH) {
     throw new Error("Invalid curated Meetup event description link.");
   }
