@@ -896,6 +896,54 @@ test("follows every GraphQL cursor with one fixed cutoff and stable totals", asy
   );
 });
 
+for (const [htmlTotalCount, freshTotalCount] of [[1, 3], [3, 2], [1, 0]]) {
+  test(`uses fresh GraphQL total ${freshTotalCount} when cached HTML reports ${htmlTotalCount}`, async () => {
+    const state = createApolloState();
+    setPrimaryConnectionPagination(state, {
+      endCursor: "html-cursor",
+      hasNextPage: htmlTotalCount > 1,
+      totalCount: htmlTotalCount,
+    });
+    const sourceEvents = Array.from({ length: freshTotalCount }, (_, index) =>
+      createGraphqlEventNode({ eventId: String(400_000_000 + index) }),
+    );
+    const requests = [];
+    const parsed = await fetchMeetupGroupEvents(GROUP_SLUG, {
+      fetcher: async (url, init) => {
+        if (url !== "https://api.meetup.com/gql-ext") {
+          return new Response(createHtml(state), {
+            headers: { "content-type": "text/html" },
+            status: 200,
+          });
+        }
+        const variables = JSON.parse(init.body).variables;
+        requests.push(variables);
+        const offset = variables.after === null ? 0 : Number(variables.after);
+        const hasNextPage = offset + 1 < freshTotalCount;
+        return graphqlResponse({
+          endCursor: hasNextPage ? String(offset + 1) : null,
+          events: sourceEvents.slice(offset, offset + 1),
+          hasNextPage,
+          totalCount: freshTotalCount,
+        });
+      },
+    });
+
+    assert.deepEqual(
+      parsed.events.map((event) => event.eventUrl),
+      sourceEvents.map((event) => event.eventUrl),
+    );
+    assert.deepEqual(requests, Array.from(
+      { length: Math.max(1, freshTotalCount) },
+      (_, index) => ({
+        after: index === 0 ? null : String(index),
+        afterDateTime: FUTURE_AFTER,
+        urlname: GROUP_SLUG,
+      }),
+    ));
+  });
+}
+
 test("retrieves all 61 events across exact 25-item GraphQL boundaries", async () => {
   const state = createApolloState();
   setPrimaryConnectionPagination(state, {
@@ -1050,6 +1098,43 @@ test("rejects partial or drifting GraphQL pagination without returning a calenda
         error instanceof MeetupSyncError && error.code === "calendar_invalid",
     );
   }
+});
+
+test("rejects count drift between fresh GraphQL pages when the HTML count is stale", async () => {
+  const state = createApolloState();
+  setPrimaryConnectionPagination(state, {
+    endCursor: null,
+    hasNextPage: false,
+    totalCount: 1,
+  });
+  let page = 0;
+  await assert.rejects(
+    fetchMeetupGroupEvents(GROUP_SLUG, {
+      fetcher: async (url) => {
+        if (url !== "https://api.meetup.com/gql-ext") {
+          return new Response(createHtml(state), {
+            headers: { "content-type": "text/html" },
+            status: 200,
+          });
+        }
+        page += 1;
+        return page === 1
+          ? graphqlResponse({
+              endCursor: "cursor-one",
+              events: [createGraphqlEventNode()],
+              hasNextPage: true,
+              totalCount: 2,
+            })
+          : graphqlResponse({
+              events: [createGraphqlEventNode({ eventId: "316010051" })],
+              totalCount: 3,
+            });
+      },
+    }),
+    (error) =>
+      error instanceof MeetupSyncError && error.code === "calendar_invalid",
+  );
+  assert.equal(page, 2);
 });
 
 test("fetch rejects redirects, non-HTML responses, and oversized bodies", async () => {

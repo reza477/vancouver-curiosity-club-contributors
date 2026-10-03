@@ -182,7 +182,6 @@ type PublicVenue = Readonly<{
 type ParsedGroupEventsPageSnapshot = Readonly<{
   afterDateTimeUtcMs: number;
   calendar: ParsedMeetupCalendar;
-  expectedTotalCount: number | null;
   groupId: string;
   timeZone: string;
 }>;
@@ -268,7 +267,6 @@ export async function fetchMeetupGroupEvents(
     );
     return await fetchCompleteMeetupGroupEvents({
       afterDateTimeUtcMs: pageSnapshot.afterDateTimeUtcMs,
-      expectedTotalCount: pageSnapshot.expectedTotalCount,
       fetcher,
       groupId: pageSnapshot.groupId,
       groupSlug: source.groupSlug,
@@ -372,7 +370,6 @@ function parseMeetupGroupEventsPageSnapshot(
     const selectedConnections = selectFutureConnections(connectionCandidates);
 
     const events: ParsedMeetupEvent[] = [];
-    const totalCounts: number[] = [];
     const seenEventRefs = new Set<string>();
     for (const candidate of selectedConnections) {
       const connection = requiredRecord(candidate.value);
@@ -391,7 +388,6 @@ function parseMeetupGroupEventsPageSnapshot(
       ) {
         invalidCalendar();
       }
-      totalCounts.push(connection.totalCount as number);
       const pageInfo = requiredRecord(connection.pageInfo);
       if (typeof pageInfo.hasNextPage !== "boolean") invalidCalendar();
 
@@ -437,8 +433,6 @@ function parseMeetupGroupEventsPageSnapshot(
         method: "PUBLISH" as const,
         rejectedEvents: Object.freeze([]),
       }),
-      expectedTotalCount:
-        selectedConnections.length === 1 ? totalCounts[0] : null,
       groupId,
       timeZone,
     });
@@ -450,7 +444,6 @@ function parseMeetupGroupEventsPageSnapshot(
 
 async function fetchCompleteMeetupGroupEvents(input: Readonly<{
   afterDateTimeUtcMs: number;
-  expectedTotalCount: number | null;
   fetcher: typeof fetch;
   groupId: string;
   groupSlug: string;
@@ -463,7 +456,10 @@ async function fetchCompleteMeetupGroupEvents(input: Readonly<{
   const seenEventUrls = new Set<string>();
   const seenCursors = new Set<string>();
   let after: string | null = null;
-  let expectedTotalCount = input.expectedTotalCount;
+  // The HTML inventory can be cached while GraphQL already includes new or
+  // removed events. Establish the total from the first fresh GraphQL page,
+  // then require every page in this traversal to agree.
+  let expectedTotalCount: number | null = null;
   let completed = false;
 
   for (let pageIndex = 0; pageIndex < MAX_MEETUP_GRAPHQL_PAGES; pageIndex += 1) {
