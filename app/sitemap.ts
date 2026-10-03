@@ -41,6 +41,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const [catalogEntries, events] = await Promise.all([
       listPublicCatalogSitemapEntries(database, organization.id),
       listPublicEventSitemapEntries(database, {
+        nowUtcMs: Date.now(),
         organizationId: organization.id,
         limit: 5_000,
       }),

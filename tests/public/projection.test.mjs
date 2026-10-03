@@ -327,11 +327,7 @@ test("uses an explicit public SQL allowlist and publication filters", () => {
   }
 });
 
-test("applies the September Meetup publication horizon to every public source projection", () => {
-  assert.match(
-    PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
-    /snapshot\.timezone = 'America\/Vancouver'/u,
-  );
+test("keeps the rolling Meetup horizon request-bound and out of persistent source proofs", () => {
   for (const eventUrlPrefix of [
     "https://www.meetup.com/vancouver-meetup-group/events/",
     "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/",
@@ -340,7 +336,7 @@ test("applies the September Meetup publication horizon to every public source pr
     assert.match(
       PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
       new RegExp(
-        `substr\\(snapshot\\.event_url, 1, ${eventUrlPrefix.length}\\) = '${eventUrlPrefix.replaceAll("/", "\\/")}'`,
+        `substr\\(COALESCE\\(snapshot\\.event_url, ''\\), 1, ${eventUrlPrefix.length}\\) = '${eventUrlPrefix.replaceAll("/", "\\/")}'`,
         "u",
       ),
     );
@@ -348,19 +344,16 @@ test("applies the September Meetup publication horizon to every public source pr
   assert.doesNotMatch(PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL, /\b(?:GLOB|LIKE)\b/u);
   assert.match(
     PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
-    /snapshot\.starts_at_utc < 1790838000000/u,
+    /snapshot\.starts_at_utc < \?/u,
   );
   assert.match(
     PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
-    /generation\.published_at < 1787702400000/u,
+    /snapshot\.all_day_start_date < \?/u,
   );
-  assert.match(
-    PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL,
-    /snapshot\.all_day_start_date < '2026-10-01'/u,
-  );
+  assert.doesNotMatch(PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL, /generation\./u);
+  assert.ok(PUBLIC_MEETUP_EVENT_SELECT_SQL.includes(PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL));
 
   for (const sql of [
-    PUBLIC_MEETUP_EVENT_SELECT_SQL,
     PUBLIC_EVENT_IDENTITY_CTE_SQL,
     PUBLIC_EVENT_SELECTION_PROOF_CTE_SQL,
     UNIFIED_PUBLIC_EVENT_CTE_SQL,
@@ -369,9 +362,10 @@ test("applies the September Meetup publication horizon to every public source pr
       sql
         .replace(/\s+/gu, " ")
         .includes(PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL.replace(/\s+/gu, " ").trim()),
-      true,
-      "every Meetup-backed public projection must use the same cutoff",
+      false,
+      "stored proofs and inventory must not embed a moving publication clock",
     );
+    assert.doesNotMatch(sql, /1790838000000|1787702400000|2026-10-01/u);
   }
 });
 

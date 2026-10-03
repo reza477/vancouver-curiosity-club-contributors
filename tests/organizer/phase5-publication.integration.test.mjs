@@ -2540,6 +2540,8 @@ test("Meetup confirmation is exact, host selection is consent-gated, and public 
     "publish",
   );
   const publicEvent = await getPublicEventBySlug(database, {
+    // The August 2032 fixture must be inside this request's rolling window.
+    nowUtcMs: Date.parse("2032-08-01T12:00:00.000Z"),
     organizationId: "org-main",
     slug: published.workspace.event.slug,
   });

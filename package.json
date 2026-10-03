@@ -47,12 +47,13 @@
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.34",
     "axe-core": "4.12.1",
+    "braces": "file:vendor/braces-safe",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.3.2",
+    "eslint-config-next": "16.3.8",
     "image-size": "file:vendor/image-size-safe",
     "miniflare": "4.20260730.0",
-    "next": "16.3.3",
+    "next": "16.3.8",
     "react-server-dom-webpack": "19.2.8",
     "sharp": "0.35.4",
     "tailwindcss": "4.2.1",
@@ -63,22 +64,21 @@
     "wrangler": "4.125.0"
   },
   "overrides": {
+    "braces": "$braces",
     "image-size": "$image-size",
     "@esbuild-kit/core-utils": {
       "esbuild": "0.25.12"
     },
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.8",
     "js-yaml": "4.3.2",
     "sharp": "$sharp",
     "minimatch@3.1.5": {
-      "brace-expansion": "1.1.18"
+      "brace-expansion": "1.1.21"
     },
     "minimatch@10.2.5": {
-      "brace-expansion": "5.0.9"
+      "brace-expansion": "5.0.12"
     },
-    "miniflare@4.20260730.0": {
-      "undici": "7.29.0"
-    },
+    "undici": "7.29.1",
     "nanoid": "3.3.18"
   },
   "type": "module"

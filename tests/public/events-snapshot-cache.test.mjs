@@ -141,8 +141,18 @@ test("the updater atomically prebuilds fallback and compact public-event materia
   });
   assert.equal(homeRead.readCount(), 1);
   assert.equal(homeRead.writeCount(), 0);
-  assert.equal(home?.length, 6);
-  assert.equal(home?.[0]?.slug, "daily-v1-explore-poster");
+  assert.deepEqual(home?.map((event) => event.slug), [
+    "daily-v1-explore-poster",
+    "daily-v1-think",
+    "daily-v1-september",
+    "daily-v1-reserve-4",
+    "daily-v1-reserve-5",
+  ]);
+  assert.equal(
+    home?.some((event) => event.slug === "daily-v1-reserve-6"),
+    false,
+    "September 15 stays stored but is outside the August 11 five-week window",
+  );
 });
 
 test("Upcoming pagination is chronological, filterable, and derived by one visitor read", async (t) => {

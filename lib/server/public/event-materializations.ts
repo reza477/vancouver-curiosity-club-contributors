@@ -42,6 +42,7 @@ import {
   validationIssue,
 } from "../../validation";
 import { parseCalendarDate } from "../../time";
+import { isPublicEventWithinMeetupWindow } from "../../public-event-publication-window";
 
 // Schema v2 adds verified multi-Club associations. New readers accept the
 // existing v1 envelopes during a rolling deployment, while the updater writes
@@ -453,12 +454,16 @@ export async function readPublicEventDetailViewMaterialization(
     const view = compactEnvelope.views.find(
       (candidate) => candidate.event.slug === slug,
     );
+    if (view && !isPublicEventWithinMeetupWindow(view.event, nowUtcMs)) {
+      return Object.freeze({ kind: "missing" as const });
+    }
     if (
       view &&
       view.related
         .slice(0, limit)
         .every((candidate) =>
-          isPublicCalendarEventUpcoming(candidate, nowUtcMs, todayDate),
+          isPublicCalendarEventUpcoming(candidate, nowUtcMs, todayDate) &&
+          isPublicEventWithinMeetupWindow(candidate, nowUtcMs),
         )
     ) {
       return Object.freeze({
@@ -471,7 +476,9 @@ export async function readPublicEventDetailViewMaterialization(
   const envelope = await readDetailEnvelope(database, organizationId, nowUtcMs);
   if (!envelope) return null;
   const event = envelope.eventDetails.find(
-    (candidate) => candidate.slug === slug,
+    (candidate) =>
+      candidate.slug === slug &&
+      isPublicEventWithinMeetupWindow(candidate, nowUtcMs),
   );
   if (!event) return Object.freeze({ kind: "missing" as const });
   const related = event.isCancelled
@@ -483,6 +490,7 @@ export async function readPublicEventDetailViewMaterialization(
             (candidate.status === "confirmed" ||
               candidate.status === "tentative") &&
             isPublicCalendarEventUpcoming(candidate, nowUtcMs, todayDate) &&
+            isPublicEventWithinMeetupWindow(candidate, nowUtcMs) &&
             (candidate.club.slug === event.club.slug ||
               (event.category !== null &&
                 candidate.category?.slug === event.category.slug)),
@@ -551,14 +559,20 @@ export async function readPublicClubEventViewMaterialization(
     if (
       view &&
       nowUtcMs < view.validUntilUtcMs &&
+      // A truncated rail cannot prove its filtered total from the saved cards.
+      // Read the complete durable details below instead of guessing a count.
+      view.upcoming.totalCount === view.upcoming.events.length &&
       view.upcoming.events.every((event) =>
         isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
       )
     ) {
+      const visibleUpcoming = view.upcoming.events.filter((event) =>
+        isPublicEventWithinMeetupWindow(event, nowUtcMs),
+      );
       return Object.freeze({
         past: compactMaterializedEventPage(view.past, "past", pageSize),
         upcoming: compactMaterializedEventPage(
-          view.upcoming,
+          { events: visibleUpcoming, totalCount: visibleUpcoming.length },
           "upcoming",
           pageSize,
         ),
@@ -584,6 +598,7 @@ export async function readPublicClubEventViewMaterialization(
   }
   const matching = events.filter(
     (event) =>
+      isPublicEventWithinMeetupWindow(event, nowUtcMs) &&
       publicEventMatchesClubAssociation(event, clubSlug) &&
       (programSlug === null ||
         (event.club.slug === clubSlug &&
@@ -662,11 +677,11 @@ export async function readPublicNextEventsByClubMaterialization(
           const firstEvent = view.upcoming.events[0];
           return (
             firstEvent === undefined ||
-            isPublicCalendarEventUpcoming(
+            (isPublicCalendarEventUpcoming(
               firstEvent,
               nowUtcMs,
               todayDate,
-            )
+            ) && isPublicEventWithinMeetupWindow(firstEvent, nowUtcMs))
           );
         },
       )
@@ -695,6 +710,7 @@ export async function readPublicNextEventsByClubMaterialization(
         ) &&
         (candidate.status === "confirmed" ||
           candidate.status === "tentative") &&
+        isPublicEventWithinMeetupWindow(candidate, nowUtcMs) &&
         isPublicCalendarEventUpcoming(candidate, nowUtcMs, todayDate),
     )
     .sort(comparePublicEventStart)) {
@@ -743,13 +759,36 @@ export async function readPublicHomeEventMaterialization(
   const todayDate = parseMaterializationDate(
     input.todayDate ?? vancouverCalendarDate(nowUtcMs),
   );
-  return Object.freeze(
-    envelope.upcomingEvents
-      .filter((event) =>
-        isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate),
-      )
-      .slice(0, maximum),
+  const visibleUpcoming = envelope.upcomingEvents.filter((event) =>
+    isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate) &&
+    isPublicEventWithinMeetupWindow(event, nowUtcMs),
   );
+  if (
+    visibleUpcoming.length < maximum &&
+    envelope.upcomingEvents.length === MAX_HOME_EVENTS
+  ) {
+    // Once the capped Home reserve ages out, later occurrences may already
+    // exist in the complete durable details. Reading them advances the visible
+    // window without asking a visitor to import or materialize anything.
+    const details = await readDetailEnvelope(
+      database,
+      input.organizationId,
+      nowUtcMs,
+    );
+    if (details) {
+      return Object.freeze(
+        details.eventDetails
+          .filter((event) =>
+            isPublicCalendarEventUpcoming(event, nowUtcMs, todayDate) &&
+            isPublicEventWithinMeetupWindow(event, nowUtcMs),
+          )
+          .sort(comparePublicEventStart)
+          .slice(0, maximum)
+          .map(publicEventCardProjection),
+      );
+    }
+  }
+  return Object.freeze(visibleUpcoming.slice(0, maximum));
 }
 
 /**
@@ -780,15 +819,18 @@ export async function readPublicEventsPageMaterialization(
   });
   const envelope = await readEnvelope(database, organizationId);
   if (!envelope) return null;
+  const visibleCalendarEvents = envelope.calendarEvents.filter((event) =>
+    isPublicEventWithinMeetupWindow(event, nowUtcMs),
+  );
   const laneSlug = parsePublicEventLaneSlug(input.laneSlug);
-  const clubOptions = materializedClubOptions(envelope.calendarEvents);
+  const clubOptions = materializedClubOptions(visibleCalendarEvents);
   const clubSelection = resolveMaterializedClubSelection(
     input.clubSlug,
     clubOptions,
   );
   const clubSlug = clubSelection.activeClubSlug;
   const requestedPage = parseRequestedEventsPage(input.rawPage);
-  const matchingUpcoming = envelope.calendarEvents
+  const matchingUpcoming = visibleCalendarEvents
     .filter(
       (event) =>
         eventMatchesLane(event, laneSlug) &&
@@ -809,7 +851,7 @@ export async function readPublicEventsPageMaterialization(
     return null;
   }
   let events = eventsForMonthAndLane(
-    envelope.calendarEvents,
+    visibleCalendarEvents,
     resolvedMonth.month,
     laneSlug,
   ).filter((event) => eventMatchesClub(event, clubSlug));
@@ -821,7 +863,7 @@ export async function readPublicEventsPageMaterialization(
     );
     const landingEvent =
       currentUpcoming ??
-      envelope.calendarEvents.find(
+      visibleCalendarEvents.find(
         (event) =>
           eventMatchesLane(event, laneSlug) &&
           eventMatchesClub(event, clubSlug) &&
@@ -839,7 +881,7 @@ export async function readPublicEventsPageMaterialization(
     ) {
       resolvedMonth = landingMonth;
       events = eventsForMonthAndLane(
-        envelope.calendarEvents,
+        visibleCalendarEvents,
         resolvedMonth.month,
         laneSlug,
       ).filter((event) => eventMatchesClub(event, clubSlug));

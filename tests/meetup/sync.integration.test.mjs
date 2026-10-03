@@ -2330,6 +2330,8 @@ test("rejects mismatched, nonexistent, and cross-organization club selections wi
 });
 
 test("feed URLs and tokens stay out of client DTOs and safe logs", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-03-01T12:00:00.000Z");
   const database = createDatabase();
   t.after(() => database.close());
   const privateFeed = FEED_A;
@@ -2353,8 +2355,8 @@ test("feed URLs and tokens stay out of client DTOs and safe logs", async (t) => 
   const publicCalendar = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 1_001,
+    todayDate: "2028-03-01",
+    nowUtcMs: publicClockBase + 1_001,
   });
   for (const dto of [
     connection,
@@ -2409,6 +2411,8 @@ test("feed URLs and tokens stay out of client DTOs and safe logs", async (t) => 
 });
 
 test("stale replays cannot undo a newer cancellation, which stays out of upcoming", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-03-01T12:00:00.000Z");
   const database = createDatabase();
   t.after(() => database.close());
   await configure(database, "club_a", FEED_A, 1_000);
@@ -2490,13 +2494,15 @@ test("stale replays cannot undo a newer cancellation, which stays out of upcomin
   const publicCalendar = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 5_001,
+    todayDate: "2028-03-01",
+    nowUtcMs: publicClockBase + 5_001,
   });
   assert.deepEqual(publicCalendar.events, []);
 });
 
 test("imported description and location remain absent from persistence and public DTOs", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-03-01T12:00:00.000Z");
   const database = createDatabase();
   t.after(() => database.close());
   await configure(database, "club_a", FEED_A, 1_000);
@@ -2541,8 +2547,8 @@ test("imported description and location remain absent from persistence and publi
   const publicCalendar = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 2_001,
+    todayDate: "2028-03-01",
+    nowUtcMs: publicClockBase + 2_001,
   });
   assert.equal(publicCalendar.events.length, 1);
   assert.equal(publicCalendar.events[0].description, null);
@@ -3487,6 +3493,8 @@ test("a changed source schedule closes pending reviews bound to the old external
 });
 
 test("a conflicting source activation rolls back generation publication and prior invalidation", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2032-08-01T12:00:00.000Z");
   const database = createDatabase();
   t.after(() => database.close());
   await ensureDatabaseInvariantsReady(database);
@@ -3681,8 +3689,8 @@ test("a conflicting source activation rolls back generation publication and prio
   const activePublic = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 4_001,
+    todayDate: "2032-08-01",
+    nowUtcMs: publicClockBase + 4_001,
   });
   assert.equal(activePublic.events.length, 1);
   assert.equal(
@@ -3748,10 +3756,12 @@ test("a conflicting source activation rolls back generation publication and prio
 });
 
 test("resumes a stable feed snapshot in bounded two-row chunks", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-03-25T12:00:00.000Z");
   const innerDatabase = createDatabase();
   t.after(() => innerDatabase.close());
   const database = countingDatabase(innerDatabase);
-  await configure(database, "club_a", FEED_A, 1_000);
+  await configure(database, "club_a", FEED_A, publicClockBase + 1_000);
 
   const body = calendar(
     meetupEvent({
@@ -3790,7 +3800,7 @@ test("resumes a stable feed snapshot in bounded two-row chunks", async (t) => {
     database,
     "club_a",
     fetcher,
-    2_000,
+    publicClockBase + 2_000,
   );
   const firstQueryCount = database.count();
   assert.equal(partial.outcome, "partial");
@@ -3847,8 +3857,8 @@ test("resumes a stable feed snapshot in bounded two-row chunks", async (t) => {
   const duringPartial = await listPublicMeetupCalendar(innerDatabase, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 2_001,
+    todayDate: "2028-03-25",
+    nowUtcMs: publicClockBase + 2_001,
   });
   assert.equal(duringPartial.sync.status, "partial");
   assert.deepEqual(duringPartial.events, []);
@@ -3858,7 +3868,7 @@ test("resumes a stable feed snapshot in bounded two-row chunks", async (t) => {
     database,
     "club_a",
     fetcher,
-    3_000,
+    publicClockBase + 3_000,
   );
   const secondQueryCount = database.count();
   assert.equal(completed.outcome, "completed");
@@ -3885,7 +3895,7 @@ test("resumes a stable feed snapshot in bounded two-row chunks", async (t) => {
   assert.equal(finished.pending_generation_id, null);
   assert.equal(finished.pending_cursor, null);
   assert.equal(finished.pending_snapshot_hash, null);
-  assert.equal(finished.last_success_at, 3_000);
+  assert.equal(finished.last_success_at, publicClockBase + 3_000);
   assert.deepEqual(
     {
       ...(await innerDatabase
@@ -3905,7 +3915,7 @@ test("resumes a stable feed snapshot in bounded two-row chunks", async (t) => {
       processed_item_count: 4,
       rejected_item_count: 0,
       removed_count: 0,
-      published_at: 3_000,
+      published_at: publicClockBase + 3_000,
       previous_generation_id: null,
     },
   );
@@ -3913,14 +3923,16 @@ test("resumes a stable feed snapshot in bounded two-row chunks", async (t) => {
   const publicCalendar = await listPublicMeetupCalendar(innerDatabase, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 3_001,
+    todayDate: "2028-03-25",
+    nowUtcMs: publicClockBase + 3_001,
   });
   assert.equal(publicCalendar.sync.status, "current");
   assert.equal(publicCalendar.events.length, 4);
 });
 
 test("resumes one canonical generation when ignored raw calendar bytes change", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-04-01T12:00:00.000Z");
   const database = createDatabase();
   t.after(() => database.close());
   await configure(database, "club_a", FEED_A, 1_000);
@@ -4073,8 +4085,8 @@ X-CALENDAR-COLOR:#123456`,
   const publicCalendar = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 3_001,
+    todayDate: "2028-04-01",
+    nowUtcMs: publicClockBase + 3_001,
   });
   assert.deepEqual(
     publicCalendar.events.map((event) => ({
@@ -4134,6 +4146,8 @@ X-CALENDAR-COLOR:#123456`,
 });
 
 test("disabled sources pause publication as well as refresh", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-03-01T12:00:00.000Z");
   const database = createDatabase();
   t.after(() => database.close());
   await ensureDatabaseInvariantsReady(database);
@@ -4163,8 +4177,8 @@ test("disabled sources pause publication as well as refresh", async (t) => {
   const publicCalendar = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 2_001,
+    todayDate: "2028-03-01",
+    nowUtcMs: publicClockBase + 2_001,
   });
   assert.equal(publicCalendar.sync.status, "disabled");
   assert.deepEqual(publicCalendar.events, []);
@@ -4177,8 +4191,8 @@ test("disabled sources pause publication as well as refresh", async (t) => {
   const reactivated = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 2_002,
+    todayDate: "2028-03-01",
+    nowUtcMs: publicClockBase + 2_002,
   });
   assert.equal(reactivated.events.length, 1);
   assert.equal(reactivated.events[0].title, "Paused Source Event");
@@ -4217,8 +4231,8 @@ test("disabled sources pause publication as well as refresh", async (t) => {
   const restored = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 3_001,
+    todayDate: "2028-03-01",
+    nowUtcMs: publicClockBase + 3_001,
   });
   assert.equal(restored.events.length, 1);
 });
@@ -4462,6 +4476,8 @@ test("source deactivation invalidates active overrides, incidents, and pending r
 });
 
 test("keeps the last completed generation public when a later chunk fails", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-04-20T12:00:00.000Z");
   const database = createDatabase();
   t.after(() => database.close());
   await configure(database, "club_a", FEED_A, 1_000);
@@ -4556,8 +4572,8 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   const publicBefore = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 2_001,
+    todayDate: "2028-04-20",
+    nowUtcMs: publicClockBase + 2_001,
   });
   assert.deepEqual(
     publicBefore.events.map((event) => event.title),
@@ -4572,7 +4588,7 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   const generalBefore = await listUpcomingPublicEvents(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
+    todayDate: "2028-04-20",
   });
   assert.deepEqual(
     generalBefore.map((event) => event.title),
@@ -4677,8 +4693,8 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   const publicDuringPartial = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 3_001,
+    todayDate: "2028-04-20",
+    nowUtcMs: publicClockBase + 3_001,
   });
   assert.equal(
     JSON.stringify(publicDuringPartial.events),
@@ -4688,7 +4704,7 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   const generalDuringPartial = await listUpcomingPublicEvents(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
+    todayDate: "2028-04-20",
   });
   assert.equal(
     JSON.stringify(generalDuringPartial),
@@ -4783,8 +4799,8 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   const publicAfterFailure = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 4_001,
+    todayDate: "2028-04-20",
+    nowUtcMs: publicClockBase + 4_001,
   });
   assert.equal(
     JSON.stringify(publicAfterFailure.events),
@@ -4794,7 +4810,7 @@ test("keeps the last completed generation public when a later chunk fails", asyn
   const generalAfterFailure = await listUpcomingPublicEvents(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
+    todayDate: "2028-04-20",
   });
   assert.equal(
     JSON.stringify(generalAfterFailure),
@@ -4893,6 +4909,8 @@ test("an unscoped refresh finishes a pending generation before rotating to an un
 });
 
 test("an unsolicited 304 cannot finalize a pending generation", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-03-01T12:00:00.000Z");
   const database = createDatabase();
   t.after(() => database.close());
   await configure(database, "club_a", FEED_A, 1_000);
@@ -4955,8 +4973,8 @@ test("an unsolicited 304 cannot finalize a pending generation", async (t) => {
   const publicCalendar = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 4_001,
+    todayDate: "2028-03-01",
+    nowUtcMs: publicClockBase + 4_001,
   });
   assert.deepEqual(
     publicCalendar.events.map((event) => event.title),
@@ -4965,6 +4983,8 @@ test("an unsolicited 304 cannot finalize a pending generation", async (t) => {
 });
 
 test("reconciles disappeared future events only after source-scoped finalization and supports reappearance", async (t) => {
+  // Keep the public publication horizon aligned with this test's event dates.
+  const publicClockBase = Date.parse("2028-05-25T12:00:00.000Z");
   const database = createDatabase({ clubs: ["club_a", "club_b"] });
   t.after(() => database.close());
   await configure(database, "club_a", FEED_A, 1_000);
@@ -5214,8 +5234,8 @@ test("reconciles disappeared future events only after source-scoped finalization
   const publicDuringPartial = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 3_001,
+    todayDate: "2028-05-25",
+    nowUtcMs: publicClockBase + 3_001,
   });
   assert.equal(
     publicDuringPartial.events.some(
@@ -5319,8 +5339,8 @@ test("reconciles disappeared future events only after source-scoped finalization
   const publicAfterDisappearance = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 4_001,
+    todayDate: "2028-05-25",
+    nowUtcMs: publicClockBase + 4_001,
   });
   const titlesAfterDisappearance = publicAfterDisappearance.events.map(
     (event) => event.title,
@@ -5394,8 +5414,8 @@ test("reconciles disappeared future events only after source-scoped finalization
     await listPublicMeetupCalendar(database, {
       organizationId: ORGANIZATION_ID,
       fromUtcMs: 0,
-      todayDate: "2026-01-01",
-      nowUtcMs: 5_001,
+      todayDate: "2028-05-25",
+      nowUtcMs: publicClockBase + 5_001,
     });
   assert.equal(
     publicBeforeReappearanceFinalizes.events.some(
@@ -5425,8 +5445,8 @@ test("reconciles disappeared future events only after source-scoped finalization
   const publicAfterReappearance = await listPublicMeetupCalendar(database, {
     organizationId: ORGANIZATION_ID,
     fromUtcMs: 0,
-    todayDate: "2026-01-01",
-    nowUtcMs: 7_001,
+    todayDate: "2028-05-25",
+    nowUtcMs: publicClockBase + 7_001,
   });
   assert.equal(
     publicAfterReappearance.events.some(

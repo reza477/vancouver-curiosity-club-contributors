@@ -17,6 +17,240 @@ const ORGANIZATION_ID = "org_event_materializations";
 const TODAY_DATE = "2026-08-11";
 const projectRoot = new URL("../../", import.meta.url);
 
+test("the same stored Meetup inventory advances its five-week window on every visitor surface", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
+  for (const storage of ["compact", "aggregate", "legacy"]) {
+    await t.test(storage, async (t) => {
+      const database = await materializationDatabase(t);
+      const clock = {
+        nowUtcMs: Date.parse("2026-10-03T19:00:00.000Z"),
+        organizationId: ORGANIZATION_ID,
+        todayDate: "2026-10-03",
+      };
+      const program = { name: "Discussion Series", slug: "discussion-series" };
+      const officialEvent = (title, options) => eventCard(title, {
+        month: "2026-10",
+        program,
+        ...options,
+        rsvpUrl: `https://www.meetup.com/vancouver-meetup-group/events/${900000000 + options.ordinal}/`,
+      });
+      const near = officialEvent("Current gathering", { day: 5, ordinal: 701 });
+      const future = officialEvent("Later gathering", {
+        day: 7,
+        month: "2026-11",
+        ordinal: 702,
+      });
+      const futureAllDay = officialEvent("Later all-day gathering", {
+        allDay: true,
+        day: 7,
+        month: "2026-11",
+        ordinal: 703,
+      });
+      const laterClub = officialEvent("Later-only club gathering", {
+        clubName: "Later Club",
+        clubSlug: "later-club",
+        day: 7,
+        month: "2026-11",
+        ordinal: 704,
+      });
+      const past = officialEvent("Past gathering", {
+        day: 30,
+        month: "2026-09",
+        ordinal: 705,
+      });
+      const events = [past, near, future, futureAllDay, laterClub];
+      let projections = 0;
+      await materializations.refreshPublicEventMaterializations(database, clock, {
+        async projectBundle() {
+          projections += 1;
+          return {
+            calendarEvents: events,
+            eventDetails: events.map(eventDetailFromCard),
+            upcomingEvents: events.slice(1),
+          };
+        },
+      });
+      if (storage !== "compact") {
+        database.exec(`DELETE FROM public_event_calendar_snapshots
+          WHERE json_extract(cache_key, '$[1]') = 3`);
+      }
+      if (storage === "legacy") {
+        for (const row of snapshots(database)) {
+          const key = JSON.parse(row.cache_key);
+          key[1] = 1;
+          const envelope = JSON.parse(row.snapshot_json);
+          envelope.schemaVersion = 1;
+          for (const list of [envelope.calendarEvents, envelope.eventDetails, envelope.upcomingEvents]) {
+            if (list) for (const event of list) delete event.clubAssociations;
+          }
+          database.sqlite.prepare(`UPDATE public_event_calendar_snapshots
+            SET cache_key = ?, snapshot_json = ? WHERE cache_key = ?`)
+            .run(JSON.stringify(key), JSON.stringify(envelope), row.cache_key);
+        }
+      }
+      const saved = snapshots(database);
+      const counter = countDatabaseStatements(database);
+      const readSurfaces = async (input) => {
+        const [home, page, detail, laterDetail, club, series, directory, pastDetail] = await Promise.all([
+          materializations.readPublicHomeEventMaterialization(counter.database, input),
+          materializations.readPublicEventsPageMaterialization(counter.database, {
+            ...input, rawMonth: "2026-11",
+          }),
+          materializations.readPublicEventDetailViewMaterialization(counter.database, {
+            ...input, slug: near.slug,
+          }),
+          materializations.readPublicEventDetailViewMaterialization(counter.database, {
+            ...input, slug: future.slug,
+          }),
+          materializations.readPublicClubEventViewMaterialization(counter.database, {
+            ...input, clubSlug: near.club.slug,
+          }),
+          materializations.readPublicClubEventViewMaterialization(counter.database, {
+            ...input, clubSlug: near.club.slug, programSlug: program.slug,
+          }),
+          materializations.readPublicNextEventsByClubMaterialization(counter.database, {
+            ...input, clubSlugs: [near.club.slug, laterClub.club.slug],
+          }),
+          materializations.readPublicEventDetailViewMaterialization(counter.database, {
+            ...input, slug: past.slug,
+          }),
+        ]);
+        return { home, page, detail, laterDetail, club, series, directory, pastDetail };
+      };
+      const initial = await readSurfaces(clock);
+      assert.deepEqual(initial.home?.map((event) => event.slug), [near.slug]);
+      assert.deepEqual(initial.page?.calendar.events, []);
+      assert.equal(initial.page?.upcoming.totalCount, 1);
+      assert.deepEqual(initial.page?.clubOptions, [near.club]);
+      assert.deepEqual(initial.laterDetail, { kind: "missing" });
+      assert.deepEqual(initial.detail?.related, []);
+      assert.equal(initial.club?.upcoming.totalCount, 1);
+      assert.equal(initial.series?.upcoming.totalCount, 1);
+      assert.deepEqual(initial.club?.past.events.map((event) => event.slug), [past.slug]);
+      assert.deepEqual(initial.directory?.map(({ event }) => event.slug), [near.slug]);
+      assert.equal(initial.pastDetail?.kind, "available");
+
+      // No updater call: only the request's Vancouver date advances, including
+      // the later events already retained in the same durable source dataset.
+      const advanced = await readSurfaces({
+        ...clock,
+        nowUtcMs: Date.parse("2026-10-04T19:00:00.000Z"),
+        todayDate: "2026-10-04",
+      });
+      assert.equal(advanced.home?.length, 4);
+      assert.equal(advanced.page?.calendar.events.length, 3);
+      assert.equal(advanced.page?.upcoming.totalCount, 4);
+      assert.equal(advanced.page?.clubOptions.length, 2);
+      assert.equal(advanced.laterDetail?.kind, "available");
+      assert.deepEqual(new Set(advanced.detail?.related.map((event) => event.slug)),
+        new Set([future.slug, futureAllDay.slug]));
+      assert.equal(advanced.club?.upcoming.totalCount, 3);
+      assert.equal(advanced.series?.upcoming.totalCount, 3);
+      assert.equal(advanced.directory?.length, 2);
+      assert.equal(projections, 1);
+      assert.equal(counter.runCount(), 0, "visitors must not write or advance an import");
+      assert.ok(counter.sql().every((sql) => !sql.includes("WITH public_clubs AS")));
+      assert.deepEqual(snapshots(database), saved, "visitor clock changes do not rewrite snapshots");
+    });
+  }
+});
+
+test("truncated compact rails and preferred related events retain accurate rolling results", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
+  const database = await materializationDatabase(t);
+  const clock = {
+    nowUtcMs: Date.parse("2026-10-03T19:00:00.000Z"),
+    organizationId: ORGANIZATION_ID,
+    todayDate: "2026-10-03",
+  };
+  const category = { name: "Ideas", slug: "ideas" };
+  const target = eventCard("Current target", {
+    category, day: 5, month: "2026-10", ordinal: 710,
+    rsvpUrl: "https://www.meetup.com/vancouver-meetup-group/events/900000710/",
+  });
+  const sameCategory = eventCard("Current related gathering", {
+    category, clubName: "Another Club", clubSlug: "another-club",
+    day: 6, month: "2026-10", ordinal: 711,
+    rsvpUrl: "https://www.meetup.com/vancouver-literature-and-film/events/900000711/",
+  });
+  const repeats = Array.from({ length: 13 }, (_unused, index) => eventCard(
+    `Later repeated gathering ${index + 1}`, {
+      day: 8 + index, month: "2026-11", ordinal: 720 + index,
+      rsvpUrl: `https://www.meetup.com/vancouver-meetup-group/events/${900000720 + index}/`,
+    },
+  ));
+  const events = [target, sameCategory, ...repeats];
+  await materializations.refreshPublicEventMaterializations(database, clock, {
+    async projectBundle() {
+      return {
+        calendarEvents: events,
+        eventDetails: events.map(eventDetailFromCard),
+        upcomingEvents: events,
+      };
+    },
+  });
+  const counter = countDatabaseStatements(database);
+  const rail = await materializations.readPublicClubEventViewMaterialization(counter.database, {
+    ...clock, clubSlug: target.club.slug,
+  });
+  assert.deepEqual(rail?.upcoming.events.map((event) => event.slug), [target.slug]);
+  assert.equal(rail?.upcoming.totalCount, 1);
+  assert.equal(rail?.upcoming.hasMore, false);
+  assert.equal(counter.count(), 2, "truncated saved totals require the full durable dataset");
+  const detail = await materializations.readPublicEventDetailViewMaterialization(counter.database, {
+    ...clock, slug: target.slug,
+  });
+  assert.deepEqual(detail?.related.map((event) => event.slug), [sameCategory.slug]);
+  assert.equal(counter.runCount(), 0);
+});
+
+test("Home advances beyond its capped reserve using already stored details without visitor writes", async (t) => {
+  const materializations =
+    await import("../../lib/server/public/event-materializations.ts");
+  const database = await materializationDatabase(t);
+  const clock = {
+    nowUtcMs: Date.parse("2026-10-03T19:00:00.000Z"),
+    organizationId: ORGANIZATION_ID,
+    todayDate: "2026-10-03",
+  };
+  const events = Array.from({ length: 50 }, (_unused, index) => {
+    const date = new Date(Date.UTC(2026, 9, 4 + index)).toISOString().slice(0, 10);
+    return eventCard(`Stored repeated gathering ${index + 1}`, {
+      day: Number(date.slice(8)),
+      month: date.slice(0, 7),
+      ordinal: 800 + index,
+      rsvpUrl: `https://www.meetup.com/vancouver-meetup-group/events/${900000800 + index}/`,
+    });
+  });
+  await materializations.refreshPublicEventMaterializations(database, clock, {
+    async projectBundle() {
+      return {
+        calendarEvents: events,
+        eventDetails: events.map(eventDetailFromCard),
+        upcomingEvents: events,
+      };
+    },
+  });
+  const saved = snapshots(database);
+  const counter = countDatabaseStatements(database);
+  const initial = await materializations.readPublicHomeEventMaterialization(counter.database, clock);
+  assert.equal(initial?.length, 6);
+  assert.equal(counter.count(), 1, "a sufficient Home reserve stays on its indexed fast path");
+  counter.reset();
+  const later = await materializations.readPublicHomeEventMaterialization(counter.database, {
+    ...clock,
+    nowUtcMs: Date.parse("2026-11-21T19:00:00.000Z"),
+    todayDate: "2026-11-21",
+  });
+  assert.deepEqual(later?.map((event) => event.slug), events.slice(48).map((event) => event.slug));
+  assert.equal(counter.count(), 2, "an exhausted reserve reads the complete durable details");
+  assert.equal("description" in later[0], false, "Home must still return only card fields");
+  assert.equal(counter.runCount(), 0);
+  assert.deepEqual(snapshots(database), saved);
+});
+
 test("one updater-owned dataset serves Home, arbitrary months, lanes, and date rollover", async (t) => {
   const materializations =
     await import("../../lib/server/public/event-materializations.ts");
@@ -1724,7 +1958,7 @@ function eventCard(
     rsvpMode: "meetup",
     rsvpUrl:
       rsvpUrl ??
-      `https://www.meetup.com/vancouver-meetup-group/events/${900000000 + ordinal}/`,
+      `https://www.meetup.com/materialization-fixture-group/events/${900000000 + ordinal}/`,
     schedule: allDay
       ? {
           endDateExclusive: `${month}-${String(day + 1).padStart(2, "0")}`,

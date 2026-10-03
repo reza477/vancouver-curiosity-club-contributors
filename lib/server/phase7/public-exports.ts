@@ -67,6 +67,7 @@ export async function createOneEventIcsDownload(
   if (!organization) return null;
   const slug = parseIdentifier(input.slug, "slug");
   const record = await getPublicEventExportRecordBySlug(database, {
+    nowUtcMs: input.generatedAt,
     organizationId: organization.id,
     slug,
   });
@@ -92,6 +93,7 @@ export async function createOneEventIcsDownload(
   );
   if (
     !(await revalidatePublicEventExportRecords(database, {
+      nowUtcMs: input.generatedAt,
       organizationId: organization.id,
       records: [record],
     }))
@@ -143,6 +145,7 @@ export async function createFilteredPublicIcsDownload(
   });
   if (
     !(await revalidatePublicEventExportRecords(database, {
+      nowUtcMs: input.generatedAt,
       organizationId: loaded.organization.id,
       records: loaded.records,
     }))

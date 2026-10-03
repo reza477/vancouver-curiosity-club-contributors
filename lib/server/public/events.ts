@@ -43,9 +43,9 @@ import {
   validateMeetupDescriptionBlocks,
 } from "../../meetup-event-enrichment";
 import {
-  MEETUP_PUBLICATION_END_DATE_EXCLUSIVE,
-  MEETUP_PUBLICATION_WINDOW_EFFECTIVE_AT_UTC_MS,
-} from "../../meetup-publication-policy.js";
+  isPublicEventWithinMeetupWindow,
+  publicMeetupPublicationWindow,
+} from "../../public-event-publication-window";
 import { CANONICAL_PUBLIC_COMMUNITY_URLS } from "../../public-community-order";
 import { PUBLIC_EVENT_LANE_SLUGS } from "../../public-event-lanes";
 
@@ -103,36 +103,45 @@ const PUBLIC_MEETUP_EVENT_ALIAS_POLICY_SQL = MEETUP_EVENT_ALIASES.map(
   ({ aliasUrl, canonicalUrl }) =>
     `('${aliasUrl.replaceAll("'", "''")}', '${canonicalUrl.replaceAll("'", "''")}')`,
 ).join(",\n");
-const MEETUP_PUBLICATION_END_UTC_MS_EXCLUSIVE = localDateTimeToUtcMs(
-  `${MEETUP_PUBLICATION_END_DATE_EXCLUSIVE}T00:00`,
-  DEFAULT_TIME_ZONE,
-  "earlier",
-);
-const PUBLICATION_CUTOFF_MEETUP_GROUP_SQL = CANONICAL_PUBLIC_COMMUNITY_URLS.map(
-  (groupUrl) => {
-    const eventUrlPrefix = `${groupUrl}events/`;
-    return `substr(snapshot.event_url, 1, ${eventUrlPrefix.length}) = '${eventUrlPrefix.replaceAll("'", "''")}'`;
-  },
-).join("\n  OR ");
-export const PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL = `(
+/** Request-time visibility only: never embed this predicate in persisted proofs. */
+function publicMeetupPublicationWindowSql(
+  alias: string,
+  eventUrlColumn: "event_url" | "rsvp_url",
+): string {
+  const officialGroups = CANONICAL_PUBLIC_COMMUNITY_URLS.map((groupUrl) => {
+    const prefix = `${groupUrl}events/`;
+    return `substr(COALESCE(${alias}.${eventUrlColumn}, ''), 1, ${prefix.length}) = '${prefix.replaceAll("'", "''")}'`;
+  }).join("\n  OR ");
+  return `(
   NOT (
-    ${PUBLICATION_CUTOFF_MEETUP_GROUP_SQL}
+    ${officialGroups}
   )
-  OR generation.published_at < ${MEETUP_PUBLICATION_WINDOW_EFFECTIVE_AT_UTC_MS}
   OR (
-    snapshot.timezone = '${DEFAULT_TIME_ZONE}'
-    AND (
-      (
-        snapshot.time_kind = 'timed'
-        AND snapshot.starts_at_utc < ${MEETUP_PUBLICATION_END_UTC_MS_EXCLUSIVE}
-      )
-      OR (
-        snapshot.time_kind = 'all_day'
-        AND snapshot.all_day_start_date < '${MEETUP_PUBLICATION_END_DATE_EXCLUSIVE}'
-      )
+    (
+      ${alias}.time_kind = 'timed'
+      AND ${alias}.starts_at_utc < ?
+    )
+    OR (
+      ${alias}.time_kind = 'all_day'
+      AND ${alias}.all_day_start_date < ?
     )
   )
 )`;
+}
+
+export const PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL =
+  publicMeetupPublicationWindowSql("snapshot", "event_url");
+const PUBLIC_EVENT_MEETUP_WINDOW_SQL =
+  publicMeetupPublicationWindowSql("public_event", "rsvp_url");
+
+function publicMeetupWindowBindings(nowUtcMs: unknown): readonly D1Value[] {
+  const now = parseFiniteInteger(nowUtcMs ?? Date.now(), {
+    path: "nowUtcMs",
+    minimum: 0,
+  });
+  const window = publicMeetupPublicationWindow(now);
+  return [window.endsAtUtcMs, window.endDateExclusive];
+}
 const MAX_PUBLIC_ORGANIZER_BIOGRAPHY_LENGTH = 800;
 const MAX_PUBLIC_ORGANIZER_MEDIA_ID_LENGTH = 128;
 const MAX_PUBLIC_ORGANIZER_ALT_LENGTH = 300;
@@ -158,6 +167,7 @@ export const MAX_PUBLIC_ORGANIZERS_JSON_BYTES =
 export type ListPublicEventsInput = Readonly<{
   fromUtcMs: unknown;
   limit?: unknown;
+  nowUtcMs?: unknown;
   organizationId: unknown;
   todayDate: unknown;
 }>;
@@ -664,7 +674,13 @@ export async function listUpcomingPublicMeetupEvents(
         });
   const result = await database
     .prepare(PUBLIC_MEETUP_EVENT_SELECT_SQL)
-    .bind(organizationId, fromUtcMs, todayDate, limit)
+    .bind(
+      organizationId,
+      ...publicMeetupWindowBindings(input.nowUtcMs),
+      fromUtcMs,
+      todayDate,
+      limit,
+    )
     .all<Record<string, unknown>>();
   assertSuccessfulResult(result);
   const enrichedRows = await enrichCompatibilityPublicEventRows(
@@ -1182,6 +1198,7 @@ export type PublicEventMaterializationBundleDto = Readonly<{
 }>;
 
 export type GetPublicEventInput = Readonly<{
+  nowUtcMs?: unknown;
   organizationId: unknown;
   slug: unknown;
 }>;
@@ -1235,6 +1252,7 @@ export type EditorialPublicEvents = Readonly<{
 
 export type ListPublicEventSitemapInput = Readonly<{
   limit?: unknown;
+  nowUtcMs?: unknown;
   organizationId: unknown;
 }>;
 
@@ -1847,7 +1865,6 @@ export const PUBLIC_EVENT_IDENTITY_CTE_SQL = `
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
       AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
-      AND ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
@@ -2337,7 +2354,6 @@ export const PUBLIC_EVENT_SELECTION_PROOF_CTE_SQL = `
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
       AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
-      AND ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
@@ -2862,7 +2878,6 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
       AND source.active_generation_id IS NOT NULL
       AND source.deleted_at IS NULL
       AND (${PUBLIC_MEETUP_ALIAS_EXCLUSION_SQL})
-      AND ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
       AND event.visibility = 'public'
       AND event.published_at IS NOT NULL
       AND event.deleted_at IS NULL
@@ -2941,7 +2956,6 @@ export const UNIFIED_PUBLIC_EVENT_CTE_SQL = `
       ON associated_club.id = source.club_id
      AND associated_club.organization_id = source.organization_id
      AND associated_club.deleted_at IS NULL
-    WHERE ${PUBLIC_MEETUP_PUBLICATION_WINDOW_SQL}
   ),
   meetup_public_club_association_distinct AS (
     SELECT organization_id,
@@ -4718,8 +4732,14 @@ export async function queryPublicEventMaterializationBundle(
     todayDate: calendar.todayDate,
     view: "upcoming",
   });
-  const calendarFilter = buildPublicCalendarMonthFilter(calendar);
-  const upcomingFilter = buildPublicEventFilter(upcoming);
+  // Durable snapshots retain bounded source inventory. Visitor reads apply
+  // the current horizon so tomorrow's events need no new Meetup generation.
+  const calendarFilter = buildPublicCalendarMonthFilter(calendar, {
+    applyMeetupWindow: false,
+  });
+  const upcomingFilter = buildPublicEventFilter(upcoming, {
+    applyMeetupWindow: false,
+  });
   const upcomingOrder = publicEventOrderExpression("upcoming");
   const laneBindings = [...PUBLIC_EVENT_LANE_SLUGS];
   const result = await database
@@ -5129,6 +5149,7 @@ export async function queryPublicEventsForExport(
 export async function revalidatePublicEventExportRecords(
   database: Pick<D1DatabaseLike, "prepare">,
   input: Readonly<{
+    nowUtcMs?: unknown;
     organizationId: unknown;
     records: readonly PublicEventExportRecord[];
   }>,
@@ -5145,6 +5166,15 @@ export async function revalidatePublicEventExportRecords(
     );
   }
   if (input.records.length === 0) return true;
+  const nowUtcMs = parseFiniteInteger(input.nowUtcMs ?? Date.now(), {
+    path: "nowUtcMs",
+    minimum: 0,
+  });
+  if (
+    input.records.some(
+      ({ event }) => !isPublicEventWithinMeetupWindow(event, nowUtcMs),
+    )
+  ) return false;
 
   const sourceIdentities = new Set<string>();
   const slugs = new Set<string>();
@@ -5210,9 +5240,13 @@ export async function getPublicEventBySlug(
               ${PUBLIC_EVENT_DETAIL_COLUMNS_SQL}
        FROM public_events AS public_event
        WHERE public_event.slug = ?
+         AND ${PUBLIC_EVENT_MEETUP_WINDOW_SQL}
        LIMIT 1`,
     )
-    .bind(organizationId, organizationId, organizationId, slug)
+    .bind(
+      organizationId, organizationId, organizationId, slug,
+      ...publicMeetupWindowBindings(input.nowUtcMs),
+    )
     .first<Record<string, unknown>>();
   if (!row) return null;
   const [enrichedRow] = await enrichPublicEventRows(
@@ -5238,9 +5272,13 @@ export async function getPublicEventExportRecordBySlug(
        SELECT ${PUBLIC_EVENT_EXPORT_COLUMNS_SQL}
        FROM public_events AS public_event
        WHERE public_event.slug = ?
+         AND ${PUBLIC_EVENT_MEETUP_WINDOW_SQL}
        LIMIT 1`,
     )
-    .bind(organizationId, organizationId, organizationId, slug)
+    .bind(
+      organizationId, organizationId, organizationId, slug,
+      ...publicMeetupWindowBindings(input.nowUtcMs),
+    )
     .first<Record<string, unknown>>();
   if (!row) return null;
   if (
@@ -5262,6 +5300,7 @@ export async function getPublicEventExportRecordBySlug(
 export async function getPublicEventsBySlugs(
   database: Pick<D1DatabaseLike, "prepare">,
   input: Readonly<{
+    nowUtcMs?: unknown;
     organizationId: string;
     slugs: readonly string[];
   }>,
@@ -5298,6 +5337,7 @@ export async function getPublicEventsBySlugs(
        JOIN public_events AS public_event
          ON public_event.slug = requested_slug.slug
         AND public_event.public_slug_count = 1
+        AND ${PUBLIC_EVENT_MEETUP_WINDOW_SQL}
        ORDER BY requested_slug.requested_order ASC
        LIMIT 12`,
     )
@@ -5306,6 +5346,7 @@ export async function getPublicEventsBySlugs(
       organizationId,
       organizationId,
       JSON.stringify(slugs),
+      ...publicMeetupWindowBindings(input.nowUtcMs),
     )
     .all<Record<string, unknown>>();
   const enrichedRows = await enrichPublicEventRows(
@@ -5625,6 +5666,7 @@ export async function getEditorialPublicEvents(
          SELECT *
          FROM public_events AS public_event
          WHERE public_event.public_slug_count = 1
+           AND ${PUBLIC_EVENT_MEETUP_WINDOW_SQL}
            AND public_event.event_status IN ('confirmed', 'tentative')
            AND (
              (
@@ -5650,6 +5692,7 @@ export async function getEditorialPublicEvents(
          JOIN public_events AS public_event
            ON public_event.slug = requested.slug
           AND public_event.public_slug_count = 1
+          AND ${PUBLIC_EVENT_MEETUP_WINDOW_SQL}
          UNION ALL
          SELECT 1 AS result_group,
                 row_number() OVER (
@@ -5672,8 +5715,10 @@ export async function getEditorialPublicEvents(
       organizationId,
       organizationId,
       JSON.stringify(requestedSlugs),
+      ...publicMeetupWindowBindings(nowUtcMs),
       nowUtcMs,
       todayDate,
+      ...publicMeetupWindowBindings(nowUtcMs),
     )
     .all<Record<string, unknown>>();
   const enrichedRows = await enrichPublicEventRows(
@@ -5816,6 +5861,7 @@ export async function listRelatedPublicEvents(
            )
          )
        WHERE public_event.slug <> ?
+         AND ${PUBLIC_EVENT_MEETUP_WINDOW_SQL}
          AND public_event.event_status IN ('confirmed', 'tentative')
          AND (
            (
@@ -5841,6 +5887,7 @@ export async function listRelatedPublicEvents(
       organizationId,
       slug,
       slug,
+      ...publicMeetupWindowBindings(nowUtcMs),
       nowUtcMs,
       todayDate,
       limit,
@@ -5887,10 +5934,15 @@ export async function listPublicEventSitemapEntries(
                public_event.public_updated_at AS public_updated_at,
                public_event.public_slug_count AS public_slug_count
        FROM public_events AS public_event
+       WHERE ${PUBLIC_EVENT_MEETUP_WINDOW_SQL}
        ORDER BY public_event.slug ASC
        LIMIT ?`,
     )
-    .bind(organizationId, organizationId, organizationId, limit)
+    .bind(
+      organizationId, organizationId, organizationId,
+      ...publicMeetupWindowBindings(input.nowUtcMs),
+      limit,
+    )
     .all<Record<string, unknown>>();
   assertSuccessfulResult(result);
   for (const row of result.results ?? []) assertSinglePublicSlug(row);
@@ -5926,6 +5978,7 @@ export async function listPublicEventSitemapSlugs(
 export async function listPublicEventCategoryOptions(
   database: Pick<D1DatabaseLike, "prepare">,
   organizationIdInput: unknown,
+  nowUtcMs: unknown = Date.now(),
 ): Promise<readonly PublicEventCategoryOption[]> {
   const organizationId = parseIdentifier(
     organizationIdInput,
@@ -5946,6 +5999,7 @@ export async function listPublicEventCategoryOptions(
          ON taxonomy_state.category_id = category.id
         AND taxonomy_state.organization_id = category.organization_id
        WHERE public_event.event_status IN ('confirmed', 'tentative')
+         AND ${PUBLIC_EVENT_MEETUP_WINDOW_SQL}
          AND public_event.category_slug IS NOT NULL
          AND public_event.category_name IS NOT NULL
        GROUP BY category.id, category.slug, category.name,
@@ -5960,6 +6014,7 @@ export async function listPublicEventCategoryOptions(
       organizationId,
       organizationId,
       organizationId,
+      ...publicMeetupWindowBindings(nowUtcMs),
     )
     .all<Record<string, unknown>>();
   assertSuccessfulResult(result);
@@ -6656,7 +6711,10 @@ function withPublicEventVenueFacts(
 
 function buildPublicEventFilter(
   input: ParsedPublicEventQuery,
-  options: Readonly<{ includeCancelled?: boolean }> = {},
+  options: Readonly<{
+    applyMeetupWindow?: boolean;
+    includeCancelled?: boolean;
+  }> = {},
 ): Readonly<{ bindings: readonly D1Value[]; sql: string }> {
   const upcomingStatuses = options.includeCancelled
     ? "('confirmed', 'tentative', 'cancelled')"
@@ -6670,6 +6728,11 @@ function buildPublicEventFilter(
       : `public_event.event_status IN ${pastStatuses}`,
   ];
   const bindings: D1Value[] = [];
+
+  if (options.applyMeetupWindow !== false) {
+    clauses.push(PUBLIC_EVENT_MEETUP_WINDOW_SQL);
+    bindings.push(...publicMeetupWindowBindings(input.nowUtcMs));
+  }
 
   if (input.view === "upcoming") {
     clauses.push(`(
@@ -6794,6 +6857,7 @@ function buildPublicEventFilter(
 
 function buildPublicCalendarMonthFilter(
   input: ParsedPublicCalendarMonthQuery,
+  options: Readonly<{ applyMeetupWindow?: boolean }> = {},
 ): Readonly<{ bindings: readonly D1Value[]; sql: string }> {
   const bindings: D1Value[] = [
     input.nowUtcMs,
@@ -6839,6 +6903,10 @@ function buildPublicCalendarMonthFilter(
         AND public_event.all_day_start_date < ?
       )
     )`];
+  if (options.applyMeetupWindow !== false) {
+    clauses.push(PUBLIC_EVENT_MEETUP_WINDOW_SQL);
+    bindings.push(...publicMeetupWindowBindings(input.nowUtcMs));
+  }
   addEqualityFilter(clauses, bindings, "lane_slug", input.laneSlug);
   return Object.freeze({
     bindings: Object.freeze(bindings),

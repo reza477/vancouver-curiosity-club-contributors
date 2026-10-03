@@ -44,8 +44,12 @@ The canonical website is https://vancouvercuriosityclub.com/.
 - Preserve Sites-managed `DB` and `MEDIA`, private organizer authorization,
   additive migrations, public-safe projections and completed snapshots.
 - Meetup maintenance reads all three official groups and matches stable event
-  identity plus group ownership. Public publication remains limited through
-  September 30, 2026. Do not extend the cutoff without owner direction.
+  identity plus group ownership. On October 3, 2026, the owner replaced the
+  September cutoff with a rolling five-week public horizon: today through the
+  next 35 Vancouver calendar days, with the final boundary exclusive. Keep
+  later automatic Meetup repeats in complete source snapshots and filter them
+  from public views at read time. The window advances without visitor imports;
+  ordinary upcoming and archive rules still control past events.
 - Meetup refresh is manual through the protected workflow or authorized
   organizer action. Scheduled form-email delivery is independent and remains
   enabled. Never re-enable automatic Meetup refresh as routine cleanup.
