@@ -173,3 +173,14 @@ that retains these email-hold and moderation boundaries. An older Worker that
 does not understand moderation holds could resume delivery of held outbox
 items; simply redeploying the pre-moderation version is not a safe rollback.
 No production submission content belongs in local fixtures, source, or PRs.
+
+### Final visual verification
+
+A live phone-size check exposed an undefined color token that made the selected
+submission-folder label blend into its background. The follow-up uses the
+existing workspace paper and ink-soft tokens for folder text and submission
+details. Synthetic [desktop](audit-evidence/2026-10-03/folder-contrast-desktop.png)
+and [phone](audit-evidence/2026-10-03/folder-contrast-mobile.png) screenshots
+verify the selected label at 1440px and 375px without horizontal overflow.
+The selected text/background contrast is approximately 15.1:1. This is a
+stylesheet correction with no data or authentication changes.
