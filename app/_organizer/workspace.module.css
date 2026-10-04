@@ -3680,7 +3680,7 @@
 
 .submissionFolders a[aria-current="page"] {
   background: var(--ow-ink);
-  color: var(--ow-surface);
+  color: var(--ow-paper);
 }
 
 .submissionModeration {
@@ -3736,12 +3736,12 @@
   padding: 0.85rem;
   border: 1px solid var(--ow-line);
   border-radius: 0.75rem;
-  background: var(--ow-surface);
+  background: var(--ow-paper);
 }
 
 .submissionFacts dt,
 .submissionFields strong {
-  color: var(--ow-muted);
+  color: var(--ow-ink-soft);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -3786,7 +3786,7 @@
   padding: 1.15rem;
   border: 2px solid var(--ow-danger, #8b2f24);
   border-radius: 0.9rem;
-  background: var(--ow-surface);
+  background: var(--ow-paper);
 }
 
 .dangerPanel label {
