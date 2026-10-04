@@ -102,6 +102,23 @@ stored index details in its
 - Intake protections: 59 focused tests passed; moderation: 11 backend/API
   tests and four interface tests passed. Independent review found no blocking
   authorization, concurrency, privacy, or email-delivery defect.
+- The complete built-Worker suite passed 40/40. Type-check, lint, production
+  build, and dependency audit passed (zero reported vulnerabilities).
+- Synthetic browser checks at 1440px and 375px covered Contact, Host,
+  Volunteer, and the current partnership journey (Contact's Partnerships
+  mode). The legacy partnership endpoint remains covered by integration tests.
+  A legitimate Privacy inquiry succeeded; a repeat returned the same receipt.
+  Bulk quarantine and individual Trash/restore preserved content and notes;
+  restored records kept the email hold. No browser errors were observed.
+- Phone verification exposed clipped long submission references and crowded
+  badges/header text. Bounded grid tracks and wrapping now keep the detail
+  content within the viewport; status badges and navigation stay readable.
+  [Desktop inbox](audit-evidence/2026-10-03/inbox-desktop.png),
+  [phone before correction](audit-evidence/2026-10-03/mobile-before.png),
+  [phone after correction](audit-evidence/2026-10-03/mobile-after.png), and
+  [desktop partnership form](audit-evidence/2026-10-03/partnership-desktop.png)
+  show only synthetic local data. The isolated preview had no email provider
+  and denied outbound networking. No production test inquiry was submitted.
 - The audit and code edit alone do not constitute a live deployment. The final
   task delivery record must identify the exact validated revision, release,
   changed-form and organizer checks, and post-release sitemap verification.
