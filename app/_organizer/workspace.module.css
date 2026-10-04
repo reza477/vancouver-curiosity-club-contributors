@@ -3122,6 +3122,7 @@
 
   .mobileHeader {
     display: flex;
+    gap: 0.75rem;
     padding: 0.55rem 1rem;
     background: var(--ow-paper);
   }
@@ -3140,9 +3141,15 @@
   }
 
   .mobileBrand span {
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .mobileHeader .notificationLink,
+  .mobileBrand img {
+    flex: none;
   }
 
   .mobileNavigation {
@@ -3644,6 +3651,11 @@
 .submissionWorkspace .panelHeading > div {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.submissionWorkspace .panelHeading > .statusPill {
+  flex: none;
+  white-space: nowrap;
 }
 
 .submissionFolders,
