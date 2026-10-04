@@ -81,8 +81,6 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "Founder, President and Executive Director",
     "Nawar Alsaadi",
     "Vice-President and Treasurer; Strategy and Partnerships",
-    "Nataliia Ivanova",
-    "Digital Experience and Communications",
     "Anurag Kapale",
     "Director-at-Large; Technology, AI and Data",
     "What we organize",

@@ -75,10 +75,6 @@ const BOARD_DIRECTORS = Object.freeze([
     role: "Vice-President and Treasurer; Strategy and Partnerships",
   }),
   Object.freeze({
-    name: "Nataliia Ivanova",
-    role: "Digital Experience and Communications",
-  }),
-  Object.freeze({
     name: "Anurag Kapale",
     role: "Director-at-Large; Technology, AI and Data",
   }),

@@ -494,7 +494,6 @@ test("About presents a professional mission, impact, continuity, and partnership
     "Board of Directors",
     "Reza Rahnama",
     "Nawar Alsaadi",
-    "Nataliia Ivanova",
     "Anurag Kapale",
     "Structure creates room for belonging.",
     "What we organize",
