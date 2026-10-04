@@ -1066,12 +1066,12 @@ test(
       },
       {
         coldInstanceRoute: 4,
-        contact: 19,
-        host_event: 20,
+        contact: 24,
+        host_event: 25,
         instancePreflight: 2,
         invalid_contact: 8,
-        partnership: 19,
-        volunteer: 19,
+        partnership: 24,
+        volunteer: 24,
         warmInstanceRoute: 2,
       },
     );
@@ -1806,6 +1806,30 @@ async function fixture() {
   database.exec(PHASE7_INVARIANT_TRIGGER_STATEMENTS.join("\n"));
   return { database, now };
 }
+
+test("fast native and JSON inquiries retain answers and the signed instance for retry", routeTestOptions, async (t) => {
+  const data = await fixture();
+  t.after(() => data.database.close());
+  RUNTIME_ENVIRONMENT.DB = data.database;
+  const token = await pastInstanceToken(data.database, "contact", 500);
+  const [, { POST }] = routeModules;
+  const payload = { name: "Fast Synthetic Visitor", replyEmail: "fast-native@visitor.invalid", topic: "Privacy", message: 'Please preserve my <private> inquiry.' };
+  const response = await POST(nativeFormRequest("/api/forms/contact", {
+    cookie: null, fields: new URLSearchParams({ ...payload, instanceToken: token, companyFax: "" }),
+  }), routeContext("contact"));
+  assert.equal(response.status, 422);
+  const html = await response.text();
+  assert.match(html, /wait a moment/u);
+  assert.match(html, /Please preserve my &lt;private&gt; inquiry\./u);
+  assert.ok(html.includes(`value="${token}"`));
+  const json = await POST(new Request(`${TEST_ORIGIN}/api/forms/contact`, {
+    method: "POST", headers: { origin: TEST_ORIGIN, "content-type": "application/json" },
+    body: JSON.stringify({ payload, instanceToken: token, companyFax: "" }),
+  }), routeContext("contact"));
+  assert.equal(json.status, 422);
+  assert.equal((await json.json()).values.message, payload.message);
+  assert.equal(await tableCount(data.database, "form_submissions"), 0);
+});
 
 test("instance renewal preserves the cookie-less principal and rejects cross-origin or mismatched-form requests", routeTestOptions, async (t) => {
   const data = await fixture();

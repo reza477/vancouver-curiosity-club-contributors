@@ -52,6 +52,8 @@ export function activityLabel(
       return "Submission personal content redacted";
     case "form_submission.status_changed":
       return "Submission status changed";
+    case "form_submission.moderation_changed":
+      return "Submission folder changed";
     case "import.approved":
       return "CSV import approved";
     case "import.batch_created":

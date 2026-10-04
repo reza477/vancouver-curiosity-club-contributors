@@ -31,6 +31,7 @@ export const ORGANIZER_AUDIT_ACTIONS = [
   "form_submission.note_added",
   "form_submission.personal_content_redacted",
   "form_submission.status_changed",
+  "form_submission.moderation_changed",
   "import.approved",
   "import.batch_created",
   "import.completed",

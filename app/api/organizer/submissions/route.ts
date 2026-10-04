@@ -13,6 +13,7 @@ export async function GET(request: Request): Promise<Response> {
     const query = new URL(request.url).searchParams;
     const page = await listFormSubmissions(database, identity, {
       assignment: query.get("assignment") ?? undefined,
+      folder: query.get("folder") ?? undefined,
       fromDate: query.get("from") ?? undefined,
       formKey: query.get("form") ?? undefined,
       page: query.get("page") ?? undefined,

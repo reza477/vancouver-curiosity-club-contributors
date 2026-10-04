@@ -47,6 +47,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }),
     ]);
 
+    // Catalog timestamps cover only part of each rendered page, while Meetup
+    // timestamps include refresh publication even when its content is unchanged.
+    // Omit optional lastmod until a complete public-content revision is available;
+    // neither a partial row timestamp nor this request's clock is a truthful date.
     const result: MetadataRoute.Sitemap = [];
     result.push({
       url: publicUrl("/for-organizations", origin),
@@ -56,19 +60,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (!path) continue;
       result.push({
         url: publicUrl(path, origin),
-        lastModified: new Date(page.lastModified),
       });
     }
     for (const club of catalogEntries.clubs) {
       result.push({
         url: publicUrl(`/clubs/${club.slug}`, origin),
-        lastModified: new Date(club.lastModified),
       });
     }
     for (const event of events) {
       result.push({
         url: publicUrl(`/events/${event.slug}`, origin),
-        lastModified: new Date(event.lastModified),
       });
     }
     for (const program of catalogEntries.programs) {
@@ -77,7 +78,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           `/clubs/${program.clubSlug}/programs/${program.programSlug}`,
           origin,
         ),
-        lastModified: new Date(program.lastModified),
       });
     }
     return result;

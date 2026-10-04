@@ -8,6 +8,7 @@ import {
   type SubmissionStatus,
 } from "@/lib/server/phase7/submissions";
 import { publicFormLabel } from "@/lib/server/phase7/public-form-contract";
+import { SUBMISSION_MODERATION_FOLDERS, type SubmissionModerationFolder } from "@/lib/submission-moderation-contract";
 import { isRecord, organizerRequest, safeNotice } from "./client";
 import { StatusPill } from "./PageHeader";
 import styles from "./workspace.module.css";
@@ -111,6 +112,29 @@ export function SubmissionWorkspace({
     if (saved) setConfirmation("");
   }
 
+  async function moveToFolder(folder: SubmissionModerationFolder) {
+    if (busy) return;
+    setBusy("moderation");
+    setNotice("");
+    try {
+      const receipt = await organizerRequest("/api/organizer/submissions/moderation", {
+        method: "POST",
+        body: JSON.stringify({ folder, items: [{ submissionId: submission.id, expectedVersion: submission.version, expectedModerationVersion: submission.moderationVersion }] }),
+      });
+      if (!isRecord(receipt) || receipt.changed !== 1) throw new TypeError("Unexpected moderation receipt");
+      const response = await organizerRequest(`/api/organizer/submissions/${encodeURIComponent(submission.id)}`);
+      if (!isRecord(response) || !isSubmissionDetail(response.submission)) throw new TypeError("Unexpected submission response");
+      setSubmission(response.submission);
+      setAssignee(response.submission.assignedTo?.profileId ?? "");
+      setStatus(response.submission.status);
+      setNotice(`Moved to ${folder.slice(0, 1).toUpperCase() + folder.slice(1)}. Content is preserved. No email is sent.`);
+    } catch (error) {
+      setNotice(safeNotice(error, "The folder change could not be verified. Refresh this page before trying again."));
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className={styles.submissionWorkspace}>
       <section className={styles.infoPanel} aria-labelledby="submission-summary">
@@ -143,6 +167,17 @@ export function SubmissionWorkspace({
           </div>
         </dl>
       </section>
+
+      {manager ? <section className={styles.submissionModeration} aria-labelledby="submission-folder">
+        <h2 id="submission-folder">Folder: {submission.moderationFolder.slice(0, 1).toUpperCase() + submission.moderationFolder.slice(1)}</h2>
+        <p>Spam and Trash preserve submitted content and private notes. Restore to Inbox at any time. These actions do not permanently delete anything or send email.</p>
+        {submission.emailHeld ? <p>Automatic email delivery is held for this submission, including after restoration. You can follow up manually.</p> : null}
+        <div className={styles.submissionActions}>
+          {SUBMISSION_MODERATION_FOLDERS.filter((folder) => folder !== submission.moderationFolder).map((folder) => <button className={styles.secondaryButton} disabled={Boolean(busy)} key={folder} type="button" onClick={() => moveToFolder(folder)}>
+            {folder === "inbox" ? "Restore to Inbox" : `Move to ${folder === "spam" ? "Spam" : "Trash"}`}
+          </button>)}
+        </div>
+      </section> : null}
 
       <section className={styles.formSection} aria-labelledby="submitted-fields">
         <header>
@@ -198,7 +233,7 @@ export function SubmissionWorkspace({
               </select>
               <button
                 className={styles.secondaryButton}
-                disabled={busy === "assignment"}
+                disabled={Boolean(busy)}
                 onClick={assign}
                 type="button"
               >
@@ -222,7 +257,7 @@ export function SubmissionWorkspace({
             </select>
             <button
               className={styles.primaryButton}
-              disabled={busy === "status"}
+              disabled={Boolean(busy)}
               onClick={changeStatus}
               type="button"
             >
@@ -265,7 +300,7 @@ export function SubmissionWorkspace({
               />
               <button
                 className={styles.primaryButton}
-                disabled={!note.trim() || busy === "note"}
+                disabled={!note.trim() || Boolean(busy)}
                 onClick={addNote}
                 type="button"
               >
@@ -314,7 +349,7 @@ export function SubmissionWorkspace({
           </label>
           <button
             disabled={
-              confirmation !== submission.publicReference || busy === "redact"
+              confirmation !== submission.publicReference || Boolean(busy)
             }
             onClick={redact}
             type="button"
@@ -368,6 +403,7 @@ function historyLabel(value: string): string {
   if (value === "form_submission.assigned") return "Assignment changed";
   if (value === "form_submission.status_changed") return "Status changed";
   if (value === "form_submission.note_added") return "Private note appended";
+  if (value === "form_submission.moderation_changed") return "Submission folder changed";
   if (value === "form_submission.personal_content_redacted") {
     return "Personal content redacted";
   }
@@ -395,6 +431,9 @@ function isSubmissionDetail(value: unknown): value is SubmissionDetailDto {
     typeof value.id === "string" &&
     typeof value.publicReference === "string" &&
     typeof value.version === "number" &&
+    typeof value.moderationVersion === "number" &&
+    typeof value.emailHeld === "boolean" &&
+    SUBMISSION_MODERATION_FOLDERS.some((folder) => folder === value.moderationFolder) &&
     typeof value.status === "string" &&
     SUBMISSION_STATUSES.some((status) => status === value.status) &&
     Array.isArray(value.notes) &&

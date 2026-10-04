@@ -22,6 +22,8 @@ import {
   type PublicFormPayload,
 } from "./public-form-contract";
 
+import { SUBMISSION_MODERATION_FOLDERS, type SubmissionModerationFolder } from "../../submission-moderation-contract";
+
 export const SUBMISSION_STATUSES = [
   "new",
   "in_review",
@@ -32,6 +34,9 @@ export const SUBMISSION_STATUSES = [
 export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
 
 export type SubmissionListItem = Readonly<{
+  moderationFolder: SubmissionModerationFolder;
+  moderationVersion: number;
+  emailHeld: boolean;
   assignedTo: Readonly<{ displayName: string; profileId: string }> | null;
   createdAt: number;
   formKey: PublicFormKey;
@@ -87,6 +92,7 @@ export async function listFormSubmissions(
   identity: TrustedServerIdentity,
   input: Readonly<{
     assignment?: unknown;
+    folder?: unknown;
     fromDate?: unknown;
     formKey?: unknown;
     page?: unknown;
@@ -120,6 +126,9 @@ export async function listFormSubmissions(
       ? "all"
       : parseAssignmentFilter(input.assignment);
   const manager = isManager(actor);
+  const folder = input.folder === undefined || input.folder === ""
+    ? "inbox" : parseEnum(input.folder, SUBMISSION_MODERATION_FOLDERS, "folder");
+  if (!manager && folder !== "inbox") throw notFound();
   const requestedAssignee =
     assignment === "mine"
       ? actor.profileId
@@ -139,6 +148,9 @@ export async function listFormSubmissions(
     submission.organization_id = ?
     AND submission.deleted_at IS NULL
     AND workflow.canonical_status <> 'spam'
+    AND COALESCE((SELECT folder FROM form_submission_moderation
+      WHERE submission_id = submission.id
+        AND organization_id = submission.organization_id), 'inbox') = ?
     AND EXISTS (
       SELECT 1
       FROM form_submission_write_intents AS current_intent
@@ -169,6 +181,7 @@ export async function listFormSubmissions(
     )`;
   const bindings = [
     actor.organizationId,
+    folder,
     receivedRange?.fromUtcMs ?? null,
     receivedRange?.fromUtcMs ?? null,
     receivedRange?.toExclusiveUtcMs ?? null,
@@ -213,6 +226,7 @@ export async function listFormSubmissions(
               workflow.retention_review_at,
               workflow.version,
               workflow.created_at,
+              ${MODERATION_SELECT_SQL},
               assignee.display_name AS assignee_display_name
        FROM form_submissions AS submission
        JOIN form_submission_workflows AS workflow
@@ -267,6 +281,10 @@ export async function listFormSubmissions(
                 AND current_submission.deleted_at IS NULL
                 AND current_submission.assigned_to_profile_id =
                     membership.profile_id
+                AND NOT EXISTS (SELECT 1 FROM form_submission_moderation
+                  WHERE submission_id = current_submission.id
+                    AND organization_id = current_submission.organization_id
+                    AND folder <> 'inbox')
                WHERE current_submission.id IS NULL
              )
            )
@@ -310,7 +328,11 @@ export async function getFormSubmission(
          AND workflow.canonical_status <> 'spam'
          AND (
            ? = 1
-           OR submission.assigned_to_profile_id = ?
+           OR (submission.assigned_to_profile_id = ? AND NOT EXISTS (
+             SELECT 1 FROM form_submission_moderation
+             WHERE submission_id = submission.id AND organization_id = submission.organization_id
+               AND folder <> 'inbox'
+           ))
          )
        LIMIT 1`,
     )
@@ -356,6 +378,7 @@ export async function getFormSubmission(
              'form_submission.assigned',
              'form_submission.status_changed',
              'form_submission.note_added',
+             'form_submission.moderation_changed',
              'form_submission.personal_content_redacted'
            )
          ORDER BY audit.created_at ASC, audit.id ASC
@@ -390,6 +413,9 @@ export async function getFormSubmission(
          AND submission.organization_id = ?
          AND submission.deleted_at IS NULL
          AND workflow.version = ?
+         AND COALESCE((SELECT version FROM form_submission_moderation
+           WHERE submission_id = submission.id
+             AND organization_id = submission.organization_id), 0) = ?
          AND workflow.canonical_status <> 'spam'
          AND (
            membership.role IN ('owner', 'administrator')
@@ -397,6 +423,9 @@ export async function getFormSubmission(
              membership.role = 'organizer'
              AND submission.assigned_to_profile_id =
                  membership.profile_id
+             AND NOT EXISTS (SELECT 1 FROM form_submission_moderation
+               WHERE submission_id = submission.id AND organization_id = submission.organization_id
+                 AND folder <> 'inbox')
            )
          )`,
     )
@@ -405,6 +434,7 @@ export async function getFormSubmission(
       submissionId,
       actor.organizationId,
       base.version,
+      base.moderationVersion,
     )
     .first<number>("exact_count");
   if (stillAuthorized !== 1) throw notFound();
@@ -1036,6 +1066,11 @@ export async function redactFormSubmissionPersonalContent(
   return getFormSubmission(database, identity, submissionId, now);
 }
 
+const MODERATION_SELECT_SQL = `
+COALESCE((SELECT folder FROM form_submission_moderation WHERE submission_id = submission.id AND organization_id = submission.organization_id), 'inbox') AS moderation_folder,
+COALESCE((SELECT version FROM form_submission_moderation WHERE submission_id = submission.id AND organization_id = submission.organization_id), 0) AS moderation_version,
+EXISTS(SELECT 1 FROM form_submission_moderation WHERE submission_id = submission.id AND organization_id = submission.organization_id) AS email_held`;
+
 const SUBMISSION_DETAIL_SELECT_SQL = `
 SELECT submission.id,
        submission.form_key,
@@ -1047,6 +1082,7 @@ SELECT submission.id,
        workflow.version,
        workflow.created_at,
        workflow.redacted_at,
+       ${MODERATION_SELECT_SQL},
        assignee.display_name AS assignee_display_name
 FROM form_submissions AS submission
 JOIN form_submission_workflows AS workflow
@@ -1097,7 +1133,11 @@ async function requireMutationState(
          AND workflow.canonical_status <> 'spam'
          AND (
            ? = 1
-           OR submission.assigned_to_profile_id = ?
+           OR (submission.assigned_to_profile_id = ? AND NOT EXISTS (
+             SELECT 1 FROM form_submission_moderation
+             WHERE submission_id = submission.id AND organization_id = submission.organization_id
+               AND folder <> 'inbox'
+           ))
          )
        LIMIT 1`,
     )
@@ -1563,6 +1603,10 @@ function readListItem(
   }
   const assigneeProfileId = stringValue(row.assigned_to_profile_id);
   return Object.freeze({
+    moderationFolder: SUBMISSION_MODERATION_FOLDERS.includes(row.moderation_folder as SubmissionModerationFolder)
+      ? row.moderation_folder as SubmissionModerationFolder : "inbox",
+    moderationVersion: integer(row.moderation_version) ?? 0,
+    emailHeld: row.email_held === 1,
     assignedTo: assigneeProfileId
       ? Object.freeze({
           displayName: safeDisplayName(row.assignee_display_name),

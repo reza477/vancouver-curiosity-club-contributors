@@ -531,6 +531,8 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0021_daily_meetup_maintenance.sql",
     "0022_messy_vertigo.sql",
     "0023_meetup_online_attendance.sql",
+    "0024_submission_moderation.sql",
+    "0025_public_form_deduplication.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -2003,6 +2005,11 @@ test("robots and sitemap contain only public canonical routes", async () => {
     /application\/xml|text\/xml/iu,
   );
   const sitemap = await sitemapResponse.text();
+  assert.doesNotMatch(
+    sitemap,
+    /<lastmod>/u,
+    "partial catalog timestamps and Meetup refresh times are not page-content modification dates",
+  );
   for (const path of [
     "/",
     "/events",

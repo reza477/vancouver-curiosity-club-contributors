@@ -113,6 +113,20 @@
       "when": 1788543586296,
       "tag": "0023_meetup_online_attendance",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1791071606247,
+      "tag": "0024_submission_moderation",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1791071606248,
+      "tag": "0025_public_form_deduplication",
+      "breakpoints": true
     }
   ]
 }

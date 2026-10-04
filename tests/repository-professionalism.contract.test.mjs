@@ -90,7 +90,7 @@ test("repository publishes a concise, safe, professional project surface", () =>
   assert.match(readme, /## Collaboration workflow/u);
   assert.match(development, /no reusable synthetic dev seed/u);
   assert.match(development, /Event data flow/u);
-  assert.match(development, /0008.*0023/u);
+  assert.match(development, /0008.*0025/u);
   assert.match(source("examples/README.md"), /not production/u);
   assert.doesNotMatch(development, /appg(?:dep|prj|ver)_/u);
   assert.match(development, /public contributor repository/u);

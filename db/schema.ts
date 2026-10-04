@@ -4652,6 +4652,35 @@ export const formSubmissions = sqliteTable(
   ],
 );
 
+export const formSubmissionDeduplication = sqliteTable(
+  "form_submission_deduplication",
+  {
+    submissionId: text("submission_id").primaryKey().references(() => formSubmissions.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    fingerprintHash: text("fingerprint_hash").notNull(),
+    windowStartedAt: integer("window_started_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("form_submission_deduplication_window_unique").on(table.organizationId, table.fingerprintHash, table.windowStartedAt),
+    check("form_submission_deduplication_hash_check", sql`length(${table.fingerprintHash}) = 64 AND ${table.fingerprintHash} = lower(${table.fingerprintHash}) AND ${table.fingerprintHash} NOT GLOB '*[^0-9a-f]*'`),
+    check("form_submission_deduplication_window_check", sql`${table.windowStartedAt} % 900000 = 0 AND ${table.createdAt} >= ${table.windowStartedAt} AND ${table.createdAt} < ${table.windowStartedAt} + 900000`),
+  ],
+);
+
+export const formSubmissionRetryReceipts = sqliteTable(
+  "form_submission_retry_receipts",
+  {
+    requestIdempotencyHash: text("request_idempotency_hash").primaryKey(),
+    submissionId: text("submission_id").notNull().references(() => formSubmissions.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    check("form_submission_retry_receipts_hash_check", sql`length(${table.requestIdempotencyHash}) = 64 AND ${table.requestIdempotencyHash} = lower(${table.requestIdempotencyHash}) AND ${table.requestIdempotencyHash} NOT GLOB '*[^0-9a-f]*'`),
+  ],
+);
+
 /**
  * Single-transaction proof for every Phase 7 submission create, workflow
  * mutation, assignment, and owner redaction. The intent is inserted before
@@ -4981,6 +5010,33 @@ export const formSubmissionEmailOutbox = sqliteTable(
         AND ${table.suppressedAt} IS NOT NULL
       )`,
     ),
+  ],
+);
+
+/** Recoverable folders; a historical email hold remains after restoration. */
+export const formSubmissionModeration = sqliteTable(
+  "form_submission_moderation",
+  {
+    submissionId: text("submission_id").primaryKey()
+      .references(() => formSubmissions.id, { onDelete: "restrict" }),
+    organizationId: text("organization_id").notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    folder: text("folder", { enum: ["inbox", "spam", "trash"] }).notNull(),
+    version: integer("version").notNull(),
+    reason: text("reason", { enum: ["manual", "honeypot", "index_registration_solicitation"] }).notNull(),
+    emailHoldAt: integer("email_hold_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    updatedByProfileId: text("updated_by_profile_id").references(() => profiles.id, { onDelete: "restrict" }),
+    auditId: text("audit_id").unique().references(() => auditLogs.id, { onDelete: "restrict" }),
+  },
+  (table) => [
+    index("form_submission_moderation_org_folder_idx").on(table.organizationId, table.folder, table.updatedAt),
+    check("form_submission_moderation_folder_check", sql`${table.folder} IN ('inbox', 'spam', 'trash')`),
+    check("form_submission_moderation_version_check", sql`${table.version} >= 1`),
+    check("form_submission_moderation_reason_check", sql`${table.reason} IN ('manual', 'honeypot', 'index_registration_solicitation')`),
+    check("form_submission_moderation_time_check", sql`${table.updatedAt} >= ${table.createdAt} AND ${table.emailHoldAt} = ${table.createdAt}`),
+    check("form_submission_moderation_actor_check", sql`(${table.reason} = 'manual' AND ${table.updatedByProfileId} IS NOT NULL AND ${table.auditId} IS NOT NULL) OR (${table.reason} <> 'manual' AND ${table.updatedByProfileId} IS NULL AND ${table.auditId} IS NULL AND ${table.folder} = 'spam' AND ${table.version} = 1)`),
   ],
 );
 
