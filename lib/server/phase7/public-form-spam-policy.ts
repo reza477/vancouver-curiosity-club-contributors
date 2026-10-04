@@ -17,9 +17,15 @@ export function isIndexRegistrationSolicitation(payload: PublicFormPayload): boo
   // Visitors must be able to report these campaigns or ask about their claims.
   if (/\b(?:spam|scam|phishing|suspicious|unsolicited|received|reporting)\b/iu.test(text)) return false;
   if (!/\b(?:google|bing|search index|search engine)\b/iu.test(text)) return false;
-  if (!/\b(?:submit|register|registration|listing|listed|add your|indexing service)\b/iu.test(text)) return false;
+  if (!/\b(?:submit|register|registration|list|listing|listed|add|feature|include|indexing service)\b/iu.test(text)) return false;
   const urls = text.match(/https?:\/\/[^\s<>"']+/giu) ?? [];
-  return urls.some((value) => {
+  const bareHosts = text.split(/\s+/u)
+    .map((value) => value.replace(/^[([{<"'“‘]+|[)\]}>"'”’.,!?;:]+$/gu, ""))
+    // Parse whole tokens, so email addresses, subdomains, and hostname
+    // extensions cannot accidentally match a campaign host substring.
+    .filter((value) => !value.includes("@") && /^[a-z0-9][a-z0-9.-]*(?:[/?#]|$)/iu.test(value))
+    .map((value) => `https://${value}`);
+  return [...urls, ...bareHosts].some((value) => {
     try {
       const hostname = new URL(value).hostname.toLowerCase().replace(/^www\./u, "");
       return CAMPAIGN_DOMAINS.has(hostname);

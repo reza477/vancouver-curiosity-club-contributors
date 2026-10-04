@@ -102,11 +102,23 @@ test("known registration campaigns are review signals regardless of topic while 
   const solicitation = "Register your domain in Google's search index at https://searchregister.pro/submit to get listed.";
   for (const topic of ["Privacy", "Event question", "General"]) assert.equal(isIndexRegistrationSolicitation({ ...PAYLOADS.contact, topic, message: solicitation }), true);
   for (const message of [
+    "List vancouvercuriosityclub.com in Google's Search Index and have it appear in web search results! List vancouvercuriosityclub.com today: searchregister.pro",
+    "Add vancouvercuriosityclub.com to Google's Search Index and have it appear in web search results! List vancouvercuriosityclub.com today: searchindex.pro",
+    "Submit vancouvercuriosityclub.com to Google's Search Index and have it appear in web search results! Include vancouvercuriosityclub.com today: searchregister.live",
+    "Feature vancouvercuriosityclub.com in Google's Search Index and have it appear in web search results! Include vancouvercuriosityclub.com today: helpindex.pro",
+    "Include your website in Google's Search Index today: (www.searchregister.pro).",
+  ]) assert.equal(isIndexRegistrationSolicitation({ ...PAYLOADS.contact, message }), true, message);
+  for (const message of [
     "Can we host an event about SEO? Google and Bing have useful official documentation at https://developers.google.com/search/.",
     "I received this spam asking me to register my site in Google at https://searchregister.pro/submit. Please investigate.",
     "Google does not require paid registration. Is your site indexed?",
     "Register for our event about Google search at https://example.invalid/event.",
     "Register your domain with Google at https://searchregister.pro.attacker.invalid/submit.",
+    "List your domain in Google's Search Index: sales@searchregister.pro",
+    "List your domain in Google's Search Index: searchregister.pro.attacker.invalid",
+    "List your domain in Google's Search Index: news.searchregister.pro",
+    "List your domain in Google's Search Index: not-searchregister.pro",
+    "I received a suspicious request to list our domain in Google's Search Index at searchregister.pro. Please investigate.",
     "آیا می‌توانم درباره رویداد آینده سؤال بپرسم؟",
   ]) assert.equal(isIndexRegistrationSolicitation({ ...PAYLOADS.contact, message }), false, message);
 });
