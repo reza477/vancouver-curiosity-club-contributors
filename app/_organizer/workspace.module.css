@@ -279,6 +279,11 @@
   font-weight: 430;
   letter-spacing: -0.055em;
   line-height: 0.91;
+  overflow-wrap: anywhere;
+}
+
+.pageHeader > div {
+  min-width: 0;
 }
 
 .pageHeader > div > p:last-child,
@@ -3631,7 +3636,14 @@
 
 .submissionWorkspace {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
+}
+
+.submissionWorkspace > *,
+.submissionWorkspace .panelHeading > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .submissionFolders,

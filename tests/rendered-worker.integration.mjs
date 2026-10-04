@@ -630,7 +630,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    90,
+    93,
   );
   assert.equal(
     await database
@@ -641,8 +641,18 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    202,
+    205,
   );
+  const moderationTables = await database.prepare(
+    `SELECT name FROM sqlite_master WHERE type = 'table'
+     AND name IN ('form_submission_moderation', 'form_submission_deduplication',
+                  'form_submission_retry_receipts') ORDER BY name`,
+  ).all();
+  assert.deepEqual(moderationTables.results.map((row) => row.name), [
+    "form_submission_deduplication",
+    "form_submission_moderation",
+    "form_submission_retry_receipts",
+  ]);
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
     [],
@@ -2072,7 +2082,7 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
          (SELECT count(*)
           FROM public_form_rate_windows
           WHERE organization_id = ?
-            AND id IN (?, ?, ?)) AS rate_window_count,
+            AND id IN (?, ?, ?, ?, ?)) AS rate_window_count,
          (SELECT count(*)
           FROM import_batch_details AS detail
           JOIN import_rows AS row
@@ -2140,7 +2150,7 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
       meetup_source_count: 1,
       note_count: 1,
       preview_row_count: 2,
-      rate_window_count: 3,
+      rate_window_count: 5,
       submission_count: 1,
     },
   );
@@ -4250,14 +4260,27 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
   });
   const rateScopeRows = await database
     .prepare(
-      `SELECT id, scope_key
+      `SELECT id, action, scope_key
        FROM public_form_rate_windows
        WHERE organization_id = ?
        ORDER BY action`,
     )
     .bind(ORGANIZATION_ID)
     .all();
-  assert.equal(rateScopeRows.results?.length, 3);
+  // Client and reply-address scopes each have 15-minute and daily windows,
+  // alongside the shared organization-hour limit.
+  assert.equal(rateScopeRows.results?.length, 5);
+  assert.deepEqual(
+    rateScopeRows.results.map((row) => row.action),
+    [
+      "public_form_organization_hour",
+      "public_form_scope_15m",
+      "public_form_scope_15m",
+      "public_form_scope_day",
+      "public_form_scope_day",
+    ],
+  );
+  assert.equal(new Set(rateScopeRows.results.map((row) => row.scope_key)).size, 3);
   for (const row of rateScopeRows.results ?? []) {
     phase7PrivateRateWindowIds.push(row.id);
     if (typeof row.scope_key === "string") {
