@@ -15,7 +15,7 @@ const expectedFeedback = {
   fourStarRatingCount: 69,
   ratingsVerificationDate: "October 5, 2026",
   quotesVerificationDate: "August 30, 2026",
-  communityMembershipSummary: "Over 10,000 members across our Meetup groups.",
+  communityMembershipSummary: "Over 10,000 combined memberships across our Meetup groups.",
   quotes: [
     {
       comment:
