@@ -283,10 +283,13 @@ export function HomePageRenderer({
             {`${PUBLIC_HOME_PARTICIPANT_FEEDBACK.rating.toFixed(1)} out of ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingScale} on Meetup`}
           </p>
           <p className="home-feedback__counts">
-            {`${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingCount} ratings · ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.fiveStarRatingCount} five-star ratings`}
+            {`About ${Math.ceil((PUBLIC_HOME_PARTICIPANT_FEEDBACK.fiveStarRatingCount + PUBLIC_HOME_PARTICIPANT_FEEDBACK.fourStarRatingCount) / 100) * 100} positive reviews`}
+          </p>
+          <p className="home-feedback__counts">
+            {PUBLIC_HOME_PARTICIPANT_FEEDBACK.communityMembershipSummary}
           </p>
           <p className="home-feedback__source">
-            {`Meetup ratings and feedback verified ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.verificationDate}.`}
+            {`Meetup ratings verified ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingsVerificationDate}.`}
           </p>
           <a
             className="home-feedback__link"

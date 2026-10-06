@@ -161,7 +161,7 @@ test("Home permits only the verified Meetup feedback dataset while About stays c
 
   assert.match(feedbackSection, /PUBLIC_HOME_PARTICIPANT_FEEDBACK\.quotes\.map/u);
   assert.match(feedbackSection, /<blockquote\b/u);
-  assert.match(participantFeedback, /verificationDate:\s*"August 30, 2026"/u);
+  assert.match(participantFeedback, /quotesVerificationDate:\s*"August 30, 2026"/u);
   assert.doesNotMatch(
     attendeeProofSurfaces,
     /<blockquote\b|<q\b|data-(?:attendee-)?testimonial|data-attendee-quote/iu,

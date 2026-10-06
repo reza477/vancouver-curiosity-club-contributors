@@ -3,9 +3,12 @@ export const PUBLIC_HOME_PARTICIPANT_FEEDBACK = {
   meetupGroupUrl: "https://www.meetup.com/vancouver-meetup-group/",
   rating: 4.9,
   ratingScale: 5,
-  ratingCount: 471,
-  fiveStarRatingCount: 415,
-  verificationDate: "August 30, 2026",
+  ratingCount: 594,
+  fiveStarRatingCount: 525,
+  fourStarRatingCount: 69,
+  ratingsVerificationDate: "October 5, 2026",
+  quotesVerificationDate: "August 30, 2026",
+  communityMembershipSummary: "Over 10,000 members across our Meetup groups.",
   quotes: [
     {
       comment:

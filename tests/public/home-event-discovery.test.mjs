@@ -54,10 +54,11 @@ test("Home renders the approved institutional story in the exact section order",
   const feedback = homeSection(markup, "participant-feedback");
   assert.match(feedback, />What participants say\.<\/h2>/u);
   assert.match(feedback, />4\.9 out of 5 on Meetup<\/p>/u);
-  assert.match(feedback, />471 ratings · 415 five-star ratings<\/p>/u);
+  assert.match(feedback, />About 600 positive reviews<\/p>/u);
+  assert.match(feedback, />Over 10,000 members across our Meetup groups\.<\/p>/u);
   assert.match(
     feedback,
-    />Meetup ratings and feedback verified August 30, 2026\.<\/p>/u,
+    />Meetup ratings verified October 5, 2026\.<\/p>/u,
   );
   assert.equal((feedback.match(/<blockquote\b/gu) ?? []).length, 3);
   for (const comment of [
