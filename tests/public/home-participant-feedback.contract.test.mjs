@@ -10,9 +10,12 @@ const expectedFeedback = {
   meetupGroupUrl: "https://www.meetup.com/vancouver-meetup-group/",
   rating: 4.9,
   ratingScale: 5,
-  ratingCount: 471,
-  fiveStarRatingCount: 415,
-  verificationDate: "August 30, 2026",
+  ratingCount: 594,
+  fiveStarRatingCount: 525,
+  fourStarRatingCount: 69,
+  ratingsVerificationDate: "October 5, 2026",
+  quotesVerificationDate: "August 30, 2026",
+  communityMembershipSummary: "Over 10,000 combined memberships across our Meetup groups.",
   quotes: [
     {
       comment:
@@ -70,7 +73,7 @@ test("Home feedback has an asymmetric continuous layout and a mobile stack", asy
 
   assert.match(
     css,
-    /\.home-feedback\s*\{[^}]*background:\s*var\(--blue-surface\);[^}]*grid-template-columns:\s*minmax\(14rem, 0\.52fr\) minmax\(0, 1\.48fr\);/su,
+    /\.home-feedback\s*\{[^}]*background:\s*var\(--paper\);[^}]*border-block:\s*1px solid var\(--line\);[^}]*grid-template-columns:\s*minmax\(14rem, 0\.52fr\) minmax\(0, 1\.48fr\);/su,
   );
   assert.match(
     css,

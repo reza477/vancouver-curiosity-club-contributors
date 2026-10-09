@@ -6,17 +6,7 @@ import {
 } from "@/app/_components/EditorialPage";
 import { ContactRouteBody } from "@/app/_components/EditorialRouteBodies";
 import { PublicSubmissionForm } from "@/app/_components/PublicSubmissionForm";
-import { getRuntimeAuthConfiguration } from "@/lib/server/auth/runtime";
-import { readServerUtcMs } from "@/lib/server/clock";
-import { ensureDatabaseInvariants } from "@/lib/server/database/invariants";
-import { getRequestPublicOrganization } from "@/lib/server/public/request-cache";
-import type { PublicFormKey } from "@/lib/server/phase7/public-form-contract";
-import {
-  createPublicFormInstanceToken,
-  ensurePublicFormProtectionKey,
-  readPublicFormProtectionKey,
-} from "@/lib/server/phase7/public-form-protection";
-import { writeSafeLog } from "@/lib/validation/server-observability";
+import { preparePublicFormInstance } from "@/lib/server/phase7/public-form-instance";
 
 const route = "/contact";
 const slug = "contact";
@@ -64,42 +54,4 @@ export default async function ContactPage({
       />
     </ContactRouteBody>
   );
-}
-
-async function preparePublicFormInstance(
-  formKey: PublicFormKey,
-): Promise<string | null> {
-  try {
-    const { database } = getRuntimeAuthConfiguration();
-    const organization = await getRequestPublicOrganization(database);
-    if (!organization) return null;
-    const nowUtcMs = readServerUtcMs();
-    let keyHex = await readPublicFormProtectionKey(
-      database,
-      organization.id,
-    );
-    if (keyHex === null) {
-      const invariantStatus = await ensureDatabaseInvariants(database);
-      if (invariantStatus !== "ready") return null;
-      keyHex = await ensurePublicFormProtectionKey(
-        database,
-        organization.id,
-        nowUtcMs,
-      );
-    }
-    const { token } = await createPublicFormInstanceToken(
-      keyHex,
-      formKey,
-      nowUtcMs,
-    );
-    return token;
-  } catch {
-    writeSafeLog("error", "public_contact_form_instance_unavailable", {
-      code: "service_unavailable",
-      operation: "prepare_public_contact_form",
-      route,
-      status: 503,
-    });
-    return null;
-  }
 }

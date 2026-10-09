@@ -59,7 +59,7 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /\.home-partnerships__opportunities li::marker\s*\{[^}]*color:\s*var\(--amber\);/su,
+    /\.home-partnerships__opportunities li::marker\s*\{[^}]*color:\s*var\(--accent\);/su,
   );
   const partnershipItemRule = css.match(
     /\.home-partnerships__opportunities li\s*\{([^}]*)\}/su,
@@ -106,11 +106,11 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /\.home-programs\s*\{[^}]*background:\s*var\(--coral-strong\);[^}]*color:\s*var\(--warm-surface-inverse\);/su,
+    /\.home-programs\s*\{[^}]*background:\s*var\(--paper\);[^}]*color:\s*var\(--ink\);/su,
   );
   assert.match(
     css,
-    /@media \(scripting: enabled\) and \(min-width: 64rem\) and \(min-height: 42rem\) and \(prefers-reduced-motion: no-preference\)[\s\S]*?\.home-work__grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.16fr\) minmax\(22rem,\s*0\.84fr\);/u,
+    /@media \(scripting: enabled\) and \(min-width: 64rem\) and \(min-height: 42rem\) and \(prefers-reduced-motion: no-preference\)[\s\S]*?\.home-work__grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.3fr\) minmax\(20rem,\s*0\.7fr\);/u,
   );
   assert.match(
     css,
@@ -130,15 +130,15 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /\.home-impact__statement h2\s*\{[^}]*font-size:\s*clamp\(3\.4rem, 6\.6vw, 7rem\);/su,
+    /\.home-impact__statement h2\s*\{[^}]*font-size:\s*clamp\(2rem, 3vw, 2\.85rem\);/su,
   );
   assert.match(
     css,
-    /\.home-impact__sequence\s*\{[^}]*border:\s*1px solid var\(--ink\);[^}]*border-inline-start:\s*0\.35rem solid var\(--coral-strong\);/su,
+    /\.home-impact__sequence\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1\.15fr\);/su,
   );
   assert.match(
     css,
-    /\.home-impact__sequence li \+ li\s*\{[^}]*border-top:\s*1px solid var\(--ink\);/su,
+    /\.home-impact__sequence li::before\s*\{[^}]*height:\s*1px;/su,
   );
   assert.match(
     css,
@@ -146,11 +146,11 @@ test("Home uses shared spacing and compact responsive fallbacks", async () => {
   );
   assert.match(
     css,
-    /\.home-community:is\(:hover, :focus-within\)\s*\{[^}]*flex-grow:\s*2\.35;/su,
+    /\.home-community:is\(:hover, :focus-within\)\s*\{[^}]*flex-grow:\s*1\.8;/su,
   );
   assert.match(
     css,
-    /\.home-community:first-child \.home-community__details,[\s\S]*?\.home-community:is\(:hover, :focus-within\) \.home-community__details\s*\{[^}]*grid-template-rows:\s*1fr;/u,
+    /\.home-community__details\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\);/u,
   );
   assert.match(
     css,

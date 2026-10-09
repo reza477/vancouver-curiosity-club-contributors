@@ -346,8 +346,22 @@ test("runtime invariant SQL compiles and executes through real D1", async () => 
     }
     assert.equal(
       operations.size,
-      168,
-      "Phase 7 adds 36 new guarded table-operation activation families",
+      175,
+      "Moderation adds seven activation families: three folder operations, two deduplication operations and two retry-receipt operations",
+    );
+    assert.deepEqual(
+      [...operations.keys()].filter((key) =>
+        /^(?:form_submission_moderation|form_submission_deduplication|form_submission_retry_receipts)\|/u.test(key),
+      ).sort(),
+      [
+        "form_submission_deduplication|INSERT",
+        "form_submission_deduplication|UPDATE",
+        "form_submission_moderation|DELETE",
+        "form_submission_moderation|INSERT",
+        "form_submission_moderation|UPDATE",
+        "form_submission_retry_receipts|INSERT",
+        "form_submission_retry_receipts|UPDATE",
+      ],
     );
 
     await request(

@@ -5,7 +5,9 @@ import {
   loadOrganizerPageContext,
 } from "@/app/_organizer/access";
 import { OrganizerPageState } from "@/app/_organizer/OrganizerRouteState";
-import { PageHeader, StatusPill } from "@/app/_organizer/PageHeader";
+import { PageHeader } from "@/app/_organizer/PageHeader";
+import { SubmissionInbox } from "@/app/_organizer/SubmissionInbox";
+import { SUBMISSION_MODERATION_FOLDERS } from "@/lib/submission-moderation-contract";
 import {
   PUBLIC_FORM_KEYS,
   publicFormLabel,
@@ -38,6 +40,7 @@ export default async function OrganizerSubmissionsPage({
       loaded.context.identity,
       {
         assignment: scalar(params.assignment),
+        folder: scalar(params.folder),
         fromDate: scalar(params.from),
         formKey: scalar(params.form),
         page: scalar(params.page),
@@ -69,6 +72,9 @@ export default async function OrganizerSubmissionsPage({
       </>
     );
   }
+  const manager = loaded.context.membership.role !== "organizer";
+  const folder = manager && scalar(params.folder) === "spam" ? "spam"
+    : manager && scalar(params.folder) === "trash" ? "trash" : "inbox";
   return (
     <>
       <PageHeader
@@ -80,7 +86,15 @@ export default async function OrganizerSubmissionsPage({
         }
         title="Submissions"
       />
+      {manager ? <nav className={styles.submissionFolders} aria-label="Submission folders">
+        {SUBMISSION_MODERATION_FOLDERS.map((option) => <Link
+          key={option}
+          aria-current={folder === option ? "page" : undefined}
+          href={`/organizer/submissions?folder=${option}`}
+        >{statusLabel(option)}</Link>)}
+      </nav> : null}
       <form className={styles.calendarFilters} method="get">
+        <input type="hidden" name="folder" value={folder} />
         <div>
           <label className={styles.fieldWide}>
             <span>Search reference or form type</span>
@@ -154,42 +168,10 @@ export default async function OrganizerSubmissionsPage({
         </p>
       </div>
       {page.items.length ? (
-        <ol className={styles.recordList}>
-          {page.items.map((item) => (
-            <li key={item.id}>
-              <Link href={`/organizer/submissions/${encodeURIComponent(item.id)}`}>
-                <strong>
-                  {publicFormLabel(item.formKey)} · {item.publicReference}
-                </strong>
-                <span>
-                  {formatDateTime(item.createdAt)} ·{" "}
-                  {item.assignedTo
-                    ? `Assigned to ${item.assignedTo.displayName}`
-                    : "Unassigned"}
-                </span>
-                <small>
-                  <StatusPill
-                    tone={
-                      item.status === "responded"
-                        ? "green"
-                        : item.status === "in_review"
-                          ? "blue"
-                          : item.status === "archived"
-                            ? "neutral"
-                            : "amber"
-                    }
-                  >
-                    {statusLabel(item.status)}
-                  </StatusPill>
-                  {item.retentionDue ? " · Retention review due" : ""}
-                </small>
-              </Link>
-            </li>
-          ))}
-        </ol>
+        <SubmissionInbox key={JSON.stringify([folder, page.page, ...["q", "form", "status", "assignment", "from", "to"].map((key) => scalar(params[key]) ?? "")])} items={page.items} manager={manager} folder={folder} />
       ) : (
         <OrganizerPageState
-          detail="Try a different bounded filter. Spam receipts are not shown in the ordinary inbox."
+          detail={folder === "inbox" ? "Try different filters, or review Spam and Trash if you manage this inbox." : "Nothing matches these filters. Content moved here can be restored to Inbox."}
           heading="No matching submissions."
           tone="quiet"
         />
@@ -225,14 +207,6 @@ function statusLabel(value: string): string {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
 
-function formatDateTime(value: number): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "America/Vancouver",
-  }).format(new Date(value));
-}
-
 function pageHref(
   params: Awaited<SearchParams>,
   page: number,
@@ -240,6 +214,7 @@ function pageHref(
   const next = new URLSearchParams();
   for (const key of [
     "q",
+    "folder",
     "form",
     "status",
     "assignment",

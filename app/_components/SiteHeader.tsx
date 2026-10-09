@@ -4,6 +4,7 @@ import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
+import { PUBLIC_ARTWORK_MOTION_ENABLED } from "@/lib/public-artwork-motion";
 
 const requiredNavigation = [
   { href: "/events", label: "Events" },
@@ -53,6 +54,7 @@ export function SiteHeader({
         className="wordmark"
         href="/"
         aria-label={`${brandName} home`}
+        onClick={closeMobileMenu}
         prefetch={prefetchInternalLinks}
       >
         {logoAssetId ? (
@@ -116,6 +118,50 @@ function NavigationLinks({
   prefetchInternalLinks: boolean;
 }>) {
   const pathname = usePathname();
+  useEffect(() => {
+    const nav = document.getElementById("primary-navigation");
+    if (!nav || !PUBLIC_ARTWORK_MOTION_ENABLED) return;
+    let disposed = false;
+    let frame = 0;
+    let hovered: HTMLElement | null = null;
+    const update = () => {
+      if (disposed) return;
+      const focused = nav.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+      const target = hovered ?? focused?.closest<HTMLElement>("a") ?? nav.querySelector<HTMLElement>('[aria-current="page"]');
+      nav.dataset.indicatorReady = "true";
+      nav.dataset.indicatorVisible = String(!!target);
+      if (!target) return;
+      const bounds = target.getBoundingClientRect();
+      const root = nav.getBoundingClientRect();
+      nav.style.setProperty("--nav-indicator-x", `${bounds.left - root.left + 12}px`);
+      nav.style.setProperty("--nav-indicator-width", `${Math.max(12, bounds.width - 24)}px`);
+    };
+    const queue = () => { if (disposed) return; cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    const point = (event: PointerEvent) => {
+      hovered = event.target instanceof Element ? event.target.closest<HTMLElement>("a") : null;
+      queue();
+    };
+    const leave = () => { hovered = null; queue(); };
+    nav.addEventListener("pointerover", point);
+    nav.addEventListener("pointerleave", leave);
+    nav.addEventListener("focusin", leave);
+    nav.addEventListener("focusout", queue);
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(queue);
+    resize?.observe(nav);
+    void document.fonts.ready.then(queue);
+    update();
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      resize?.disconnect();
+      nav.removeEventListener("pointerover", point);
+      nav.removeEventListener("pointerleave", leave);
+      nav.removeEventListener("focusin", leave);
+      nav.removeEventListener("focusout", queue);
+      delete nav.dataset.indicatorReady;
+      delete nav.dataset.indicatorVisible;
+    };
+  }, [pathname]);
   return (
     <>
       {navigation.map((item) => {

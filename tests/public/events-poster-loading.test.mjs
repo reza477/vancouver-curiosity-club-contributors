@@ -77,6 +77,11 @@ test("event loading frames use a zero-request branded placeholder", async () => 
   )?.[1];
 
   assert.ok(frameRule, "the shared event-poster frame rule must exist");
+  assert.match(
+    frameRule,
+    /display:\s*block;/u,
+    "clickable poster frames need a block box so reveal clipping includes the whole image",
+  );
   assert.match(frameRule, /background-image:\s*linear-gradient\(/u);
   assert.doesNotMatch(frameRule, /background:\s*var\(--ink\)|url\(/u);
   assert.match(

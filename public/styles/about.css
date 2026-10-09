@@ -1,4 +1,4 @@
-/* Route-scoped institutional About presentation. */
+/* Editorial profile: a readable mission, real posters, and an open masthead. */
 .about-page {
   width: 100%;
   --public-section-space: clamp(2rem, 3.8vw, 3.5rem);
@@ -9,9 +9,10 @@
 }
 
 .about-page h2 {
-  max-width: 18ch;
-  font-size: clamp(2.15rem, 3.4vw, 3.45rem);
-  line-height: 1.02;
+  max-width: 23ch;
+  font-size: clamp(2rem, 2.8vw, 2.75rem);
+  letter-spacing: -0.03em;
+  line-height: 1.12;
 }
 
 .about-page h3 {
@@ -24,6 +25,7 @@
 }
 
 .about-hero,
+.about-legal,
 .about-board,
 .about-model,
 .about-evidence,
@@ -52,10 +54,10 @@
   max-width: none;
   margin: 0 0 clamp(1.25rem, 2vw, 1.75rem);
   font-family: var(--display);
-  font-size: var(--public-page-title);
+  font-size: clamp(2.75rem, 4vw, 3.75rem);
   font-weight: 400;
-  letter-spacing: -0.06em;
-  line-height: 0.98;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
   text-align: center;
 }
 
@@ -91,9 +93,11 @@
 }
 
 .about-artwork-strip {
-  border-bottom: 1px solid var(--line);
-  background: var(--ink);
+  background: var(--paper);
   grid-template-columns: minmax(0, 1.32fr) minmax(0, 0.86fr) minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(1rem, 2vw, 2rem);
+  padding: 0 var(--public-gutter) var(--public-section-space);
   min-width: 0;
   display: grid;
   overflow: hidden;
@@ -106,13 +110,17 @@
 }
 
 .about-artwork-strip figure:not(:last-child) {
-  border-right: 1px solid var(--paper);
+  border-right: 0;
+}
+
+.about-artwork-strip figure:nth-child(2) {
+  margin-top: clamp(1rem, 3vw, 3rem);
 }
 
 .about-artwork-strip picture {
-  align-content: center;
+  align-content: start;
   min-height: 0;
-  background: var(--ink);
+  background: var(--paper);
   display: grid;
   overflow: hidden;
 }
@@ -125,16 +133,17 @@
 }
 
 .about-artwork-strip figcaption {
-  border-top: 1px solid var(--paper);
-  background: var(--ink);
-  color: var(--paper);
-  padding: 0.65rem 0.8rem;
-  font-family: var(--mono);
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  padding: 0.65rem 0;
+  font-family: var(--sans);
   font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
+.about-legal,
 .about-board,
 .about-model,
 .about-communities,
@@ -147,6 +156,35 @@
 
 .about-standards__body {
   max-width: 64rem;
+}
+
+.about-legal {
+  scroll-margin-top: 2rem;
+}
+
+.about-legal__body {
+  min-width: 0;
+  max-width: 48rem;
+  line-height: 1.65;
+}
+
+.about-legal__details {
+  margin: 1.5rem 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.about-legal__details > div {
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.about-legal__details dt {
+  font-weight: 650;
+}
+
+.about-legal__details dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
 }
 
 .about-board__list {
@@ -173,6 +211,9 @@
 
 .about-board__list h3 {
   margin-bottom: 0;
+  font-family: var(--display);
+  font-size: clamp(1.3rem, 1.8vw, 1.65rem);
+  font-weight: 400;
 }
 
 .about-board__list p {
@@ -183,7 +224,7 @@
 }
 
 .about-model {
-  background: var(--paper-deep);
+  background: var(--paper);
 }
 
 .about-model__steps {
@@ -329,7 +370,8 @@
 }
 
 .about-standards__body ul {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1.5rem;
   margin: 0;
   padding: 0;
   border-top: 1px solid var(--line);
@@ -342,12 +384,12 @@
 }
 
 .about-standards__body li:not(:last-child) {
-  border-right: 1px solid var(--line);
+  border-right: 0;
 }
 
 .about-standards__body a {
-  min-height: 4.5rem;
-  padding: 0.9rem;
+  min-height: 3.5rem;
+  padding: 0.8rem 0;
   align-items: center;
   font-weight: 650;
   display: flex;
@@ -411,6 +453,7 @@
 
 @media (max-width: 62rem) {
   .about-hero,
+  .about-legal,
   .about-board,
   .about-model,
   .about-evidence__copy,
@@ -431,6 +474,7 @@
 
 @media (max-width: 44rem) {
   .about-hero,
+  .about-legal,
   .about-board,
   .about-model,
   .about-evidence,
@@ -449,6 +493,10 @@
 
   .about-artwork-strip {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .about-artwork-strip figure:nth-child(2) {
+    margin-top: 0;
   }
 
   .about-artwork-strip figure:not(:last-child) {

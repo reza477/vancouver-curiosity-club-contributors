@@ -425,7 +425,7 @@ test("cold public certification converges with explicit statement headroom", asy
       }),
     ),
     {
-      counts: { batchLengths: [30], statementCount: 38 },
+      counts: { batchLengths: [38], statementCount: 46 },
       status: "repaired",
     },
     {
@@ -544,6 +544,8 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
     empty,
     "empty v6 convergence",
   );
+  // Eight new moderation/deduplication triggers fit in the final install slice;
+  // certification still retains the same hard 50-statement request cap.
   const expectedEmptyTrace = [
     ...Array.from(
       { length: 6 },
@@ -553,7 +555,7 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
       }),
     ),
     {
-      counts: { batchLengths: [24], statementCount: 31 },
+      counts: { batchLengths: [32], statementCount: 39 },
       status: "repaired",
     },
     {
@@ -719,7 +721,7 @@ test("empty and twelve-record legacy-attribution upgrades converge to an observe
       }),
     ),
     {
-      counts: { batchLengths: [24], statementCount: 31 },
+      counts: { batchLengths: [32], statementCount: 39 },
       status: "repaired",
     },
     {
@@ -913,7 +915,7 @@ test("cold, healthy, missing, and ordinary mismatch paths stay under the D1 stat
     { batchLengths: [39], statementCount: 46 },
     { batchLengths: [39], statementCount: 46 },
     { batchLengths: [39], statementCount: 46 },
-    { batchLengths: [24], statementCount: 31 },
+    { batchLengths: [32], statementCount: 39 },
     { batchLengths: [26], statementCount: 35 },
   ];
   for (const [index, expectedCounts] of expectedColdTrace.entries()) {

@@ -5,7 +5,13 @@
  * executable within Cloudflare D1's SQL parser and statement limits.
  */
 
+import { SUBMISSION_MODERATION_TRIGGER_STATEMENTS, SUBMISSION_MODERATION_COUNT_SQL } from "./submission-moderation-invariant-sql";
+
+import { FORM_SUBMISSION_DEDUPLICATION_TRIGGER_STATEMENTS, FORM_SUBMISSION_DEDUPLICATION_COUNT_SQL } from "./form-submission-deduplication-invariant-sql";
+
 export const PHASE7_INVARIANT_TRIGGER_STATEMENTS = Object.freeze([
+  ...SUBMISSION_MODERATION_TRIGGER_STATEMENTS,
+  ...FORM_SUBMISSION_DEDUPLICATION_TRIGGER_STATEMENTS,
   String.raw`
 CREATE TRIGGER IF NOT EXISTS form_submission_write_intents_phase7_before_insert
 BEFORE INSERT ON form_submission_write_intents
@@ -73,6 +79,7 @@ BEGIN
                actor.role IN ('owner', 'administrator')
                OR (
                  actor.role = 'organizer'
+                 AND NOT EXISTS (SELECT 1 FROM form_submission_moderation WHERE submission_id = submission.id AND organization_id = submission.organization_id AND folder <> 'inbox')
                  AND submission.assigned_to_profile_id = actor.profile_id
                  AND (
                    (workflow.canonical_status = 'new'
@@ -534,6 +541,7 @@ BEGIN
           membership.role IN ('owner', 'administrator')
           OR (
             membership.role = 'organizer'
+            AND NOT EXISTS (SELECT 1 FROM form_submission_moderation WHERE submission_id = submission.id AND organization_id = submission.organization_id AND folder <> 'inbox')
             AND submission.assigned_to_profile_id = membership.profile_id
           )
         )
@@ -2826,4 +2834,6 @@ FROM (
         AND outbox.organization_id = submission.organization_id
     )
 ) AS count_group`,
+  ...SUBMISSION_MODERATION_COUNT_SQL,
+  ...FORM_SUBMISSION_DEDUPLICATION_COUNT_SQL,
 ]);

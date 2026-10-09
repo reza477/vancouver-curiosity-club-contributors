@@ -18,7 +18,7 @@ import {
   createCsvImportPreview,
   inspectCsvImportUpload,
 } from "../lib/server/phase7/imports.ts";
-import { ensurePublicFormProtectionKey } from "../lib/server/phase7/public-form-protection.ts";
+import { createPublicFormInstanceToken, ensurePublicFormProtectionKey } from "../lib/server/phase7/public-form-protection.ts";
 import { submitPublicForm } from "../lib/server/phase7/public-forms.ts";
 import { appendFormSubmissionNote } from "../lib/server/phase7/submissions.ts";
 import { ensurePublicCatalog } from "../lib/server/public/catalog.ts";
@@ -92,6 +92,7 @@ const PRIVATE_SENTINELS = [
   "PHASE7_PRIVATE_R2_OBJECT_KEY_SENTINEL",
 ];
 const phase7DynamicPrivateSentinels = [];
+const phase7PrivateRateWindowIds = [];
 const phase7PrivateIds = Object.seal({
   importBatchId: null,
   mediaAssetId: "phase7-private-media",
@@ -164,6 +165,46 @@ async function fetchPath(path, init) {
     headers,
   });
 }
+
+test("Home and both Events views expose completed core content without JavaScript", async () => {
+  for (const [path, content] of [
+    ["/", /Building community through curiosity/u],
+    ["/events", /Find a gathering/u],
+    ["/events?view=calendar&month=2026-07", /Find a gathering/u],
+  ]) {
+    const response = await fetchPath(path);
+    assert.equal(response.status, 200, path);
+    const html = await response.text();
+    assert.match(html, content, path);
+    assert.doesNotMatch(html, /<div\b[^>]*\bhidden(?:="")?[^>]*\bid="S:/u,
+      `${path}: completed content must not need React's JavaScript to leave a hidden streaming segment`);
+    assert.doesNotMatch(html, /<template\b[^>]*\bid="B:|Loading (?:events|the next page)/u,
+      `${path}: the response must contain the usable page rather than a pending route shell`);
+  }
+});
+
+test("built native form recovery preserves same-origin retries and strict private headers", async () => {
+  const database = await runtime.getD1Database("DB");
+  const keyHex = await ensurePublicFormProtectionKey(database, ORGANIZATION_ID, Date.now());
+  const { token } = await createPublicFormInstanceToken(keyHex, "volunteer", Date.now() - 4_000);
+  const fields = new URLSearchParams({ instanceToken:token, companyFax:"", name:"Local worker fixture",
+    replyEmail:"worker-native@example.invalid", howToHelp:"Synthetic validation fixture only." });
+  const response = await fetchPath("/api/forms/volunteer", {
+    method:"POST", headers:{origin:"https://preview.example","content-type":"application/x-www-form-urlencoded"},body:fields.toString(),
+  });
+  assert.equal(response.status,422);
+  assert.equal(response.headers.get("referrer-policy"),"same-origin");
+  assert.equal(response.headers.get("cache-control"),"private, no-store, max-age=0");
+  assert.equal(response.headers.get("x-robots-tag"),"noindex, nofollow, noarchive");
+  assert.match(response.headers.get("content-security-policy"),/form-action 'self'/u);
+  const html=await response.text();
+  assert.match(html,/<form[^>]*action="\/api\/forms\/volunteer"/u);
+  assert.match(html,/Synthetic validation fixture only\./u);
+  const opaqueOrigin = await fetchPath("/api/forms/volunteer", {
+    method:"POST",headers:{origin:"null","sec-fetch-site":"same-origin","content-type":"application/x-www-form-urlencoded"},body:fields.toString(),
+  });
+  assert.equal(opaqueOrigin.status,403,"opaque origins remain rejected even with a claimed same-origin fetch site");
+});
 
 test("production redirects preserve the raw path and run before database work", async () => {
   const edgeOnlyRuntime = createBuiltRuntime(new CapturingLog(LogLevel.WARN), {
@@ -490,6 +531,8 @@ test("the packaged migration contract installs and enforces the exact runtime gu
     "0021_daily_meetup_maintenance.sql",
     "0022_messy_vertigo.sql",
     "0023_meetup_online_attendance.sql",
+    "0024_submission_moderation.sql",
+    "0025_public_form_deduplication.sql",
   ]);
   for (const file of packagedMigrations) {
     const sql = await readFile(join(packagedMigrationDirectory, file), "utf8");
@@ -587,7 +630,7 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND name NOT LIKE '_cf_%'`,
       )
       .first("count"),
-    90,
+    93,
   );
   assert.equal(
     await database
@@ -598,8 +641,18 @@ test("the packaged migration contract installs and enforces the exact runtime gu
            AND sql IS NOT NULL`,
       )
       .first("count"),
-    202,
+    205,
   );
+  const moderationTables = await database.prepare(
+    `SELECT name FROM sqlite_master WHERE type = 'table'
+     AND name IN ('form_submission_moderation', 'form_submission_deduplication',
+                  'form_submission_retry_receipts') ORDER BY name`,
+  ).all();
+  assert.deepEqual(moderationTables.results.map((row) => row.name), [
+    "form_submission_deduplication",
+    "form_submission_moderation",
+    "form_submission_retry_receipts",
+  ]);
   assert.deepEqual(
     (await database.prepare("PRAGMA foreign_key_check").all()).results,
     [],
@@ -765,7 +818,8 @@ test("the built public root is indexable and carries the production security con
     "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
   ];
-  assert.equal((html.match(/class="home-hero__deck"/gu) ?? []).length, 3);
+  assert.equal((html.match(/class="home-hero__deck"/gu) ?? []).length, 4);
+  assert.match(html, /<p class="home-hero__deck">Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization\.<\/p>/u);
   for (const paragraph of missionParagraphs)
     assert.ok(html.includes(paragraph));
   assert.match(html, />Explore our work<\/a>/u);
@@ -795,7 +849,7 @@ test("the built public root is indexable and carries the production security con
   for (const [section, layout] of [
     ["hero", "(?:image-led-split|text-only-statement)"],
     ["at-a-glance", "compact-editorial-index"],
-    ["programs", "full-width-colour"],
+    ["programs", "editorial-program-index"],
     ["work-in-action", "living-poster-stage"],
     ["participant-feedback", "asymmetric-editorial-feedback"],
     ["why-it-matters", "large-statement"],
@@ -1307,7 +1361,8 @@ test("the built About page renders the exact shared mission and metadata", async
       html,
     )?.[1];
   assert.ok(introduction, "About must render its mission introduction");
-  assert.equal((introduction.match(/<p>/gu) ?? []).length, 3);
+  assert.equal((introduction.match(/<p>/gu) ?? []).length, 4);
+  assert.match(introduction, /<p>Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization\.<\/p>/u);
   let lastParagraphPosition = -1;
   for (const paragraph of missionParagraphs) {
     const position = introduction.indexOf(paragraph);
@@ -1321,6 +1376,22 @@ test("the built About page renders the exact shared mission and metadata", async
   ]) {
     assert.ok(html.includes(metadata), metadata);
   }
+  const legalInformation = /<section(?=[^>]*\bid="legal-information")(?=[^>]*\baria-labelledby="about-legal-title")[^>]*>([\s\S]*?)<\/section>/u.exec(html)?.[1];
+  assert.ok(legalInformation, "About must expose the legal information linked from the footer");
+  for (const copy of [
+    "Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit society incorporated in British Columbia, Canada.",
+    "This website, vancouvercuriosityclub.com, is operated by Vancouver Curiosity and Education Society and is the official website for its Vancouver Curiosity Club program.",
+    "Legal name:",
+    "Vancouver Curiosity and Education Society",
+    "B.C. society incorporation number:",
+    "S0085718",
+    "Organization email:",
+    "Location:",
+    "North Vancouver, British Columbia, Canada",
+  ]) {
+    assert.ok(legalInformation.includes(copy), copy);
+  }
+  assert.match(legalInformation, /<a href="mailto:reza@vancouvercuriosityclub\.com">reza@vancouvercuriosityclub\.com<\/a>/u);
   assertSharedChrome(html);
   assertNoPrivateSentinels(html);
 });
@@ -1337,6 +1408,7 @@ test("the built For Organizations hero shows public proof and an immediate partn
     )?.[0];
 
   assert.ok(hero, "For Organizations must render its partnership hero");
+  assert.match(hero, /Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization\./u);
   assert.match(
     hero,
     /<h1 id="organizations-title">Build thoughtful public programs with us<\/h1>/u,
@@ -1491,19 +1563,12 @@ test("public form routes render editable fields immediately while secure send pr
         new RegExp(`\\bdata-form-key="${escapeRegex(formKey)}"`, "u"),
         `${path} form key`,
       );
-      if (path === "/contact") {
-        assert.doesNotMatch(
-          formSection,
-          /<noscript>|without JavaScript/iu,
-          `${path} protected no-script form must not expose transport details`,
-        );
-      } else {
-        assert.match(
-          formSection,
-          /<noscript>[\s\S]*form is unavailable in this browser[\s\S]*Your information has not been sent\.[\s\S]*Please try again later\.[\s\S]*<\/noscript>/u,
-          `${path} no-script safety notice`,
-        );
-      }
+      assert.match(formSection, /data-native-ready="true"/u);
+      assert.doesNotMatch(
+        formSection,
+        /<noscript>|without JavaScript/iu,
+        `${path} protected no-script form must be ready in the initial response`,
+      );
       assert.match(
         formSection,
         new RegExp(
@@ -1514,9 +1579,7 @@ test("public form routes render editable fields immediately while secure send pr
       );
       assert.match(
         formSection,
-        path === "/contact"
-          ? /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="[^"]+")[^>]*>/u
-          : /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="")[^>]*>/u,
+        /<input(?=[^>]*\bname="instanceToken")(?=[^>]*\btype="hidden")(?=[^>]*\bvalue="[^"]+")[^>]*>/u,
         `${path} protected instance token state`,
       );
       for (const fieldName of expectedFields) {
@@ -1615,6 +1678,10 @@ test("Contact is consistent while partnership and Host routes remain canonical",
     /aria-label="Breadcrumb"[\s\S]*?aria-current="page">Contact<\/span>/u,
   );
   assert.match(contactHtml, /<h1[^>]*>Contact<\/h1>/u);
+  assert.match(
+    contactHtml,
+    /class="contact-organization">[\s\S]*?<strong>Vancouver Curiosity and Education Society<\/strong>[\s\S]*?<a href="mailto:reza@vancouvercuriosityclub\.com">reza@vancouvercuriosityclub\.com<\/a>/u,
+  );
   assert.match(
     contactHtml,
     /<section(?=[^>]*data-form-key="contact")[^>]*>[\s\S]*?<h2[^>]*>Contact<\/h2>/u,
@@ -1968,6 +2035,11 @@ test("robots and sitemap contain only public canonical routes", async () => {
     /application\/xml|text\/xml/iu,
   );
   const sitemap = await sitemapResponse.text();
+  assert.doesNotMatch(
+    sitemap,
+    /<lastmod>/u,
+    "partial catalog timestamps and Meetup refresh times are not page-content modification dates",
+  );
   for (const path of [
     "/",
     "/events",
@@ -2029,7 +2101,8 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
             AND organization_id = ?) AS note_count,
          (SELECT count(*)
           FROM public_form_rate_windows
-          WHERE organization_id = ?) AS rate_window_count,
+          WHERE organization_id = ?
+            AND id IN (?, ?, ?, ?, ?)) AS rate_window_count,
          (SELECT count(*)
           FROM import_batch_details AS detail
           JOIN import_rows AS row
@@ -2078,6 +2151,7 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
       phase7PrivateIds.submissionId,
       ORGANIZATION_ID,
       ORGANIZATION_ID,
+      ...phase7PrivateRateWindowIds,
       phase7PrivateIds.importBatchId,
       ORGANIZATION_ID,
       ORGANIZATION_ID,
@@ -2096,7 +2170,7 @@ test("Phase 7 private state never reaches rendered public surfaces or guessed ro
       meetup_source_count: 1,
       note_count: 1,
       preview_row_count: 2,
-      rate_window_count: 3,
+      rate_window_count: 5,
       submission_count: 1,
     },
   );
@@ -2651,16 +2725,21 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   const publicTitle = "Rendered Phase 5 lifecycle";
   const publicSummary = "RENDERED_PHASE5_PUBLIC_SUMMARY";
   const publicDescription = "RENDERED_PHASE5_PUBLIC_DESCRIPTION";
+  // This lifecycle exercises Upcoming against the Worker's real request clock.
+  const eventDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000)
+    .toISOString()
+    .slice(0, 10);
+  const monthEventsPath = `/events?month=${eventDate.slice(0, 7)}`;
   const privateValues = [
     "RENDERED_PHASE5_PRIVATE_NOTES_SENTINEL",
     "RENDERED_PHASE5_PRIVATE_MEETING_SENTINEL",
   ];
   const draft = await createRenderedTimedDraft({
     description: publicDescription,
-    endLocal: "2026-10-08T20:00",
+    endLocal: `${eventDate}T20:00`,
     privateMeetingDetails: privateValues[1],
     privateNotes: privateValues[0],
-    startLocal: "2026-10-08T18:00",
+    startLocal: `${eventDate}T18:00`,
     summary: publicSummary,
     title: publicTitle,
   });
@@ -2694,7 +2773,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   async function assertAbsentFromPublicSurfaces(label) {
     for (const [path, status] of [
       ["/", 200],
-      ["/events?month=2026-10", 200],
+      [monthEventsPath, 200],
       ["/clubs/vancouver-curiosity-club", 200],
       ["/sitemap.xml", 200],
       [detailPath, 404],
@@ -2867,7 +2946,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
     assert.doesNotMatch(homeHtml, new RegExp(value, "u"));
   }
 
-  const monthEventsResponse = await fetchPath("/events?month=2026-10");
+  const monthEventsResponse = await fetchPath(monthEventsPath);
   assert.equal(monthEventsResponse.status, 200);
   const monthEventsHtml = await monthEventsResponse.text();
   assert.match(monthEventsHtml, new RegExp(escapeRegex(publicTitle), "u"));
@@ -3502,6 +3581,7 @@ function assertSharedChrome(html) {
   assert.match(html, />Get Involved<\/a>/u);
   assert.match(html, /Organizer Login/u);
   assert.match(html, /aria-label="Footer navigation"/u);
+  assert.match(html, /<p class="footer-legal-name"><a\b[^>]*\bhref="\/about#legal-information"[^>]*>Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a B\.C\. nonprofit society\. Incorporation number: S0085718\. This website is operated by the Society\.<\/a><\/p>/u);
   assert.match(html, /Code of Conduct/u);
   assert.match(html, /Privacy/u);
 }
@@ -4205,14 +4285,29 @@ async function seedPhase7PrivateSentinels(targetRuntime) {
   });
   const rateScopeRows = await database
     .prepare(
-      `SELECT scope_key
+      `SELECT id, action, scope_key
        FROM public_form_rate_windows
        WHERE organization_id = ?
        ORDER BY action`,
     )
     .bind(ORGANIZATION_ID)
     .all();
+  // Client and reply-address scopes each have 15-minute and daily windows,
+  // alongside the shared organization-hour limit.
+  assert.equal(rateScopeRows.results?.length, 5);
+  assert.deepEqual(
+    rateScopeRows.results.map((row) => row.action),
+    [
+      "public_form_organization_hour",
+      "public_form_scope_15m",
+      "public_form_scope_15m",
+      "public_form_scope_day",
+      "public_form_scope_day",
+    ],
+  );
+  assert.equal(new Set(rateScopeRows.results.map((row) => row.scope_key)).size, 3);
   for (const row of rateScopeRows.results ?? []) {
+    phase7PrivateRateWindowIds.push(row.id);
     if (typeof row.scope_key === "string") {
       phase7DynamicPrivateSentinels.push(row.scope_key);
     }

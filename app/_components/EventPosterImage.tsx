@@ -52,8 +52,8 @@ export function EventPosterImage({
 
   return (
     <picture>
-      <source srcSet={modernSources.avif} type="image/avif" />
-      <source srcSet={modernSources.webp} type="image/webp" />
+      <source sizes={renderedImageProps.sizes} srcSet={modernSources.avif} type="image/avif" />
+      <source sizes={renderedImageProps.sizes} srcSet={modernSources.webp} type="image/webp" />
       {image}
     </picture>
   );

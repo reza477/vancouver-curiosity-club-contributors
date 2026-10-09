@@ -1,8 +1,45 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import sharp from "sharp";
 
 const projectRoot = new URL("../../", import.meta.url);
+
+test("About features genuine discussion posters with complete responsive assets and correct dimensions", async () => {
+  const about = await readFile(new URL("app/about/page.tsx", projectRoot), "utf8");
+  const catalog = JSON.parse(await readFile(
+    new URL("lib/meetup-event-enrichment.generated.json", projectRoot), "utf8",
+  ));
+  const posters = [...about.matchAll(
+    /alt: "([^"]+)",\s*caption: "([^"]+)",\s*file: "(meetup-[0-9]+)",\s*height: ([0-9]+),\s*mediumWidth: ([0-9]+),\s*width: ([0-9]+),/gu,
+  )];
+  assert.deepEqual(posters.map((poster) => poster[3]), [
+    "meetup-315294577", // Debate Night: public identity.
+    "meetup-315823022", // The Bet: literature discussion, retained.
+    "meetup-315772533", // Cicero: philosophy and friendship.
+  ]);
+  assert.deepEqual(posters.map((poster) => poster[2]), [
+    "Debate and public identity",
+    "Literature and discussion",
+    "Philosophy and friendship",
+  ]);
+  for (const [, alt, , file, height, mediumWidth, width] of posters) {
+    const source = catalog.events.find((event) => `meetup-${event.eventId}` === file);
+    assert.ok(source?.poster, `${file} must have genuine event provenance`);
+    assert.match(alt, /event poster\.$/u);
+    assert.equal(Number(width), source.poster.variants.medium.width);
+    assert.equal(Number(height), source.poster.variants.medium.height);
+    assert.equal(Number(mediumWidth), Number(width));
+    for (const format of ["avif", "webp", "jpeg"]) {
+      for (const size of [480, 960]) {
+        const bytes = await readFile(new URL(`public/event-posters/${file}-${size}.${format}`, projectRoot));
+        const metadata = await sharp(bytes).metadata();
+        assert.equal(metadata.width, size);
+        assert.equal(metadata.height, size * Number(height) / Number(width));
+      }
+    }
+  }
+});
 
 test("About keeps its CMS gate and a truthful institutional narrative without loading projections", async () => {
   const [about, editorial, missionCopy, catalogDefinitions, styles] = await Promise.all([
@@ -24,13 +61,13 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-legal"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
     "About must keep the approved institutional narrative order",
   );
   assert.match(
     about,
-    /<\/header>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
-    "the genuine artwork strip must lead directly from the mission into the Board roster",
+    /<\/header>\s*<section\s+className="about-legal"[\s\S]*?<\/section>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
+    "the approved legal information must follow the mission before the artwork and Board roster",
   );
   for (const copy of [
     "Our mission",
@@ -44,8 +81,6 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
     "Founder, President and Executive Director",
     "Nawar Alsaadi",
     "Vice-President and Treasurer; Strategy and Partnerships",
-    "Nataliia Ivanova",
-    "Digital Experience and Communications",
     "Anurag Kapale",
     "Director-at-Large; Technology, AI and Data",
     "What we organize",
@@ -130,7 +165,7 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     styles,
-    /\.about-hero h1\s*\{[^}]*font-size:\s*var\(--public-page-title\);[^}]*text-align:\s*center;/su,
+    /\.about-hero h1\s*\{[^}]*font-size:\s*clamp\(2\.75rem, 4vw, 3\.75rem\);[^}]*text-align:\s*center;/su,
     "Our mission must be the large centered page heading",
   );
   assert.doesNotMatch(

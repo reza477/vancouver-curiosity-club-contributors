@@ -7,6 +7,7 @@ import {
   curatedMeetupEventForEventUrl,
   validateCuratedMeetupEventCandidate,
 } from "../../lib/meetup-event-enrichment.ts";
+import { isAllowedMeetupPublicDescriptionHref } from "../../lib/meetup-publication-policy.js";
 import {
   CURATED_MEETUP_EVENT_POSTERS,
   CURATED_MEETUP_POSTER_SOURCE_OVERRIDES,
@@ -920,6 +921,40 @@ test("curated description links fail closed at the runtime boundary", () => {
       }),
     /Invalid curated Meetup event description link/u,
   );
+});
+
+test("only the reviewed Instagram permalinks pass every runtime boundary", () => {
+  const reviewedLinks = [
+    "https://www.instagram.com/p/DdH3DW3GzxP/",
+    "https://www.instagram.com/musicfashiontechyvr/",
+  ];
+  for (const href of reviewedLinks) {
+    assert.equal(isAllowedMeetupPublicDescriptionHref(href), true);
+  }
+  for (const href of [
+    "https://www.instagram.com/not-reviewed/",
+    "https://www.instagram.com/p/DdH3DW3GzxP/?other=value",
+    "https://instagram.com/musicfashiontechyvr/",
+  ]) {
+    assert.equal(isAllowedMeetupPublicDescriptionHref(href), false);
+  }
+
+  const baseline = CURATED_MEETUP_EVENT_ENRICHMENTS["315508432"];
+  assert.ok(baseline);
+  for (const href of reviewedLinks) {
+    const descriptionBlocks = structuredClone(baseline.descriptionBlocks);
+    const link = descriptionInlines(descriptionBlocks).find(
+      (inline) => inline.type === "link",
+    );
+    assert.ok(link && link.type === "link");
+    link.href = href;
+    assert.doesNotThrow(() =>
+      validateCuratedMeetupEventCandidate({
+        ...baseline,
+        descriptionBlocks,
+      }),
+    );
+  }
 });
 
 test("hidden or absent Meetup venues remain null while a public name may stand alone", () => {

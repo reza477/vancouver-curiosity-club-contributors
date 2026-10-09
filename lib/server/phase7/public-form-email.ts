@@ -90,6 +90,10 @@ export async function deliverPublicFormEmail(
   if (existingState === "sent") return "already_sent";
   if (existingState === "suppressed") return "suppressed";
   if (existingState === "blocked") return "blocked";
+  const held = await database.prepare(
+    `SELECT 1 AS held FROM form_submission_moderation WHERE submission_id = ? LIMIT 1`,
+  ).bind(submissionId).first<number>("held");
+  if (held === 1) return "suppressed";
   if (existingState === null) return "not_due";
 
   await recoverExpiredLease(database, submissionId, nowUtcMs);
@@ -242,13 +246,16 @@ export async function drainPublicFormEmailOutbox(
     .prepare(
       `SELECT submission_id
        FROM form_submission_email_outbox
-       WHERE (
+       WHERE NOT EXISTS (SELECT 1 FROM form_submission_moderation AS moderation
+         WHERE moderation.submission_id = form_submission_email_outbox.submission_id
+           AND moderation.organization_id = form_submission_email_outbox.organization_id)
+         AND ((
            state = 'pending'
            AND next_attempt_at <= ?
          ) OR (
            state = 'leased'
            AND lease_expires_at <= ?
-         )
+         ))
        ORDER BY next_attempt_at ASC, created_at ASC, submission_id ASC
        LIMIT ?`,
     )
@@ -314,6 +321,9 @@ async function claimSubmission(
              AND submission.status <> 'spam'
              AND submission.deleted_at IS NULL
              AND workflow.redacted_at IS NULL
+             AND NOT EXISTS (SELECT 1 FROM form_submission_moderation AS moderation
+               WHERE moderation.submission_id = submission.id
+                 AND moderation.organization_id = submission.organization_id)
          )`,
     )
     .bind(
@@ -348,6 +358,9 @@ async function claimSubmission(
          AND submission.status <> 'spam'
          AND submission.deleted_at IS NULL
          AND workflow.redacted_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM form_submission_moderation AS moderation
+           WHERE moderation.submission_id = submission.id
+             AND moderation.organization_id = submission.organization_id)
        LIMIT 1`,
     )
     .bind(submissionId, leaseTokenHash)

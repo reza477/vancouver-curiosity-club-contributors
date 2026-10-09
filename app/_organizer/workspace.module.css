@@ -279,6 +279,11 @@
   font-weight: 430;
   letter-spacing: -0.055em;
   line-height: 0.91;
+  overflow-wrap: anywhere;
+}
+
+.pageHeader > div {
+  min-width: 0;
 }
 
 .pageHeader > div > p:last-child,
@@ -3117,6 +3122,7 @@
 
   .mobileHeader {
     display: flex;
+    gap: 0.75rem;
     padding: 0.55rem 1rem;
     background: var(--ow-paper);
   }
@@ -3135,9 +3141,15 @@
   }
 
   .mobileBrand span {
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .mobileHeader .notificationLink,
+  .mobileBrand img {
+    flex: none;
   }
 
   .mobileNavigation {
@@ -3631,7 +3643,82 @@
 
 .submissionWorkspace {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
+}
+
+.submissionWorkspace > *,
+.submissionWorkspace .panelHeading > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.submissionWorkspace .panelHeading > .statusPill {
+  flex: none;
+  white-space: nowrap;
+}
+
+.submissionFolders,
+.submissionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.submissionFolders {
+  margin-block: 1rem;
+}
+
+.submissionFolders a {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0.5rem;
+  color: var(--ow-ink);
+  text-decoration: none;
+}
+
+.submissionFolders a[aria-current="page"] {
+  background: var(--ow-ink);
+  color: var(--ow-paper);
+}
+
+.submissionModeration {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--ow-line);
+  border-radius: 0.75rem;
+}
+
+.submissionModeration p {
+  margin: 0.5rem 0;
+}
+
+.submissionSelectable {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+}
+
+.submissionSelection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+
+.submissionSelection input {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.submissionList a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 44rem) {
+  .submissionActions > button { width: 100%; }
 }
 
 .submissionFacts {
@@ -3649,12 +3736,12 @@
   padding: 0.85rem;
   border: 1px solid var(--ow-line);
   border-radius: 0.75rem;
-  background: var(--ow-surface);
+  background: var(--ow-paper);
 }
 
 .submissionFacts dt,
 .submissionFields strong {
-  color: var(--ow-muted);
+  color: var(--ow-ink-soft);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -3699,7 +3786,7 @@
   padding: 1.15rem;
   border: 2px solid var(--ow-danger, #8b2f24);
   border-radius: 0.9rem;
-  background: var(--ow-surface);
+  background: var(--ow-paper);
 }
 
 .dangerPanel label {

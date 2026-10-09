@@ -309,7 +309,7 @@ test("secure-send preparation reports slowness within one second without weakeni
   assert.match(postRoute, /PUBLIC_FORM_CLIENT_COOKIE/u);
   assert.match(postRoute, /verifyPublicFormInstanceToken/u);
   assert.match(postRoute, /application\/x-www-form-urlencoded/u);
-  assert.match(postRoute, /readBoundedNativeForm\(request, formKey, 16_384\)/u);
+  assert.match(postRoute, /readBoundedNativeForm\(request, formKey, PUBLIC_FORM_NATIVE_MAX_BYTES\)/u);
   assert.match(
     formSource,
     /if \(submittingRef\.current \|\| busy \|\| instanceState === "error"\) return;/u,

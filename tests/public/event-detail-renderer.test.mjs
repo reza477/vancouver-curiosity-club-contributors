@@ -598,7 +598,7 @@ test("event leads keep RSVP and lane-specific poster fallback near the title", (
   const summaryIndex = markup.indexOf('class="event-detail__summary"');
   assert.ok(leadIndex >= 0);
   assert.ok(summaryIndex > leadIndex);
-  assert.ok(artworkIndex > summaryIndex);
+  assert.ok(artworkIndex > leadIndex && artworkIndex < summaryIndex);
   assert.match(markup, /data-event-lane="explore"/u);
   assert.match(markup, /<strong>Explore<\/strong>/u);
   assert.match(markup, /Gathering in the Explore lane/u);
@@ -665,11 +665,14 @@ test("390px event details keep the poster, essentials, and sticky RSVP near the 
   const storyIndex = markup.indexOf('class="event-detail__story"');
 
   assert.ok(leadIndex >= 0);
-  assert.ok(summaryIndex > leadIndex, "the event summary leads the detail flow");
+  assert.ok(posterIndex > leadIndex, "the selected artwork opens the detail flow");
+  assert.ok(summaryIndex > posterIndex, "the event summary follows the artwork");
   assert.ok(headingIndex > summaryIndex, "the title begins the summary");
   assert.ok(primaryRsvpIndex > headingIndex, "the primary RSVP follows the title");
   assert.ok(factsIndex > primaryRsvpIndex, "date and location follow the RSVP");
-  assert.ok(posterIndex > factsIndex, "the poster follows the early essentials");
+  assert.ok(factsIndex > posterIndex, "the essentials follow the artwork and title");
+  assert.ok(markup.indexOf('class="event-detail__calendar"') > factsIndex,
+    "calendar controls follow the essentials in reading and keyboard order");
   assert.equal(deckIndex, -1, "the duplicate teaser deck must not render");
   assert.ok(storyIndex > posterIndex, "long-form copy follows the poster lead");
   assert.doesNotMatch(

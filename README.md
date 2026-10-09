@@ -87,7 +87,7 @@ UI/UX contributors should begin with [the focused handoff guide](docs/UI_UX_HAND
 ```powershell
 npm run typecheck
 npm run lint
-npm audit --omit=dev
+npm audit --include=dev
 npm test
 git diff --check
 ```

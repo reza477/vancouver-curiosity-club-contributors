@@ -25,11 +25,9 @@ export function shouldQueueStageActivation({
   queuedIndex: number | null;
   transitionTargetIndex: number | null;
 }>): boolean {
-  return (
-    requestedIndex !== activeIndex &&
-    requestedIndex !== queuedIndex &&
-    requestedIndex !== transitionTargetIndex
-  );
+  // The latest request replaces older intent, including a return to the
+  // outgoing poster while the next one is still decoding.
+  return requestedIndex !== (queuedIndex ?? transitionTargetIndex ?? activeIndex);
 }
 
 export function selectStableStageIndex(

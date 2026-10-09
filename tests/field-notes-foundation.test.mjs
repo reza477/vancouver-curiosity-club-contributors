@@ -76,7 +76,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
     requestCache,
     /function getRequestPublicPageContent\([\s\S]*?remember\([\s\S]*?getPublicPageContent\(database, slug\)/u,
   );
-  assert.match(homeData, /readPublicHomeEventMaterialization\(database, \{/u);
+  assert.match(homeData, /getRequestPublicHomeEventMaterialization\(database, \{/u);
   assert.doesNotMatch(
     homeData,
     /queryPublicEventSlice|queryPublicEventMaterializationBundle|refreshPublicEventMaterializations/u,
@@ -254,7 +254,7 @@ test("Field Notes carries the honest D1-backed Phase 2 public foundation", async
   );
   for (const [selector, background, foreground] of [
     [".site-footer", "--cobalt", "--paper"],
-    [".home-partnerships", "--cobalt", "--paper"],
+    [".home-partnerships", "--paper-deep", "--ink"],
     [".community-destinations", "--forest", "--paper"],
     [".editorial-section--callout", "--ink", "--paper"],
   ]) {

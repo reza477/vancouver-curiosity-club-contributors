@@ -159,6 +159,11 @@ main, .site-footer {
   line-height: 1.45;
 }
 
+.footer-legal-name a {
+  color: inherit;
+  text-underline-offset: 0.18em;
+}
+
 .site-footer__navigation {
   grid-template-columns: repeat(3, minmax(9rem, 1fr));
   gap: clamp(1.5rem, 4vw, 4rem);

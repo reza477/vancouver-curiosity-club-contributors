@@ -113,6 +113,7 @@ const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
     "drive.google.com",
     "esp.mit.edu",
     "forms.gle",
+    "gkids.com",
     "m.youtube.com",
     "maps.app.goo.gl",
     "reifelsanctuary.calendarspots.com",
@@ -136,6 +137,12 @@ const ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS = Object.freeze(
     "www.vogue.com",
     "www.youtube.com",
     "youtu.be",
+  ]),
+);
+const EXACT_ALLOWED_PUBLIC_DESCRIPTION_LINK_HREFS = Object.freeze(
+  new Set([
+    "https://www.instagram.com/musicfashiontechyvr/",
+    "https://www.instagram.com/p/DdH3DW3GzxP/",
   ]),
 );
 const PUBLIC_DESCRIPTION_LINK_QUERY_KEYS: Readonly<
@@ -175,7 +182,6 @@ type PublicVenue = Readonly<{
 type ParsedGroupEventsPageSnapshot = Readonly<{
   afterDateTimeUtcMs: number;
   calendar: ParsedMeetupCalendar;
-  expectedTotalCount: number | null;
   groupId: string;
   timeZone: string;
 }>;
@@ -261,7 +267,6 @@ export async function fetchMeetupGroupEvents(
     );
     return await fetchCompleteMeetupGroupEvents({
       afterDateTimeUtcMs: pageSnapshot.afterDateTimeUtcMs,
-      expectedTotalCount: pageSnapshot.expectedTotalCount,
       fetcher,
       groupId: pageSnapshot.groupId,
       groupSlug: source.groupSlug,
@@ -365,7 +370,6 @@ function parseMeetupGroupEventsPageSnapshot(
     const selectedConnections = selectFutureConnections(connectionCandidates);
 
     const events: ParsedMeetupEvent[] = [];
-    const totalCounts: number[] = [];
     const seenEventRefs = new Set<string>();
     for (const candidate of selectedConnections) {
       const connection = requiredRecord(candidate.value);
@@ -384,7 +388,6 @@ function parseMeetupGroupEventsPageSnapshot(
       ) {
         invalidCalendar();
       }
-      totalCounts.push(connection.totalCount as number);
       const pageInfo = requiredRecord(connection.pageInfo);
       if (typeof pageInfo.hasNextPage !== "boolean") invalidCalendar();
 
@@ -430,8 +433,6 @@ function parseMeetupGroupEventsPageSnapshot(
         method: "PUBLISH" as const,
         rejectedEvents: Object.freeze([]),
       }),
-      expectedTotalCount:
-        selectedConnections.length === 1 ? totalCounts[0] : null,
       groupId,
       timeZone,
     });
@@ -443,7 +444,6 @@ function parseMeetupGroupEventsPageSnapshot(
 
 async function fetchCompleteMeetupGroupEvents(input: Readonly<{
   afterDateTimeUtcMs: number;
-  expectedTotalCount: number | null;
   fetcher: typeof fetch;
   groupId: string;
   groupSlug: string;
@@ -456,7 +456,10 @@ async function fetchCompleteMeetupGroupEvents(input: Readonly<{
   const seenEventUrls = new Set<string>();
   const seenCursors = new Set<string>();
   let after: string | null = null;
-  let expectedTotalCount = input.expectedTotalCount;
+  // The HTML inventory can be cached while GraphQL already includes new or
+  // removed events. Establish the total from the first fresh GraphQL page,
+  // then require every page in this traversal to agree.
+  let expectedTotalCount: number | null = null;
   let completed = false;
 
   for (let pageIndex = 0; pageIndex < MAX_MEETUP_GRAPHQL_PAGES; pageIndex += 1) {
@@ -1527,8 +1530,7 @@ function normalizePublicDescriptionLink(input: string): string | null {
     parsed.protocol !== "https:" ||
     parsed.username !== "" ||
     parsed.password !== "" ||
-    parsed.port !== "" ||
-    !ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS.has(host)
+    parsed.port !== ""
   ) {
     return null;
   }
@@ -1539,11 +1541,20 @@ function normalizePublicDescriptionLink(input: string): string | null {
       parsed.searchParams.delete(key);
     }
   }
+  if (host === "www.instagram.com") {
+    parsed.searchParams.delete("stkn");
+  }
   const allowedQueryKeys = PUBLIC_DESCRIPTION_LINK_QUERY_KEYS[host];
   for (const key of parsed.searchParams.keys()) {
     if (!allowedQueryKeys?.has(key)) return null;
   }
   const normalized = parsed.toString();
+  if (
+    !ALLOWED_PUBLIC_DESCRIPTION_LINK_HOSTS.has(host) &&
+    !EXACT_ALLOWED_PUBLIC_DESCRIPTION_LINK_HREFS.has(normalized)
+  ) {
+    return null;
+  }
   return normalized.length <= MAX_DESCRIPTION_LINK_LENGTH ? normalized : null;
 }
 

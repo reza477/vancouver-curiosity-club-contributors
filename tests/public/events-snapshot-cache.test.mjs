@@ -141,8 +141,18 @@ test("the updater atomically prebuilds fallback and compact public-event materia
   });
   assert.equal(homeRead.readCount(), 1);
   assert.equal(homeRead.writeCount(), 0);
-  assert.equal(home?.length, 6);
-  assert.equal(home?.[0]?.slug, "daily-v1-explore-poster");
+  assert.deepEqual(home?.map((event) => event.slug), [
+    "daily-v1-explore-poster",
+    "daily-v1-think",
+    "daily-v1-september",
+    "daily-v1-reserve-4",
+    "daily-v1-reserve-5",
+  ]);
+  assert.equal(
+    home?.some((event) => event.slug === "daily-v1-reserve-6"),
+    false,
+    "September 15 stays stored but is outside the August 11 five-week window",
+  );
 });
 
 test("Upcoming pagination is chronological, filterable, and derived by one visitor read", async (t) => {
@@ -340,7 +350,7 @@ test("the production materializer uses one bounded unified projection and one su
 });
 
 test("the durable DTO boundary stays separate from dynamic HTML and nonce handling", async () => {
-  const [page, loader, home, materializations, loading, worker] =
+  const [page, loader, home, materializations, worker] =
     await Promise.all([
       readFile(new URL("app/events/page.tsx", projectRoot), "utf8"),
       readFile(
@@ -352,13 +362,12 @@ test("the durable DTO boundary stays separate from dynamic HTML and nonce handli
         new URL("lib/server/public/event-materializations.ts", projectRoot),
         "utf8",
       ),
-      readFile(new URL("app/events/loading.tsx", projectRoot), "utf8"),
       readFile(new URL("worker/index.ts", projectRoot), "utf8"),
     ]);
 
   assert.match(page, /export const dynamic = "force-dynamic"/u);
-  assert.match(loader, /readPublicEventsPageMaterialization/u);
-  assert.match(home, /readPublicHomeEventMaterialization/u);
+  assert.match(loader, /getRequestPublicEventsPageMaterialization/u);
+  assert.match(home, /getRequestPublicHomeEventMaterialization/u);
   assert.doesNotMatch(
     `${loader}\n${home}`,
     /queryPublicEvent|writePublicEventsSnapshot|refreshMeetup|fetchMeetup|database\.batch/iu,
@@ -372,9 +381,6 @@ test("the durable DTO boundary stays separate from dynamic HTML and nonce handli
   );
   assert.match(worker, /requestWithSecurityContext\(/u);
   assert.match(worker, /secureResponse\(/u);
-  assert.match(loading, /aria-busy="true"/u);
-  assert.match(loading, /aria-live="polite"/u);
-  assert.match(loading, /role="status"/u);
 });
 
 function materializationInput(overrides = {}) {

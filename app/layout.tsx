@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { SiteFooter } from "@/app/_components/SiteFooter";
 import { SiteHeader } from "@/app/_components/SiteHeader";
 import { PublicArtworkMotion } from "@/app/_components/PublicArtworkMotion";
+import { PublicPosterNavigation } from "@/app/_components/PublicPosterNavigation";
 import {
   getTrustedRequestOrigin,
   getTrustedRequestPathname,
@@ -27,6 +28,7 @@ import {
 } from "@/lib/brand";
 import { isPrivateOrIdentityPath } from "@/lib/request-pathname";
 import { PUBLIC_ARTWORK_MOTION_ENABLED } from "@/lib/public-artwork-motion";
+import { PUBLIC_SOCIAL_LINKS } from "@/lib/public-social-links";
 import "./globals.css";
 
 const title = SHIPPED_BRAND_NAME;
@@ -178,7 +180,7 @@ export default async function RootLayout({
         }
         shell = {
           brandName: site.brandName,
-          externalLinks: [],
+          externalLinks: PUBLIC_SOCIAL_LINKS,
           footerNavigation: navigation.footer,
           headerNavigation: navigation.header,
           legalFooter: site.legalFooter,
@@ -252,10 +254,11 @@ export default async function RootLayout({
           {children}
         </div>
         {isPrivatePath ? null : <PublicArtworkMotion />}
+        {isPrivatePath ? null : <PublicPosterNavigation />}
         {isPrivatePath ? null : (
           <SiteFooter
             brandName={shell?.brandName}
-            externalLinks={shell?.externalLinks}
+            externalLinks={shell?.externalLinks ?? PUBLIC_SOCIAL_LINKS}
             legalFooter={shell?.legalFooter}
             legalName={shell?.legalName}
             location={shell?.location}

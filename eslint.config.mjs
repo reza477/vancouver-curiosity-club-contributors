@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Git-ignored packaging and archive-audit artifacts.
     "work/**",
+    // Vendored upstream CommonJS is validated by its security regression tests.
+    "vendor/braces-safe/**",
   ]),
 ]);
 

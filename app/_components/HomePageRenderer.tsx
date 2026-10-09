@@ -1,5 +1,6 @@
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
 import { EventPosterImage } from "@/app/_components/EventPosterImage";
+import { EventPosterLink } from "@/app/_components/EventPosterLink";
 import { formatEventSchedule } from "@/app/_components/EventCard";
 import { StructuredData } from "@/app/_components/StructuredData";
 import {
@@ -17,7 +18,10 @@ import type {
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 import { publicUrl } from "@/lib/server/public/origin";
-import { PUBLIC_HOME_MISSION_COPY } from "@/lib/public-mission-copy";
+import {
+  PUBLIC_HOME_MISSION_COPY,
+  PUBLIC_NONPROFIT_IDENTITY,
+} from "@/lib/public-mission-copy";
 import { PUBLIC_HOME_PARTICIPANT_FEEDBACK } from "@/lib/public-home-participant-feedback";
 import { selectCanonicalPublicCommunities } from "@/lib/public-community-order";
 import {
@@ -148,6 +152,7 @@ export function HomePageRenderer({
         ) : null}
 
         <div className="home-hero__copy">
+          <p className="home-hero__deck">{PUBLIC_NONPROFIT_IDENTITY}</p>
           {PUBLIC_HOME_MISSION_COPY.paragraphs.map((paragraph) => (
             <p className="home-hero__deck" key={paragraph}>
               {paragraph}
@@ -202,7 +207,7 @@ export function HomePageRenderer({
         className="home-programs"
         id="our-work"
         data-home-section="programs"
-        data-home-layout="full-width-colour"
+        data-home-layout="editorial-program-index"
         aria-labelledby="home-programs-title"
       >
         <div className="home-section-heading">
@@ -278,10 +283,13 @@ export function HomePageRenderer({
             {`${PUBLIC_HOME_PARTICIPANT_FEEDBACK.rating.toFixed(1)} out of ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingScale} on Meetup`}
           </p>
           <p className="home-feedback__counts">
-            {`${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingCount} ratings · ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.fiveStarRatingCount} five-star ratings`}
+            {`About ${Math.ceil((PUBLIC_HOME_PARTICIPANT_FEEDBACK.fiveStarRatingCount + PUBLIC_HOME_PARTICIPANT_FEEDBACK.fourStarRatingCount) / 100) * 100} positive reviews`}
+          </p>
+          <p className="home-feedback__counts">
+            {PUBLIC_HOME_PARTICIPANT_FEEDBACK.communityMembershipSummary}
           </p>
           <p className="home-feedback__source">
-            {`Meetup ratings and feedback verified ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.verificationDate}.`}
+            {`Meetup ratings verified ${PUBLIC_HOME_PARTICIPANT_FEEDBACK.ratingsVerificationDate}.`}
           </p>
           <a
             className="home-feedback__link"
@@ -319,7 +327,7 @@ export function HomePageRenderer({
         </div>
         <ul className="home-impact__sequence">
           {communityModel.map((item) => (
-            <li key={item.heading}>
+            <li key={item.heading} data-artwork-reveal="principle" data-artwork-reveal-mode="rule">
               <div>
                 <h3>{item.heading}</h3>
                 <p>{item.body}</p>
@@ -339,7 +347,7 @@ export function HomePageRenderer({
           <h2 id="home-partnerships-title">Work with us</h2>
           <p>
             Vancouver Curiosity Club welcomes conversations with organizations
-            interested in helping thoughtful public programs grow.
+            interested in helping our nonprofit’s thoughtful public programs grow.
           </p>
           <div className="home-partnerships__actions">
             <Link
@@ -424,7 +432,7 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
   const displayTitle = institutionalEventTitle(event);
 
   return (
-    <Link
+    <EventPosterLink
       aria-label={`View event: ${displayTitle}`}
       className="home-hero__poster-link"
       href={`/events/${event.slug}`}
@@ -479,7 +487,7 @@ function HomeHeroPoster({ event }: Readonly<{ event: PublicEventCardDto }>) {
           {artworkCredit ? <small>Artwork: {artworkCredit}</small> : null}
         </figcaption>
       </figure>
-    </Link>
+    </EventPosterLink>
   );
 }
 
@@ -515,14 +523,17 @@ function HomeWorkEvent({
       role="article"
       style={streamVisual.style}
     >
-      <Link
+      <EventPosterLink
         aria-label={`View event poster: ${displayTitle}`}
         className="home-work-card__poster-link"
         data-stage-poster
         href={`/events/${event.slug}`}
       >
         <figure>
-          <div className="home-work-card__media">
+          <div
+            className="home-work-card__media"
+            style={{ aspectRatio: `${event.artwork.dimensions.large.width} / ${event.artwork.dimensions.large.height}` }}
+          >
             <span className="home-work-card__preview" aria-hidden="true">
               <span>{event.club.name}</span>
               <strong>{displayTitle}</strong>
@@ -542,7 +553,7 @@ function HomeWorkEvent({
               }
               height={event.artwork.dimensions.large.height}
               loading="lazy"
-              sizes="(max-width: 700px) 100vw, (max-width: 1023px) 50vw, 54vw"
+              sizes="(max-width: 700px) 100vw, (max-width: 1023px) 50vw, 62vw"
               src={event.artwork.url}
               srcSet={responsiveImageSrcSet([
                 {
@@ -564,9 +575,12 @@ function HomeWorkEvent({
               width={event.artwork.dimensions.large.width}
             />
           </div>
-          {artworkCredit ? <figcaption>Artwork: {artworkCredit}</figcaption> : null}
+          <figcaption className="home-work-card__caption">
+            <strong>{displayTitle}</strong>
+            {artworkCredit ? <span>Artwork: {artworkCredit}</span> : null}
+          </figcaption>
         </figure>
-      </Link>
+      </EventPosterLink>
       <div className="home-work-card__body" data-stage-summary>
         <p className="home-work-card__association">
           <span>{event.club.name}</span>

@@ -90,9 +90,9 @@ test("mission positioning avoids unverified legal and testimonial claims", async
     "the partnership path must let funders identify the purpose of their inquiry",
   );
   assert.doesNotMatch(
-    publicPositioning,
+    publicPositioning.replace("Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization.", ""),
     /\b(?:registered nonprofit|nonprofit organization|registered society|registered charity|charitable organization|tax[- ]deductible|tax receipt)\b/iu,
-    "legal status and donation-receipt language require confirmed legal evidence",
+    "only the exact owner-approved nonprofit identity is allowed; additional legal and tax claims still require evidence",
   );
   assert.doesNotMatch(
     publicPositioning,
@@ -161,7 +161,7 @@ test("Home permits only the verified Meetup feedback dataset while About stays c
 
   assert.match(feedbackSection, /PUBLIC_HOME_PARTICIPANT_FEEDBACK\.quotes\.map/u);
   assert.match(feedbackSection, /<blockquote\b/u);
-  assert.match(participantFeedback, /verificationDate:\s*"August 30, 2026"/u);
+  assert.match(participantFeedback, /quotesVerificationDate:\s*"August 30, 2026"/u);
   assert.doesNotMatch(
     attendeeProofSurfaces,
     /<blockquote\b|<q\b|data-(?:attendee-)?testimonial|data-attendee-quote/iu,

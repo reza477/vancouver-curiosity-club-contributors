@@ -159,7 +159,7 @@ Before requesting merge:
 ```bash
 npm run typecheck
 npm run lint
-npm audit --omit=dev
+npm audit --include=dev
 npm test
 git diff --check
 ```
@@ -184,7 +184,7 @@ reviewed dependency update with all release gates; never use
 ## Database and content changes
 
 - Never modify an already released migration; add the next numbered one.
-- The checked-in chain currently runs from `0008` through `0023`. Do not run
+- The checked-in chain currently runs from `0008` through `0025`. Do not run
   `npm run db:generate` casually or accept an unrelated generated rewrite.
 - Keep every statement D1-compatible, additive, and retry-safe.
 - Update schema, invariants, query budgets, and integration tests together.
@@ -229,9 +229,11 @@ terminal request atomically promotes last-known-good Home, Events/club-card,
 event-detail, related-event, and compact Club/Program rail materializations.
 Visitor routes read one bounded, generation-certified row for the requested
 event or club surface: they do not fetch or parse a Meetup group page and
-cannot advance synchronization. Public HTML remains `no-store` to preserve its
-per-response CSP nonce; that browser-facing policy is separate from these
-request-local and updater-owned read caches.
+cannot advance synchronization. Eligible public HTML uses
+`private, max-age=60, must-revalidate`, retaining each document with its matching
+CSP nonce in the visitor's browser. Forms, organizer pages, and other sensitive
+routes remain `no-store`. This browser-facing policy is separate from the
+request-local and updater-owned read caches; see ADR 0014.
 GitHub Actions supplies the success/failure record and a counts-only summary.
 The organizer Meetup screen retains the manual refresh for urgent changes.
 

@@ -44,6 +44,7 @@ export async function listPublicMeetupCalendar(
     });
   }
   const events = await listUpcomingPublicMeetupEvents(database, {
+    nowUtcMs: now,
     organizationId,
     fromUtcMs: input.fromUtcMs,
     todayDate: input.todayDate,

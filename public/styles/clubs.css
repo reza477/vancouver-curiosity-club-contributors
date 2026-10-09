@@ -35,7 +35,8 @@
 
 @media (min-width: 64.001rem) {
   .club-directory--clubs .club-directory__list[data-club-showcase="true"] {
-    border-left: 1px solid var(--line);
+    border-left: 0;
+    gap: clamp(1.25rem, 3vw, 3rem);
     align-items: stretch;
     display: flex;
   }
@@ -45,12 +46,12 @@
     .club-directory__card {
     background: var(--paper);
     border-top-color: transparent;
-    border-right: 1px solid var(--line);
+    border-right: 0;
     flex: 1 1 0;
     grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: 0;
-    padding: clamp(1.25rem, 2.4vw, 2.25rem);
+    padding: 1.25rem 0;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -77,11 +78,7 @@
   .club-directory--clubs
     .club-directory__list[data-club-showcase="true"]
     .club-directory__card:is(:hover, :focus-within) {
-    background: color-mix(
-      in srgb,
-      var(--club-theme, var(--amber)) 7%,
-      var(--paper)
-    );
+    background: var(--paper);
     transform: none;
   }
 
@@ -111,13 +108,15 @@
     .club-directory__card
     h3 {
     margin-top: 0.75rem;
-    font-size: clamp(1.75rem, 2.35vw, 2.75rem);
+    font-size: clamp(1.65rem, 2.1vw, 2.4rem);
+    line-height: 1.1;
   }
 
   .club-directory--clubs
     .club-directory__list[data-club-showcase="true"]
     .club-directory__artwork {
-    margin-top: 1.35rem;
+    margin: 0 0 1.25rem;
+    order: -1;
   }
 
   .club-directory--clubs

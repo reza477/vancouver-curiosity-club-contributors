@@ -60,8 +60,8 @@ test("renewed signed instances preserve idempotency for ordinary and cookie-less
     assert.equal(retried.publicReference, original.publicReference);
     assert.equal(retried.submissionId, original.submissionId);
   }
-  assert.equal(await data.database.prepare("SELECT count(*) AS count FROM form_submission_workflows").first("count"), 2);
-  assert.equal(await data.database.prepare("SELECT count(*) AS count FROM form_submission_email_outbox").first("count"), 2);
+  assert.equal(await data.database.prepare("SELECT count(*) AS count FROM form_submission_workflows").first("count"), 1);
+  assert.equal(await data.database.prepare("SELECT count(*) AS count FROM form_submission_email_outbox").first("count"), 1);
 });
 
 test("renewal accepts genuine expired challenges but rejects forged, wrong-form and future tokens", async () => {
@@ -79,7 +79,7 @@ test("email deadlines include stalled headers and bodies, and retries retain pro
   t.after(() => data.database.close());
   const configuration = { apiKey: "synthetic", fromEmail: "sender@example.invalid", toEmail: "inbox@example.invalid" };
   for (const stall of ["headers", "body"]) {
-    const stored = await submitPublicForm(data.database, formInput("contact", `stalled-${stall}`.padEnd(32, "x"), data.now, PAYLOADS.contact, { organizationId: data.organizationId }));
+    const stored = await submitPublicForm(data.database, formInput("contact", `stalled-${stall}`.padEnd(32, "x"), data.now, { ...PAYLOADS.contact, message: `${PAYLOADS.contact.message} Synthetic ${stall} inquiry.` }, { organizationId: data.organizationId }));
     const keys = [];
     let cancelled = false;
     const start = Date.now();
@@ -265,7 +265,7 @@ const PAYLOADS = Object.freeze({
   },
 });
 
-test("all four forms commit once, retry idempotently, and spam stores only a redacted receipt", async (t) => {
+test("all four forms commit once, retry idempotently, and malformed honeypots store only a redacted receipt", async (t) => {
   const data = await fixture();
   t.after(() => data.database.close());
 
@@ -295,7 +295,7 @@ test("all four forms commit once, retry idempotently, and spam stores only a red
       message: "private spam message sentinel",
       name: "Private Spam Name",
       replyEmail: "private-spam@visitor.invalid",
-      topic: "General",
+      topic: "invalid-topic",
     },
     {
       honeypot: "filled",
@@ -727,7 +727,7 @@ test("a six-row signed maintenance slice stays below the full Worker D1 statemen
         "contact",
         `email-budget-${index}`.padEnd(32, "x"),
         data.now + index,
-        PAYLOADS.contact,
+        { ...PAYLOADS.contact, replyEmail: `budget-${index}@visitor.invalid` },
         { organizationId: data.organizationId },
       ),
     );
@@ -785,7 +785,7 @@ test("a six-row signed maintenance slice stays below the full Worker D1 statemen
     sent: 6,
     suppressed: 0,
   });
-  assert.equal(counter.count(), 41);
+  assert.equal(counter.count(), 47);
   assert.ok(counter.count() < DATABASE_INVARIANT_STATEMENT_LIMIT);
 });
 
@@ -877,7 +877,7 @@ test("submission list applies a bounded inclusive UTC date filter", async (t) =>
   const data = await fixture();
   t.after(() => data.database.close());
   const firstAt = data.now;
-  const secondAt = data.now + 60_000;
+  const secondAt = Math.min(data.now + 60_000, (Math.floor(data.now / 86_400_000) + 1) * 86_400_000 - 1);
   const currentUtcDate = new Date(firstAt).toISOString().slice(0, 10);
   const previousUtcDate = new Date(firstAt - 24 * 60 * 60 * 1_000)
     .toISOString()
@@ -934,7 +934,7 @@ test("submission list applies a bounded inclusive UTC date filter", async (t) =>
   );
 });
 
-test("public form limits are atomic and an impossible-speed post stores only a spam receipt", async (t) => {
+test("public form limits are atomic and a fast post preserves answers for retry", async (t) => {
   const data = await fixture();
   t.after(() => data.database.close());
   for (let index = 0; index < 5; index += 1) {
@@ -943,7 +943,7 @@ test("public form limits are atomic and an impossible-speed post stores only a s
         "contact",
         `rate-${index}`.padEnd(32, "x"),
         data.now + index,
-        PAYLOADS.contact,
+        { ...PAYLOADS.contact, message: `${PAYLOADS.contact.message} Inquiry ${index}.` },
         { organizationId: data.organizationId },
       ),
       anonymousClientId: "same-rate-client",
@@ -956,7 +956,7 @@ test("public form limits are atomic and an impossible-speed post stores only a s
         "contact",
         "rate-six".padEnd(32, "x"),
         data.now + 10,
-        PAYLOADS.contact,
+        { ...PAYLOADS.contact, message: `${PAYLOADS.contact.message} Sixth inquiry.` },
         { organizationId: data.organizationId },
       ),
       anonymousClientId: "same-rate-client",
@@ -989,7 +989,7 @@ test("public form limits are atomic and an impossible-speed post stores only a s
     5,
   );
 
-  const tooFast = await submitPublicForm(data.database, {
+  await assert.rejects(submitPublicForm(data.database, {
     ...formInput(
       "contact",
       "too-fast".padEnd(32, "x"),
@@ -1009,30 +1009,12 @@ test("public form limits are atomic and an impossible-speed post stores only a s
       nonce: "too-fast".padEnd(32, "x"),
     },
     networkFacts: "too-fast-network",
+  }), (error) => {
+    assert.match(error.fieldErrors.form, /wait a moment/u);
+    assert.equal(error.values.message, "too-fast private message sentinel");
+    return true;
   });
-  const receipt = await data.database
-    .prepare(
-      `SELECT submission.payload_json,
-              (
-                SELECT count(*)
-                FROM notifications AS notification
-                WHERE json_extract(
-                        notification.payload_json,
-                        '$.submissionId'
-                      ) = submission.id
-              ) AS notification_count
-       FROM form_submissions AS submission
-       JOIN form_submission_workflows AS workflow
-         ON workflow.submission_id = submission.id
-       WHERE workflow.public_reference = ?`,
-    )
-    .bind(tooFast.publicReference)
-    .first();
-  assert.equal(
-    receipt.payload_json,
-    '{"redacted":true,"reason":"anti_abuse"}',
-  );
-  assert.equal(receipt.notification_count, 0);
+  assert.equal(await data.database.prepare("SELECT count(*) AS count FROM form_submissions").first("count"), 5);
 });
 
 test("field-invalid public-form attempts consume the same durable atomic limits", async (t) => {
@@ -1253,9 +1235,9 @@ test("field-invalid public-form attempts consume the same durable atomic limits"
           networkFacts: "invalid-host-network",
         }),
         (error) =>
-          error?.code === "validation_failed" &&
+          error instanceof PublicFormValidationError &&
           /no longer available/iu.test(
-            error?.safeMessage ?? error?.message,
+            error.fieldErrors.preferredClubOrProgram,
           ),
       );
       assert.equal(
@@ -1736,3 +1718,4 @@ async function assertPhase7Clean(database) {
     Array(PHASE7_INVARIANT_COUNT_SQL.length).fill(0),
   );
 }
+import { PublicFormValidationError } from "../../lib/server/phase7/public-form-contract.ts";

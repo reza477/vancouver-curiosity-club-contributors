@@ -1,4 +1,5 @@
 import { PublicRouteLink as Link } from "@/app/_components/PublicRouteLink";
+import { PUBLIC_SOCIETY_LEGAL_INFORMATION } from "@/lib/public-legal-information";
 import type { PublicNavigationItemDto } from "@/lib/server/public/catalog";
 
 type ExternalLink = Readonly<{
@@ -31,6 +32,14 @@ export function SiteFooter({
       <div className="site-footer__brand">
         <p className="footer-wordmark">{brandName}</p>
         <p className="footer-location">{location}</p>
+        <p className="footer-legal-name">
+          <Link
+            href={PUBLIC_SOCIETY_LEGAL_INFORMATION.href}
+            prefetch={prefetchInternalLinks}
+          >
+            {PUBLIC_SOCIETY_LEGAL_INFORMATION.footer}
+          </Link>
+        </p>
         {mission ? <p className="footer-mission">{mission}</p> : null}
         {legalName && legalName !== brandName ? (
           <p className="footer-legal-name">Legal name: {legalName}</p>

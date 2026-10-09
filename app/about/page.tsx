@@ -7,8 +7,12 @@ import {
   EditorialUnavailable,
   loadEditorialPage,
 } from "@/app/_components/EditorialPage";
-import { PUBLIC_ABOUT_MISSION_COPY } from "@/lib/public-mission-copy";
+import {
+  PUBLIC_ABOUT_MISSION_COPY,
+  PUBLIC_NONPROFIT_IDENTITY,
+} from "@/lib/public-mission-copy";
 import { publicProgramStreamVisualForLaneSlug } from "@/lib/public-program-stream-visuals";
+import { PUBLIC_SOCIETY_LEGAL_INFORMATION } from "@/lib/public-legal-information";
 import { PUBLIC_CATALOG_LANES } from "@/lib/server/public/catalog-definitions";
 
 const route = "/about";
@@ -16,12 +20,12 @@ const slug = "about";
 
 const ABOUT_POSTERS = Object.freeze([
   Object.freeze({
-    alt: "Finding Your People — Beach Sunset and Walk event poster.",
-    caption: "Outdoor connection",
-    file: "meetup-315723559",
-    height: 470,
-    mediumWidth: 836,
-    width: 836,
+    alt: "Real self or mask? — Debate Night event poster.",
+    caption: "Debate and public identity",
+    file: "meetup-315294577",
+    height: 540,
+    mediumWidth: 960,
+    width: 960,
   }),
   Object.freeze({
     alt: "The Bet — Can reading actually transform a person? event poster.",
@@ -32,9 +36,9 @@ const ABOUT_POSTERS = Object.freeze([
     width: 960,
   }),
   Object.freeze({
-    alt: "Settlers of Catan board game night event poster.",
-    caption: "Play and shared experience",
-    file: "meetup-315560589",
+    alt: "Cicero on Friendship — What do we owe a friend? event poster.",
+    caption: "Philosophy and friendship",
+    file: "meetup-315772533",
     height: 540,
     mediumWidth: 960,
     width: 960,
@@ -70,10 +74,6 @@ const BOARD_DIRECTORS = Object.freeze([
   Object.freeze({
     name: "Nawar Alsaadi",
     role: "Vice-President and Treasurer; Strategy and Partnerships",
-  }),
-  Object.freeze({
-    name: "Nataliia Ivanova",
-    role: "Digital Experience and Communications",
   }),
   Object.freeze({
     name: "Anurag Kapale",
@@ -114,6 +114,7 @@ export default async function AboutPage() {
         <div className="about-hero__content">
           <h1 id="about-title">{PUBLIC_ABOUT_MISSION_COPY.heading}</h1>
           <div className="about-hero__introduction">
+            <p>{PUBLIC_NONPROFIT_IDENTITY}</p>
             {PUBLIC_ABOUT_MISSION_COPY.paragraphs.map((paragraph) => (
               <p key={paragraph}>{paragraph}</p>
             ))}
@@ -122,10 +123,47 @@ export default async function AboutPage() {
                 For organizations
               </Link>
               <Link href="/events">View public events</Link>
+              <Link href={PUBLIC_SOCIETY_LEGAL_INFORMATION.href}>Legal information</Link>
             </div>
           </div>
         </div>
       </header>
+
+      <section
+        className="about-legal"
+        id={PUBLIC_SOCIETY_LEGAL_INFORMATION.sectionId}
+        aria-labelledby="about-legal-title"
+      >
+        <div className="about-section-heading">
+          <h2 id="about-legal-title">Legal information</h2>
+        </div>
+        <div className="about-legal__body">
+          <p>{PUBLIC_SOCIETY_LEGAL_INFORMATION.identity}</p>
+          <p>{PUBLIC_SOCIETY_LEGAL_INFORMATION.websiteOperator}</p>
+          <dl className="about-legal__details">
+            <div>
+              <dt>Legal name:</dt>
+              <dd>{PUBLIC_SOCIETY_LEGAL_INFORMATION.legalName}</dd>
+            </div>
+            <div>
+              <dt>B.C. society incorporation number:</dt>
+              <dd>{PUBLIC_SOCIETY_LEGAL_INFORMATION.incorporationNumber}</dd>
+            </div>
+            <div>
+              <dt>Organization email:</dt>
+              <dd>
+                <a href={`mailto:${PUBLIC_SOCIETY_LEGAL_INFORMATION.email}`}>
+                  {PUBLIC_SOCIETY_LEGAL_INFORMATION.email}
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>Location:</dt>
+              <dd>{PUBLIC_SOCIETY_LEGAL_INFORMATION.location}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
 
       <div
         className="about-artwork-strip"

@@ -6,8 +6,11 @@ Accepted.
 
 ## Decision
 
-GitHub Actions invokes a private, POST-only Sites endpoint every day at 00:17
-America/Vancouver. Every request carries a five-minute timestamp, a canonical
+Meetup refresh runs only on intentional GitHub Actions `workflow_dispatch` or
+an authorized organizer action. Scheduled automatic Meetup refresh was disabled
+by the owner; the independent form-email job remains
+scheduled. The workflow invokes a private, POST-only Sites endpoint.
+Every request carries a five-minute timestamp, a canonical
 UUID, and an HMAC-SHA-256 signature over the exact timestamp, UUID, and body.
 The endpoint claims that UUID in D1 before doing work, so a replay cannot run a
 second import. The same secret lives only in the GitHub and Sites secret
@@ -43,5 +46,5 @@ available after every failure.
 ## Manual operation
 
 Owner and Administrator manual refresh remains available for urgent source
-changes. The daily workflow can also be dispatched manually. Neither path
+changes. The maintenance workflow can be dispatched manually. Neither path
 allows an ordinary visitor request to advance event synchronization.

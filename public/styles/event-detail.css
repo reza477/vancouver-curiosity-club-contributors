@@ -152,7 +152,8 @@
 }
 
 .event-detail__lead {
-  grid-template-areas: "visual summary";
+  grid-template-areas: "visual summary" "calendar summary";
+  grid-template-rows: max-content 1fr;
   grid-template-columns: minmax(20rem, 0.9fr) minmax(0, 1.1fr);
   align-items: start;
   gap: clamp(1.25rem, 3vw, 2.5rem) clamp(2rem, 4.5vw, 4rem);
@@ -179,6 +180,8 @@
   grid-area: summary;
   min-width: 0;
 }
+
+.event-detail__calendar { grid-area: calendar; min-width: 0; }
 
 .event-detail__header {
   grid-template-columns: minmax(0, 1fr) clamp(4rem, 6vw, 5.5rem);
@@ -223,8 +226,10 @@
 @media (max-width: 64rem) {
   .event-detail__lead {
     grid-template-areas:
+      "visual"
       "summary"
-      "visual";
+      "calendar";
+    grid-template-rows: auto;
     grid-template-columns: minmax(0, 1fr);
   }
 

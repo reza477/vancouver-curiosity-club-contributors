@@ -128,7 +128,7 @@ test("direct lane query values still normalize and reach the filtered Events loa
   );
   assert.match(
     loaderSource,
-    /readPublicEventsPageMaterialization\([\s\S]*input/u,
+    /getRequestPublicEventsPageMaterialization\([\s\S]*input/u,
     "the exported loader must pass the route-allowlisted lane into the read-only materialization boundary",
   );
   assert.doesNotMatch(

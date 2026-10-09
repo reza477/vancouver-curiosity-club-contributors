@@ -336,7 +336,7 @@ test("homepage leads with the institutional mission and nine focused sections", 
     priorSectionIndex = sectionIndex;
   }
   assert.doesNotMatch(homeRenderer, /className="home-(?:clubs|proof)/u);
-  assert.match(homeData, /readPublicHomeEventMaterialization/u);
+  assert.match(homeData, /getRequestPublicHomeEventMaterialization/u);
   assert.match(homeData, /maximum: HOME_EVENT_SELECTION_RESERVE/u);
   assert.doesNotMatch(
     homeData,
@@ -483,18 +483,17 @@ test("About presents a professional mission, impact, continuity, and partnership
   assert.match(about, /<main className="about-page"/u);
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-legal"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
   );
   assert.match(
     about,
-    /<\/header>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
+    /<\/header>\s*<section\s+className="about-legal"[\s\S]*?<\/section>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
   );
   for (const phrase of [
     "Our mission",
     "Board of Directors",
     "Reza Rahnama",
     "Nawar Alsaadi",
-    "Nataliia Ivanova",
     "Anurag Kapale",
     "Structure creates room for belonging.",
     "What we organize",
@@ -545,9 +544,9 @@ test("About presents a professional mission, impact, continuity, and partnership
     /\b(?:members?|attendees?)\s+(?:say|said|report(?:ed)?|tell|told)\b|\btestimonial(?:s)?\b|<blockquote\b/iu,
   );
   for (const poster of [
-    "meetup-315723559",
+    "meetup-315294577",
     "meetup-315823022",
-    "meetup-315560589",
+    "meetup-315772533",
   ]) {
     assert.match(about, new RegExp(`file: "${poster}"`, "u"));
     await readFile(
@@ -573,7 +572,7 @@ test("About presents a professional mission, impact, continuity, and partnership
   );
   assert.match(
     styles,
-    /\.about-page h2\s*\{[^}]*font-size:\s*clamp\(2\.15rem, 3\.4vw, 3\.45rem\);[^}]*line-height:\s*1\.02;/u,
+    /\.about-page h2\s*\{[^}]*font-size:\s*clamp\(2rem, 2\.8vw, 2\.75rem\);[^}]*line-height:\s*1\.12;/u,
     "About section headings must stay balanced against their supporting copy",
   );
   assert.match(

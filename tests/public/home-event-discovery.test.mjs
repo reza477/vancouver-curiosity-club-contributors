@@ -39,7 +39,7 @@ test("Home renders the approved institutional story in the exact section order",
     "At a time when much of social life takes place through screens and public conversations can feel increasingly divided, our gatherings create space for genuine human connection, respectful disagreement and thoughtful reflection. Participants are encouraged to listen to different perspectives, examine their own assumptions and engage in good-faith discussion with people they might not otherwise meet.",
     "Our purpose is to strengthen curiosity, critical thinking, mutual understanding and meaningful community connection.",
   ];
-  assert.equal((markup.match(/class="home-hero__deck"/gu) ?? []).length, 3);
+  assert.equal((markup.match(/class="home-hero__deck"/gu) ?? []).length, 4);
   assert.ok(markup.indexOf('class="home-hero__featured-poster"') < markup.indexOf('class="home-hero__deck"'), "mobile reading order brings the real poster before the full mission paragraphs");
   for (const paragraph of missionParagraphs) assert.ok(markup.includes(paragraph));
   assert.match(markup, /href="#our-work"[^>]*>Explore our work<\/a>/u);
@@ -54,10 +54,11 @@ test("Home renders the approved institutional story in the exact section order",
   const feedback = homeSection(markup, "participant-feedback");
   assert.match(feedback, />What participants say\.<\/h2>/u);
   assert.match(feedback, />4\.9 out of 5 on Meetup<\/p>/u);
-  assert.match(feedback, />471 ratings · 415 five-star ratings<\/p>/u);
+  assert.match(feedback, />About 600 positive reviews<\/p>/u);
+  assert.match(feedback, />Over 10,000 combined memberships across our Meetup groups\.<\/p>/u);
   assert.match(
     feedback,
-    />Meetup ratings and feedback verified August 30, 2026\.<\/p>/u,
+    />Meetup ratings verified October 5, 2026\.<\/p>/u,
   );
   assert.equal((feedback.match(/<blockquote\b/gu) ?? []).length, 3);
   for (const comment of [
@@ -78,7 +79,7 @@ test("Home renders the approved institutional story in the exact section order",
     [
       "image-led-split",
       "compact-editorial-index",
-      "full-width-colour",
+      "editorial-program-index",
       "living-poster-stage",
       "asymmetric-editorial-feedback",
       "large-statement",

@@ -21,9 +21,12 @@ import {
   publicFormIdempotencyHash,
   type PublicFormInstance,
 } from "./public-form-protection";
+import { isIndexRegistrationSolicitation } from "./public-form-spam-policy";
+import { initialSubmissionModerationStatement } from "./submission-moderation";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const RETENTION_REVIEW_MS = 365 * DAY_MS;
+const DEDUPLICATION_WINDOW_MS = 15 * 60 * 1_000;
 
 export type PublicFormSubmissionResult = Readonly<{
   notificationEligible: boolean;
@@ -94,10 +97,8 @@ export async function submitPublicForm(
   );
   if (existing) return existing;
 
-  const spam =
-    hasHoneypotValue(input.honeypot) ||
-    input.nowUtcMs - input.formInstance.issuedAt <
-      PUBLIC_FORM_MINIMUM_COMPLETION_MS;
+  const honeypot = hasHoneypotValue(input.honeypot);
+  let spam = false;
   let payload: PublicFormPayload = Object.freeze({
     redacted: true,
     reason: "anti_abuse",
@@ -106,7 +107,7 @@ export async function submitPublicForm(
     | PublicFormValidationError
     | SafeApplicationError
     | null = null;
-  if (!spam) {
+  {
     try {
       payload = parsePublicFormPayload(input.formKey, input.payload);
       if (input.formKey === "host_event") {
@@ -120,13 +121,41 @@ export async function submitPublicForm(
           error.code === "validation_failed"
         )
       ) {
-        validationFailure = error;
+        if (honeypot) {
+          spam = true;
+          payload = Object.freeze({ redacted: true, reason: "anti_abuse" });
+        }
+        else validationFailure = error;
       } else {
         throw error;
       }
     }
   }
-  const rateStatements = await publicFormRateStatements(database, input);
+  if (!honeypot && !validationFailure &&
+      input.nowUtcMs - input.formInstance.issuedAt < PUBLIC_FORM_MINIMUM_COMPLETION_MS) {
+    validationFailure = new PublicFormValidationError(
+      { form: "Please wait a moment, then send your inquiry again. Your answers are still here." },
+      payload,
+    );
+  }
+  const quarantineReason = !spam && !validationFailure
+    ? honeypot ? "honeypot" as const
+      : isIndexRegistrationSolicitation(payload) ? "index_registration_solicitation" as const
+        : null
+    : null;
+  const fingerprint = !spam && !validationFailure
+    ? await derivePublicFormScopeKey(input.keyHex,
+      `duplicate-v1\u0000${input.organizationId}\u0000${input.formKey}\u0000${normalizedPayloadFingerprint(payload)}`)
+    : null;
+  const deduplicationWindow = Math.floor(input.nowUtcMs / DEDUPLICATION_WINDOW_MS) * DEDUPLICATION_WINDOW_MS;
+  const rateStatements = await publicFormRateStatements(database, {
+    ...input,
+    replyEmail: typeof payload.replyEmail === "string" ? payload.replyEmail : null,
+  });
+  if (fingerprint) {
+    const duplicate = await findDuplicateSubmission(database, input.organizationId, fingerprint, deduplicationWindow);
+    if (duplicate) return rememberDuplicateReceipt(database, input.organizationId, idempotencyHash, duplicate, input.nowUtcMs, rateStatements);
+  }
   if (validationFailure) {
     try {
       await database.batch([...rateStatements]);
@@ -223,15 +252,24 @@ export async function submitPublicForm(
             organizationId: input.organizationId,
             submissionId,
           }),
-          publicSubmissionNotificationStatement(database, {
+          ...(quarantineReason ? [] : [publicSubmissionNotificationStatement(database, {
             formKey: input.formKey,
             idPrefix: notificationIdPrefix,
             nowUtcMs: input.nowUtcMs,
             organizationId: input.organizationId,
             publicReference,
             submissionId,
-          }),
+          })]),
         ]),
+    ...(quarantineReason ? [initialSubmissionModerationStatement(database, {
+      submissionId, organizationId: input.organizationId, nowUtcMs: input.nowUtcMs,
+      reason: quarantineReason,
+    })] : []),
+    ...(fingerprint ? [database.prepare(
+      `INSERT INTO form_submission_deduplication (
+         submission_id, organization_id, fingerprint_hash, window_started_at, created_at
+       ) VALUES (?, ?, ?, ?, ?)`,
+    ).bind(submissionId, input.organizationId, fingerprint, deduplicationWindow, input.nowUtcMs)] : []),
     publicSubmissionCompletionStatement(database, {
       auditId,
       formKey: input.formKey,
@@ -240,6 +278,7 @@ export async function submitPublicForm(
       organizationId: input.organizationId,
       publicReference,
       spam,
+      notificationEligible: !spam && !quarantineReason,
       submissionId,
     }),
     database
@@ -278,6 +317,10 @@ export async function submitPublicForm(
   try {
     await database.batch(statements);
   } catch (error) {
+    if (fingerprint && isExactDeduplicationConflict(error)) {
+      const raced = await findDuplicateSubmission(database, input.organizationId, fingerprint, deduplicationWindow);
+      if (raced) return rememberDuplicateReceipt(database, input.organizationId, idempotencyHash, raced, input.nowUtcMs, rateStatements);
+    }
     if (isExactWorkflowIdempotencyConflict(error)) {
       const raced = await findIdempotentSubmission(
         database,
@@ -292,7 +335,7 @@ export async function submitPublicForm(
     throw publicFormUnavailable();
   }
   return Object.freeze({
-    notificationEligible: !spam,
+    notificationEligible: !spam && !quarantineReason,
     publicReference,
     submissionId,
     stored: true,
@@ -305,27 +348,26 @@ async function assertCurrentPublicClubProgramChoice(
 ): Promise<void> {
   const selected = payload.preferredClubOrProgram;
   if (selected === null || selected === "") return;
-  if (typeof selected !== "string") throw invalidChoice();
+  if (typeof selected !== "string") throw invalidChoice(payload);
   const match = /^(club|program):([a-z0-9-]+)(?:\/([a-z0-9-]+))?$/u.exec(
     selected,
   );
-  if (!match) throw invalidChoice();
+  if (!match) throw invalidChoice(payload);
   const [, kind, clubSlug, programSlug] = match;
   const clubs = await listPublicClubs(database);
-  if (!clubs.some((club) => club.slug === clubSlug)) throw invalidChoice();
+  if (!clubs.some((club) => club.slug === clubSlug)) throw invalidChoice(payload);
   if (kind === "club" && programSlug === undefined) return;
-  if (kind !== "program" || !programSlug) throw invalidChoice();
+  if (kind !== "program" || !programSlug) throw invalidChoice(payload);
   const programs = await listPublicProgramsForClubs(database, [clubSlug]);
   if (!programs.some((program) => program.slug === programSlug)) {
-    throw invalidChoice();
+    throw invalidChoice(payload);
   }
 }
 
-function invalidChoice(): SafeApplicationError {
-  return new SafeApplicationError(
-    "validation_failed",
-    422,
-    "The preferred club or program is no longer available.",
+function invalidChoice(payload: PublicFormPayload): PublicFormValidationError {
+  return new PublicFormValidationError(
+    { preferredClubOrProgram: "The preferred club or program is no longer available." },
+    payload,
   );
 }
 
@@ -338,12 +380,12 @@ async function publicFormRateStatements(
     networkFacts: string;
     nowUtcMs: number;
     organizationId: string;
+    replyEmail: string | null;
   }>,
 ): Promise<readonly D1PreparedStatementLike[]> {
-  const boundedNetworkFacts = input.networkFacts.slice(0, 768);
   const scope = await derivePublicFormScopeKey(
     input.keyHex,
-    `scope\u0000${input.anonymousClientId}\u0000${boundedNetworkFacts}`,
+    `client-v2\u0000${input.organizationId}\u0000${input.anonymousClientId}`,
   );
   const organizationScope = await derivePublicFormScopeKey(
     input.keyHex,
@@ -352,12 +394,17 @@ async function publicFormRateStatements(
   const fifteenMinutes = 15 * 60 * 1_000;
   const oneHour = 60 * 60 * 1_000;
   const dayStart = Math.floor(input.nowUtcMs / DAY_MS) * DAY_MS;
+  // Native visitors without cookies are separate people, not one shared client.
+  const scopes = input.anonymousClientId === `${input.formKey}-no-cookie-v1` ? [] : [scope];
+  if (input.replyEmail) scopes.push(await derivePublicFormScopeKey(
+    input.keyHex, `reply-v1\u0000${input.organizationId}\u0000${input.replyEmail}`,
+  ));
   return Object.freeze([
-    rateWindowUpsert(
+    ...scopes.flatMap((scopeKey) => [rateWindowUpsert(
       database,
       input.organizationId,
       "public_form_scope_15m",
-      scope,
+      scopeKey,
       Math.floor(input.nowUtcMs / fifteenMinutes) * fifteenMinutes,
       fifteenMinutes,
       input.nowUtcMs,
@@ -366,11 +413,11 @@ async function publicFormRateStatements(
       database,
       input.organizationId,
       "public_form_scope_day",
-      scope,
+      scopeKey,
       dayStart,
       DAY_MS,
       input.nowUtcMs,
-    ),
+    )]),
     rateWindowUpsert(
       database,
       input.organizationId,
@@ -521,6 +568,7 @@ function publicSubmissionCompletionStatement(
     organizationId: string;
     publicReference: string;
     spam: boolean;
+    notificationEligible: boolean;
     submissionId: string;
   }>,
 ): D1PreparedStatementLike {
@@ -609,7 +657,7 @@ function publicSubmissionCompletionStatement(
       input.publicReference,
       input.spam ? "spam" : "new",
       input.spam ? 1 : 0,
-      input.spam ? 1 : 0,
+      input.notificationEligible ? 0 : 1,
       input.idPrefix,
       "form_submission.created",
       JSON.stringify({
@@ -632,7 +680,8 @@ async function findIdempotentSubmission(
     .prepare(
       `SELECT workflow.public_reference,
               workflow.submission_id,
-              workflow.canonical_status
+              workflow.canonical_status,
+              moderation.email_hold_at
        FROM form_submission_workflows AS workflow
        JOIN form_submissions AS submission
          ON submission.id = workflow.submission_id
@@ -643,11 +692,20 @@ async function findIdempotentSubmission(
         AND intent.submission_id = workflow.submission_id
         AND intent.completed_at IS NOT NULL
         AND intent.completion_audit_log_id IS NOT NULL
+       LEFT JOIN form_submission_moderation AS moderation
+         ON moderation.submission_id = submission.id
+        AND moderation.organization_id = submission.organization_id
        WHERE workflow.organization_id = ?
-         AND workflow.request_idempotency_hash = ?
+         AND workflow.submission_id IN (
+           SELECT submission_id FROM form_submission_workflows
+           WHERE organization_id = ? AND request_idempotency_hash = ?
+           UNION ALL
+           SELECT submission_id FROM form_submission_retry_receipts
+           WHERE organization_id = ? AND request_idempotency_hash = ?
+         )
        LIMIT 1`,
     )
-    .bind(organizationId, idempotencyHash)
+    .bind(organizationId, organizationId, idempotencyHash, organizationId, idempotencyHash)
     .first<Record<string, unknown>>();
   if (!reference) return null;
   const publicReference = reference.public_reference;
@@ -657,12 +715,86 @@ async function findIdempotentSubmission(
     typeof submissionId === "string" &&
     typeof canonicalStatus === "string"
     ? Object.freeze({
-        notificationEligible: canonicalStatus !== "spam",
+        notificationEligible: canonicalStatus !== "spam" && reference.email_hold_at == null,
         publicReference,
         submissionId,
         stored: true,
       })
     : null;
+}
+
+function normalizedPayloadFingerprint(payload: PublicFormPayload): string {
+  const normalize = (value: unknown): unknown => typeof value === "string"
+    ? value.normalize("NFC").replace(/\s+/gu, " ").trim()
+    : Array.isArray(value) ? value.map(normalize).sort() : value;
+  return JSON.stringify(Object.fromEntries(Object.entries(payload)
+    .sort(([left], [right]) => left.localeCompare(right, "en"))
+    .map(([key, value]) => [key, normalize(value)])));
+}
+
+async function findDuplicateSubmission(
+  database: D1DatabaseLike,
+  organizationId: string,
+  fingerprint: string,
+  windowStartedAt: number,
+): Promise<PublicFormSubmissionResult | null> {
+  const row = await database.prepare(
+    `SELECT workflow.public_reference, workflow.submission_id
+     FROM form_submission_deduplication AS deduplication
+     JOIN form_submission_workflows AS workflow
+       ON workflow.submission_id = deduplication.submission_id
+      AND workflow.organization_id = deduplication.organization_id
+     JOIN form_submission_write_intents AS intent
+       ON intent.id = workflow.write_intent_id
+      AND intent.submission_id = workflow.submission_id
+      AND intent.organization_id = workflow.organization_id
+      AND intent.completed_at IS NOT NULL
+      AND intent.completion_audit_log_id IS NOT NULL
+     WHERE deduplication.organization_id = ?
+       AND deduplication.fingerprint_hash = ?
+       AND deduplication.window_started_at = ?
+     LIMIT 1`,
+  ).bind(organizationId, fingerprint, windowStartedAt).first<Record<string, unknown>>();
+  return typeof row?.public_reference === "string" && typeof row.submission_id === "string"
+    ? Object.freeze({ publicReference: row.public_reference, submissionId: row.submission_id,
+      notificationEligible: false, stored: true }) : null;
+}
+
+function isExactDeduplicationConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : "";
+  return message.includes("UNIQUE constraint failed") &&
+    (message.includes("form_submission_deduplication.organization_id") ||
+      message.includes("form_submission_deduplication_window_unique"));
+}
+
+async function rememberDuplicateReceipt(
+  database: D1DatabaseLike,
+  organizationId: string,
+  idempotencyHash: string,
+  duplicate: PublicFormSubmissionResult,
+  nowUtcMs: number,
+  rateStatements: readonly D1PreparedStatementLike[],
+): Promise<PublicFormSubmissionResult> {
+  // Each new signed instance must keep its original receipt even after renewal
+  // takes it outside the content-deduplication window.
+  const receiptStatement = database.prepare(
+    `INSERT INTO form_submission_retry_receipts (
+       request_idempotency_hash, submission_id, organization_id, created_at
+     ) SELECT ?, submission_id, organization_id, ?
+       FROM form_submission_workflows
+       WHERE submission_id = ? AND organization_id = ?
+         AND request_idempotency_hash <> ?
+       ON CONFLICT(request_idempotency_hash) DO NOTHING`,
+  ).bind(idempotencyHash, nowUtcMs, duplicate.submissionId, organizationId, idempotencyHash);
+  try {
+    await database.batch([...rateStatements, receiptStatement]);
+  } catch (error) {
+    if (isRateLimitError(error)) throw publicFormRateLimited();
+    throw publicFormUnavailable();
+  }
+  const receipt = await findIdempotentSubmission(database, organizationId, idempotencyHash);
+  if (!receipt) throw publicFormUnavailable();
+  return Object.freeze({ ...receipt, notificationEligible: false });
 }
 
 function hasHoneypotValue(value: unknown): boolean {

@@ -55,8 +55,69 @@ export function PublicEventDetailRenderer({
         </aside>
       ) : null}
 
-      <article className="event-detail">
+      <article className="event-detail" data-event-detail-slug={event.slug}>
         <div className="event-detail__lead">
+          <div className="event-detail__visual">
+            {event.artwork ? (
+              <figure
+                className="event-detail__artwork"
+                style={{
+                  marginInline: "auto",
+                  maxWidth: `${event.artwork.dimensions.large.width}px`,
+                }}
+              >
+                <div
+                  className="event-detail__artwork-frame"
+                  style={{ aspectRatio: `${event.artwork.dimensions.large.width} / ${event.artwork.dimensions.large.height}` }}
+                >
+                  {/* The gated media route revalidates rights and published usage on every
+                      request. Next/Image's optimizer cache would bypass that revocation
+                      boundary, so this responsive image must load the controlled URLs
+                      directly. */}
+                  <EventPosterImage
+                    alt={event.artwork.altText ?? ""}
+                    decoding="async"
+                    fallback={
+                      <EventArtworkFallback
+                        className="event-detail__artwork-frame"
+                        lane={event.lane}
+                      />
+                    }
+                    fetchPriority="high"
+                    height={event.artwork.dimensions.large.height}
+                    loading="eager"
+                    sizes="(max-width: 1024px) 92vw, (max-width: 1440px) 42vw, 560px"
+                    src={event.artwork.url}
+                    srcSet={responsiveImageSrcSet([
+                      {
+                        url: event.artwork.srcSet.small,
+                        width: event.artwork.dimensions.small.width,
+                      },
+                      {
+                        url: event.artwork.srcSet.medium,
+                        width: event.artwork.dimensions.medium.width,
+                      },
+                      {
+                        url: event.artwork.srcSet.large,
+                        width: event.artwork.dimensions.large.width,
+                      },
+                    ])}
+                    style={{
+                      objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
+                    }}
+                    width={event.artwork.dimensions.large.width}
+                  />
+                </div>
+                <figcaption>Artwork: {event.artwork.credit}</figcaption>
+              </figure>
+            ) : (
+              <EventArtworkFallback
+                className="event-detail__artwork"
+                lane={event.lane}
+              />
+            )}
+          </div>
+
           <div className="event-detail__summary">
             <header className="event-detail__header">
               <div>
@@ -193,66 +254,11 @@ export function PublicEventDetailRenderer({
             </section>
           </div>
 
-          <div className="event-detail__visual">
-            {event.artwork ? (
-              <figure
-                className="event-detail__artwork"
-                style={{
-                  marginInline: "auto",
-                  maxWidth: `${event.artwork.dimensions.large.width}px`,
-                }}
-              >
-                <div className="event-detail__artwork-frame">
-                  {/* The gated media route revalidates rights and published usage on every
-                      request. Next/Image's optimizer cache would bypass that revocation
-                      boundary, so this responsive image must load the controlled URLs
-                      directly. */}
-                  <EventPosterImage
-                    alt={event.artwork.altText ?? ""}
-                    decoding="async"
-                    fallback={
-                      <EventArtworkFallback
-                        className="event-detail__artwork-frame"
-                        lane={event.lane}
-                      />
-                    }
-                    fetchPriority="high"
-                    height={event.artwork.dimensions.large.height}
-                    loading="eager"
-                    sizes="(max-width: 1024px) 92vw, (max-width: 1440px) 42vw, 560px"
-                    src={event.artwork.url}
-                    srcSet={responsiveImageSrcSet([
-                      {
-                        url: event.artwork.srcSet.small,
-                        width: event.artwork.dimensions.small.width,
-                      },
-                      {
-                        url: event.artwork.srcSet.medium,
-                        width: event.artwork.dimensions.medium.width,
-                      },
-                      {
-                        url: event.artwork.srcSet.large,
-                        width: event.artwork.dimensions.large.width,
-                      },
-                    ])}
-                    style={{
-                      objectPosition: `${event.artwork.focalPoint.x / 100}% ${event.artwork.focalPoint.y / 100}%`,
-                    }}
-                    width={event.artwork.dimensions.large.width}
-                  />
-                </div>
-                <figcaption>Artwork: {event.artwork.credit}</figcaption>
-              </figure>
-            ) : (
-              <EventArtworkFallback
-                className="event-detail__artwork"
-                lane={event.lane}
-              />
-            )}
-            {showCalendarDownload ? (
+          {showCalendarDownload ? (
+            <div className="event-detail__calendar">
               <AddToCalendar canonicalUrl={canonicalUrl} event={event} />
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
 
         <section className="event-detail__story" aria-labelledby="about-title">

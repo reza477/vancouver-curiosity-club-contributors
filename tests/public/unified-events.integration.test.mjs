@@ -8,6 +8,7 @@ import {
   getAuthorizedOrganizerEventPublicPreview,
   getPublicEventBySlug,
   getPublicEventExportRecordBySlug,
+  getPublicEventsBySlugs,
   listUpcomingPublicEvents,
   listUpcomingPublicMeetupEvents,
   listPublishedEventSelections,
@@ -17,6 +18,7 @@ import {
   listNextPublicEventsByClub,
   queryPublicCalendarMonth,
   queryPublicEvents,
+  queryPublicEventSlice,
   queryPublicCalendarLandingBundle,
   queryPublicEventMaterializationBundle,
   queryPublicEventsForExport,
@@ -27,6 +29,7 @@ import {
 import {
   buildPublicEventJsonLd,
 } from "../../lib/server/public/event-structured-data.ts";
+import { publicMeetupPublicationWindow } from "../../lib/public-event-publication-window.ts";
 import {
   createFilteredPublicCsvDownload,
   createFilteredPublicIcsDownload,
@@ -781,11 +784,22 @@ test("active Meetup snapshots project only first-party synchronized poster URLs"
   assert.equal(serialized.includes("PENDING POSTER"), false);
 });
 
-test("the September cutoff keeps source snapshots while excluding October Meetup events everywhere public", async (t) => {
+test("the rolling five-week window hides distant official Meetup events on every public read while retaining their inventory", async (t) => {
   const database = await createFixture(t);
   const activeSlug = "meetup-active-event";
   const activeUrl =
     "https://www.meetup.com/vancouver-meetup-group/events/9001/";
+  const nowUtcMs = Date.parse("2026-10-03T19:00:00.000Z");
+  const todayDate = "2026-10-03";
+  const { endsAtUtcMs } = publicMeetupPublicationWindow(nowUtcMs);
+  const input = { ...upcomingInput(), nowUtcMs, todayDate };
+  const calendar = {
+    fromDate: "2026-07-01",
+    nowUtcMs,
+    organizationId: ORGANIZATION_ID,
+    todayDate,
+    toDate: "2026-12-31",
+  };
 
   database
     .prepare(
@@ -805,7 +819,7 @@ test("the September cutoff keeps source snapshots while excluding October Meetup
     .runSynchronously();
   database.exec(`
     UPDATE meetup_sync_generations
-    SET published_at = 1787702400000
+    SET published_at = 1
     WHERE id = 'generation_active';
   `);
 
@@ -838,35 +852,35 @@ test("the September cutoff keeps source snapshots while excluding October Meetup
       .bind(startDate, endDateExclusive)
       .runSynchronously();
   const publicPageContainsActive = async () =>
-    (await queryPublicEvents(database, upcomingInput())).events.some(
+    (await queryPublicEvents(database, input)).events.some(
       ({ slug }) => slug === activeSlug,
     );
 
   updateTimedSnapshot(
-    "2026-10-01T06:30:00.000Z",
-    "2026-10-01T08:30:00.000Z",
+    new Date(endsAtUtcMs - 1_000).toISOString(),
+    new Date(endsAtUtcMs + 7_200_000).toISOString(),
   );
   assert.equal(
     await publicPageContainsActive(),
     true,
-    "a September 30 Vancouver start remains public even when it ends October 1",
+    "a November 6 Vancouver start remains public even when it ends after the horizon",
   );
 
-  updateAllDaySnapshot("2026-09-30", "2026-10-02");
+  updateAllDaySnapshot("2026-11-06", "2026-11-08");
   assert.equal(
     await publicPageContainsActive(),
     true,
-    "an all-day event beginning September 30 remains public",
+    "an all-day event beginning on the final visible day remains public",
   );
 
   updateTimedSnapshot(
-    "2026-10-01T07:00:00.000Z",
-    "2026-10-01T09:00:00.000Z",
+    new Date(endsAtUtcMs).toISOString(),
+    new Date(endsAtUtcMs + 7_200_000).toISOString(),
   );
-  assert.equal(await publicPageContainsActive(), false);
+  assert.equal(await publicPageContainsActive(), false, "Vancouver midnight is exclusive");
 
-  updateAllDaySnapshot("2026-10-01", "2026-10-02");
-  assert.equal(await publicPageContainsActive(), false);
+  updateAllDaySnapshot("2026-11-07", "2026-11-08");
+  assert.equal(await publicPageContainsActive(), false, "an old generation does not bypass the rolling horizon");
 
   database
     .prepare(
@@ -875,49 +889,68 @@ test("the September cutoff keeps source snapshots while excluding October Meetup
        WHERE id = 'event_manual_upcoming'`,
     )
     .bind(
-      Date.parse("2026-10-05T02:00:00.000Z"),
-      Date.parse("2026-10-05T04:00:00.000Z"),
+      Date.parse("2026-12-05T02:00:00.000Z"),
+      Date.parse("2026-12-05T04:00:00.000Z"),
     )
     .runSynchronously();
 
-  const [page, compatibility, meetupCompatibility, exports, sitemap, detail, materialized] =
+  const [page, compatibility, meetupCompatibility, exports, sitemap, detail, materialized,
+    month, slice, selected, editorial, oneEventExport, related, nextByClub] =
     await Promise.all([
-      queryPublicEvents(database, upcomingInput()),
+      queryPublicEvents(database, input),
       listUpcomingPublicEvents(database, {
-        fromUtcMs: NOW_UTC_MS,
+        fromUtcMs: nowUtcMs,
         limit: 100,
         organizationId: ORGANIZATION_ID,
-        todayDate: TODAY_DATE,
+        todayDate,
       }),
       listUpcomingPublicMeetupEvents(database, {
-        fromUtcMs: NOW_UTC_MS,
+        fromUtcMs: nowUtcMs,
         limit: 100,
+        nowUtcMs,
         organizationId: ORGANIZATION_ID,
-        todayDate: TODAY_DATE,
+        todayDate,
       }),
       queryPublicEventsForExport(database, {
-        ...upcomingInput(),
+        ...input,
         maxEvents: 500,
       }),
       listPublicEventSitemapSlugs(database, {
+        nowUtcMs,
         organizationId: ORGANIZATION_ID,
       }),
       getPublicEventBySlug(database, {
+        nowUtcMs,
         organizationId: ORGANIZATION_ID,
         slug: activeSlug,
       }),
       queryPublicEventMaterializationBundle(database, {
-        calendar: {
-          fromDate: "2026-07-01",
-          nowUtcMs: NOW_UTC_MS,
-          organizationId: ORGANIZATION_ID,
-          todayDate: TODAY_DATE,
-          toDate: "2026-12-31",
-        },
+        calendar,
+      }),
+      queryPublicCalendarMonth(database, calendar),
+      queryPublicEventSlice(database, input),
+      getPublicEventsBySlugs(database, {
+        nowUtcMs, organizationId: ORGANIZATION_ID, slugs: [activeSlug],
+      }),
+      getEditorialPublicEvents(database, {
+        nowUtcMs, organizationId: ORGANIZATION_ID,
+        requestedSlugs: [activeSlug], todayDate,
+      }),
+      getPublicEventExportRecordBySlug(database, {
+        nowUtcMs, organizationId: ORGANIZATION_ID, slug: activeSlug,
+      }),
+      listRelatedPublicEvents(database, {
+        nowUtcMs, organizationId: ORGANIZATION_ID,
+        slug: "manual-ideas-gathering", todayDate,
+      }),
+      listNextPublicEventsByClub(database, {
+        clubSlugs: ["vancouver-curiosity-club"], nowUtcMs,
+        organizationId: ORGANIZATION_ID, todayDate,
       }),
     ]);
 
   assert.equal(detail, null);
+  assert.equal(oneEventExport, null);
   assert.equal(sitemap.includes(activeSlug), false);
   assert.equal(
     page.events.some(({ slug }) => slug === "manual-ideas-gathering"),
@@ -927,13 +960,16 @@ test("the September cutoff keeps source snapshots while excluding October Meetup
   const serialized = JSON.stringify({
     compatibility,
     exports,
-    materialized,
     meetupCompatibility,
     page,
     sitemap,
+    month, slice, selected, editorial, related, nextByClub,
   });
   assert.equal(serialized.includes(activeSlug), false);
   assert.equal(serialized.includes(activeUrl), false);
+  assert.ok(materialized.calendarEvents.some(({ slug }) => slug === activeSlug));
+  assert.ok(materialized.upcomingEvents.some(({ slug }) => slug === activeSlug));
+  assert.ok(materialized.eventDetails.some(({ slug }) => slug === activeSlug));
 
   const retainedSource = await database
     .prepare(
@@ -943,11 +979,25 @@ test("the September cutoff keeps source snapshots while excluding October Meetup
     )
     .first();
   assert.deepEqual({ ...retainedSource }, {
-    all_day_start_date: "2026-10-01",
+    all_day_start_date: "2026-11-07",
     external_id: "synthetic-active-uid",
     status: "confirmed",
     time_kind: "all_day",
   });
+
+  const tomorrowUtcMs = Date.parse("2026-10-04T19:00:00.000Z");
+  const tomorrow = await queryPublicEvents(database, {
+    ...input, nowUtcMs: tomorrowUtcMs, todayDate: "2026-10-04",
+  });
+  assert.ok(tomorrow.events.some(({ slug }) => slug === activeSlug),
+    "the next day's horizon admits the event without another sync");
+  const tomorrowRecord = await getPublicEventExportRecordBySlug(database, {
+    nowUtcMs: tomorrowUtcMs, organizationId: ORGANIZATION_ID, slug: activeSlug,
+  });
+  assert.ok(tomorrowRecord);
+  assert.equal(await revalidatePublicEventExportRecords(database, {
+    nowUtcMs, organizationId: ORGANIZATION_ID, records: [tomorrowRecord],
+  }), false, "export revalidation also respects the current request's horizon");
 });
 
 test("poster-bearing Events data round-trips from updater projection to a durable visitor read", async (t) => {
@@ -1266,6 +1316,9 @@ test("all exact cross-post aliases stay out of public projections while the cano
     "https://www.meetup.com/vancouver-meetup-group/events/316263548/",
     "https://www.meetup.com/vancouver-meetup-group/events/316263813/",
     "https://www.meetup.com/vancouver-meetup-group/events/316409377/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316562605/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316545541/",
+    "https://www.meetup.com/vancouver-meetup-group/events/316263910/",
     "https://www.meetup.com/vancouver-meetup-group/events/316263724/",
     "https://www.meetup.com/vancouver-meetup-group/events/316409021/",
     "https://www.meetup.com/vancouver-meetup-group/events/316263936/",
@@ -1568,6 +1621,7 @@ test("all exact cross-post aliases stay out of public projections while the cano
 
 test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gathering", async (t) => {
   const database = await createFixture(t);
+  const publicClock = { nowUtcMs: Date.parse("2026-08-01T12:00:00Z"), todayDate: "2026-08-01" };
   const crossPosts = [
     {
       aliasUrl:
@@ -1722,23 +1776,23 @@ test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gat
   }
 
   const [page, calendar, sitemap, vccPage, literaturePage] = await Promise.all([
-    queryPublicEvents(database, upcomingInput()),
+    queryPublicEvents(database, upcomingInput(publicClock)),
     queryPublicCalendarMonth(database, {
       fromDate: "2026-08-01",
-      nowUtcMs: NOW_UTC_MS,
+      nowUtcMs: publicClock.nowUtcMs,
       organizationId: ORGANIZATION_ID,
-      todayDate: TODAY_DATE,
+      todayDate: publicClock.todayDate,
       toDate: "2026-08-31",
     }),
     listPublicEventSitemapSlugs(database, {
       organizationId: ORGANIZATION_ID,
     }),
     queryPublicEvents(database, {
-      ...upcomingInput(),
+      ...upcomingInput(publicClock),
       clubSlug: "vancouver-curiosity-club",
     }),
     queryPublicEvents(database, {
-      ...upcomingInput(),
+      ...upcomingInput(publicClock),
       clubSlug: "vancouver-literature-and-film",
     }),
   ]);
@@ -1832,7 +1886,7 @@ test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gat
   }
 
   const crossPostExport = await queryPublicEventsForExport(database, {
-    ...upcomingInput(),
+    ...upcomingInput(publicClock),
     clubSlug: "vancouver-curiosity-club",
     maxEvents: 500,
   });
@@ -1849,7 +1903,7 @@ test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gat
   const [vccAfterAliasCancellation, canonicalAfterAliasCancellation] =
     await Promise.all([
       queryPublicEvents(database, {
-        ...upcomingInput(),
+        ...upcomingInput(publicClock),
         clubSlug: "vancouver-curiosity-club",
       }),
       getPublicEventBySlug(database, {
@@ -1882,6 +1936,7 @@ test("Mononoke, Eyes Wide Shut, and Steve Jobs each publish as one canonical gat
 
 test("The Two Towers remains one canonical event while both official Clubs advertise it", async (t) => {
   const database = await createFixture(t);
+  const publicClock = { nowUtcMs: Date.parse("2026-08-01T12:00:00Z"), todayDate: "2026-08-01" };
   const aliasUrl =
     "https://www.meetup.com/vancouver-fantasy-scifi-meetup-group/events/315776566/";
   const canonicalUrl =
@@ -2032,26 +2087,26 @@ test("The Two Towers remains one canonical event while both official Clubs adver
 
   const [globalPage, fantasyPage, literaturePage, directory, sitemap, exports] =
     await Promise.all([
-      queryPublicEvents(database, upcomingInput()),
+      queryPublicEvents(database, upcomingInput(publicClock)),
       queryPublicEvents(database, {
-        ...upcomingInput(),
+        ...upcomingInput(publicClock),
         clubSlug: "vancouver-fantasy-scifi-group",
       }),
       queryPublicEvents(database, {
-        ...upcomingInput(),
+        ...upcomingInput(publicClock),
         clubSlug: "vancouver-literature-and-film",
       }),
       listNextPublicEventsByClub(database, {
         clubSlugs: ["vancouver-fantasy-scifi-group"],
-        nowUtcMs: NOW_UTC_MS,
+        nowUtcMs: publicClock.nowUtcMs,
         organizationId: ORGANIZATION_ID,
-        todayDate: TODAY_DATE,
+        todayDate: publicClock.todayDate,
       }),
       listPublicEventSitemapSlugs(database, {
         organizationId: ORGANIZATION_ID,
       }),
       queryPublicEventsForExport(database, {
-        ...upcomingInput(),
+        ...upcomingInput(publicClock),
         maxEvents: 500,
       }),
     ]);
@@ -5590,7 +5645,7 @@ function republishCurrentProgramProjection(
     .runSynchronously();
 }
 
-function upcomingInput() {
+function upcomingInput(overrides = {}) {
   return {
     organizationId: ORGANIZATION_ID,
     nowUtcMs: NOW_UTC_MS,
@@ -5598,6 +5653,7 @@ function upcomingInput() {
     view: "upcoming",
     page: 1,
     pageSize: 48,
+    ...overrides,
   };
 }
 

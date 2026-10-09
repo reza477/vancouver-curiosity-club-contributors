@@ -12,6 +12,7 @@ import type {
 import type { PublicEventCardDto } from "@/lib/server/public/events";
 import type { ResponsiveMediaAssetDto } from "@/lib/server/media/usage";
 import { PUBLIC_FORM_PURPOSE_COPY } from "@/lib/server/phase7/public-form-contract";
+import { PUBLIC_SOCIETY_LEGAL_INFORMATION } from "@/lib/public-legal-information";
 import type { ClubDirectoryNextEventsState } from "./ClubDirectory";
 
 type EditorialRoutePreviewProps = Readonly<{
@@ -183,7 +184,16 @@ export function ContactRouteBody({
       tone="community"
       {...preview}
     >
-      <PublicFormPageGuidance />
+      <PublicFormPageGuidance>
+        <div className="contact-organization">
+          <p><strong>{PUBLIC_SOCIETY_LEGAL_INFORMATION.legalName}</strong></p>
+          <p>
+            Organization email: <a href={`mailto:${PUBLIC_SOCIETY_LEGAL_INFORMATION.email}`}>
+              {PUBLIC_SOCIETY_LEGAL_INFORMATION.email}
+            </a>
+          </p>
+        </div>
+      </PublicFormPageGuidance>
       {children}
     </EditorialPage>
   );
@@ -213,9 +223,10 @@ export function HostAnEventRouteBody({
   );
 }
 
-function PublicFormPageGuidance() {
+function PublicFormPageGuidance({ children }: Readonly<{ children?: ReactNode }>) {
   return (
     <aside className="public-form-guidance" aria-label="Before you send">
+      {children}
       <p className="public-submission__privacy">
         We handle the details you send privately; read the{" "}
         <Link href="/privacy">Privacy notice</Link> for more information.
