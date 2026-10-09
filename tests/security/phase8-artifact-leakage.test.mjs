@@ -31,6 +31,9 @@ const TEXT_EXTENSIONS = new Set([
   ".txt",
 ]);
 const TEXT_NAMES = new Set([".assetsignore", "_headers"]);
+const APPROVED_PUBLIC_EMAIL_ADDRESSES = new Set([
+  "reza@vancouvercuriosityclub.com",
+]);
 
 function filesUnder(root) {
   if (!existsSync(root)) return [];
@@ -174,7 +177,7 @@ test(
 );
 
 test(
-  "built text is free of source maps, local paths, identities, and private sentinels",
+  "built text is free of source maps, local paths, private identities, and private sentinels",
   { skip: !existsSync(DIST) },
   () => {
     const text = joinedText(DIST);
@@ -186,9 +189,23 @@ test(
       /[A-Z]:[\\/](?:Documents|Users)[\\/]/iu,
       /\/(?:Users|home)\/[^/"'\s<]+/iu,
       /C:[\\/]Users[\\/]user[\\/]Documents[\\/]Website/iu,
-      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu,
     ]) {
-      assert.doesNotMatch(text, pattern);
+      assert.equal(
+        pattern.test(text),
+        false,
+        `Built artifact contains forbidden text matching ${pattern}`,
+      );
+    }
+
+    const emailAddresses = new Set(
+      text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu) ?? [],
+    );
+    for (const address of emailAddresses) {
+      assert.equal(
+        APPROVED_PUBLIC_EMAIL_ADDRESSES.has(address),
+        true,
+        "Built artifacts must not contain an unapproved email address",
+      );
     }
 
     for (const sentinel of [
