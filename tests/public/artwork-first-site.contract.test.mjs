@@ -358,8 +358,8 @@ test("About moves real artwork forward and uses editorial rosters and rows", asy
 
   assert.match(
     about,
-    /<header className="about-hero"[\s\S]*?<\/header>\s*<div[\s\S]*?className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board"/u,
-    "the existing community artwork must immediately follow the mission introduction",
+    /<header className="about-hero"[\s\S]*?<\/header>\s*<section\s+className="about-legal"[\s\S]*?<\/section>\s*<div[\s\S]*?className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board"/u,
+    "the existing community artwork must follow the mission and approved legal information before the Board",
   );
   assert.equal(occurrences(about, "file: \"meetup-"), 3);
   assert.doesNotMatch(about, /about-board__badge|director\.emoji|emoji:/u);

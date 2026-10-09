@@ -2725,16 +2725,21 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   const publicTitle = "Rendered Phase 5 lifecycle";
   const publicSummary = "RENDERED_PHASE5_PUBLIC_SUMMARY";
   const publicDescription = "RENDERED_PHASE5_PUBLIC_DESCRIPTION";
+  // This lifecycle exercises Upcoming against the Worker's real request clock.
+  const eventDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000)
+    .toISOString()
+    .slice(0, 10);
+  const monthEventsPath = `/events?month=${eventDate.slice(0, 7)}`;
   const privateValues = [
     "RENDERED_PHASE5_PRIVATE_NOTES_SENTINEL",
     "RENDERED_PHASE5_PRIVATE_MEETING_SENTINEL",
   ];
   const draft = await createRenderedTimedDraft({
     description: publicDescription,
-    endLocal: "2026-10-08T20:00",
+    endLocal: `${eventDate}T20:00`,
     privateMeetingDetails: privateValues[1],
     privateNotes: privateValues[0],
-    startLocal: "2026-10-08T18:00",
+    startLocal: `${eventDate}T18:00`,
     summary: publicSummary,
     title: publicTitle,
   });
@@ -2768,7 +2773,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
   async function assertAbsentFromPublicSurfaces(label) {
     for (const [path, status] of [
       ["/", 200],
-      ["/events?month=2026-10", 200],
+      [monthEventsPath, 200],
       ["/clubs/vancouver-curiosity-club", 200],
       ["/sitemap.xml", 200],
       [detailPath, 404],
@@ -2941,7 +2946,7 @@ test("the built Worker keeps one Phase 5 event private until explicit publicatio
     assert.doesNotMatch(homeHtml, new RegExp(value, "u"));
   }
 
-  const monthEventsResponse = await fetchPath("/events?month=2026-10");
+  const monthEventsResponse = await fetchPath(monthEventsPath);
   assert.equal(monthEventsResponse.status, 200);
   const monthEventsHtml = await monthEventsResponse.text();
   assert.match(monthEventsHtml, new RegExp(escapeRegex(publicTitle), "u"));
