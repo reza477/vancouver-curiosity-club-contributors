@@ -483,11 +483,11 @@ test("About presents a professional mission, impact, continuity, and partnership
   assert.match(about, /<main className="about-page"/u);
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-legal"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
   );
   assert.match(
     about,
-    /<\/header>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
+    /<\/header>\s*<section\s+className="about-legal"[\s\S]*?<\/section>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
   );
   for (const phrase of [
     "Our mission",

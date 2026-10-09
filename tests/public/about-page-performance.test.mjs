@@ -61,13 +61,13 @@ test("About keeps its CMS gate and a truthful institutional narrative without lo
   );
   assert.match(
     about,
-    /className="about-hero"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
+    /className="about-hero"[\s\S]*?className="about-legal"[\s\S]*?className="about-artwork-strip"[\s\S]*?className="about-board"[\s\S]*?className="about-model"[\s\S]*?className="about-evidence"[\s\S]*?className="about-communities"[\s\S]*?className="about-standards"[\s\S]*?className="about-closing"/u,
     "About must keep the approved institutional narrative order",
   );
   assert.match(
     about,
-    /<\/header>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
-    "the genuine artwork strip must lead directly from the mission into the Board roster",
+    /<\/header>\s*<section\s+className="about-legal"[\s\S]*?<\/section>\s*<div\s+className="about-artwork-strip"[\s\S]*?<\/div>\s*<section className="about-board" aria-labelledby="about-board-title">/u,
+    "the approved legal information must follow the mission before the artwork and Board roster",
   );
   for (const copy of [
     "Our mission",

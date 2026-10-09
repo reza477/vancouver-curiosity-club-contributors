@@ -25,6 +25,7 @@
 }
 
 .about-hero,
+.about-legal,
 .about-board,
 .about-model,
 .about-evidence,
@@ -142,6 +143,7 @@
   text-transform: none;
 }
 
+.about-legal,
 .about-board,
 .about-model,
 .about-communities,
@@ -154,6 +156,35 @@
 
 .about-standards__body {
   max-width: 64rem;
+}
+
+.about-legal {
+  scroll-margin-top: 2rem;
+}
+
+.about-legal__body {
+  min-width: 0;
+  max-width: 48rem;
+  line-height: 1.65;
+}
+
+.about-legal__details {
+  margin: 1.5rem 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.about-legal__details > div {
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.about-legal__details dt {
+  font-weight: 650;
+}
+
+.about-legal__details dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
 }
 
 .about-board__list {
@@ -422,6 +453,7 @@
 
 @media (max-width: 62rem) {
   .about-hero,
+  .about-legal,
   .about-board,
   .about-model,
   .about-evidence__copy,
@@ -442,6 +474,7 @@
 
 @media (max-width: 44rem) {
   .about-hero,
+  .about-legal,
   .about-board,
   .about-model,
   .about-evidence,

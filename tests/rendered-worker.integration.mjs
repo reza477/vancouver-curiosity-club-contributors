@@ -1376,6 +1376,22 @@ test("the built About page renders the exact shared mission and metadata", async
   ]) {
     assert.ok(html.includes(metadata), metadata);
   }
+  const legalInformation = /<section(?=[^>]*\bid="legal-information")(?=[^>]*\baria-labelledby="about-legal-title")[^>]*>([\s\S]*?)<\/section>/u.exec(html)?.[1];
+  assert.ok(legalInformation, "About must expose the legal information linked from the footer");
+  for (const copy of [
+    "Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit society incorporated in British Columbia, Canada.",
+    "This website, vancouvercuriosityclub.com, is operated by Vancouver Curiosity and Education Society and is the official website for its Vancouver Curiosity Club program.",
+    "Legal name:",
+    "Vancouver Curiosity and Education Society",
+    "B.C. society incorporation number:",
+    "S0085718",
+    "Organization email:",
+    "Location:",
+    "North Vancouver, British Columbia, Canada",
+  ]) {
+    assert.ok(legalInformation.includes(copy), copy);
+  }
+  assert.match(legalInformation, /<a href="mailto:reza@vancouvercuriosityclub\.com">reza@vancouvercuriosityclub\.com<\/a>/u);
   assertSharedChrome(html);
   assertNoPrivateSentinels(html);
 });
@@ -1662,6 +1678,10 @@ test("Contact is consistent while partnership and Host routes remain canonical",
     /aria-label="Breadcrumb"[\s\S]*?aria-current="page">Contact<\/span>/u,
   );
   assert.match(contactHtml, /<h1[^>]*>Contact<\/h1>/u);
+  assert.match(
+    contactHtml,
+    /class="contact-organization">[\s\S]*?<strong>Vancouver Curiosity and Education Society<\/strong>[\s\S]*?<a href="mailto:reza@vancouvercuriosityclub\.com">reza@vancouvercuriosityclub\.com<\/a>/u,
+  );
   assert.match(
     contactHtml,
     /<section(?=[^>]*data-form-key="contact")[^>]*>[\s\S]*?<h2[^>]*>Contact<\/h2>/u,
@@ -3556,7 +3576,7 @@ function assertSharedChrome(html) {
   assert.match(html, />Get Involved<\/a>/u);
   assert.match(html, /Organizer Login/u);
   assert.match(html, /aria-label="Footer navigation"/u);
-  assert.match(html, /<p class="footer-legal-name">Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization\.<\/p>/u);
+  assert.match(html, /<p class="footer-legal-name"><a\b[^>]*\bhref="\/about#legal-information"[^>]*>Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a B\.C\. nonprofit society\. Incorporation number: S0085718\. This website is operated by the Society\.<\/a><\/p>/u);
   assert.match(html, /Code of Conduct/u);
   assert.match(html, /Privacy/u);
 }

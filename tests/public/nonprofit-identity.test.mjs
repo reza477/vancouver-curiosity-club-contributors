@@ -12,6 +12,7 @@ import { containsProtectedLegalClaim } from "../../lib/validation/protected-lega
 
 const projectRoot = new URL("../../", import.meta.url);
 const approvedIdentity = "Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a nonprofit organization.";
+const approvedFooter = "Vancouver Curiosity Club is a program of Vancouver Curiosity and Education Society, a B.C. nonprofit society. Incorporation number: S0085718. This website is operated by the Society.";
 
 test("the owner-approved identity names the nonprofit and its public program without charity or tax claims", () => {
   assert.equal(PUBLIC_NONPROFIT_IDENTITY, approvedIdentity);
@@ -24,8 +25,9 @@ test("the owner-approved identity names the nonprofit and its public program wit
 
 test("the shared footer renders nonprofit identity with no JavaScript or CMS configuration required", () => {
   const markup = renderToStaticMarkup(createElement(SiteFooter, { prefetchInternalLinks: false }));
-  assert.ok(markup.includes(`<p class="footer-legal-name">${approvedIdentity}</p>`));
-  assert.equal(markup.split(approvedIdentity).length - 1, 1);
+  const legalLink = /<p class="footer-legal-name"><a\b[^>]*\bhref="\/about#legal-information"[^>]*>([^<]+)<\/a><\/p>/u.exec(markup);
+  assert.equal(legalLink?.[1], approvedFooter);
+  assert.equal(markup.split(approvedFooter).length - 1, 1);
   for (const label of ["Explore", "Participate", "Community information", "Contact"]) {
     assert.ok(markup.includes(label));
   }

@@ -68,6 +68,15 @@
   border-top: 0;
 }
 
+.contact-organization {
+  margin-bottom: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.contact-organization p {
+  margin: 0 0 0.5rem;
+}
+
 @media (max-width: 56rem) {
   .contact-page {
     display: block;
